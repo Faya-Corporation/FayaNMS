@@ -235,13 +235,9 @@ export function CommandPalette({
                 {search.data.devices.map((device) => (
                   <CommandItem
                     key={`device-${device.id}`}
-                    onSelect={() => {
-                      navigateTo("network.devices", { selectedId: device.id });
-                      toast({
-                        title: "Device detail arrives with Phase 2",
-                        description: `${device.hostname} selected in the device list.`,
-                      });
-                    }}
+                    onSelect={() =>
+                      navigateTo("network.device-detail", { deviceId: device.id })
+                    }
                     value={`device ${device.hostname} ${device.mgmtIp}`}
                   >
                     <Cpu aria-hidden="true" className="text-muted-foreground" />

@@ -152,8 +152,18 @@ Later agents MUST re-read this file, pick the next unchecked task, append result
 - [x] 1-a Data foundation
 - [x] 1-b Design foundation
 - [x] 1-c Shell + Dashboard + API v1
-- [ ] Gate G1 verification
-- [ ] Phase 2 … Phase 8 as above
+- [x] Gate G1 verification — PASSED
+- [x] 2-a Device inventory depth (DataTable + detail + sites + add device)
+- [x] 2-b Worker mini-service v1 (bun:3030) + worker API
+- [x] 2-c Discovery + CSV import + credential profiles
+- [x] Gate G2 verification — PASSED
+- [ ] Phase 3 — Configuration Management (3-a backup engine/policies/retention, 3-b config viewer depth + diff engine, 3-c baselines + drift + guarded restore) → Gate G3
+- [ ] Phase 4 — Change Management (4-a wizard + risk engine, 4-b approvals + execution engine) → Gate G4
+- [ ] Phase 5 — Operations: alerts rules/dedup, incident lifecycle + NOC (5-a, 5-b) → Gate G5
+- [ ] Phase 6 — Performance & metrics dashboards + rollups (6) → Gate G6
+- [ ] Phase 7 — Administration, security, audit explorer (7-a, 7-b) → Gate G7
+- [ ] Phase 8 — i18n/RTL, accessibility & polish (8-a, 8-b) → Gate G8
+- [ ] Phase 9 — Hardening & demo readiness (stretch)
 
 ---
 Task ID: 1-b
@@ -241,3 +251,78 @@ Work Log:
 
 Stage Summary:
 - GATE G1 PASSED. Phase 0/1 Foundation is browser-verified complete: shell + view router + dashboard + devices list + alerts/incidents/changes/jobs views + 8 API endpoints over seeded SQLite (15,185 rows). Ready for Phase 2 (Device Inventory depth + Worker mini-service per roadmap).
+
+---
+Task ID: 2-a
+Agent: full-stack-developer (code landed before agent context deadline; completed, fixed and verified by Orchestrator)
+Task: Device inventory depth — DataTable upgrade, device detail sub-views, Sites view, Add Device flow + API surface.
+
+Work Log:
+- Agent delivered: rewritten devices-view.tsx (server sort/filter/pagination, column visibility, row selection + bulk backup-now, saved views in new src/stores/device-views.ts, CSV export, density-token rows), device-detail-view.tsx (9 lazy tabs), device-form-sheet.tsx (RHF+Zod add/edit sheet), device-health-tab.tsx, device-interfaces-tab.tsx, config-viewer.tsx, extended api-client.ts (DeviceDetail/SiteSummary/TestConnectionResult/etc.), query-keys device* + sites, use-devices/use-device-detail/use-sites hooks, /api/v1/devices (extended + POST), /api/v1/devices/[id] (GET/PATCH) with subresources metrics/snapshots/interfaces/alerts/incidents/changes/audit, /api/v1/devices/bulk, /api/v1/devices/test-connection (proxies worker :3030 /simulate/connect with 8s timeout, graceful worker-down handling), /api/v1/sites; view-router + registry + ViewKey wired for network.device-detail (hidden from sidebar).
+- Agent died at context deadline BEFORE writing: sites-view.tsx, device-config-tab.tsx, device-records-tabs.tsx, plus 5 small wiring errors.
+- Orchestrator completion pass:
+  - Wrote src/components/views/sites-view.tsx (PageHeader + site cards: status dot mix from DEVICE_STATUS map, interface count, BackupComplianceBadge, "View devices" → setActiveView("network.devices", { siteId })).
+  - Wrote src/components/device/device-config-tab.tsx (version history list + ConfigViewer embed, SNAPSHOT_SOURCE/STATUS maps, primary-subtle selection highlight).
+  - Wrote src/components/device/device-records-tabs.tsx (BackupsTab with compliance cards + history + "View config" jump; ChangesTab with ChangeStatus/RiskBadge; IncidentsTab with SeverityBadge + overdue-SLA danger text; DeviceAlertsTab with SEVERITY/ALERT_STATUS maps; DeviceAuditTab with success/failure dots + correlation IDs).
+  - Fixes: device-detail-view render-time state reset (prev-device-id pattern) replacing setState-in-effect lint error; useToast import; apiFetch/apiRequest missing imports in use-device-detail/use-devices; Sheet side="end"→"right"; removed unused eslint-disable; useWatch() instead of form.watch() in device-form-sheet (React Compiler incompatible-library warning).
+  - Added siteId-param consumer effect in devices-view for Sites drill-down.
+- Verification: bun run lint clean; bunx tsc --noEmit clean under src/ (only pre-existing examples/+skills/ noise); curl: devices?sort=hostname OK, /api/v1/sites OK, device detail OK, metrics 24h/7d series OK (6h empty = seed aging, documented), snapshots v6 CURRENT from worker OK, interfaces with BigInt-as-string OK; dev.log no runtime errors.
+
+Stage Summary:
+- Devices view is a full Phase-2 inventory surface; device detail covers overview/health/interfaces/config/backups/changes/incidents/alerts/audit with per-tab lazy queries; Sites view + drill-down filter live; Add/Edit device form posts with audit + test-connection gracefully degrades when worker is down.
+- Decisions: detail view reached via setActiveView("network.device-detail", { deviceId }); saved views persisted in fayanms-store device-views; CSV export client-side (cap 500 rows); config tab is read-only viewer (diff/normalize explicitly Phase 3).
+- Notes for 2-c: /api/v1/meta exposes credentialProfiles? (check route) — credential select in form exists; sites drill-down uses params.siteId; DISCOVERY view key network.discovery still placeholder.
+
+---
+Task ID: 2-b
+Agent: general-purpose (code landed before agent context deadline; completed, fixed and verified by Orchestrator)
+Task: Worker mini-service v1 (bun :3030) — adapter contract, simulators, job runner, scheduler + Next.js worker API.
+
+Work Log:
+- Agent delivered before deadline: mini-services/worker/{index,adapters,runner,scheduler,next-client}.ts (1096 lines, zero deps, port 3030 hardcoded, bun --hot), worker API routes src/app/api/v1/worker/{claim,progress,complete,tick,status}/route.ts.
+- Architecture (binding): worker never opens SQLite; all persistence via http://localhost:3000 (backend-to-backend). Claim is atomic QUEUED→RUNNING via updateMany guard with attempts increment + scheduledAt filtering; complete(FAILED) requeues with 30s*attempts backoff until maxAttempts then dead-letters; claim enriches CONFIG_BACKUP payload with device fields (no second lookup); complete SUCCEEDED creates next-version ConfigSnapshot (demotes previous CURRENT→SUPERSEDED, sha256, sizeBytes, source from payload), updates device lastBackupAt/lastSeen, writes AuditEvent CONFIG_BACKUP with job correlationId; tick parses 5-field cron (ranges/lists/steps, Vixie dom/dow union), resolves policy scopeJson, excludes UNMANAGED+OFFLINE, 10-min per-device dedupe, cap 10/policy/tick; scheduler pokes tick every 30s; /health, /capabilities, /simulate/connect on 3030.
+- Orchestrator found & fixed: next-client postJson unwrapped json.data but worker's own /simulate/connect answers flat {ok:true,...} → selfPost returned undefined → "sim.negotiated" crash on every backup. Fixed: return "data" in json ? json.data : json.
+- Start & verify: worker started in background (bun --hot, nohup, logs mini-services/worker/worker.log + worker.out). E2E: seeded G1 backup-now jobs retried after backoff → SUCCEEDED (HQ-Core-SW-01 2328B cisco-ios; HQ-WAN-FW-01 2425B fortios); scheduler tick enqueued daily fleet backup once (17 jobs) then enqueued=0 (dedupe proven); job-012 (seeded payload without device ref) correctly failed "Unclaimable target" → dead-letters as designed; /health {claimed 18, completed 18, failed 0}; /api/v1/worker/status reachable:true + lastClaimAt; DB: new SCHEDULED v6 CURRENT snapshots with real sha256, previous demoted, devices lastBackupAt updated; dev.log clean.
+- Note: VALIDATION/METRIC_POLL/CONFIG_APPLY/DISCOVERY seeded jobs untouched (types filter claims CONFIG_BACKUP only — DISCOVERY support is Task 2-c).
+
+Stage Summary:
+- Worker v1 operational end-to-end: claim → simulate connect (vendor-authentic banners) → generate config (cisco-ios/fortios/sfos/aos-cx/generic templates with per-run deltas) → progress posts → snapshot persistence + audit. Retry/backoff/DLQ semantics proven (job-012 dead-letter path).
+- Contracts for 2-c: add DISCOVERY by (1) supporting type in claim types filter, (2) implementing runner branch that scans payload.subnets (seed job-014 payload is the shape), (3) persisting candidates via a new worker-facing endpoint or reusing complete with result shape agreed in 2-c.
+
+---
+Task ID: 2-c
+Agent: general-purpose (code landed before agent context deadline; verified end-to-end by Orchestrator)
+Task: Discovery job + import flow, CSV import, Credential Profiles UI.
+
+Work Log:
+- Agent delivered before deadline: worker DISCOVERY support (runner.ts runDiscoveryJob — per-subnet sweep simulation, 2–4 candidates/subnet with vendor-flavored IPs/hostnames/osFingerprints/confidence 60–99, per-subnet progress, result candidates persisted into job resultJson; claim types now ["CONFIG_BACKUP","DISCOVERY"]; /health gained completedByType). Next.js API: POST/GET /api/v1/discovery (queue scan with Zod CIDR validation + audit DISCOVERY_QUEUED; history = last 10 DISCOVERY jobs with parsed candidates), POST /api/v1/discovery/import (creates Devices from resultJson candidates, vendor key mapping, duplicate/unknown-vendor skips, resultJson rewritten with imported flags, DEVICE_CREATED audit per device), POST /api/v1/devices/csv-import (≤200 rows, per-row skip reasons, shared correlationId), GET /api/v1/credentials (+POST, /credentials/[id] PATCH — vault-ref only, never secrets), meta now exposes credentialProfiles. Views: discovery-view.tsx (New Scan dialog, scan history with live polling while jobs run, candidates table with imported states + bulk import dialog), credentials-view.tsx (vault security callout, profiles table, create/edit), CSV import dialog added to Devices view PageHeader; view-router wired for network.discovery + admin.credentials.
+- Orchestrator verification (all curl): discovery scan of 10.60+10.70 → SUCCEEDED 6 candidates in 4s; import 2 → created:2 (vendor hpe/cisco mapped, model guess, status UNKNOWN); re-import → skipped "duplicate"; csv-import 3 rows → created:1 + skipped duplicate + skipped unknown vendor "juniper"; credentials POST (type enum from schema: SSH_PASSWORD|SSH_KEY|API_TOKEN|SNMPV3|HTTPS) → listed with vault refs only; worker DISCOVERY run visible in worker.log.
+- Incident during verification: Next.js dev server crashed with Prisma P2028 (transaction timeout) under claim/complete contention. Root-cause fixes: (1) enabled WAL journal mode on db/custom.db (persistent), (2) raised claim + complete-success interactive transactions to { maxWait: 5s, timeout: 20s }. Worker restart + server restart recovered cleanly; no recurrence.
+- Added stale-job reaper in tick route (by orchestrator): RUNNING CONFIG_BACKUP/DISCOVERY jobs older than 10 min → FAILED "Orphaned…" (cleaned 8 orphans stranded by the crash; seeded stuck job-014 DISCOVERY also reaped — now honestly FAILED in Job Center).
+- Browser verification of the flows: see G2-VERIFY.
+
+Stage Summary:
+- Full Phase-2 onboarding surface: UI-driven discovery (scan → poll → select → import), CSV import (paste/file + template download), credential profiles (vault-ref-only invariant). Devices can enter the system via form, discovery import, or CSV — all audited.
+- Contracts/notes for later phases: candidates live only in job resultJson (no schema change — deliberate); DISCOVERY claim filter means seed METRIC_POLL/CONFIG_APPLY/VALIDATION jobs stay untouched; configStatus field does NOT exist on Device (use backupCompliance/lastBackupAt); /health reports per-type counters.
+
+---
+Task ID: G2-VERIFY
+Agent: Orchestrator (Z.ai Code, via agent-browser)
+Task: End-to-end browser verification of Gate G2 (Phase 2 — Device Inventory & Simulation Core).
+
+Work Log:
+- / renders clean (no page errors, no console errors). Dashboard Recent Activity already shows system:backup-worker CONFIG_BACKUP events — worker visibly driving data.
+- Devices view: full DataTable (search, status/vendor/site/criticality/compliance filters, Export CSV, column visibility, saved views, select-all + bulk) renders with live data; density tokens on rows.
+- Device detail (BR1-Access-SW-01): all 9 tabs verified — Overview (KPIs, device record, recent activity), Health (CPU/Memory + Utilization charts render after FIX below), Config (version history incl. worker-created v5 CURRENT → ConfigViewer with mask/wrap/search + sha256), Backups (compliance cards + history), Changes/Incidents/Alerts/Audit lists.
+- FIX during verification: useDeviceMetrics hook unwrapped the envelope wrong (series.map crash on Health tab — hook expected array, API returns data:{series}). Fixed in src/hooks/api/use-device-detail.ts; charts now render 6h/24h/7d.
+- Test connection → worker: "Connection OK — 898 ms" (seeded device) and "Connection OK — 873 ms" (brand-new device) — test-connection → :3030/simulate/connect path proven both ways.
+- Backup now (device header) → worker claims → Job Center sheet shows "Succeeded — Configuration backup — JOB-DCAFPF — device dev-br1-access-sw-01" with progress bar + auto-refresh note. Golden path G2 complete.
+- Sites: cards with status dot mixes + compliance; "View devices" drill-down applies site filter with removable chip.
+- Discovery (UI flow): New Scan dialog → queued → live-polling history row → SUCCEEDED 4 candidates → select all → import dialog (site/credential/criticality/managed) → "4 (4 imported)".
+- Credentials view: security callout + vault-ref-only table verified.
+- Add Device: form → validation correctly displayed when a field is invalid ("Enter a valid IPv4 management address") → create navigates to new device detail. CSV import dialog: paste → parse preview → "Import 2 rows" → both devices created (verified via API).
+- Responsive 375px: no horizontal overflow anywhere tested; mobile drawer nav works; footer pushed naturally on long pages; shell structure (min-h-screen flex-col + footer) confirmed via computed styles. Theme cycle light/dark OK.
+- bun run lint clean; tsc clean under src/; dev.log shows no runtime errors after fixes.
+
+Stage Summary:
+- GATE G2 PASSED. Phase 2 is browser-verified complete: device inventory depth (DataTable + detail + sites), worker mini-service executing real job lifecycle end-to-end (claim → simulate → persist → audit), discovery + CSV onboarding, credential profiles. Ready for Phase 3 (Configuration Management: policies/retention, diff engine, baselines, drift, guarded restore) per roadmap.

@@ -110,6 +110,57 @@ export const DEVICE_STATUS = {
 export type DeviceStatusKey = keyof typeof DEVICE_STATUS;
 
 /* ------------------------------------------------------------------ */
+/* Interfaces (admin/oper states per IF-MIB ifTable semantics)         */
+/* ------------------------------------------------------------------ */
+
+export const INTERFACE_ADMIN_STATUS = {
+  UP: makeConfig("UP", "Admin Up", "success", "CircleCheck"),
+  DOWN: makeConfig("DOWN", "Admin Down", "neutral", "CircleMinus"),
+  TESTING: makeConfig("TESTING", "Testing", "warning", "CircleAlert"),
+} as const satisfies Record<string, StatusBadgeConfig>;
+
+export type InterfaceAdminStatusKey = keyof typeof INTERFACE_ADMIN_STATUS;
+
+export const INTERFACE_OPER_STATUS = {
+  UP: makeConfig("UP", "Up", "success", "CircleCheck"),
+  DOWN: makeConfig("DOWN", "Down", "danger", "CircleOff"),
+  TESTING: makeConfig("TESTING", "Testing", "warning", "CircleAlert"),
+  UNKNOWN: makeConfig("UNKNOWN", "Unknown", "neutral", "CircleHelp"),
+  DORMANT: makeConfig("DORMANT", "Dormant", "warning", "Clock"),
+  NOT_PRESENT: makeConfig("NOT_PRESENT", "Not Present", "neutral", "CircleDashed"),
+  LOWER_LAYER_DOWN: makeConfig(
+    "LOWER_LAYER_DOWN",
+    "Lower Layer Down",
+    "danger-orange",
+    "CircleSlash"
+  ),
+} as const satisfies Record<string, StatusBadgeConfig>;
+
+export type InterfaceOperStatusKey = keyof typeof INTERFACE_OPER_STATUS;
+
+/* ------------------------------------------------------------------ */
+/* Config snapshots (version history status + capture source)          */
+/* ------------------------------------------------------------------ */
+
+export const SNAPSHOT_STATUS = {
+  CURRENT: makeConfig("CURRENT", "Current", "success", "CircleCheck"),
+  HISTORICAL: makeConfig("HISTORICAL", "Historical", "neutral", "Archive"),
+  BASELINE: makeConfig("BASELINE", "Baseline", "info", "ShieldCheck"),
+} as const satisfies Record<string, StatusBadgeConfig>;
+
+export type SnapshotStatusKey = keyof typeof SNAPSHOT_STATUS;
+
+export const SNAPSHOT_SOURCE = {
+  SCHEDULED: makeConfig("SCHEDULED", "Scheduled", "info", "Clock"),
+  MANUAL: makeConfig("MANUAL", "Manual", "neutral", "FilePen"),
+  PRE_CHANGE: makeConfig("PRE_CHANGE", "Pre-Change", "warning", "FileDiff"),
+  POST_CHANGE: makeConfig("POST_CHANGE", "Post-Change", "info", "ShieldCheck"),
+  EVENT: makeConfig("EVENT", "Event-Driven", "warning", "TriangleAlert"),
+} as const satisfies Record<string, StatusBadgeConfig>;
+
+export type SnapshotSourceKey = keyof typeof SNAPSHOT_SOURCE;
+
+/* ------------------------------------------------------------------ */
 /* Severity (Critical/High/Medium/Low/Info)                            */
 /* ------------------------------------------------------------------ */
 

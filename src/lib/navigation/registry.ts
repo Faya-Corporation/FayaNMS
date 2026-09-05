@@ -39,6 +39,14 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
     phase: "Phase 2 — Device Inventory",
     group: "Network",
   },
+  // Hidden from the sidebar (sidebar groups list their items explicitly);
+  // opened via setActiveView("network.device-detail", { deviceId }).
+  "network.device-detail": {
+    title: "Device Detail",
+    description: "Full device record — health, interfaces, configs and history",
+    phase: "Phase 2 — Device Inventory",
+    group: "Network",
+  },
   "network.sites": {
     title: "Sites",
     description: "Sites, regions and locations",

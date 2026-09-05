@@ -1,0 +1,151 @@
+import { db } from "@/lib/db";
+import { fail, firstIssueMessage, ok } from "../../_lib/api";
+import { z } from "zod";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * POST /api/v1/worker/claim — worker-facing atomic job claim.
+ *
+ * Body: { types: string[], limit: number(1..10) }
+ *
+ * Transaction: selects the oldest QUEUED JobExecutions whose type is in
+ * `types` and whose scheduledAt is null or due, then flips each one
+ * QUEUED→RUNNING with an optimistic `status: "QUEUED"` guard (updateMany),
+ * incrementing attempts and stamping startedAt. The VALIDATION job seeded in
+ * the DB is never touched because the worker only claims CONFIG_BACKUP.
+ *
+ * For CONFIG_BACKUP jobs the returned `payload` object is enriched with the
+ * target device ({ deviceId, hostname, name, vendor, model, platform,
+ * firmware, managementIp, status }) so the worker never needs a second
+ * lookup. Raw stored payload stays available as `payloadJson`.
+ */
+
+const claimSchema = z.object({
+  types: z.array(z.string().trim().min(1)).min(1).max(10),
+  limit: z.number().int().min(1).max(10).default(3),
+});
+
+function safeParseJson(text: string | null | undefined): Record<string, unknown> {
+  if (!text) return {};
+  try {
+    const v = JSON.parse(text);
+    return v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function POST(request: Request) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
+  }
+
+  const parsed = claimSchema.safeParse(body);
+  if (!parsed.success) {
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
+  }
+
+  const { types, limit } = parsed.data;
+  const now = new Date();
+
+  const claimed = await db.$transaction(async (tx) => {
+    const candidates = await tx.jobExecution.findMany({
+      where: {
+        status: "QUEUED",
+        type: { in: types },
+        OR: [{ scheduledAt: null }, { scheduledAt: { lte: now } }],
+      },
+      orderBy: [{ priority: "asc" }, { createdAt: "asc" }],
+      take: limit,
+    });
+
+    const out: Array<Record<string, unknown>> = [];
+
+    for (const job of candidates) {
+      // Optimistic flip — updateMany on a conditional where is atomic on
+      // SQLite and silently returns count 0 if another claimant won.
+      const flipped = await tx.jobExecution.updateMany({
+        where: { id: job.id, status: "QUEUED" },
+        data: {
+          status: "RUNNING",
+          startedAt: now,
+          progress: 0,
+          attempts: { increment: 1 },
+        },
+      });
+      if (flipped.count !== 1) continue;
+
+      let payload = safeParseJson(job.payloadJson);
+      const deviceId =
+        typeof payload.deviceId === "string" ? payload.deviceId : job.targetId;
+
+      if (job.type === "CONFIG_BACKUP" && deviceId) {
+        const device = await tx.device.findUnique({
+          where: { id: deviceId },
+          select: {
+            id: true,
+            hostname: true,
+            displayName: true,
+            vendor: { select: { key: true } },
+            model: true,
+            platform: true,
+            firmware: true,
+            mgmtIp: true,
+            status: true,
+          },
+        });
+        if (device) {
+          payload = {
+            ...payload,
+            deviceId: device.id,
+            hostname: device.hostname,
+            name: device.displayName ?? device.hostname,
+            vendor: device.vendor.key,
+            model: device.model,
+            platform: device.platform,
+            firmware: device.firmware,
+            managementIp: device.mgmtIp,
+            status: device.status,
+          };
+        }
+      }
+
+      out.push({
+        id: job.id,
+        type: job.type,
+        targetType: job.targetType,
+        targetId: job.targetId,
+        payloadJson: job.payloadJson,
+        payload,
+        attempts: job.attempts + 1,
+        maxAttempts: job.maxAttempts,
+        correlationId: job.correlationId,
+      });
+    }
+
+    return out;
+  }, { maxWait: 5_000, timeout: 20_000 });
+
+  // Liveness marker for GET /api/v1/worker/status: timestamp of the most
+  // recent claim that actually returned at least one job.
+  if (claimed.length > 0) {
+    await db.setting
+      .upsert({
+        where: { key: "worker.lastClaimAt" },
+        update: { valueJson: JSON.stringify(now.toISOString()) },
+        create: {
+          key: "worker.lastClaimAt",
+          valueJson: JSON.stringify(now.toISOString()),
+        },
+      })
+      .catch(() => {});
+  }
+
+  return ok(claimed);
+}

@@ -11,6 +11,7 @@ export type ViewKey =
   // Network
   | "dashboard"
   | "network.devices"
+  | "network.device-detail"
   | "network.sites"
   | "network.interfaces"
   | "network.topology"

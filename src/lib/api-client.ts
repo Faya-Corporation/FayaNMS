@@ -216,6 +216,225 @@ export interface DeviceRow {
   backupCompliance: string;
   site: { name: string; code: string } | null;
   vendor: { key: string; name: string } | null;
+  _count: {
+    interfaces: number;
+    snapshots: number;
+    alerts: number;
+  };
+}
+
+/* --------------------- Device detail (Phase 2) --------------------- */
+
+export interface DeviceDetail {
+  id: string;
+  hostname: string;
+  displayName: string | null;
+  mgmtIp: string;
+  model: string | null;
+  platform: string | null;
+  serialNumber: string | null;
+  firmware: string | null;
+  role: string | null;
+  status: string;
+  criticality: string;
+  healthScore: number;
+  backupCompliance: string;
+  tags: string[];
+  notes: string | null;
+  /** BigInt uptimeSeconds serialized as string by the API. */
+  uptimeSeconds: string | null;
+  lastSeen: string | null;
+  lastBackupAt: string | null;
+  lastConfigChangeAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  vendor: { id: string; key: string; name: string; adapterKey: string };
+  site: { id: string; name: string; code: string; region: string | null } | null;
+  counts: {
+    interfaces: number;
+    snapshots: number;
+    openAlerts: number;
+    openIncidents: number;
+    changes: number;
+    backupJobs: number;
+  };
+}
+
+export interface DeviceMetricPoint {
+  ts: string;
+  cpu: number | null;
+  memory: number | null;
+  utilizationIn: number | null;
+  utilizationOut: number | null;
+}
+
+export interface DeviceMetricsPayload {
+  series: DeviceMetricPoint[];
+}
+
+export interface DeviceSnapshotRow {
+  id: string;
+  version: number;
+  source: string;
+  configType: string;
+  status: string;
+  sha256: string;
+  sizeBytes: number;
+  rawText: string;
+  normalizedText: string | null;
+  createdAt: string;
+  changeNumber: string | null;
+  capturedBy: string | null;
+  correlationId: string | null;
+}
+
+export interface DeviceInterfaceRow {
+  id: string;
+  name: string;
+  description: string | null;
+  adminStatus: string;
+  operStatus: string;
+  speedMbps: number | null;
+  macAddress: string | null;
+  vlan: number | null;
+  mtu: number | null;
+  /** BigInt counters serialized as strings by the API. */
+  countersInBps: string | null;
+  countersOutBps: string | null;
+  lastFlapAt: string | null;
+}
+
+export interface DeviceAlertRow {
+  id: string;
+  severity: string;
+  message: string;
+  status: string;
+  count: number;
+  firstSeen: string;
+  lastSeen: string;
+  acknowledgedAt: string | null;
+  ruleName: string | null;
+}
+
+export interface DeviceIncidentRow {
+  id: string;
+  number: string;
+  title: string;
+  severity: string;
+  priority: string | null;
+  status: string;
+  source: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  slaDueAt: string | null;
+}
+
+export interface DeviceChangeRow {
+  id: string;
+  number: string;
+  title: string;
+  type: string;
+  status: string;
+  riskScore: number;
+  riskLevel: string;
+  scheduledStart: string | null;
+  scheduledEnd: string | null;
+  createdAt: string;
+  /** Result of this device's link within the change (PENDING/SUCCESS/…). */
+  deviceResult: string | null;
+}
+
+export interface DeviceAuditRow {
+  id: string;
+  actorName: string;
+  action: string;
+  resourceType: string;
+  resourceLabel: string | null;
+  result: string;
+  ip: string | null;
+  correlationId: string | null;
+  createdAt: string;
+}
+
+/* --------------------------- Sites (Phase 2) ------------------------ */
+
+export interface SiteSummary {
+  id: string;
+  name: string;
+  code: string;
+  region: string | null;
+  address: string | null;
+  deviceCount: number;
+  managedCount: number;
+  statusCounts: Record<string, number>;
+  criticalityMix: Record<string, number>;
+  interfaceCount: number;
+  compliance: {
+    pct: number | null;
+    compliant: number;
+    total: number;
+  };
+}
+
+/* ------------------------- Device mutations ------------------------- */
+
+export interface CreateDevicePayload {
+  hostname: string;
+  displayName?: string;
+  vendorId: string;
+  model?: string;
+  mgmtIp: string;
+  siteId?: string;
+  criticality: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  /** Validated + audited; persisted when credential assignment lands (2-c). */
+  credentialProfileId?: string;
+  tags?: string[];
+  notes?: string;
+}
+
+export interface UpdateDevicePayload {
+  displayName?: string;
+  notes?: string | null;
+  criticality?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  siteId?: string | null;
+  tags?: string[];
+  status?: "ONLINE" | "OFFLINE" | "DEGRADED" | "MAINTENANCE" | "UNKNOWN" | "UNMANAGED";
+  credentialProfileId?: string | null;
+}
+
+export interface BulkDeviceActionResult {
+  queued: number;
+  jobs: {
+    deviceId: string;
+    hostname: string;
+    type: string;
+    status: string;
+    correlationId: string;
+  }[];
+  skipped: { deviceId: string; hostname?: string; reason: string }[];
+}
+
+export interface TestConnectionResult {
+  reachable: boolean;
+  ok: boolean;
+  latencyMs: number | null;
+  message: string | null;
+  workerStatus: string | null;
+  device: {
+    id: string;
+    hostname: string;
+    status: string;
+  };
+}
+
+export interface CreateDeviceResult {
+  device: DeviceRow;
+  audit: {
+    id: string;
+    action: string;
+    resourceLabel: string | null;
+    correlationId: string;
+  };
 }
 
 export interface IncidentRow {
@@ -306,6 +525,124 @@ export interface SearchResults {
 export interface MetaPayload {
   vendors: { id: string; key: string; name: string }[];
   sites: { id: string; name: string; code: string }[];
+  credentialProfiles: { id: string; name: string; type: string; username: string }[];
+}
+
+/* --------------------- Discovery & CSV import (2-c) ---------------- */
+
+/** One discovered device candidate (persistence-free — lives in resultJson). */
+export interface DiscoveryCandidate {
+  ip: string;
+  hostname: string;
+  vendorGuess: string;
+  modelGuess?: string;
+  mgmtPort?: number;
+  protocols?: string[];
+  confidence?: number;
+  osFingerprint?: string;
+  discoveredAt?: string;
+  imported?: boolean;
+}
+
+/** DISCOVERY job row as served by GET /api/v1/discovery. */
+export interface DiscoveryJobSummary {
+  id: string;
+  correlationId: string;
+  name: string | null;
+  status: string;
+  progress: number;
+  error: string | null;
+  attempts: number;
+  maxAttempts: number;
+  subnets: string[];
+  candidateCount: number;
+  importedCount: number;
+  scannedSubnets: number | null;
+  durationMs: number | null;
+  candidates: DiscoveryCandidate[];
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface StartScanPayload {
+  subnets: string[];
+  name?: string;
+}
+
+export interface StartScanResult {
+  jobId: string;
+  correlationId: string;
+  status: string;
+  audit: { id: string; action: string };
+}
+
+export interface ImportCandidatesPayload {
+  jobId: string;
+  ips: string[];
+  siteId?: string;
+  credentialProfileId?: string;
+  criticality: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  managed: boolean;
+}
+
+export interface CsvImportRowPayload {
+  hostname: string;
+  vendor: string;
+  model?: string;
+  mgmtIp: string;
+  siteCode?: string;
+  criticality: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  tags?: string[];
+}
+
+export interface CsvImportPayload {
+  rows: CsvImportRowPayload[];
+  siteIdFallback?: string;
+}
+
+/** Shared result shape of /discovery/import and /devices/csv-import. */
+export interface ImportResult {
+  created: number;
+  devices: { id: string; hostname: string; ip: string }[];
+  skipped: { ip: string; reason: string }[];
+}
+
+/* ---------------------- Credentials (2-c) -------------------------- */
+
+/**
+ * Credential profile row — reference data only. `secretRef` is a vault
+ * POINTER (e.g. "vault://ssh/network-admin"); no secret material is ever
+ * transferred or rendered (audit finding F-12).
+ */
+export interface CredentialProfileRow {
+  id: string;
+  name: string;
+  type: string;
+  username: string;
+  secretRef: string;
+  port: number;
+  notes: string | null;
+  lastRotatedAt: string | null;
+  deviceCount: number;
+}
+
+export interface CreateCredentialPayload {
+  name: string;
+  type: string;
+  username: string;
+  secretRef: string;
+  port?: number;
+  notes?: string;
+}
+
+export interface UpdateCredentialPayload {
+  name?: string;
+  type?: string;
+  username?: string;
+  secretRef?: string;
+  port?: number;
+  notes?: string | null;
 }
 
 export interface CreateJobPayload {
