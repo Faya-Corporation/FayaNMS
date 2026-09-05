@@ -1,0 +1,173 @@
+"use client";
+
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Waypoints } from "lucide-react";
+
+import { useDashboard } from "@/hooks/api/use-dashboard";
+import { AppFooter } from "./app-footer";
+import { AppHeader } from "./app-header";
+import { AppSidebar } from "./app-sidebar";
+import { CommandPalette } from "./command-palette";
+import { JobCenterSheet } from "./job-center";
+import { SidebarNav, type SidebarCounts } from "./sidebar-nav";
+import { ViewRouter } from "./view-router";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useNavigationStore } from "@/stores/navigation";
+import { usePreferencesStore } from "@/stores/preferences";
+
+const ZERO_COUNTS: SidebarCounts = { alerts: 0, approvals: 0, jobs: 0 };
+
+const emptySubscribe = () => () => {};
+/** Hydration-safe "client is ready" flag (no setState-in-effect needed). */
+const useMounted = () =>
+  useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+
+/**
+ * Application shell: skip link, sidebar (desktop) / drawer (mobile),
+ * sticky header, routed main region and the sticky status footer.
+ *
+ * Persisted UI state (navigation, preferences) rehydrates after mount so
+ * the server-rendered HTML and the first client render always match.
+ */
+export function AppShell() {
+  const mounted = useMounted();
+
+  const density = usePreferencesStore((state) => state.density);
+  const sidebarCollapsed = usePreferencesStore(
+    (state) => state.sidebarCollapsed
+  );
+  const toggleSidebar = usePreferencesStore((state) => state.toggleSidebar);
+
+  const activeView = useNavigationStore((state) => state.activeView);
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [jobCenterOpen, setJobCenterOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // Rehydrate persisted stores once the client is active (hydration-safe).
+  useEffect(() => {
+    usePreferencesStore.persist.rehydrate();
+    void useNavigationStore.persist.rehydrate();
+  }, []);
+
+  // Activate the CSS density tier on the document root.
+  useEffect(() => {
+    if (!mounted) return;
+    document.documentElement.dataset.density = density;
+  }, [density, mounted]);
+
+  // New view → back to the top of the page.
+  useEffect(() => {
+    if (!mounted) return;
+    window.scrollTo({ top: 0 });
+  }, [activeView, mounted]);
+
+  const dashboard = useDashboard("24h");
+  const kpis = dashboard.data?.kpis;
+  const counts: SidebarCounts = kpis
+    ? {
+        alerts: kpis.activeAlerts,
+        approvals: kpis.pendingApprovals,
+        jobs: kpis.activeJobs,
+      }
+    : ZERO_COUNTS;
+
+  if (!mounted) {
+    return (
+      <div
+        aria-busy="true"
+        aria-label="Loading FayaNMS"
+        className="flex min-h-screen flex-col bg-background"
+      >
+        <div className="h-14 border-b" />
+        <main className="flex flex-1 items-center justify-center">
+          <span className="flex flex-col items-center gap-3 text-muted-foreground">
+            <span className="flex size-12 animate-pulse items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Waypoints className="size-6" />
+            </span>
+            <span className="text-sm">Loading FayaNMS…</span>
+          </span>
+        </main>
+        <div className="h-10 border-t" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col bg-background">
+      <a
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+        href="#main-content"
+      >
+        Skip to content
+      </a>
+
+      <div className="flex flex-1 items-stretch">
+        <AppSidebar
+          collapsed={sidebarCollapsed}
+          counts={counts}
+          onToggleCollapsed={toggleSidebar}
+        />
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <AppHeader
+            collapsed={sidebarCollapsed}
+            counts={counts}
+            criticalAlerts={kpis?.criticalAlerts ?? 0}
+            onOpenCommandPalette={() => setCommandOpen(true)}
+            onOpenJobCenter={() => setJobCenterOpen(true)}
+            onOpenMobileNav={() => setMobileNavOpen(true)}
+            onToggleSidebar={toggleSidebar}
+          />
+
+          <main
+            className="flex-1 px-4 py-5 md:px-6 md:py-6 lg:px-8"
+            id="main-content"
+            ref={mainRef}
+          >
+            <div className="mx-auto w-full max-w-[1600px]">
+              <ViewRouter />
+            </div>
+          </main>
+        </div>
+      </div>
+
+      <AppFooter lastRefreshAt={dashboard.dataUpdatedAt ?? null} />
+
+      {/* Mobile navigation drawer */}
+      <Sheet onOpenChange={setMobileNavOpen} open={mobileNavOpen}>
+        <SheetContent className="flex flex-col gap-0 p-0" side="left">
+          <SheetHeader className="border-b">
+            <SheetTitle className="flex items-center gap-2.5">
+              <span
+                aria-hidden="true"
+                className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground"
+              >
+                <Waypoints className="size-4.5" />
+              </span>
+              FayaNMS
+            </SheetTitle>
+          </SheetHeader>
+          <SidebarNav
+            className="py-2"
+            collapsed={false}
+            counts={counts}
+            onNavigate={() => setMobileNavOpen(false)}
+          />
+        </SheetContent>
+      </Sheet>
+
+      <CommandPalette
+        onOpenChange={setCommandOpen}
+        onOpenJobCenter={() => setJobCenterOpen(true)}
+        open={commandOpen}
+      />
+      <JobCenterSheet onOpenChange={setJobCenterOpen} open={jobCenterOpen} />
+    </div>
+  );
+}

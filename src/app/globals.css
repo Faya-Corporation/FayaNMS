@@ -1,0 +1,427 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------ */
+/* FayaNMS — Design token architecture                                 */
+/*                                                                     */
+/* Layers:                                                             */
+/*   1. @theme inline — maps CSS vars to Tailwind 4 utilities          */
+/*   2. :root        — light theme + global tokens (density, shadows)  */
+/*   3. .dark        — dark theme (layered neutral surfaces)           */
+/*   4. Density      — [data-density="comfortable" | "compact" |       */
+/*                     "dense"] on <html>                              */
+/*   5. Base layer   — focus, scrollbars, selection, reduced motion    */
+/*   6. Utilities    — .font-tech (mono/tabular data), .ltr-technical  */
+/*                                                                     */
+/* Neutrals (light): bg neutral-50 #FAFAFA, surface white,             */
+/*   surface-subtle neutral-50, border neutral-200/300,                */
+/*   text neutral-950/600/500.                                         */
+/* Neutrals (dark): bg neutral-950 #0A0A0A, surface neutral-900        */
+/*   #171717 (never absolute black), border neutral-800/700,           */
+/*   text neutral-50/400.                                              */
+/* Brand: primary #2563EB (hover #1D4ED8), accent #0891B2 — accent is  */
+/*   used sparingly (links, chart emphasis, focus), never as large     */
+/*   backgrounds. shadcn's --accent hover-surface stays NEUTRAL on     */
+/*   purpose; the brand accent is exposed as --brand-accent.           */
+/* ------------------------------------------------------------------ */
+
+@theme inline {
+  /* --- shadcn/ui core colors (all existing ui/* components keep working) --- */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* --- FayaNMS brand + surface tokens --- */
+  --color-primary-hover: var(--primary-hover);
+  --color-brand-accent: var(--brand-accent);
+  --color-surface: var(--surface);
+  --color-surface-subtle: var(--surface-subtle);
+
+  /* --- Status families (each with subtle background for badge fills) ---
+     Usage: bg-success-subtle text-success, bg-danger-subtle text-danger, ...
+     "danger-orange" backs the High severity step between warning and danger. */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-danger-orange: var(--danger-orange);
+  --color-danger-orange-foreground: var(--danger-orange-foreground);
+  --color-danger-orange-subtle: var(--danger-orange-subtle);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-subtle: var(--info-subtle);
+  --color-neutral: var(--neutral);
+  --color-neutral-foreground: var(--neutral-foreground);
+  --color-neutral-subtle: var(--neutral-subtle);
+
+  /* --- Severity scale (identical mapping everywhere):
+         Critical -> danger | High -> danger-orange | Medium -> warning
+         Low -> info | Info -> neutral                                     */
+  --color-severity-critical: var(--severity-critical);
+  --color-severity-critical-subtle: var(--severity-critical-subtle);
+  --color-severity-high: var(--severity-high);
+  --color-severity-high-subtle: var(--severity-high-subtle);
+  --color-severity-medium: var(--severity-medium);
+  --color-severity-medium-subtle: var(--severity-medium-subtle);
+  --color-severity-low: var(--severity-low);
+  --color-severity-low-subtle: var(--severity-low-subtle);
+  --color-severity-info: var(--severity-info);
+  --color-severity-info-subtle: var(--severity-info-subtle);
+
+  /* --- Radius scale (spec: small controls 6px, inputs/buttons 8px,
+         cards 10px, large panels/modals 12px).
+         shadcn slot mapping: Button/Input/Select/Command -> rounded-md (8px),
+         Card/KPI/EmptyState -> rounded-xl (10px),
+         Dialog/Sheet/Alert panels -> rounded-lg (12px).                  */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 10px;
+
+  /* --- Fonts --- */
+  --font-sans: var(--font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif);
+  --font-mono: var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace);
+
+  /* --- Elevation: subtle by default; e2/e3 reserved for menus, popovers,
+         dialogs and the command palette --- */
+  --shadow-e1: var(--elevation-1);
+  --shadow-e2: var(--elevation-2);
+  --shadow-e3: var(--elevation-3);
+
+  /* --- Density-aware named spacing utilities ---
+         p-card / px-card ... follow the active density tier.
+         Row height / control height are consumed as raw vars, e.g.
+         h-(--density-row-h) in DataTable rows, h-(--density-control-h). */
+  --spacing-card: var(--density-pad);
+  --spacing-cell-x: var(--density-cell-x);
+  --spacing-row: var(--density-row-h);
+}
+
+/* ------------------------------------------------------------------ */
+/* Light theme                                                         */
+/* ------------------------------------------------------------------ */
+:root {
+  --radius: 0.625rem;
+
+  /* Neutrals */
+  --background: #fafafa; /* neutral-50 */
+  --foreground: #0a0a0a; /* neutral-950 */
+  --surface: #ffffff; /* white */
+  --surface-subtle: #fafafa; /* neutral-50 */
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+  --secondary: #f5f5f5; /* neutral-100 */
+  --secondary-foreground: #171717; /* neutral-800 */
+  --muted: #f5f5f5;
+  --muted-foreground: #525252; /* neutral-600 */
+  --accent: #f5f5f5; /* shadcn hover surface — intentionally neutral */
+  --accent-foreground: #171717;
+  --border: #e5e5e5; /* neutral-200 */
+  --input: #d4d4d4; /* neutral-300 */
+  --destructive: #dc2626;
+
+  /* Brand */
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --primary-hover: #1d4ed8;
+  --brand-accent: #0891b2;
+
+  /* Status families (subtle = translucent fill derived from the base color,
+     so badge backgrounds stay layered over any surface in light and dark) */
+  --success: #15803d;
+  --success-foreground: #ffffff;
+  --success-subtle: color-mix(in oklab, var(--success) 12%, transparent);
+  --warning: #b45309;
+  --warning-foreground: #ffffff;
+  --warning-subtle: color-mix(in oklab, var(--warning) 14%, transparent);
+  --danger: #dc2626;
+  --danger-foreground: #ffffff;
+  --danger-subtle: color-mix(in oklab, var(--danger) 10%, transparent);
+  --danger-orange: #ea580c;
+  --danger-orange-foreground: #ffffff;
+  --danger-orange-subtle: color-mix(in oklab, var(--danger-orange) 12%, transparent);
+  --info: #2563eb;
+  --info-foreground: #ffffff;
+  --info-subtle: color-mix(in oklab, var(--info) 10%, transparent);
+  --neutral: #525252;
+  --neutral-foreground: #ffffff;
+  --neutral-subtle: color-mix(in oklab, var(--neutral) 10%, transparent);
+
+  /* Severity scale (aliases — keep this mapping identical everywhere) */
+  --severity-critical: var(--danger);
+  --severity-critical-subtle: var(--danger-subtle);
+  --severity-high: var(--danger-orange);
+  --severity-high-subtle: var(--danger-orange-subtle);
+  --severity-medium: var(--warning);
+  --severity-medium-subtle: var(--warning-subtle);
+  --severity-low: var(--info);
+  --severity-low-subtle: var(--info-subtle);
+  --severity-info: var(--neutral);
+  --severity-info-subtle: var(--neutral-subtle);
+
+  /* Focus */
+  --ring: var(--brand-accent);
+
+  /* Charts: brand-first, then semantic series */
+  --chart-1: #2563eb;
+  --chart-2: #0891b2;
+  --chart-3: #16a34a;
+  --chart-4: #d97706;
+  --chart-5: #7c3aed;
+
+  /* Sidebar (surface layer) */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0a0a0a;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f5f5f5;
+  --sidebar-accent-foreground: #171717;
+  --sidebar-border: #e5e5e5;
+  --sidebar-ring: var(--brand-accent);
+
+  /* Scrollbars */
+  --scrollbar-thumb: #d4d4d4;
+  --scrollbar-thumb-hover: #a3a3a3;
+
+  /* Elevation (subtle; dark theme uses stronger alphas) */
+  --elevation-1: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --elevation-3: 0 16px 40px -8px rgb(0 0 0 / 0.18), 0 4px 12px -4px rgb(0 0 0 / 0.08);
+
+  /* Density — comfortable defaults (see [data-density] overrides below) */
+  --density-row-h: 44px; /* table row height */
+  --density-control-h: 36px; /* inputs, selects, small buttons */
+  --density-toolbar-h: 48px; /* table/section toolbar height */
+  --density-pad: 16px; /* card padding */
+  --density-cell-x: 12px; /* table cell horizontal padding */
+}
+
+/* ------------------------------------------------------------------ */
+/* Dark theme — layered neutral surfaces, never absolute black         */
+/* ------------------------------------------------------------------ */
+.dark {
+  --background: #0a0a0a; /* neutral-950 */
+  --foreground: #fafafa; /* neutral-50 */
+  --surface: #171717; /* neutral-900 */
+  --surface-subtle: #141414; /* between bg and surface */
+  --card: #171717;
+  --card-foreground: #fafafa;
+  --popover: #171717;
+  --popover-foreground: #fafafa;
+  --secondary: #262626; /* neutral-800 */
+  --secondary-foreground: #fafafa;
+  --muted: #262626;
+  --muted-foreground: #a3a3a3; /* neutral-400 */
+  --accent: #262626;
+  --accent-foreground: #fafafa;
+  --border: #262626; /* neutral-800 */
+  --input: #404040; /* neutral-700 */
+  --destructive: #f87171;
+
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --primary-hover: #3b82f6;
+  --brand-accent: #22d3ee; /* brightened cyan for dark-surface legibility */
+
+  --success: #4ade80;
+  --success-foreground: #052e16;
+  --success-subtle: color-mix(in oklab, var(--success) 14%, transparent);
+  --warning: #fbbf24;
+  --warning-foreground: #451a03;
+  --warning-subtle: color-mix(in oklab, var(--warning) 14%, transparent);
+  --danger: #f87171;
+  --danger-foreground: #450a0a;
+  --danger-subtle: color-mix(in oklab, var(--danger) 14%, transparent);
+  --danger-orange: #fb923c;
+  --danger-orange-foreground: #431407;
+  --danger-orange-subtle: color-mix(in oklab, var(--danger-orange) 14%, transparent);
+  --info: #60a5fa;
+  --info-foreground: #172554;
+  --info-subtle: color-mix(in oklab, var(--info) 14%, transparent);
+  --neutral: #a3a3a3;
+  --neutral-foreground: #171717;
+  --neutral-subtle: color-mix(in oklab, var(--neutral) 14%, transparent);
+
+  --severity-critical: var(--danger);
+  --severity-critical-subtle: var(--danger-subtle);
+  --severity-high: var(--danger-orange);
+  --severity-high-subtle: var(--danger-orange-subtle);
+  --severity-medium: var(--warning);
+  --severity-medium-subtle: var(--warning-subtle);
+  --severity-low: var(--info);
+  --severity-low-subtle: var(--info-subtle);
+  --severity-info: var(--neutral);
+  --severity-info-subtle: var(--neutral-subtle);
+
+  --ring: var(--brand-accent);
+
+  --chart-1: #3b82f6;
+  --chart-2: #22d3ee;
+  --chart-3: #4ade80;
+  --chart-4: #fbbf24;
+  --chart-5: #a78bfa;
+
+  --sidebar: #171717;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #262626;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #262626;
+  --sidebar-ring: var(--brand-accent);
+
+  --scrollbar-thumb: #404040;
+  --scrollbar-thumb-hover: #525252;
+
+  --elevation-1: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.45), 0 2px 4px -2px rgb(0 0 0 / 0.35);
+  --elevation-3: 0 16px 40px -8px rgb(0 0 0 / 0.6), 0 4px 12px -4px rgb(0 0 0 / 0.45);
+}
+
+/* ------------------------------------------------------------------ */
+/* Density system — set data-density on <html> (preferences store).    */
+/* Adjusts geometry only; font sizes never change.                     */
+/* ------------------------------------------------------------------ */
+:root[data-density="compact"] {
+  --density-row-h: 36px;
+  --density-control-h: 32px;
+  --density-toolbar-h: 40px;
+  --density-pad: 12px;
+  --density-cell-x: 10px;
+}
+
+:root[data-density="dense"] {
+  --density-row-h: 28px;
+  --density-control-h: 28px;
+  --density-toolbar-h: 36px;
+  --density-pad: 8px;
+  --density-cell-x: 8px;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Visible focus: accent ring for everything that does not provide its
+     own focus-visible box-shadow ring (shadcn components opt out below;
+     they already render ring-ring, which resolves to the brand accent). */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  [class*="focus-visible:ring"]:focus-visible {
+    outline: none;
+  }
+
+  /* Thin custom scrollbars (light + dark via --scrollbar-thumb) */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 20%, transparent);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Utilities                                                           */
+/* ------------------------------------------------------------------ */
+
+/* Technical data blocks: IP/MAC/CLI/config output — mono family, compact
+   size, tabular figures so columns of numbers align. */
+@utility font-tech {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Direction-safe container for technical values inside RTL layouts.
+   For spacing/margins in RTL-aware markup prefer logical utilities:
+   ms-*, me-*, ps-*, pe-*, start-*, end-* (never ml-/mr-/pl-/pr-). */
+@utility ltr-technical {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/* ------------------------------------------------------------------ */
+/* Reduced motion                                                      */
+/* ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
