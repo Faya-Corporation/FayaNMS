@@ -1,0 +1,97 @@
+import { db } from "@/lib/db";
+import { csvParam, fail, firstIssueMessage, ok } from "../../_lib/api";
+import { z } from "zod";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/v1/changes/conflicts?start=ISO&end=ISO&excludeId=&status=csv
+ *
+ * Returns changes whose [scheduledStart, scheduledEnd] window OVERLAPS the
+ * queried window (overlap = start < other.end && end > other.start). Used
+ * by (a) the wizard's schedule step for advisory/blocking conflict panels
+ * and (b) the calendar's conflict-day highlighting.
+ *
+ * Dead statuses (CANCELLED / REJECTED / EXPIRED) and closed-out execution
+ * outcomes (SUCCESSFUL / CLOSED / FAILED / ROLLBACK / ROLLBACK_FAILED /
+ * POST_REVIEW) never conflict. DRAFTs and AWAITING_APPROVAL with a
+ * proposed window DO count — planning should know about them.
+ */
+
+const querySchema = z.object({
+  start: z.coerce.date(),
+  end: z.coerce.date(),
+  excludeId: z.string().trim().max(64).optional(),
+  status: z.string().optional(),
+});
+
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const parsed = querySchema.safeParse({
+    start: url.searchParams.get("start") ?? undefined,
+    end: url.searchParams.get("end") ?? undefined,
+    excludeId: url.searchParams.get("excludeId") ?? undefined,
+    status: url.searchParams.get("status") ?? undefined,
+  });
+  if (!parsed.success) {
+    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400);
+  }
+  const { start, end, excludeId } = parsed.data;
+  if (end <= start) {
+    return fail("INVALID_QUERY", "end must be after start", 400);
+  }
+
+  const statuses = csvParam(parsed.data.status);
+  const deadStatuses = [
+    "CANCELLED",
+    "REJECTED",
+    "EXPIRED",
+    "SUCCESSFUL",
+    "CLOSED",
+    "FAILED",
+    "ROLLBACK",
+    "ROLLBACK_FAILED",
+    "POST_REVIEW",
+  ];
+
+  const rows = await db.changeRequest.findMany({
+    where: {
+      // Overlap: existing window starts before our end AND ends after our start.
+      scheduledStart: { lt: end, not: null },
+      scheduledEnd: { gt: start, not: null },
+      status: statuses
+        ? { in: statuses, notIn: deadStatuses }
+        : { notIn: deadStatuses },
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    orderBy: { scheduledStart: "asc" },
+    select: {
+      id: true,
+      number: true,
+      title: true,
+      status: true,
+      riskLevel: true,
+      type: true,
+      scheduledStart: true,
+      scheduledEnd: true,
+      site: { select: { code: true, name: true } },
+      devices: { select: { deviceId: true } },
+    },
+    take: 50,
+  });
+
+  return ok(
+    rows.map((row) => ({
+      id: row.id,
+      number: row.number,
+      title: row.title,
+      status: row.status,
+      riskLevel: row.riskLevel,
+      type: row.type,
+      scheduledStart: row.scheduledStart,
+      scheduledEnd: row.scheduledEnd,
+      siteCode: row.site?.code ?? null,
+      deviceIds: row.devices.map((d) => d.deviceId),
+    }))
+  );
+}

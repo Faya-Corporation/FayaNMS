@@ -1,0 +1,1148 @@
+     1→/**
+     2→ * Typed API client for the FayaNMS /api/v1 REST surface.
+     3→ *
+     4→ * Every client hook goes through `apiFetch` — components never call raw
+     5→ * fetch. The standard envelope is unwrapped here and mapped to `ApiError`
+     6→ * so callers only ever deal with data or a typed error.
+     7→ */
+     8→
+     9→export class ApiError extends Error {
+    10→  readonly code: string;
+    11→  readonly status: number;
+    12→
+    13→  constructor(message: string, code: string, status: number) {
+    14→    super(message);
+    15→    this.name = "ApiError";
+    16→    this.code = code;
+    17→    this.status = status;
+    18→  }
+    19→}
+    20→
+    21→interface EnvelopeError {
+    22→  success: false;
+    23→  error: { code: string; message: string };
+    24→}
+    25→
+    26→interface EnvelopeSuccess<T> {
+    27→  success: true;
+    28→  data: T;
+    29→  meta?: Record<string, unknown>;
+    30→}
+    31→
+    32→type Envelope<T> = EnvelopeSuccess<T> | EnvelopeError;
+    33→
+    34→/** GET/POST any /api/v1 endpoint; resolves with the full envelope (incl. meta). */
+    35→export async function apiRequest<T>(
+    36→  path: string,
+    37→  init?: RequestInit
+    38→): Promise<EnvelopeSuccess<T>> {
+    39→  let response: Response;
+    40→  try {
+    41→    response = await fetch(path, {
+    42→      cache: "no-store",
+    43→      ...init,
+    44→      headers: {
+    45→        "Content-Type": "application/json",
+    46→        ...(init?.headers ?? {}),
+    47→      },
+    48→    });
+    49→  } catch {
+    50→    throw new ApiError(
+    51→      "Network request failed — the server could not be reached.",
+    52→      "NETWORK_ERROR",
+    53→      0
+    54→    );
+    55→  }
+    56→
+    57→  let envelope: Envelope<T> | null = null;
+    58→  try {
+    59→    envelope = (await response.json()) as Envelope<T>;
+    60→  } catch {
+    61→    envelope = null;
+    62→  }
+    63→
+    64→  if (!envelope) {
+    65→    throw new ApiError(
+    66→      `Unexpected response from server (HTTP ${response.status}).`,
+    67→      "BAD_ENVELOPE",
+    68→      response.status
+    69→    );
+    70→  }
+    71→
+    72→  if (!envelope.success) {
+    73→    throw new ApiError(envelope.error.message, envelope.error.code, response.status);
+    74→  }
+    75→  if (envelope.data === undefined) {
+    76→    throw new ApiError(
+    77→      "Response envelope is missing data.",
+    78→      "BAD_ENVELOPE",
+    79→      response.status
+    80→    );
+    81→  }
+    82→
+    83→  return envelope;
+    84→}
+    85→
+    86→/** Convenience wrapper returning just `data`. */
+    87→export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+    88→  const envelope = await apiRequest<T>(path, init);
+    89→  return envelope.data;
+    90→}
+    91→
+    92→/** Serialize a params object into a query string (skips empty values). */
+    93→export function buildQueryString(
+    94→  params: Record<string, unknown>
+    95→): string {
+    96→  const search = new URLSearchParams();
+    97→  for (const [key, value] of Object.entries(params)) {
+    98→    if (value === undefined || value === null || value === "") continue;
+    99→    search.set(key, String(value));
+   100→  }
+   101→  const qs = search.toString();
+   102→  return qs ? `?${qs}` : "";
+   103→}
+   104→
+   105→/* ------------------------------------------------------------------ */
+   106→/* Response types (serialized JSON — dates arrive as ISO strings)      */
+   107→/* ------------------------------------------------------------------ */
+   108→
+   109→export interface PageMetaInfo {
+   110→  page: number;
+   111→  pageSize: number;
+   112→  total: number;
+   113→  totalPages: number;
+   114→}
+   115→
+   116→export interface PagedMeta extends PageMetaInfo {
+   117→  [key: string]: unknown;
+   118→}
+   119→
+   120→export interface PagedResult<T> {
+   121→  data: T[];
+   122→  meta: PageMetaInfo;
+   123→}
+   124→
+   125→export interface DashboardKpis {
+   126→  managedDevices: number;
+   127→  online: number;
+   128→  offline: number;
+   129→  criticalAlerts: number;
+   130→  activeAlerts: number;
+   131→  activeIncidents: number;
+   132→  pendingApprovals: number;
+   133→  activeJobs: number;
+   134→  backupCompliancePct: number;
+   135→  driftCount: number;
+   136→}
+   137→
+   138→export interface UtilizationPoint {
+   139→  period: string;
+   140→  cpu: number;
+   141→  memory: number;
+   142→}
+   143→
+   144→export interface HealthSlice {
+   145→  status: string;
+   146→  count: number;
+   147→}
+   148→
+   149→export interface DashboardIncident {
+   150→  id: string;
+   151→  number: string;
+   152→  title: string;
+   153→  severity: string;
+   154→  status: string;
+   155→  createdAt: string;
+   156→  slaDueAt: string | null;
+   157→}
+   158→
+   159→export interface DashboardChange {
+   160→  id: string;
+   161→  number: string;
+   162→  title: string;
+   163→  riskLevel: string;
+   164→  scheduledStart: string | null;
+   165→  status: string;
+   166→}
+   167→
+   168→export interface BackupComplianceSummary {
+   169→  compliant: number;
+   170→  overdue: number;
+   171→  failed: number;
+   172→  never: number;
+   173→  unknown: number;
+   174→  lastSuccessfulBackupAt: string | null;
+   175→}
+   176→
+   177→export interface CapacityRisk {
+   178→  deviceId: string;
+   179→  hostname: string;
+   180→  metric: string;
+   181→  value: number;
+   182→}
+   183→
+   184→export interface RecentActivityEntry {
+   185→  id: string;
+   186→  actorName: string;
+   187→  action: string;
+   188→  resourceLabel: string | null;
+   189→  result: string;
+   190→  createdAt: string;
+   191→}
+   192→
+   193→export interface DashboardPayload {
+   194→  kpis: DashboardKpis;
+   195→  utilizationTrend: UtilizationPoint[];
+   196→  healthDistribution: HealthSlice[];
+   197→  activeIncidentsList: DashboardIncident[];
+   198→  upcomingChanges: DashboardChange[];
+   199→  backupCompliance: BackupComplianceSummary;
+   200→  capacityRisks: CapacityRisk[];
+   201→  recentActivity: RecentActivityEntry[];
+   202→}
+   203→
+   204→export interface DeviceRow {
+   205→  id: string;
+   206→  hostname: string;
+   207→  displayName: string | null;
+   208→  mgmtIp: string;
+   209→  model: string | null;
+   210→  role: string | null;
+   211→  status: string;
+   212→  criticality: string;
+   213→  healthScore: number;
+   214→  lastBackupAt: string | null;
+   215→  lastSeen: string | null;
+   216→  backupCompliance: string;
+   217→  site: { name: string; code: string } | null;
+   218→  vendor: { key: string; name: string } | null;
+   219→  _count: {
+   220→    interfaces: number;
+   221→    snapshots: number;
+   222→    alerts: number;
+   223→  };
+   224→}
+   225→
+   226→/* --------------------- Device detail (Phase 2) --------------------- */
+   227→
+   228→export interface DeviceDetail {
+   229→  id: string;
+   230→  hostname: string;
+   231→  displayName: string | null;
+   232→  mgmtIp: string;
+   233→  model: string | null;
+   234→  platform: string | null;
+   235→  serialNumber: string | null;
+   236→  firmware: string | null;
+   237→  role: string | null;
+   238→  status: string;
+   239→  criticality: string;
+   240→  healthScore: number;
+   241→  backupCompliance: string;
+   242→  tags: string[];
+   243→  notes: string | null;
+   244→  /** BigInt uptimeSeconds serialized as string by the API. */
+   245→  uptimeSeconds: string | null;
+   246→  lastSeen: string | null;
+   247→  lastBackupAt: string | null;
+   248→  lastConfigChangeAt: string | null;
+   249→  createdAt: string;
+   250→  updatedAt: string;
+   251→  vendor: { id: string; key: string; name: string; adapterKey: string };
+   252→  site: { id: string; name: string; code: string; region: string | null } | null;
+   253→  counts: {
+   254→    interfaces: number;
+   255→    snapshots: number;
+   256→    openAlerts: number;
+   257→    openIncidents: number;
+   258→    changes: number;
+   259→    backupJobs: number;
+   260→  };
+   261→}
+   262→
+   263→export interface DeviceMetricPoint {
+   264→  ts: string;
+   265→  cpu: number | null;
+   266→  memory: number | null;
+   267→  utilizationIn: number | null;
+   268→  utilizationOut: number | null;
+   269→}
+   270→
+   271→export interface DeviceMetricsPayload {
+   272→  series: DeviceMetricPoint[];
+   273→}
+   274→
+   275→export interface DeviceSnapshotRow {
+   276→  id: string;
+   277→  version: number;
+   278→  source: string;
+   279→  configType: string;
+   280→  status: string;
+   281→  sha256: string;
+   282→  sizeBytes: number;
+   283→  rawText: string;
+   284→  normalizedText: string | null;
+   285→  createdAt: string;
+   286→  changeNumber: string | null;
+   287→  capturedBy: string | null;
+   288→  correlationId: string | null;
+   289→}
+   290→
+   291→export interface DeviceInterfaceRow {
+   292→  id: string;
+   293→  name: string;
+   294→  description: string | null;
+   295→  adminStatus: string;
+   296→  operStatus: string;
+   297→  speedMbps: number | null;
+   298→  macAddress: string | null;
+   299→  vlan: number | null;
+   300→  mtu: number | null;
+   301→  /** BigInt counters serialized as strings by the API. */
+   302→  countersInBps: string | null;
+   303→  countersOutBps: string | null;
+   304→  lastFlapAt: string | null;
+   305→}
+   306→
+   307→export interface DeviceAlertRow {
+   308→  id: string;
+   309→  severity: string;
+   310→  message: string;
+   311→  status: string;
+   312→  count: number;
+   313→  firstSeen: string;
+   314→  lastSeen: string;
+   315→  acknowledgedAt: string | null;
+   316→  ruleName: string | null;
+   317→}
+   318→
+   319→export interface DeviceIncidentRow {
+   320→  id: string;
+   321→  number: string;
+   322→  title: string;
+   323→  severity: string;
+   324→  priority: string | null;
+   325→  status: string;
+   326→  source: string;
+   327→  createdAt: string;
+   328→  resolvedAt: string | null;
+   329→  slaDueAt: string | null;
+   330→}
+   331→
+   332→export interface DeviceChangeRow {
+   333→  id: string;
+   334→  number: string;
+   335→  title: string;
+   336→  type: string;
+   337→  status: string;
+   338→  riskScore: number;
+   339→  riskLevel: string;
+   340→  scheduledStart: string | null;
+   341→  scheduledEnd: string | null;
+   342→  createdAt: string;
+   343→  /** Result of this device's link within the change (PENDING/SUCCESS/…). */
+   344→  deviceResult: string | null;
+   345→}
+   346→
+   347→export interface DeviceAuditRow {
+   348→  id: string;
+   349→  actorName: string;
+   350→  action: string;
+   351→  resourceType: string;
+   352→  resourceLabel: string | null;
+   353→  result: string;
+   354→  ip: string | null;
+   355→  correlationId: string | null;
+   356→  createdAt: string;
+   357→}
+   358→
+   359→/* --------------------------- Sites (Phase 2) ------------------------ */
+   360→
+   361→export interface SiteSummary {
+   362→  id: string;
+   363→  name: string;
+   364→  code: string;
+   365→  region: string | null;
+   366→  address: string | null;
+   367→  deviceCount: number;
+   368→  managedCount: number;
+   369→  statusCounts: Record<string, number>;
+   370→  criticalityMix: Record<string, number>;
+   371→  interfaceCount: number;
+   372→  compliance: {
+   373→    pct: number | null;
+   374→    compliant: number;
+   375→    total: number;
+   376→  };
+   377→}
+   378→
+   379→/* ------------------------- Device mutations ------------------------- */
+   380→
+   381→export interface CreateDevicePayload {
+   382→  hostname: string;
+   383→  displayName?: string;
+   384→  vendorId: string;
+   385→  model?: string;
+   386→  mgmtIp: string;
+   387→  siteId?: string;
+   388→  criticality: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+   389→  /** Validated + audited; persisted when credential assignment lands (2-c). */
+   390→  credentialProfileId?: string;
+   391→  tags?: string[];
+   392→  notes?: string;
+   393→}
+   394→
+   395→export interface UpdateDevicePayload {
+   396→  displayName?: string;
+   397→  notes?: string | null;
+   398→  criticality?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+   399→  siteId?: string | null;
+   400→  tags?: string[];
+   401→  status?: "ONLINE" | "OFFLINE" | "DEGRADED" | "MAINTENANCE" | "UNKNOWN" | "UNMANAGED";
+   402→  credentialProfileId?: string | null;
+   403→}
+   404→
+   405→export interface BulkDeviceActionResult {
+   406→  queued: number;
+   407→  jobs: {
+   408→    deviceId: string;
+   409→    hostname: string;
+   410→    type: string;
+   411→    status: string;
+   412→    correlationId: string;
+   413→  }[];
+   414→  skipped: { deviceId: string; hostname?: string; reason: string }[];
+   415→}
+   416→
+   417→export interface TestConnectionResult {
+   418→  reachable: boolean;
+   419→  ok: boolean;
+   420→  latencyMs: number | null;
+   421→  message: string | null;
+   422→  workerStatus: string | null;
+   423→  device: {
+   424→    id: string;
+   425→    hostname: string;
+   426→    status: string;
+   427→  };
+   428→}
+   429→
+   430→export interface CreateDeviceResult {
+   431→  device: DeviceRow;
+   432→  audit: {
+   433→    id: string;
+   434→    action: string;
+   435→    resourceLabel: string | null;
+   436→    correlationId: string;
+   437→  };
+   438→}
+   439→
+   440→export interface IncidentRow {
+   441→  id: string;
+   442→  number: string;
+   443→  title: string;
+   444→  severity: string;
+   445→  priority: string | null;
+   446→  status: string;
+   447→  source: string;
+   448→  createdAt: string;
+   449→  slaDueAt: string | null;
+   450→  resolvedAt: string | null;
+   451→  site: { name: string; code: string } | null;
+   452→  _count: { devices: number };
+   453→}
+   454→
+   455→export interface ChangeRow {
+   456→  id: string;
+   457→  number: string;
+   458→  title: string;
+   459→  type: string;
+   460→  status: string;
+   461→  riskScore: number;
+   462→  riskLevel: string;
+   463→  scheduledStart: string | null;
+   464→  scheduledEnd: string | null;
+   465→  createdAt: string;
+   466→  requester: { id: string; name: string | null; email: string } | null;
+   467→  site: { name: string; code: string } | null;
+   468→  _count: { devices: number; steps: number };
+   469→  /** PENDING approvals at a glance (Task 4-a). */
+   470→  pendingApprovals?: number;
+   471→}
+   472→
+   473→/* ------------------- Change management (Task 4-a) ------------------- */
+   474→
+   475→/** One factor row of the transparent risk breakdown (wire shape). */
+   476→export interface RiskFactorRow {
+   477→  key: string;
+   478→  label: string;
+   479→  points: number;
+   480→  detail: string;
+   481→}
+   482→
+   483→export interface RiskBreakdown {
+   484→  score: number;
+   485→  level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+   486→  factors: RiskFactorRow[];
+   487→}
+   488→
+   489→export interface ChangeStepInput {
+   490→  name: string;
+   491→  type: "CHECK" | "BACKUP" | "APPLY" | "VALIDATE" | "ROLLBACK";
+   492→}
+   493→
+   494→/** POST /api/v1/changes body (wizard payload). */
+   495→export interface WizardPayload {
+   496→  title: string;
+   497→  description?: string;
+   498→  type: "STANDARD" | "NORMAL" | "EMERGENCY";
+   499→  siteId?: string;
+   500→  scheduledStart?: string;
+   501→  scheduledEnd?: string;
+   502→  implementationPlan?: string;
+   503→  validationPlan?: string;
+   504→  rollbackPlan?: string;
+   505→  deviceIds: string[];
+   506→  steps?: ChangeStepInput[];
+   507→  submit?: boolean;
+   508→}
+   509→
+   510→export interface ChangeMutationResult {
+   511→  change: {
+   512→    id: string;
+   513→    number: string;
+   514→    title?: string;
+   515→    status: string;
+   516→    riskScore: number;
+   517→    riskLevel: string;
+   518→    type?: string;
+   519→  } | null;
+   520→  message: string;
+   521→  audit: { action: string; correlationId: string };
+   522→}
+   523→
+   524→export interface ChangeCreateResult {
+   525→  change: {
+   526→    id: string;
+   527→    number: string;
+   528→    title: string;
+   529→    type: string;
+   530→    status: string;
+   531→    riskScore: number;
+   532→    riskLevel: string;
+   533→  };
+   534→  message: string;
+   535→  audit: { action: string; correlationId: string };
+   536→}
+   537→
+   538→/** GET /api/v1/changes meta (page fields + KPI summary for the mini-row). */
+   539→export interface ChangeListMeta extends PageMetaInfo {
+   540→  summary: {
+   541→    awaitingApproval: number;
+   542→    executingNow: number;
+   543→    /** null when no change reached a terminal state in the window. */
+   544→    successRate30d: number | null;
+   545→    closedChanges30d: number;
+   546→  };
+   547→}
+   548→
+   549→/** One conflicting change of GET /api/v1/changes/conflicts. */
+   550→export interface ChangeConflict {
+   551→  id: string;
+   552→  number: string;
+   553→  title: string;
+   554→  status: string;
+   555→  riskLevel: string;
+   556→  type: string;
+   557→  scheduledStart: string;
+   558→  scheduledEnd: string;
+   559→  siteCode: string | null;
+   560→  deviceIds: string[];
+   561→}
+   562→
+   563→export interface ChangeDetailDevice {
+   564→  linkId: string;
+   565→  deviceId: string;
+   566→  hostname: string;
+   567→  model: string | null;
+   568→  status: string;
+   569→  criticality: string;
+   570→  role: string | null;
+   571→  siteName: string | null;
+   572→  siteCode: string | null;
+   573→  vendorKey: string | null;
+   574→  result: string | null;
+   575→}
+   576→
+   577→export interface ChangeDetailStep {
+   578→  id: string;
+   579→  order: number;
+   580→  name: string;
+   581→  type: string;
+   582→  status: string;
+   583→  output: string | null;
+   584→  error: string | null;
+   585→  startedAt: string | null;
+   586→  finishedAt: string | null;
+   587→}
+   588→
+   589→export interface ChangeDetailApproval {
+   590→  id: string;
+   591→  level: string;
+   592→  status: string;
+   593→  approverName: string | null;
+   594→  decidedAt: string | null;
+   595→  comment: string | null;
+   596→}
+   597→
+   598→export interface ChangeDetailSnapshot {
+   599→  id: string;
+   600→  deviceId: string;
+   601→  hostname: string;
+   602→  version: number;
+   603→  status: string;
+   604→  source: string;
+   605→  createdAt: string;
+   606→}
+   607→
+   608→export interface ChangeDetailIncident {
+   609→  id: string;
+   610→  number: string;
+   611→  title: string;
+   612→  severity: string;
+   613→  status: string;
+   614→}
+   615→
+   616→/** GET /api/v1/changes/[id] payload. */
+   617→export interface ChangeDetail {
+   618→  id: string;
+   619→  number: string;
+   620→  title: string;
+   621→  description: string | null;
+   622→  type: string;
+   623→  status: string;
+   624→  riskScore: number;
+   625→  riskLevel: string;
+   626→  requester: { id: string; name: string | null; email: string };
+   627→  owner: { id: string; name: string | null } | null;
+   628→  technicalOwner: { id: string; name: string | null } | null;
+   629→  site: { id: string; name: string; code: string } | null;
+   630→  scheduledStart: string | null;
+   631→  scheduledEnd: string | null;
+   632→  implementationPlan: string | null;
+   633→  validationPlan: string | null;
+   634→  rollbackPlan: string | null;
+   635→  preChecks: { name: string; status: string; detail?: string }[];
+   636→  createdAt: string;
+   637→  updatedAt: string;
+   638→  devices: ChangeDetailDevice[];
+   639→  steps: ChangeDetailStep[];
+   640→  approvals: ChangeDetailApproval[];
+   641→  snapshots: ChangeDetailSnapshot[];
+   642→  incidents: ChangeDetailIncident[];
+   643→}
+   644→
+   645→export interface AlertRow {
+   646→  id: string;
+   647→  severity: string;
+   648→  message: string;
+   649→  status: string;
+   650→  firstSeen: string;
+   651→  lastSeen: string;
+   652→  count: number;
+   653→  device: { id: string; hostname: string };
+   654→  acknowledgedAt: string | null;
+   655→}
+   656→
+   657→export interface JobRow {
+   658→  id: string;
+   659→  type: string;
+   660→  targetType: string | null;
+   661→  targetId: string | null;
+   662→  status: string;
+   663→  progress: number;
+   664→  priority: number;
+   665→  attempts: number;
+   666→  maxAttempts: number;
+   667→  payloadJson: string | null;
+   668→  resultJson: string | null;
+   669→  error: string | null;
+   670→  correlationId: string;
+   671→  scheduledAt: string | null;
+   672→  startedAt: string | null;
+   673→  finishedAt: string | null;
+   674→  createdAt: string;
+   675→}
+   676→
+   677→export interface SearchResults {
+   678→  devices: {
+   679→    id: string;
+   680→    hostname: string;
+   681→    mgmtIp: string;
+   682→    status: string;
+   683→  }[];
+   684→  incidents: {
+   685→    id: string;
+   686→    number: string;
+   687→    title: string;
+   688→    severity: string;
+   689→    status: string;
+   690→  }[];
+   691→  changes: {
+   692→    id: string;
+   693→    number: string;
+   694→    title: string;
+   695→    status: string;
+   696→  }[];
+   697→}
+   698→
+   699→export interface MetaPayload {
+   700→  vendors: { id: string; key: string; name: string }[];
+   701→  sites: { id: string; name: string; code: string }[];
+   702→  credentialProfiles: { id: string; name: string; type: string; username: string }[];
+   703→}
+   704→
+   705→/* --------------------- Discovery & CSV import (2-c) ---------------- */
+   706→
+   707→/** One discovered device candidate (persistence-free — lives in resultJson). */
+   708→export interface DiscoveryCandidate {
+   709→  ip: string;
+   710→  hostname: string;
+   711→  vendorGuess: string;
+   712→  modelGuess?: string;
+   713→  mgmtPort?: number;
+   714→  protocols?: string[];
+   715→  confidence?: number;
+   716→  osFingerprint?: string;
+   717→  discoveredAt?: string;
+   718→  imported?: boolean;
+   719→}
+   720→
+   721→/** DISCOVERY job row as served by GET /api/v1/discovery. */
+   722→export interface DiscoveryJobSummary {
+   723→  id: string;
+   724→  correlationId: string;
+   725→  name: string | null;
+   726→  status: string;
+   727→  progress: number;
+   728→  error: string | null;
+   729→  attempts: number;
+   730→  maxAttempts: number;
+   731→  subnets: string[];
+   732→  candidateCount: number;
+   733→  importedCount: number;
+   734→  scannedSubnets: number | null;
+   735→  durationMs: number | null;
+   736→  candidates: DiscoveryCandidate[];
+   737→  createdAt: string;
+   738→  startedAt: string | null;
+   739→  finishedAt: string | null;
+   740→}
+   741→
+   742→export interface StartScanPayload {
+   743→  subnets: string[];
+   744→  name?: string;
+   745→}
+   746→
+   747→export interface StartScanResult {
+   748→  jobId: string;
+   749→  correlationId: string;
+   750→  status: string;
+   751→  audit: { id: string; action: string };
+   752→}
+   753→
+   754→export interface ImportCandidatesPayload {
+   755→  jobId: string;
+   756→  ips: string[];
+   757→  siteId?: string;
+   758→  credentialProfileId?: string;
+   759→  criticality: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+   760→  managed: boolean;
+   761→}
+   762→
+   763→export interface CsvImportRowPayload {
+   764→  hostname: string;
+   765→  vendor: string;
+   766→  model?: string;
+   767→  mgmtIp: string;
+   768→  siteCode?: string;
+   769→  criticality: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+   770→  tags?: string[];
+   771→}
+   772→
+   773→export interface CsvImportPayload {
+   774→  rows: CsvImportRowPayload[];
+   775→  siteIdFallback?: string;
+   776→}
+   777→
+   778→/** Shared result shape of /discovery/import and /devices/csv-import. */
+   779→export interface ImportResult {
+   780→  created: number;
+   781→  devices: { id: string; hostname: string; ip: string }[];
+   782→  skipped: { ip: string; reason: string }[];
+   783→}
+   784→
+   785→/* ---------------------- Credentials (2-c) -------------------------- */
+   786→
+   787→/**
+   788→ * Credential profile row — reference data only. `secretRef` is a vault
+   789→ * POINTER (e.g. "vault://ssh/network-admin"); no secret material is ever
+   790→ * transferred or rendered (audit finding F-12).
+   791→ */
+   792→export interface CredentialProfileRow {
+   793→  id: string;
+   794→  name: string;
+   795→  type: string;
+   796→  username: string;
+   797→  secretRef: string;
+   798→  port: number;
+   799→  notes: string | null;
+   800→  lastRotatedAt: string | null;
+   801→  deviceCount: number;
+   802→}
+   803→
+   804→export interface CreateCredentialPayload {
+   805→  name: string;
+   806→  type: string;
+   807→  username: string;
+   808→  secretRef: string;
+   809→  port?: number;
+   810→  notes?: string;
+   811→}
+   812→
+   813→export interface UpdateCredentialPayload {
+   814→  name?: string;
+   815→  type?: string;
+   816→  username?: string;
+   817→  secretRef?: string;
+   818→  port?: number;
+   819→  notes?: string | null;
+   820→}
+   821→
+   822→export interface CreateJobPayload {
+   823→  type: "CONFIG_BACKUP";
+   824→  deviceId: string;
+   825→}
+   826→
+   827→export interface CreateJobResult {
+   828→  job: JobRow;
+   829→  audit: {
+   830→    id: string;
+   831→    action: string;
+   832→    resourceLabel: string | null;
+   833→    correlationId: string;
+   834→  };
+   835→}
+   836→
+   837→/* ------------------ Backup engine (Task 3-a) ----------------------- */
+   838→
+   839→/**
+   840→ * One row of the fleet-wide snapshot history (GET /api/v1/snapshots).
+   841→ * Metadata only — raw config text is fetched per device or via the
+   842→ * audited download endpoint.
+   843→ */
+   844→export interface FleetSnapshotRow {
+   845→  id: string;
+   846→  deviceId: string;
+   847→  hostname: string;
+   848→  siteName: string | null;
+   849→  siteCode: string | null;
+   850→  version: number;
+   851→  source: string;
+   852→  configType: string;
+   853→  status: string;
+   854→  sha256: string;
+   855→  sizeBytes: number;
+   856→  createdAt: string;
+   857→  correlationId: string | null;
+   858→}
+   859→
+   860→/** Type alias (not interface) so it satisfies ListParams / Record<string, unknown>. */
+   861→export type FleetSnapshotParams = {
+   862→  /** csv multi, e.g. "CURRENT,HISTORICAL" */
+   863→  status?: string;
+   864→  /** csv multi, e.g. "SCHEDULED,MANUAL" */
+   865→  source?: string;
+   866→  /** Device hostname / mgmtIp contains. */
+   867→  q?: string;
+   868→  deviceId?: string;
+   869→  page?: number;
+   870→  /** Hard-capped at 25 server-side. */
+   871→  pageSize?: number;
+   872→};
+   873→
+   874→/** Canonical policy scope (stored in scopeJson; legacy keys normalized on read). */
+   875→export interface BackupPolicyScope {
+   876→  /** Site codes; ["*"] = every site; [] = every site. */
+   877→  siteCodes: string[];
+   878→  /** LOW | MEDIUM | HIGH | CRITICAL; [] = all. */
+   879→  criticalities: string[];
+   880→  /** Status include-filter (ONLINE|DEGRADED|MAINTENANCE|UNKNOWN); [] = all. */
+   881→  statuses: string[];
+   882→}
+   883→
+   884→/** BackupPolicy row as served by GET /api/v1/backup-policies (+ computed stats). */
+   885→export interface BackupPolicyRow {
+   886→  id: string;
+   887→  name: string;
+   888→  cronExpr: string;
+   889→  scope: BackupPolicyScope;
+   890→  retentionDays: number;
+   891→  isActive: boolean;
+   892→  /** Devices matched by the scope (scheduler convention: UNMANAGED/OFFLINE excluded). */
+   893→  scopedDeviceCount: number;
+   894→  /** Most recent CONFIG_BACKUP job enqueued for this policy (any status). */
+   895→  lastEnqueuedAt: string | null;
+   896→}
+   897→
+   898→/** Raw BackupPolicy row as returned by POST/PATCH (scopeJson serialized). */
+   899→export interface BackupPolicyRecord {
+   900→  id: string;
+   901→  name: string;
+   902→  cronExpr: string;
+   903→  scopeJson: string;
+   904→  retentionDays: number;
+   905→  isActive: boolean;
+   906→}
+   907→
+   908→export interface BackupPolicyPayload {
+   909→  name: string;
+   910→  cronExpr: string;
+   911→  scope?: Partial<BackupPolicyScope>;
+   912→  retentionDays?: number;
+   913→  isActive?: boolean;
+   914→}
+   915→
+   916→/** PATCH body — every field optional (e.g. the inline isActive toggle). */
+   917→export interface UpdateBackupPolicyPayload {
+   918→  name?: string;
+   919→  cronExpr?: string;
+   920→  scope?: Partial<BackupPolicyScope>;
+   921→  retentionDays?: number;
+   922→  isActive?: boolean;
+   923→}
+   924→
+   925→export interface BackupPolicyMutationResult {
+   926→  policy: BackupPolicyRecord;
+   927→  audit: {
+   928→    id: string;
+   929→    action: string;
+   930→    resourceLabel: string | null;
+   931→    correlationId: string;
+   932→  };
+   933→}
+   934→
+   935→export interface DeleteBackupPolicyResult {
+   936→  deleted: boolean;
+   937→  audit: {
+   938→    id: string;
+   939→    action: string;
+   940→    resourceLabel: string | null;
+   941→    correlationId: string;
+   942→  };
+   943→}
+   944→
+   945→/** Band key from the BACKUP_COMPLIANCE map (stale >72h renders as OVERDUE). */
+   946→export type BackupComplianceBand = "COMPLIANT" | "OVERDUE" | "NEVER_BACKED_UP";
+   947→
+   948→export interface BackupCompliancePayload {
+   949→  kpis: {
+   950→    managedDevices: number;
+   951→    compliant: number;
+   952→    atRisk: number;
+   953→    nonCompliant: number;
+   954→    compliantPct: number;
+   955→    snapshotsLast24h: number;
+   956→  };
+   957→  perSite: {
+   958→    siteId: string | null;
+   959→    siteName: string;
+   960→    siteCode: string | null;
+   961→    managed: number;
+   962→    compliant: number;
+   963→    atRisk: number;
+   964→    nonCompliant: number;
+   965→    compliantPct: number | null;
+   966→  }[];
+   967→  staleDevices: {
+   968→    deviceId: string;
+   969→    hostname: string;
+   970→    siteName: string | null;
+   971→    siteCode: string | null;
+   972→    lastBackupAt: string | null;
+   973→    band: BackupComplianceBand;
+   974→  }[];
+   975→  bands: {
+   976→    compliantWindowHours: number;
+   977→    atRiskWindowHours: number;
+   978→    note: string;
+   979→  };
+   980→}
+   981→
+   982→/* ---------------- Baselines & drift (Task 3-c) ---------------------- */
+   983→
+   984→/**
+   985→ * One row of GET /api/v1/baselines — the LATEST ConfigBaseline per device
+   986→ * joined with its snapshot, approver, OPEN drift count and the device's
+   987→ * latest CURRENT snapshot (powers the baseline-vs-running diff dialog).
+   988→ */
+   989→export interface BaselineRow {
+   990→  id: string;
+   991→  deviceId: string;
+   992→  hostname: string;
+   993→  siteName: string | null;
+   994→  siteCode: string | null;
+   995→  snapshotId: string;
+   996→  version: number;
+   997→  sha256: string;
+   998→  snapshotStatus: string;
+   999→  snapshotCreatedAt: string;
+  1000→  approvedAt: string;
+  1001→  approvedBy: string | null;
+  1002→  note: string | null;
+  1003→  openDriftCount: number;
+  1004→  current: { snapshotId: string; version: number } | null;
+  1005→}
+  1006→
+  1007→/** meta of GET /api/v1/baselines (unpaged — small table). */
+  1008→export interface BaselinesMeta {
+  1009→  baselineDevices: number;
+  1010→  devicesWithoutBaseline: number;
+  1011→  withoutBaselineDevices: { id: string; hostname: string }[];
+  1012→}
+  1013→
+  1014→export interface ApproveBaselinePayload {
+  1015→  deviceId: string;
+  1016→  snapshotId: string;
+  1017→  note?: string;
+  1018→}
+  1019→
+  1020→export interface BaselineMutationResult {
+  1021→  baseline: { id: string; deviceId: string; snapshotId: string };
+  1022→  version: number;
+  1023→  snapshotStatus: string;
+  1024→  audit: { action: string; correlationId: string };
+  1025→}
+  1026→
+  1027→export interface RevokeBaselineResult {
+  1028→  deleted: boolean;
+  1029→  id: string;
+  1030→  audit: { action: string; correlationId: string };
+  1031→}
+  1032→
+  1033→/** One row of GET /api/v1/drift. */
+  1034→export interface DriftRow {
+  1035→  id: string;
+  1036→  deviceId: string;
+  1037→  hostname: string;
+  1038→  siteName: string | null;
+  1039→  siteCode: string | null;
+  1040→  baselineSnapshotId: string;
+  1041→  baselineVersion: number;
+  1042→  baselineSha256: string;
+  1043→  currentSnapshotId: string;
+  1044→  currentVersion: number;
+  1045→  currentSha256: string;
+  1046→  currentCreatedAt: string;
+  1047→  detectedAt: string;
+  1048→  diffSummary: string | null;
+  1049→  status: string;
+  1050→  resolvedAt: string | null;
+  1051→}
+  1052→
+  1053→/** meta of GET /api/v1/drift (page fields + summary KPIs). */
+  1054→export interface DriftListMeta extends PageMetaInfo {
+  1055→  open: number;
+  1056→  accepted: number;
+  1057→  resolvedToday: number;
+  1058→  /** finishedAt of the latest DRIFT_CHECK job (null = never checked). */
+  1059→  lastCheckedAt: string | null;
+  1060→  /** Distinct devices with an OPEN drift record. */
+  1061→  devicesAffected: number;
+  1062→  /** Whether ANY device has a baseline (gates the "Run drift check" action). */
+  1063→  hasBaselines: boolean;
+  1064→}
+  1065→
+  1066→export interface DriftCheckPayload {
+  1067→  deviceId?: string;
+  1068→}
+  1069→
+  1070→export interface DriftCheckResult {
+  1071→  enqueued: number;
+  1072→  correlationId: string;
+  1073→  jobs?: { jobId?: string; deviceId: string; hostname: string }[];
+  1074→}
+  1075→
+  1076→export interface DriftActionResult {
+  1077→  record: {
+  1078→    id: string;
+  1079→    deviceId: string;
+  1080→    status: string;
+  1081→    resolvedAt: string | null;
+  1082→  };
+  1083→  audit: { action: string; correlationId: string };
+  1084→}
+  1085→
+  1086→export interface RestoreSnapshotPayload {
+  1087→  confirmHostname: string;
+  1088→  autoApprove?: boolean;
+  1089→}
+  1090→
+  1091→export interface RestoreSnapshotResult {
+  1092→  change: {
+  1093→    id: string;
+  1094→    number: string;
+  1095→    status: string;
+  1096→    riskScore: number;
+  1097→    riskLevel: string;
+  1098→  };
+  1099→  message: string;
+  1100→  audit: { action: string; correlationId: string };
+  1101→}
+  1102→
+  1103→/* ------------------ Config diff engine (Task 3-b) ------------------- */
+  1104→
+  1105→/** One rendered diff row (wire shape of src/lib/config/diff DiffRow). */
+  1106→export type SnapshotDiffRowType = "equal" | "added" | "removed" | "changed";
+  1107→
+  1108→export interface SnapshotDiffRow {
+  1109→  type: SnapshotDiffRowType;
+  1110→  /** 1-based line number in the FROM snapshot (removed/changed/equal). */
+  1111→  aLine?: number;
+  1112→  /** 1-based line number in the TO snapshot (added/changed/equal). */
+  1113→  bLine?: number;
+  1114→  aText?: string;
+  1115→  bText?: string;
+  1116→}
+  1117→
+  1118→export interface SnapshotDiffStats {
+  1119→  added: number;
+  1120→  removed: number;
+  1121→  changed: number;
+  1122→  unchanged: number;
+  1123→}
+  1124→
+  1125→/** Either endpoint of a diff (from/to). */
+  1126→export interface SnapshotDiffEndpoint {
+  1127→  snapshotId: string;
+  1128→  version: number;
+  1129→  createdAt: string;
+  1130→  sha256: string;
+  1131→  source: string;
+  1132→  status: string;
+  1133→}
+  1134→
+  1135→/** GET /api/v1/devices/[id]/snapshots/diff response payload. */
+  1136→export interface SnapshotDiffResult {
+  1137→  device: { id: string; hostname: string; vendorKey: string };
+  1138→  from: SnapshotDiffEndpoint;
+  1139→  to: SnapshotDiffEndpoint;
+  1140→  mode: "raw" | "normalized";
+  1141→  /** True when both snapshots share the same sha256 (rows are empty). */
+  1142→  identical: boolean;
+  1143→  rows: SnapshotDiffRow[];
+  1144→  stats: SnapshotDiffStats;
+  1145→  /** Whether the stored normalizedText was used (false = computed on the fly). */
+  1146→  normalized: { from: boolean; to: boolean };
+  1147→}
+  1148→

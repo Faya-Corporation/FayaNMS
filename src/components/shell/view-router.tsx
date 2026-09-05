@@ -6,6 +6,10 @@ import { AlertsView } from "@/components/views/alerts-view";
 import { BackupComplianceView } from "@/components/views/backup-compliance-view";
 import { BackupsView } from "@/components/views/backups-view";
 import { BaselinesView } from "@/components/views/baselines-view";
+import { ChangeDetailView } from "@/components/views/change-detail-view";
+import { ChangeApprovalsView } from "@/components/views/change-approvals-view";
+import { ChangesCalendarView } from "@/components/views/changes-calendar-view";
+import { ChangeTemplatesView } from "@/components/views/changes-templates-view";
 import { ChangesView } from "@/components/views/changes-view";
 import { CredentialsView } from "@/components/views/credentials-view";
 import { DashboardView } from "@/components/views/dashboard-view";
@@ -26,9 +30,11 @@ import { SnapshotsView } from "@/components/views/snapshots-view";
  *
  * Implemented: dashboard, network.devices, network.device-detail (Phase 2),
  * network.sites (Phase 2), network.discovery (Phase 2-c), admin.credentials
- * (Phase 2-c), ops.alerts, ops.incidents, changes.all, ops.jobs,
- * config.backups + config.compliance (Phase 3-a), config.snapshots
- * (Phase 3-b), config.baselines + config.drift (Phase 3-c).
+ * (Phase 2-c), ops.alerts, ops.incidents, changes.all + changes.mine +
+ * changes.calendar + changes.templates + changes.change-detail (Phase 4-a),
+ * changes.approvals (Phase 4-b), ops.jobs, config.backups +
+ * config.compliance (Phase 3-a), config.snapshots (Phase 3-b),
+ * config.baselines + config.drift (Phase 3-c).
  */
 export function ViewRouter() {
   const activeView = useNavigationStore((state) => state.activeView);
@@ -52,6 +58,16 @@ export function ViewRouter() {
       return <IncidentsView />;
     case "changes.all":
       return <ChangesView />;
+    case "changes.mine":
+      return <ChangesView mine />;
+    case "changes.calendar":
+      return <ChangesCalendarView />;
+    case "changes.templates":
+      return <ChangeTemplatesView />;
+    case "changes.change-detail":
+      return <ChangeDetailView />;
+    case "changes.approvals":
+      return <ChangeApprovalsView />;
     case "ops.jobs":
       return <JobsView />;
     case "config.backups":

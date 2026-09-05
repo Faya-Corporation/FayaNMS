@@ -466,6 +466,273 @@ export interface ChangeRow {
   requester: { id: string; name: string | null; email: string } | null;
   site: { name: string; code: string } | null;
   _count: { devices: number; steps: number };
+  /** PENDING approvals at a glance (Task 4-a). */
+  pendingApprovals?: number;
+}
+
+/* ------------------- Change management (Task 4-a) ------------------- */
+
+/** One factor row of the transparent risk breakdown (wire shape). */
+export interface RiskFactorRow {
+  key: string;
+  label: string;
+  points: number;
+  detail: string;
+}
+
+export interface RiskBreakdown {
+  score: number;
+  level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  factors: RiskFactorRow[];
+}
+
+export interface ChangeStepInput {
+  name: string;
+  type: "CHECK" | "BACKUP" | "APPLY" | "VALIDATE" | "ROLLBACK";
+}
+
+/** POST /api/v1/changes body (wizard payload). */
+export interface WizardPayload {
+  title: string;
+  description?: string;
+  type: "STANDARD" | "NORMAL" | "EMERGENCY";
+  siteId?: string;
+  scheduledStart?: string;
+  scheduledEnd?: string;
+  implementationPlan?: string;
+  validationPlan?: string;
+  rollbackPlan?: string;
+  deviceIds: string[];
+  steps?: ChangeStepInput[];
+  submit?: boolean;
+}
+
+export interface ChangeMutationResult {
+  change: {
+    id: string;
+    number: string;
+    title?: string;
+    status: string;
+    riskScore: number;
+    riskLevel: string;
+    type?: string;
+  } | null;
+  message: string;
+  audit: { action: string; correlationId: string };
+}
+
+export interface ChangeCreateResult {
+  change: {
+    id: string;
+    number: string;
+    title: string;
+    type: string;
+    status: string;
+    riskScore: number;
+    riskLevel: string;
+  };
+  message: string;
+  audit: { action: string; correlationId: string };
+}
+
+/** GET /api/v1/changes meta (page fields + KPI summary for the mini-row). */
+export interface ChangeListMeta extends PageMetaInfo {
+  summary: {
+    awaitingApproval: number;
+    executingNow: number;
+    /** null when no change reached a terminal state in the window. */
+    successRate30d: number | null;
+    closedChanges30d: number;
+  };
+}
+
+/** One conflicting change of GET /api/v1/changes/conflicts. */
+export interface ChangeConflict {
+  id: string;
+  number: string;
+  title: string;
+  status: string;
+  riskLevel: string;
+  type: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  siteCode: string | null;
+  deviceIds: string[];
+}
+
+export interface ChangeDetailDevice {
+  linkId: string;
+  deviceId: string;
+  hostname: string;
+  model: string | null;
+  status: string;
+  criticality: string;
+  role: string | null;
+  siteName: string | null;
+  siteCode: string | null;
+  vendorKey: string | null;
+  result: string | null;
+}
+
+export interface ChangeDetailStep {
+  id: string;
+  order: number;
+  name: string;
+  type: string;
+  status: string;
+  output: string | null;
+  error: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface ChangeDetailApproval {
+  id: string;
+  level: string;
+  status: string;
+  approverName: string | null;
+  decidedAt: string | null;
+  comment: string | null;
+}
+
+export interface ChangeDetailSnapshot {
+  id: string;
+  deviceId: string;
+  hostname: string;
+  version: number;
+  status: string;
+  source: string;
+  createdAt: string;
+}
+
+export interface ChangeDetailIncident {
+  id: string;
+  number: string;
+  title: string;
+  severity: string;
+  status: string;
+}
+
+/** GET /api/v1/changes/[id] payload. */
+export interface ChangeDetail {
+  id: string;
+  number: string;
+  title: string;
+  description: string | null;
+  type: string;
+  status: string;
+  riskScore: number;
+  riskLevel: string;
+  requester: { id: string; name: string | null; email: string };
+  owner: { id: string; name: string | null } | null;
+  technicalOwner: { id: string; name: string | null } | null;
+  site: { id: string; name: string; code: string } | null;
+  scheduledStart: string | null;
+  scheduledEnd: string | null;
+  implementationPlan: string | null;
+  validationPlan: string | null;
+  rollbackPlan: string | null;
+  preChecks: { name: string; status: string; detail?: string }[];
+  createdAt: string;
+  updatedAt: string;
+  devices: ChangeDetailDevice[];
+  steps: ChangeDetailStep[];
+  approvals: ChangeDetailApproval[];
+  snapshots: ChangeDetailSnapshot[];
+  incidents: ChangeDetailIncident[];
+}
+
+/* ---------------- Approvals + execution (Task 4-b) ---------------- */
+
+/** One row of GET /api/v1/approvals (per approval, joined with its change). */
+export interface ApprovalQueueRow {
+  id: string;
+  changeId: string;
+  level: string;
+  status: string;
+  comment: string | null;
+  approverName: string | null;
+  decidedAt: string | null;
+  change: {
+    id: string;
+    number: string;
+    title: string;
+    type: string;
+    status: string;
+    riskScore: number;
+    riskLevel: string;
+    requesterId: string;
+    requesterName: string | null;
+    createdAt: string;
+    scheduledStart: string | null;
+    levels: { level: string; status: string }[];
+  };
+}
+
+/** meta of GET /api/v1/approvals — KPI counts for the queue view. */
+export interface ApprovalQueueMeta {
+  pending: number;
+  /** SoD-aware count the acting user may decide (null without actAsUserId). */
+  mine: number | null;
+  approvedToday: number;
+  rejectedToday: number;
+}
+
+export interface ApprovalDecisionPayload {
+  level: string;
+  decision: "APPROVED" | "REJECTED";
+  comment?: string;
+  actAsUserId?: string;
+}
+
+/** POST /api/v1/changes/[id]/approvals result. */
+export interface ApprovalDecisionResult {
+  change: {
+    id: string;
+    number: string;
+    status: string;
+    riskLevel: string;
+  };
+  approvals: { level: string; status: string }[];
+  selfApproval: boolean;
+  audit: { action: string; correlationId: string };
+  message: string;
+}
+
+/** POST /api/v1/changes/[id]/execute body + result. */
+export interface ExecuteChangePayload {
+  failAt?: "APPLY" | "VALIDATE" | null;
+  actAsUserId?: string;
+}
+
+export interface ExecuteChangeResult {
+  job: {
+    id: string;
+    type: string;
+    status: string;
+    correlationId: string;
+  };
+  change: { id: string; number: string; status: string };
+  message: string;
+  audit: { action: string; correlationId: string };
+}
+
+/** POST /api/v1/incidents/from-change body + result. */
+export interface IncidentFromChangePayload {
+  changeId: string;
+  actAsUserId?: string;
+}
+
+export interface IncidentFromChangeResult {
+  incident: {
+    id: string;
+    number: string;
+    title: string;
+    severity: string;
+    status: string;
+    changeId: string | null;
+  };
+  message: string;
 }
 
 export interface AlertRow {
@@ -526,6 +793,17 @@ export interface MetaPayload {
   vendors: { id: string; key: string; name: string }[];
   sites: { id: string; name: string; code: string }[];
   credentialProfiles: { id: string; name: string; type: string; username: string }[];
+  /** Seeded accounts for the Act-as demo identity (Task 4-b). */
+  users: UserOption[];
+}
+
+/** One "Act as" identity option (Task 4-b). */
+export interface UserOption {
+  id: string;
+  name: string;
+  /** Username-style key — email local-part ("admin", "noc1", …). */
+  username: string;
+  roleLabel: string;
 }
 
 /* --------------------- Discovery & CSV import (2-c) ---------------- */

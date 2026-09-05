@@ -24,6 +24,17 @@
  * then complete SUCCEEDED with { outcome: skipped|no-drift|drift, ... }.
  * Network errors propagate to the generic failure path (requeue/backoff).
  *
+ * CHANGE_EXECUTE branch (Task 4-b) — the worker DRIVES the change step
+ * executor: loop POST /api/v1/worker/change-step { jobId } (the Next.js
+ * side executes exactly one ChangeStep per call — pre-checks, pre/post
+ * backups, apply, validate, auto-rollback), reporting progress between
+ * steps (completed/total steps + last step name/status). The loop stops
+ * when the response answers done:true — the job completes SUCCEEDED even
+ * when the CHANGE outcome is FAILED/ROLLBACK_FAILED (the job ran fine;
+ * the change outcome lives in resultJson { outcome, changeStatus,
+ * suggestIncident }). Per-call 409 STEP_IN_FLIGHT and network/5xx errors
+ * propagate to the retryable failure path (existing backoff).
+ *
  * Failure semantics live on the Next.js side: complete(FAILED) either requeues
  * with exponential-ish backoff (30 s * attempts) or dead-letters the job.
  * Any single job failure is contained — the loop never crashes.
@@ -36,6 +47,9 @@ const CLAIM_INTERVAL_MS = 3_000;
 const CONCURRENCY_CAP = 3;
 const CLAIM_BATCH = 3;
 const JOB_TIMEOUT_MS = 30_000;
+/** CHANGE_EXECUTE drives a whole step loop — needs its own budget. */
+const CHANGE_JOB_TIMEOUT_MS = 600_000;
+const CHANGE_MAX_STEP_CALLS = 40;
 
 export interface ClaimedJob {
   id: string;
@@ -47,6 +61,23 @@ export interface ClaimedJob {
   maxAttempts: number;
   payload?: Record<string, unknown>;
   [key: string]: unknown;
+}
+
+/** Response shape of POST /api/v1/worker/change-step. */
+interface ChangeStepResponse {
+  done: boolean;
+  outcome?: string | null;
+  changeStatus?: string | null;
+  suggestIncident?: boolean;
+  stepsTotal?: number;
+  stepsCompleted?: number;
+  message?: string;
+  lastStep?: {
+    order: number;
+    name: string;
+    type: string;
+    status: string;
+  } | null;
 }
 
 const counters = {
@@ -416,6 +447,77 @@ async function runDriftCheckJob(job: ClaimedJob): Promise<void> {
   await log(`job ${job.id} [${job.correlationId}] SUCCEEDED: drift-check ${summary}`);
 }
 
+/* ───────────────────── CHANGE_EXECUTE step driver (4-b) ───────────────── */
+
+/**
+ * CHANGE_EXECUTE execution — the Next.js change-step engine owns ALL the
+ * intelligence; the worker only loops the step calls and reports progress.
+ * The job is SUCCEEDED even when the change outcome is FAILED — the change
+ * outcome lives in resultJson + the change rows.
+ */
+async function runChangeExecutionJob(job: ClaimedJob): Promise<void> {
+  const payload = job.payload ?? {};
+  const changeNumber =
+    typeof payload.changeNumber === "string" ? payload.changeNumber : String(job.targetId ?? "change");
+  const changeTitle = typeof payload.changeTitle === "string" ? payload.changeTitle : "";
+  const failAt =
+    payload.failAt === "APPLY" || payload.failAt === "VALIDATE" ? payload.failAt : null;
+
+  await reportProgress(
+    job.id,
+    3,
+    `Starting execution of ${changeNumber}${changeTitle ? ` — ${changeTitle}` : ""}${failAt ? ` (demo control failAt=${failAt})` : ""}`
+  );
+
+  for (let iteration = 0; iteration < CHANGE_MAX_STEP_CALLS; iteration += 1) {
+    const step = (await nextPost(
+      "/api/v1/worker/change-step",
+      { jobId: job.id },
+      90_000
+    )) as ChangeStepResponse;
+
+    const total = step.stepsTotal ?? 0;
+    const completed = step.stepsCompleted ?? 0;
+    const pct = total > 0 ? Math.min(97, 3 + Math.round((completed / total) * 94)) : 5;
+    const lastLabel = step.lastStep ? `${step.lastStep.name} → ${step.lastStep.status}` : "working";
+    await reportProgress(job.id, pct, `${changeNumber}: ${step.message ?? lastLabel}`);
+
+    if (step.done) {
+      const outcome = step.outcome ?? "SUCCESS";
+      await nextPost(
+        "/api/v1/worker/complete",
+        {
+          jobId: job.id,
+          outcome: "SUCCEEDED",
+          result: {
+            outcome,
+            changeStatus: step.changeStatus ?? null,
+            suggestIncident: step.suggestIncident === true,
+            stepsTotal: total,
+            stepsCompleted: completed,
+            failAt,
+          },
+        },
+        15_000
+      );
+      counters.completed += 1;
+      counters.completedByType.CHANGE_EXECUTE =
+        (counters.completedByType.CHANGE_EXECUTE ?? 0) + 1;
+      await log(
+        `job ${job.id} [${job.correlationId}] SUCCEEDED: change ${changeNumber} outcome=${outcome} status=${step.changeStatus ?? "?"} steps=${completed}/${total}${failAt ? ` failAt=${failAt}` : ""}`
+      );
+      return;
+    }
+
+    // Small beat between steps so the timeline reads like a real execution.
+    await sleep(randInt(300, 600));
+  }
+
+  throw new Error(
+    `Change execution for ${changeNumber} did not finish within ${CHANGE_MAX_STEP_CALLS} step iterations`
+  );
+}
+
 async function executeJob(job: ClaimedJob): Promise<void> {
   try {
     if (job.type === "CONFIG_BACKUP") {
@@ -424,6 +526,8 @@ async function executeJob(job: ClaimedJob): Promise<void> {
       await raceTimeout(runDiscoveryJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "DRIFT_CHECK") {
       await raceTimeout(runDriftCheckJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "CHANGE_EXECUTE") {
+      await raceTimeout(runChangeExecutionJob(job), CHANGE_JOB_TIMEOUT_MS, `job ${job.id}`);
     } else {
       throw new Error(`Unsupported job type for worker v1: ${job.type}`);
     }
@@ -442,7 +546,7 @@ async function claimTick(): Promise<void> {
     if (free <= 0) return;
     const jobs = (await nextPost(
       "/api/v1/worker/claim",
-      { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK"], limit: Math.min(CLAIM_BATCH, free) },
+      { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE"], limit: Math.min(CLAIM_BATCH, free) },
       10_000
     )) as ClaimedJob[];
     for (const job of Array.isArray(jobs) ? jobs : []) {

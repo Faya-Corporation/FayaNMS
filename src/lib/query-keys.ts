@@ -34,6 +34,14 @@ export const queryKeys = {
   credentials: (params: ListParams = {}) => ["credentials", params] as const,
   incidents: (params: ListParams = {}) => ["incidents", params] as const,
   changes: (params: ListParams = {}) => ["changes", params] as const,
+  // Change management (Task 4-a) — nested under the "changes" prefix so
+  // invalidating ["changes"] refreshes lists, detail and conflicts together.
+  changeDetail: (id: string) => ["changes", id, "detail"] as const,
+  changeConflicts: (params: ListParams = {}) =>
+    ["changes", "conflicts", params] as const,
+  // Approval queue (Task 4-b) — decisions invalidate ["approvals"] and
+  // ["changes"] together (queue ↔ detail ↔ lists).
+  approvals: (params: ListParams = {}) => ["approvals", params] as const,
   alerts: (params: ListParams = {}) => ["alerts", params] as const,
   jobs: (params: ListParams = {}) => ["jobs", params] as const,
   meta: ["meta"] as const,

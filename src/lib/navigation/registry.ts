@@ -133,6 +133,14 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
     phase: "Phase 4 — Change Management",
     group: "Changes",
   },
+  // Hidden from the sidebar (opened via setActiveView("changes.change-detail",
+  // { changeId }) — same pattern as network.device-detail). Task 4-a.
+  "changes.change-detail": {
+    title: "Change Detail",
+    description: "Full change record — plans, devices, steps, approvals and links",
+    phase: "Phase 4 — Change Management",
+    group: "Changes",
+  },
 
   "ops.noc": {
     title: "NOC View",

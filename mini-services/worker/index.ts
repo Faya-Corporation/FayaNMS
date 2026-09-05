@@ -6,8 +6,13 @@
  * 3000 — this service is backend-to-backend):
  *   GET  /health          → liveness + in-memory job counters + adapter names
  *   GET  /capabilities    → adapter capability manifests
- *   POST /simulate/connect→ simulated device connect (test-connection flow +
- *                           the runner's own connect step)
+ *   POST /simulate/connect   → simulated device connect (test-connection flow +
+ *                              the runner's own connect step)
+ *   POST /simulate/generate-config → vendor-flavored config text (Task 4-b
+ *                              change engine pre/post backups)
+ *   POST /simulate/apply      → config text with a change-flavored delta
+ *                              (Task 4-b apply step; HTTP 500 when the demo
+ *                              control payload.failAt === "APPLY")
  *
  * Background loops:
  *   runner.ts    — claims CONFIG_BACKUP jobs from Next.js every 3 s
@@ -92,6 +97,85 @@ async function handle(req: Request): Promise<Response> {
       });
     }
 
+    if (req.method === "POST" && url.pathname === "/simulate/generate-config") {
+      let body: Record<string, unknown> | undefined;
+      try {
+        body = (await req.json()) as Record<string, unknown>;
+      } catch {
+        return Response.json(
+          { ok: false, error: "Request body must be valid JSON" },
+          { status: 400 }
+        );
+      }
+      const hostname = typeof body?.hostname === "string" ? body.hostname.trim() : "";
+      const flavor = typeof body?.flavor === "string" ? body.flavor.trim() : "generic";
+      if (!hostname) {
+        return Response.json(
+          { ok: false, error: "Body must be { hostname: string, flavor?: string, managementIp?: string }" },
+          { status: 400 }
+        );
+      }
+      // Task 4-b — vendor-flavored running config for pre/post-change
+      // backups; same generators the CONFIG_BACKUP path uses.
+      const target: DeviceTarget = {
+        deviceId: "simulate-generate",
+        hostname,
+        vendor: flavor || "generic",
+        model: typeof body?.model === "string" ? body.model : null,
+        managementIp: typeof body?.managementIp === "string" ? body.managementIp : null,
+      };
+      const config = await pickAdapter(flavor).fetchConfig(target);
+      return Response.json({ ok: true, configText: config.rawText, configFlavor: pickAdapter(flavor).configFlavor });
+    }
+
+    if (req.method === "POST" && url.pathname === "/simulate/apply") {
+      let body: Record<string, unknown> | undefined;
+      try {
+        body = (await req.json()) as Record<string, unknown>;
+      } catch {
+        return Response.json(
+          { ok: false, error: "Request body must be valid JSON" },
+          { status: 400 }
+        );
+      }
+      const hostname = typeof body?.hostname === "string" ? body.hostname.trim() : "";
+      const flavor = typeof body?.flavor === "string" ? body.flavor.trim() : "generic";
+      const changeTitle =
+        typeof body?.changeTitle === "string" && body.changeTitle.trim()
+          ? body.changeTitle.trim()
+          : "configuration update";
+      const failAt = typeof body?.failAt === "string" ? body.failAt.trim() : null;
+      if (!hostname) {
+        return Response.json(
+          { ok: false, error: "Body must be { hostname: string, flavor?: string, changeTitle?: string, failAt?: string }" },
+          { status: 400 }
+        );
+      }
+      if (failAt === "APPLY") {
+        // Demo control — forces the change engine down its rollback path.
+        return Response.json(
+          {
+            ok: false,
+            error: `Simulated apply failure on ${hostname} — commit aborted (demo control failAt=APPLY)`,
+          },
+          { status: 500 }
+        );
+      }
+      const target: DeviceTarget = {
+        deviceId: "simulate-apply",
+        hostname,
+        vendor: flavor || "generic",
+        model: typeof body?.model === "string" ? body.model : null,
+        managementIp: typeof body?.managementIp === "string" ? body.managementIp : null,
+      };
+      const adapter = pickAdapter(flavor);
+      const config = await adapter.fetchConfig(target);
+      return Response.json({
+        ok: true,
+        configText: applyChangeDelta(config.rawText, adapter.configFlavor, changeTitle),
+      });
+    }
+
     return Response.json({ ok: false, error: `No route: ${req.method} ${url.pathname}` }, { status: 404 });
   } catch (e) {
     // Handler errors are JSON, never hangs (all inner work is timeout-bounded).
@@ -106,6 +190,48 @@ const server = Bun.serve({ port: PORT, fetch: (req) => handle(req) });
 log(`fayanms-worker v0.1.0 listening on :${server.port}`);
 startRunner();
 startScheduler();
+
+/* ───────────────────── change-apply delta (Task 4-b) ───────────────────── */
+
+/** Uppercase kebab slug of the change title (truncated) for config lines. */
+function changeSlug(title: string): string {
+  return (
+    title
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "CONFIG-UPDATE"
+  );
+}
+
+/**
+ * Append a vendor-appropriate change record + one realistic config line
+ * derived from the change title. Cisco/AOS-CX flavors also get a
+ * `description <slug>` line under the first interface (the only real
+ * config delta — comments are stripped by normalization, so the applied
+ * change shows up in the Phase 3 diff engine as exactly that line).
+ */
+function applyChangeDelta(rawText: string, flavor: string, changeTitle: string): string {
+  const slug = changeSlug(changeTitle);
+  const hashStyle = flavor === "cisco-ios" || flavor === "aos-cx" ? "!" : "#";
+  const lines = rawText.replace(/\s+$/, "").split(/\r?\n/);
+
+  if (hashStyle === "!") {
+    const interfaceIndex = lines.findIndex((line) => /^interface /i.test(line));
+    if (interfaceIndex >= 0) {
+      lines.splice(interfaceIndex + 1, 0, ` description ${slug}`);
+    }
+  }
+
+  const block = [
+    hashStyle,
+    `${hashStyle} Change application record — FayaNMS change engine`,
+    `${hashStyle} applied by CHG: ${changeTitle.slice(0, 120)}`,
+    `${hashStyle} change-slug: ${slug}`,
+    hashStyle,
+  ];
+  return `${lines.join("\n")}\n${block.join("\n")}\n`;
+}
 
 process.on("SIGTERM", () => {
   log("SIGTERM received — shutting down");

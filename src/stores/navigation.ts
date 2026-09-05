@@ -28,6 +28,7 @@ export type ViewKey =
   | "changes.approvals"
   | "changes.calendar"
   | "changes.templates"
+  | "changes.change-detail"
   // Operations
   | "ops.noc"
   | "ops.alerts"

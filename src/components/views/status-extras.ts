@@ -113,6 +113,55 @@ export const CHANGE_STATUS_UI: Record<string, StatusBadgeConfig> = {
   PARTIAL_SUCCESS: makeConfig("PARTIAL_SUCCESS", "Partial Success", "warning", "CircleAlert"),
 };
 
+/** Change execution steps (ChangeStep.status values). Added in Task 4-a. */
+export const CHANGE_STEP_STATUS_UI: Record<string, StatusBadgeConfig> = {
+  PENDING: makeConfig("PENDING", "Pending", "neutral", "Clock"),
+  RUNNING: makeConfig("RUNNING", "Running", "info", "LoaderCircle"),
+  PASSED: makeConfig("PASSED", "Passed", "success", "CircleCheck"),
+  FAILED: makeConfig("FAILED", "Failed", "danger", "CircleX"),
+  SKIPPED: makeConfig("SKIPPED", "Skipped", "neutral", "CircleMinus"),
+};
+
+/** Change step types (ChangeStep.type values) — icon used in the timeline. */
+export const CHANGE_STEP_TYPE_UI: Record<string, StatusBadgeConfig> = {
+  CHECK: makeConfig("CHECK", "Check", "info", "Search"),
+  BACKUP: makeConfig("BACKUP", "Backup", "neutral", "HardDriveDownload"),
+  APPLY: makeConfig("APPLY", "Apply", "warning", "Play"),
+  VALIDATE: makeConfig("VALIDATE", "Validate", "info", "ClipboardCheck"),
+  ROLLBACK: makeConfig("ROLLBACK", "Rollback", "danger-orange", "Undo2"),
+};
+
+/** Change approval statuses (ChangeApproval.status values). Task 4-a. */
+export const CHANGE_APPROVAL_STATUS_UI: Record<string, StatusBadgeConfig> = {
+  PENDING: makeConfig("PENDING", "Pending", "warning", "Clock"),
+  APPROVED: makeConfig("APPROVED", "Approved", "success", "ShieldCheck"),
+  REJECTED: makeConfig("REJECTED", "Rejected", "danger", "CircleX"),
+  NOT_REQUIRED: makeConfig("NOT_REQUIRED", "Not Required", "neutral", "CircleMinus"),
+};
+
+/** Change approval levels (ChangeApproval.level values) with display labels. */
+export const CHANGE_APPROVAL_LEVEL_UI: Record<string, StatusBadgeConfig> = {
+  TECHNICAL: makeConfig("TECHNICAL", "Technical", "info", "Wrench"),
+  SECURITY: makeConfig("SECURITY", "Security", "warning", "ShieldCheck"),
+  MANAGER: makeConfig("MANAGER", "Manager", "neutral", "Scale"),
+  CAB: makeConfig("CAB", "CAB", "danger-orange", "Users"),
+};
+
+/** Change types (ChangeRequest.type values) for outline badges with icons. */
+export const CHANGE_TYPE_UI: Record<string, StatusBadgeConfig> = {
+  STANDARD: makeConfig("STANDARD", "Standard", "success", "ShieldCheck"),
+  NORMAL: makeConfig("NORMAL", "Normal", "info", "Wrench"),
+  EMERGENCY: makeConfig("EMERGENCY", "Emergency", "danger", "Siren"),
+};
+
+/** Change device results (ChangeDevice.result values). Task 4-a. */
+export const CHANGE_DEVICE_RESULT_UI: Record<string, StatusBadgeConfig> = {
+  PENDING: makeConfig("PENDING", "Pending", "neutral", "Clock"),
+  SUCCESS: makeConfig("SUCCESS", "Success", "success", "CircleCheck"),
+  FAILED: makeConfig("FAILED", "Failed", "danger", "CircleX"),
+  SKIPPED: makeConfig("SKIPPED", "Skipped", "neutral", "CircleMinus"),
+};
+
 /** Safe lookup over the UI maps above (same normalization as status.ts). */
 export function lookupStatusConfig(
   map: Record<string, StatusBadgeConfig>,

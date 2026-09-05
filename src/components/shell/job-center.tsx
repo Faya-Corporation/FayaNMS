@@ -37,6 +37,7 @@ const JOB_TYPE_LABEL: Record<string, string> = {
   METRIC_POLL: "Metric poll",
   REPORT_GENERATION: "Report generation",
   NOTIFICATION: "Notification",
+  CHANGE_EXECUTE: "Change execution",
 };
 
 /**

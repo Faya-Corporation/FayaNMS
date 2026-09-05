@@ -19,6 +19,9 @@ export const dynamic = "force-dynamic";
  * target device ({ deviceId, hostname, name, vendor, model, platform,
  * firmware, managementIp, status }) so the worker never needs a second
  * lookup. Raw stored payload stays available as `payloadJson`.
+ *
+ * CHANGE_EXECUTE jobs (Task 4-b) are enriched with the change header
+ * ({ changeNumber, changeTitle, changeStatus, riskLevel }) the same way.
  */
 
 const claimSchema = z.object({
@@ -112,6 +115,24 @@ export async function POST(request: Request) {
             firmware: device.firmware,
             managementIp: device.mgmtIp,
             status: device.status,
+          };
+        }
+      }
+
+      // CHANGE_EXECUTE (Task 4-b): enrich with the change header so the
+      // driver can post human-readable progress without extra lookups.
+      if (job.type === "CHANGE_EXECUTE" && job.targetId) {
+        const change = await tx.changeRequest.findUnique({
+          where: { id: job.targetId },
+          select: { number: true, title: true, riskLevel: true, status: true },
+        });
+        if (change) {
+          payload = {
+            ...payload,
+            changeNumber: change.number,
+            changeTitle: change.title,
+            changeStatus: change.status,
+            riskLevel: change.riskLevel,
           };
         }
       }

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { createHash } from "node:crypto";
+import { createSnapshot } from "@/lib/config/create-snapshot";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import { z } from "zod";
 
@@ -19,6 +19,10 @@ export const dynamic = "force-dynamic";
  *   5. AuditEvent CONFIG_BACKUP (actor system:backup-worker) with the job's
  *      correlationId
  *   6. JobExecution → SUCCEEDED + resultJson
+ *
+ *   (Steps 1–5 are delegated to the shared createSnapshot() lib —
+ *   src/lib/config/create-snapshot.ts — which the Task 4-b change-step
+ *   executor also uses, so both paths stay byte-identical.)
  *
  * SUCCEEDED (DISCOVERY, 2-c) — persistence-free demo pattern: the scan
  *   result ({ candidates[], scannedSubnets, durationMs }) is stored verbatim
@@ -197,6 +201,47 @@ export async function POST(request: Request) {
       });
     }
 
+    // ── CHANGE_EXECUTE (4-b): the change-step engine persisted all change
+    // state (steps/devices/snapshots/audits) — store the outcome verbatim.
+    // The JOB is SUCCEEDED even when the change outcome is FAILED; the
+    // change outcome lives here + in the change rows. ──
+    if (job.type === "CHANGE_EXECUTE") {
+      const outcomeShape = z.object({
+        outcome: z.string().max(50),
+        changeStatus: z.string().max(50).nullable().optional(),
+        suggestIncident: z.boolean().optional(),
+        stepsTotal: z.number().int().nonnegative().optional(),
+        stepsCompleted: z.number().int().nonnegative().optional(),
+        failAt: z.string().nullable().optional(),
+      });
+      const parsedExecution = outcomeShape.safeParse(result);
+      if (!parsedExecution.success) {
+        return fail(
+          "INVALID_RESULT",
+          "SUCCEEDED CHANGE_EXECUTE completion requires result.outcome",
+          400
+        );
+      }
+      const execution = parsedExecution.data;
+      await db.jobExecution.update({
+        where: { id: job.id },
+        data: {
+          status: "SUCCEEDED",
+          progress: 100,
+          finishedAt: now,
+          error: null,
+          resultJson: JSON.stringify(execution),
+        },
+      });
+      return ok({
+        jobId,
+        updated: true,
+        status: "SUCCEEDED",
+        outcome: execution.outcome,
+        changeStatus: execution.changeStatus ?? null,
+      });
+    }
+
     // ── CONFIG_BACKUP: validate the snapshot payload (unchanged behavior) ──
     const parsedBackup = backupResultSchema.safeParse(result);
     if (!parsedBackup.success) {
@@ -224,76 +269,24 @@ export async function POST(request: Request) {
       return ok({ jobId, updated: true, status: dead.status, requeued: false });
     }
 
-    const sha256 = createHash("sha256").update(backupResult.rawText).digest("hex");
-    const sizeBytes = Buffer.byteLength(backupResult.rawText, "utf8");
     const source =
       typeof payload.source === "string" && payload.source
         ? payload.source
         : "SCHEDULED";
 
     const persisted = await db.$transaction(async (tx) => {
-      const device = await tx.device.findUnique({
-        where: { id: deviceId },
-        select: { id: true, hostname: true },
-      });
-      if (!device) {
+      const snapshot = await createSnapshot(tx, {
+        deviceId,
+        rawText: backupResult.rawText,
+        source,
+        normalizedText: backupResult.normalizedText ?? null,
+        jobId: job.id,
+        correlationId: job.correlationId,
+        configFlavor: backupResult.configFlavor ?? null,
+      }, now);
+      if (!snapshot.ok) {
         return { deviceMissing: true as const };
       }
-
-      const prev = await tx.configSnapshot.findFirst({
-        where: { deviceId },
-        orderBy: { version: "desc" },
-        select: { version: true },
-      });
-      const version = (prev?.version ?? 0) + 1;
-
-      // Demote the previous CURRENT snapshot. "SUPERSEDED" is not part of the
-      // schema's documented status domain (CURRENT | HISTORICAL | BASELINE),
-      // so HISTORICAL is used — consistent with the seeded chains.
-      await tx.configSnapshot.updateMany({
-        where: { deviceId, status: "CURRENT" },
-        data: { status: "HISTORICAL" },
-      });
-
-      const snapshot = await tx.configSnapshot.create({
-        data: {
-          deviceId,
-          version,
-          source,
-          configType: "RUNNING",
-          rawText: backupResult.rawText,
-          normalizedText: backupResult.normalizedText ?? null,
-          sha256,
-          sizeBytes,
-          jobId: job.id,
-          status: "CURRENT",
-        },
-      });
-
-      await tx.device.update({
-        where: { id: deviceId },
-        data: { lastBackupAt: now, lastSeen: now, backupCompliance: "COMPLIANT" },
-      });
-
-      await tx.auditEvent.create({
-        data: {
-          actorName: "system:backup-worker",
-          action: "CONFIG_BACKUP",
-          resourceType: "ConfigSnapshot",
-          resourceId: deviceId,
-          resourceLabel: device.hostname,
-          result: "SUCCESS",
-          correlationId: job.correlationId,
-          afterJson: JSON.stringify({
-            snapshotId: snapshot.id,
-            version,
-            sha256,
-            sizeBytes,
-            source,
-            configFlavor: backupResult.configFlavor ?? null,
-          }),
-        },
-      });
 
       await tx.jobExecution.update({
         where: { id: job.id },
@@ -304,9 +297,9 @@ export async function POST(request: Request) {
           error: null,
           resultJson: JSON.stringify({
             snapshotId: snapshot.id,
-            version,
-            sha256,
-            sizeBytes,
+            version: snapshot.version,
+            sha256: snapshot.sha256,
+            sizeBytes: snapshot.sizeBytes,
             configFlavor: backupResult.configFlavor ?? null,
             source,
           }),
@@ -316,10 +309,10 @@ export async function POST(request: Request) {
       return {
         deviceMissing: false as const,
         snapshotId: snapshot.id,
-        version,
-        sha256,
-        sizeBytes,
-        hostname: device.hostname,
+        version: snapshot.version,
+        sha256: snapshot.sha256,
+        sizeBytes: snapshot.sizeBytes,
+        hostname: snapshot.hostname,
       };
     }, { maxWait: 5_000, timeout: 20_000 });
 
@@ -384,16 +377,30 @@ export async function POST(request: Request) {
         });
         hostname = dev?.hostname ?? null;
       }
+      // Type-aware audit action: CONFIG_BACKUP failures keep the legacy
+      // action; other types get a generic JOB_FAILED (the change engine
+      // writes its own CHANGE_* audits, so those are excluded here).
+      const action =
+        job.type === "CONFIG_BACKUP"
+          ? "CONFIG_BACKUP"
+          : job.type === "CHANGE_EXECUTE"
+            ? "CHANGE_EXECUTION_FAILED"
+            : "JOB_FAILED";
+      const resourceType =
+        job.type === "CHANGE_EXECUTE" ? "ChangeRequest" : "ConfigSnapshot";
       await tx.auditEvent.create({
         data: {
           actorName: "system:backup-worker",
-          action: "CONFIG_BACKUP",
-          resourceType: "ConfigSnapshot",
-          resourceId: deviceId ?? null,
-          resourceLabel: hostname ?? "unknown device",
+          action,
+          resourceType,
+          resourceId: job.type === "CHANGE_EXECUTE" ? job.targetId : deviceId ?? null,
+          resourceLabel:
+            job.type === "CHANGE_EXECUTE"
+              ? (typeof payload.changeNumber === "string" ? payload.changeNumber : job.targetId) ?? "unknown change"
+              : hostname ?? "unknown device",
           result: "FAILURE",
           correlationId: job.correlationId,
-          afterJson: JSON.stringify({ error: message, attempts: job.attempts }),
+          afterJson: JSON.stringify({ error: message, attempts: job.attempts, jobType: job.type }),
         },
       });
     }
