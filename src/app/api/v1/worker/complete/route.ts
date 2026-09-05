@@ -66,6 +66,26 @@ const discoveryResultSchema = z.object({
   durationMs: z.number().int().nonnegative().optional(),
 });
 
+/** DRIFT_CHECK result (3-c) — evaluation already persisted by
+ * /worker/drift-evaluate; the outcome summary is stored verbatim. */
+const driftCheckResultSchema = z.object({
+  outcome: z.enum(["skipped", "no-drift", "drift"]),
+  reason: z.string().max(500).optional(),
+  recordId: z.string().optional(),
+  baselineVersion: z.number().int().optional(),
+  currentVersion: z.number().int().optional(),
+  resolved: z.number().int().nonnegative().optional(),
+  triggeredBy: z.string().max(50).optional(),
+  stats: z
+    .object({
+      added: z.number().int(),
+      removed: z.number().int(),
+      changed: z.number().int(),
+      unchanged: z.number().int(),
+    })
+    .optional(),
+});
+
 const completeSchema = z.object({
   jobId: z.string().trim().min(1),
   outcome: z.enum(["SUCCEEDED", "FAILED"]),
@@ -144,6 +164,36 @@ export async function POST(request: Request) {
         updated: true,
         status: "SUCCEEDED",
         candidates: discovery.candidates.length,
+      });
+    }
+
+    // ── DRIFT_CHECK (3-c): evaluation persisted by drift-evaluate —
+    // store the outcome summary verbatim in resultJson ──
+    if (job.type === "DRIFT_CHECK") {
+      const parsedDrift = driftCheckResultSchema.safeParse(result);
+      if (!parsedDrift.success) {
+        return fail(
+          "INVALID_RESULT",
+          "SUCCEEDED DRIFT_CHECK completion requires result.outcome (skipped|no-drift|drift)",
+          400
+        );
+      }
+      const drift = parsedDrift.data;
+      await db.jobExecution.update({
+        where: { id: job.id },
+        data: {
+          status: "SUCCEEDED",
+          progress: 100,
+          finishedAt: now,
+          error: null,
+          resultJson: JSON.stringify(drift),
+        },
+      });
+      return ok({
+        jobId,
+        updated: true,
+        status: "SUCCEEDED",
+        outcome: drift.outcome,
       });
     }
 

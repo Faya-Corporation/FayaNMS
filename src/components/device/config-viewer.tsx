@@ -6,6 +6,7 @@ import {
   Check,
   Copy,
   EyeOff,
+  FileCode2,
   Maximize2,
   Search,
   WrapText,
@@ -22,21 +23,23 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import {
+  maskSecretLine,
+  normalizeConfig,
+} from "@/lib/config/normalize";
 
 /**
- * Read-only configuration viewer (Phase 2): mono rendering with line
- * numbers, in-file search, wrap toggle, secrets masking and a fullscreen
- * dialog. Masking replaces anything following a secret keyword with dots —
- * deliberate over-masking per the F-12 requirement. The full diff /
- * normalization tooling is Phase 3 and intentionally out of scope here.
+ * Read-only configuration viewer (Phase 2, extended in Phase 3-b): mono
+ * rendering with line numbers, in-file search, wrap toggle, secrets masking,
+ * an on-demand NORMALIZED rendering (vendor-aware normalization library,
+ * same module the diff API uses) and a fullscreen dialog. Masking replaces
+ * anything following a secret keyword with the shared constant placeholder —
+ * deliberate over-masking per the F-12 requirement.
  */
 
-/** Mask everything after a secret keyword on the line. */
-const SECRET_KEYWORD_RE =
-  /((?:password|passwd|secret|community|psk|passphrase|pre-shared-key))(\s+).*$/i;
-
+/** Mask everything after a secret keyword on the line (shared rule list). */
 function maskLine(line: string): string {
-  return line.replace(SECRET_KEYWORD_RE, "$1$2••••••••");
+  return maskSecretLine(line);
 }
 
 function highlight(text: string, query: string): ReactNode {
@@ -127,17 +130,28 @@ export interface ConfigViewerSnapshot {
   hostname?: string;
 }
 
-export function ConfigViewer({ snapshot }: { snapshot: ConfigViewerSnapshot }) {
+export function ConfigViewer({
+  snapshot,
+  vendorKey = "generic",
+}: {
+  snapshot: ConfigViewerSnapshot;
+  /** Device vendor key — selects the normalization flavor (default generic). */
+  vendorKey?: string;
+}) {
   const [mask, setMask] = useState(true);
   const [wrap, setWrap] = useState(false);
+  const [normalized, setNormalized] = useState(false);
   const [query, setQuery] = useState("");
   const [fullscreen, setFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const displayLines = useMemo(() => {
-    const lines = snapshot.rawText.split("\n");
+    const lines = (normalized
+      ? normalizeConfig(snapshot.rawText, vendorKey)
+      : snapshot.rawText
+    ).split("\n");
     return mask ? lines.map(maskLine) : lines;
-  }, [snapshot.rawText, mask]);
+  }, [snapshot.rawText, vendorKey, normalized, mask]);
 
   const matchCount = useMemo(() => {
     if (!query) return 0;
@@ -193,6 +207,15 @@ export function ConfigViewer({ snapshot }: { snapshot: ConfigViewerSnapshot }) {
             </span>
           )}
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Switch
+              aria-label="Show normalized config"
+              checked={normalized}
+              onCheckedChange={setNormalized}
+            />
+            <FileCode2 aria-hidden="true" className="size-3.5" />
+            Normalize
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Switch checked={mask} onCheckedChange={setMask} aria-label="Mask secrets" />
             <EyeOff aria-hidden="true" className="size-3.5" />
             Mask
@@ -233,8 +256,8 @@ export function ConfigViewer({ snapshot }: { snapshot: ConfigViewerSnapshot }) {
       />
 
       <p className="text-xs text-muted-foreground">
-        Diff, normalization and baseline tooling for this snapshot arrive in
-        Phase 3 — this viewer is read-only.
+        Use Compare in the version list to diff this version against another.
+        Secrets are masked in diffs and exports.
       </p>
 
       {/* Fullscreen dialog */}
@@ -250,6 +273,7 @@ export function ConfigViewer({ snapshot }: { snapshot: ConfigViewerSnapshot }) {
               <span className="font-tech ltr-technical">
                 sha256:{snapshot.sha256.slice(0, 16)}…
               </span>
+              {normalized ? " · normalized" : ""}
               {mask ? " · secrets masked" : ""}
             </DialogDescription>
           </DialogHeader>

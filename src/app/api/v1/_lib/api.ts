@@ -83,12 +83,23 @@ export function firstIssueMessage(error: z.ZodError): string {
   return `${path}: ${issue.message}`;
 }
 
-/** JOB-XXXXXX correlation id (6 random uppercase alphanumerics). */
-export function newJobCorrelationId(): string {
+/** XXXXXX suffix (6 unambiguous uppercase alphanumerics). */
+function correlationSuffix(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let suffix = "";
   for (let i = 0; i < 6; i += 1) {
     suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
   }
-  return `JOB-${suffix}`;
+  return suffix;
+}
+
+/** JOB-XXXXXX correlation id (job queue actions). */
+export function newJobCorrelationId(): string {
+  return `JOB-${correlationSuffix()}`;
+}
+
+/** Prefixed correlation id for non-job audits, e.g. POL-… (policies), DL-… (downloads). */
+export function newCorrelationId(prefix: string): string {
+  const safe = prefix.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  return `${safe || "OP"}-${correlationSuffix()}`;
 }

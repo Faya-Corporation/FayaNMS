@@ -1,0 +1,1045 @@
+     1→"use client";
+     2→
+     3→import { useEffect, useMemo, useState } from "react";
+     4→import { useForm, useWatch } from "react-hook-form";
+     5→import { zodResolver } from "@hookform/resolvers/zod";
+     6→import { z } from "zod";
+     7→import { format, formatDistanceToNow } from "date-fns";
+     8→import {
+     9→  CalendarClock,
+    10→  ChevronLeft,
+    11→  ChevronRight,
+    12→  CloudUpload,
+    13→  Download,
+    14→  LoaderCircle,
+    15→  Pencil,
+    16→  Plus,
+    17→  Search,
+    18→  Trash2,
+    19→} from "lucide-react";
+    20→
+    21→import { useMeta } from "@/hooks/api/use-meta";
+    22→import { useSnapshots } from "@/hooks/api/use-snapshots";
+    23→import {
+    24→  useBackupPolicies,
+    25→  useCreateBackupPolicy,
+    26→  useDeleteBackupPolicy,
+    27→  useUpdateBackupPolicy,
+    28→} from "@/hooks/api/use-backup-policies";
+    29→import { useToast } from "@/hooks/use-toast";
+    30→import { EmptyState } from "@/components/domain/empty-state";
+    31→import { ErrorState } from "@/components/domain/error-state";
+    32→import { FilterChip } from "@/components/domain/filter-chip";
+    33→import { PageHeader } from "@/components/domain/page-header";
+    34→import { SectionCard } from "@/components/domain/section-card";
+    35→import { StatusBadge } from "@/components/domain/status-badge";
+    36→import {
+    37→  SNAPSHOT_SOURCE,
+    38→  SNAPSHOT_STATUS,
+    39→  DEVICE_STATUS,
+    40→  getStatusConfig,
+    41→} from "@/lib/domain/status";
+    42→import { cronHint, isValidCronExpr } from "@/lib/cron";
+    43→import type {
+    44→  BackupPolicyRow,
+    45→  FleetSnapshotRow,
+    46→} from "@/lib/api-client";
+    47→import {
+    48→  AlertDialog,
+    49→  AlertDialogAction,
+    50→  AlertDialogCancel,
+    51→  AlertDialogContent,
+    52→  AlertDialogDescription,
+    53→  AlertDialogFooter,
+    54→  AlertDialogHeader,
+    55→  AlertDialogTitle,
+    56→} from "@/components/ui/alert-dialog";
+    57→import { Button } from "@/components/ui/button";
+    58→import { Checkbox } from "@/components/ui/checkbox";
+    59→import {
+    60→  Dialog,
+    61→  DialogContent,
+    62→  DialogDescription,
+    63→  DialogFooter,
+    64→  DialogHeader,
+    65→  DialogTitle,
+    66→} from "@/components/ui/dialog";
+    67→import { Input } from "@/components/ui/input";
+    68→import { Label } from "@/components/ui/label";
+    69→import {
+    70→  Select,
+    71→  SelectContent,
+    72→  SelectItem,
+    73→  SelectTrigger,
+    74→  SelectValue,
+    75→} from "@/components/ui/select";
+    76→import { Switch } from "@/components/ui/switch";
+    77→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    78→import {
+    79→  Table,
+    80→  TableBody,
+    81→  TableCell,
+    82→  TableHead,
+    83→  TableHeader,
+    84→  TableRow,
+    85→} from "@/components/ui/table";
+    86→import { useNavigationStore } from "@/stores/navigation";
+    87→import { cn } from "@/lib/utils";
+    88→
+    89→/**
+    90→ * Backups (Phase 3-a): fleet-wide snapshot history with audited raw-config
+    91→ * downloads plus backup policy management — policies become live schedules
+    92→ * on the next worker tick (30 s).
+    93→ */
+    94→
+    95→const ALL = "ALL";
+    96→const PAGE_SIZE = 25;
+    97→
+    98→const CRITICALITY_OPTIONS = [
+    99→  { value: "LOW", label: "Low" },
+   100→  { value: "MEDIUM", label: "Medium" },
+   101→  { value: "HIGH", label: "High" },
+   102→  { value: "CRITICAL", label: "Critical" },
+   103→];
+   104→
+   105→// OFFLINE/UNMANAGED are never scheduled by the worker, so the scope
+   106→// include-filter does not offer them.
+   107→const STATUS_OPTIONS = [
+   108→  { value: "ONLINE", label: "Online" },
+   109→  { value: "DEGRADED", label: "Degraded" },
+   110→  { value: "MAINTENANCE", label: "Maintenance" },
+   111→  { value: "UNKNOWN", label: "Unknown" },
+   112→];
+   113→
+   114→const CRON_PRESETS = [
+   115→  { label: "Daily 02:00", value: "0 2 * * *" },
+   116→  { label: "Every 6h", value: "0 */6 * * *" },
+   117→  { label: "Weekly Sun 03:00", value: "0 3 * * 0" },
+   118→];
+   119→
+   120→function formatSize(sizeBytes: number): string {
+   121→  return `${(sizeBytes / 1024).toFixed(1)} KB`;
+   122→}
+   123→
+   124→/* ------------------------------------------------------------------ */
+   125→/* History tab                                                          */
+   126→/* ------------------------------------------------------------------ */
+   127→
+   128→function HistoryTab() {
+   129→  const { toast } = useToast();
+   130→  const setActiveView = useNavigationStore((state) => state.setActiveView);
+   131→
+   132→  const [searchInput, setSearchInput] = useState("");
+   133→  const [q, setQ] = useState("");
+   134→  const [status, setStatus] = useState(ALL);
+   135→  const [source, setSource] = useState(ALL);
+   136→  const [page, setPage] = useState(1);
+   137→  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+   138→
+   139→  const snapshots = useSnapshots({
+   140→    q: q || undefined,
+   141→    status: status !== ALL ? status : undefined,
+   142→    source: source !== ALL ? source : undefined,
+   143→    page,
+   144→    pageSize: PAGE_SIZE,
+   145→  });
+   146→
+   147→  // Debounce the search box into the query (same pattern as Devices view).
+   148→  useEffect(() => {
+   149→    const timer = setTimeout(() => {
+   150→      const next = searchInput.trim();
+   151→      if (next !== q) {
+   152→        setQ(next);
+   153→        setPage(1);
+   154→      }
+   155→    }, 300);
+   156→    return () => clearTimeout(timer);
+   157→  }, [searchInput, q]);
+   158→
+   159→  const rows = snapshots.data?.data ?? [];
+   160→  const metaInfo = snapshots.data?.meta;
+   161→
+   162→  /** Audited raw-config download: fetch → blob → anchor click (F-12). */
+   163→  const handleDownload = async (row: FleetSnapshotRow) => {
+   164→    setDownloadingId(row.id);
+   165→    try {
+   166→      const res = await fetch(
+   167→        `/api/v1/devices/${row.deviceId}/snapshots/${row.id}/download`,
+   168→        { cache: "no-store" }
+   169→      );
+   170→      if (!res.ok) {
+   171→        let message = `HTTP ${res.status}`;
+   172→        try {
+   173→          const body = (await res.json()) as { error?: { message?: string } };
+   174→          if (body?.error?.message) message = body.error.message;
+   175→        } catch {
+   176→          // not a JSON envelope — keep the HTTP status message
+   177→        }
+   178→        throw new Error(message);
+   179→      }
+   180→      const blob = await res.blob();
+   181→      const disposition = res.headers.get("Content-Disposition") ?? "";
+   182→      const match = disposition.match(/filename="([^"]+)"/);
+   183→      const filename = match?.[1] ?? `${row.hostname}-v${row.version}.cfg`;
+   184→      const url = URL.createObjectURL(blob);
+   185→      const anchor = document.createElement("a");
+   186→      anchor.href = url;
+   187→      anchor.download = filename;
+   188→      document.body.appendChild(anchor);
+   189→      anchor.click();
+   190→      anchor.remove();
+   191→      URL.revokeObjectURL(url);
+   192→      toast({
+   193→        title: "Download started — recorded in audit log",
+   194→        description: `${row.hostname} v${row.version} · ${filename}`,
+   195→      });
+   196→    } catch (error) {
+   197→      toast({
+   198→        title: "Download failed",
+   199→        description: error instanceof Error ? error.message : "Unknown error",
+   200→        variant: "destructive",
+   201→      });
+   202→    } finally {
+   203→      setDownloadingId(null);
+   204→    }
+   205→  };
+   206→
+   207→  const statusFilter = (
+   208→    <Select
+   209→      onValueChange={(value) => {
+   210→        setStatus(value);
+   211→        setPage(1);
+   212→      }}
+   213→      value={status}
+   214→    >
+   215→      <SelectTrigger aria-label="Filter by snapshot status" className="h-8 w-36 text-xs">
+   216→        <SelectValue />
+   217→      </SelectTrigger>
+   218→      <SelectContent>
+   219→        <SelectItem value={ALL}>All statuses</SelectItem>
+   220→        {Object.values(SNAPSHOT_STATUS).map((config) => (
+   221→          <SelectItem key={config.key} value={config.key}>
+   222→            {config.label}
+   223→          </SelectItem>
+   224→        ))}
+   225→      </SelectContent>
+   226→    </Select>
+   227→  );
+   228→
+   229→  const sourceFilter = (
+   230→    <Select
+   231→      onValueChange={(value) => {
+   232→        setSource(value);
+   233→        setPage(1);
+   234→      }}
+   235→      value={source}
+   236→    >
+   237→      <SelectTrigger aria-label="Filter by capture source" className="h-8 w-36 text-xs">
+   238→        <SelectValue />
+   239→      </SelectTrigger>
+   240→      <SelectContent>
+   241→        <SelectItem value={ALL}>All sources</SelectItem>
+   242→        {Object.values(SNAPSHOT_SOURCE).map((config) => (
+   243→          <SelectItem key={config.key} value={config.key}>
+   244→            {config.label}
+   245→          </SelectItem>
+   246→        ))}
+   247→      </SelectContent>
+   248→    </Select>
+   249→  );
+   250→
+   251→  return (
+   252→    <SectionCard
+   253→      contentClassName="p-0"
+   254→      description="Every configuration version captured across the fleet — raw downloads are audited"
+   255→      title="Backup history"
+   256→    >
+   257→      {/* Toolbar */}
+   258→      <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
+   259→        <div className="relative min-w-0 flex-1 sm:max-w-xs">
+   260→          <Search
+   261→            aria-hidden="true"
+   262→            className="absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+   263→          />
+   264→          <Input
+   265→            aria-label="Search by device hostname or IP"
+   266→            className="h-8 ps-8 text-xs"
+   267→            onChange={(event) => setSearchInput(event.target.value)}
+   268→            placeholder="Search device…"
+   269→            value={searchInput}
+   270→          />
+   271→        </div>
+   272→        {statusFilter}
+   273→        {sourceFilter}
+   274→        <Button
+   275→          onClick={() => {
+   276→            setStatus(ALL);
+   277→            setSource(ALL);
+   278→            setSearchInput("");
+   279→            setPage(1);
+   280→          }}
+   281→          size="sm"
+   282→          variant="ghost"
+   283→        >
+   284→          Reset
+   285→        </Button>
+   286→        <Button
+   287→          className="ms-auto"
+   288→          onClick={() => setActiveView("network.devices")}
+   289→          size="sm"
+   290→          variant="outline"
+   291→        >
+   292→          Backup now — open Devices
+   293→        </Button>
+   294→      </div>
+   295→
+   296→      {snapshots.isError ? (
+   297→        <div className="p-4">
+   298→          <ErrorState
+   299→            onRetry={() => void snapshots.refetch()}
+   300→            reason={snapshots.error.message}
+   301→            title="Backup history could not be loaded"
+   302→          />
+   303→        </div>
+   304→      ) : snapshots.isLoading ? (
+   305→        <div className="flex flex-col gap-2 p-4">
+   306→          {Array.from({ length: 6 }).map((_, index) => (
+   307→            <div key={index} className="h-10 animate-pulse rounded-md bg-muted/60" />
+   308→          ))}
+   309→        </div>
+   310→      ) : rows.length === 0 ? (
+   311→        <div className="p-4">
+   312→          <EmptyState
+   313→            description="Trigger “Backup now” from a device, or let a schedule run — captured configurations appear here."
+   314→            icon={CloudUpload}
+   315→            title="No backup snapshots found"
+   316→          />
+   317→        </div>
+   318→      ) : (
+   319→        <div className="max-h-[600px] overflow-y-auto">
+   320→          <div className="min-w-[980px]">
+   321→            <Table>
+   322→              <TableHeader>
+   323→                <TableRow className="hover:bg-transparent">
+   324→                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Time</TableHead>
+   325→                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Device</TableHead>
+   326→                  <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) md:table-cell">
+   327→                    Site
+   328→                  </TableHead>
+   329→                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Version</TableHead>
+   330→                  <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
+   331→                    Source
+   332→                  </TableHead>
+   333→                  <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
+   334→                    Size
+   335→                  </TableHead>
+   336→                  <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) lg:table-cell">
+   337→                    SHA-256
+   338→                  </TableHead>
+   339→                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Status</TableHead>
+   340→                  <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) lg:table-cell">
+   341→                    Correlation
+   342→                  </TableHead>
+   343→                  <TableHead className="h-(--density-row-h) px-(--density-cell-x) text-end">
+   344→                    Action
+   345→                  </TableHead>
+   346→                </TableRow>
+   347→              </TableHeader>
+   348→              <TableBody>
+   349→                {rows.map((row) => (
+   350→                  <TableRow key={row.id}>
+   351→                    <TableCell className="h-(--density-row-h) px-(--density-cell-x) text-xs text-muted-foreground tabular-nums">
+   352→                      {format(new Date(row.createdAt), "MMM d, HH:mm")}
+   353→                    </TableCell>
+   354→                    <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
+   355→                      <button
+   356→                        aria-label={`Open ${row.hostname} device detail`}
+   357→                        className="text-sm font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
+   358→                        onClick={() =>
+   359→                          setActiveView("network.device-detail", { deviceId: row.deviceId })
+   360→                        }
+   361→                        type="button"
+   362→                      >
+   363→                        {row.hostname}
+   364→                      </button>
+   365→                    </TableCell>
+   366→                    <TableCell className="hidden h-(--density-row-h) px-(--density-cell-x) text-xs text-muted-foreground md:table-cell">
+   367→                      {row.siteCode ?? "—"}
+   368→                    </TableCell>
+   369→                    <TableCell className="h-(--density-row-h) px-(--density-cell-x) font-tech text-sm ltr-technical">
+   370→                      v{row.version}
+   371→                    </TableCell>
+   372→                    <TableCell className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
+   373→                      <StatusBadge
+   374→                        config={getStatusConfig(SNAPSHOT_SOURCE, row.source)}
+   375→                        withIcon={false}
+   376→                      />
+   377→                    </TableCell>
+   378→                    <TableCell className="hidden h-(--density-row-h) px-(--density-cell-x) text-xs tabular-nums sm:table-cell">
+   379→                      {formatSize(row.sizeBytes)}
+   380→                    </TableCell>
+   381→                    <TableCell
+   382→                      className="hidden h-(--density-row-h) px-(--density-cell-x) font-tech text-xs ltr-technical text-muted-foreground lg:table-cell"
+   383→                      title={row.sha256}
+   384→                    >
+   385→                      {row.sha256.slice(0, 10)}…
+   386→                    </TableCell>
+   387→                    <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
+   388→                      <StatusBadge
+   389→                        config={getStatusConfig(SNAPSHOT_STATUS, row.status)}
+   390→                        withIcon={false}
+   391→                      />
+   392→                    </TableCell>
+   393→                    <TableCell className="hidden h-(--density-row-h) px-(--density-cell-x) font-tech text-xs ltr-technical text-muted-foreground lg:table-cell">
+   394→                      {row.correlationId ?? "—"}
+   395→                    </TableCell>
+   396→                    <TableCell className="h-(--density-row-h) px-(--density-cell-x) text-end">
+   397→                      <Button
+   398→                        aria-label={`Download ${row.hostname} configuration v${row.version}`}
+   399→                        disabled={downloadingId === row.id}
+   400→                        onClick={() => void handleDownload(row)}
+   401→                        size="sm"
+   402→                        variant="ghost"
+   403→                      >
+   404→                        {downloadingId === row.id ? (
+   405→                          <LoaderCircle aria-hidden="true" className="animate-spin" />
+   406→                        ) : (
+   407→                          <Download aria-hidden="true" />
+   408→                        )}
+   409→                        <span className="sr-only sm:not-sr-only">Download</span>
+   410→                      </Button>
+   411→                    </TableCell>
+   412→                  </TableRow>
+   413→                ))}
+   414→              </TableBody>
+   415→            </Table>
+   416→          </div>
+   417→        </div>
+   418→      )}
+   419→
+   420→      {/* Pagination footer */}
+   421→      {metaInfo && rows.length > 0 && (
+   422→        <div className="flex items-center justify-between gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
+   423→          <span className="tabular-nums">
+   424→            {metaInfo.total} snapshot{metaInfo.total === 1 ? "" : "s"} · page{" "}
+   425→            {metaInfo.page} of {metaInfo.totalPages}
+   426→          </span>
+   427→          <div className="flex items-center gap-1">
+   428→            <Button
+   429→              aria-label="Previous page"
+   430→              disabled={metaInfo.page <= 1}
+   431→              onClick={() => setPage((p) => Math.max(1, p - 1))}
+   432→              size="sm"
+   433→              variant="outline"
+   434→            >
+   435→              <ChevronLeft aria-hidden="true" />
+   436→              Prev
+   437→            </Button>
+   438→            <Button
+   439→              aria-label="Next page"
+   440→              disabled={metaInfo.page >= metaInfo.totalPages}
+   441→              onClick={() => setPage((p) => p + 1)}
+   442→              size="sm"
+   443→              variant="outline"
+   444→            >
+   445→              Next
+   446→              <ChevronRight aria-hidden="true" />
+   447→            </Button>
+   448→          </div>
+   449→        </div>
+   450→      )}
+   451→    </SectionCard>
+   452→  );
+   453→}
+   454→
+   455→/* ------------------------------------------------------------------ */
+   456→/* Policy form dialog (create + edit)                                   */
+   457→/* ------------------------------------------------------------------ */
+   458→
+   459→const policyFormSchema = z.object({
+   460→  name: z.string().trim().min(1, "Name is required").max(120),
+   461→  cronExpr: z
+   462→    .string()
+   463→    .trim()
+   464→    .min(1, "Cron expression is required")
+   465→    .refine(isValidCronExpr, {
+   466→      message: "Use a 5-field numeric cron expression, e.g. 0 2 * * *",
+   467→    }),
+   468→  siteCodes: z.array(z.string()),
+   469→  criticalities: z.array(z.string()),
+   470→  statuses: z.array(z.string()),
+   471→  // Kept as a string input so zodResolver's input/output types align with
+   472→  // the form values; converted to a number on submit.
+   473→  retentionDays: z
+   474→    .string()
+   475→    .trim()
+   476→    .min(1, "Retention is required")
+   477→    .regex(/^\d+$/, "Whole days only")
+   478→    .refine((value) => {
+   479→      const n = Number(value);
+   480→      return n >= 1 && n <= 3650;
+   481→    }, "Retention must be between 1 and 3650 days"),
+   482→  isActive: z.boolean(),
+   483→});
+   484→
+   485→type PolicyFormValues = z.infer<typeof policyFormSchema>;
+   486→
+   487→interface CheckboxGroupProps {
+   488→  label: string;
+   489→  hint?: string;
+   490→  options: { value: string; label: string }[];
+   491→  value: string[];
+   492→  onChange: (next: string[]) => void;
+   493→  error?: string;
+   494→}
+   495→
+   496→function CheckboxGroup({
+   497→  label,
+   498→  hint,
+   499→  options,
+   500→  value,
+   501→  onChange,
+   502→  error,
+   503→}: CheckboxGroupProps) {
+   504→  return (
+   505→    <div className="flex flex-col gap-1.5">
+   506→      <Label>{label}</Label>
+   507→      <div className="grid grid-cols-2 gap-2 rounded-md border bg-surface-subtle p-3">
+   508→        {options.map((option) => {
+   509→          const checked = value.includes(option.value);
+   510→          return (
+   511→            <label
+   512→              className="flex min-h-11 cursor-pointer items-center gap-2 text-sm md:min-h-0"
+   513→              key={option.value}
+   514→            >
+   515→              <Checkbox
+   516→                aria-label={`Scope ${label}: ${option.label}`}
+   517→                checked={checked}
+   518→                onCheckedChange={(checkedState) =>
+   519→                  onChange(
+   520→                    checkedState === true
+   521→                      ? [...value, option.value]
+   522→                      : value.filter((entry) => entry !== option.value)
+   523→                  )
+   524→                }
+   525→              />
+   526→              {option.label}
+   527→            </label>
+   528→          );
+   529→        })}
+   530→      </div>
+   531→      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+   532→      {error && <p className="text-xs text-danger">{error}</p>}
+   533→    </div>
+   534→  );
+   535→}
+   536→
+   537→function PolicyFormDialog({
+   538→  open,
+   539→  onOpenChange,
+   540→  policy,
+   541→}: {
+   542→  open: boolean;
+   543→  onOpenChange: (open: boolean) => void;
+   544→  /** When provided the dialog edits this policy instead of creating one. */
+   545→  policy?: BackupPolicyRow | null;
+   546→}) {
+   547→  const meta = useMeta();
+   548→  const createPolicy = useCreateBackupPolicy();
+   549→  const updatePolicy = useUpdateBackupPolicy();
+   550→
+   551→  const editing = Boolean(policy);
+   552→  const defaultValues: PolicyFormValues = useMemo(
+   553→    () => ({
+   554→      name: policy?.name ?? "",
+   555→      cronExpr: policy?.cronExpr ?? "0 2 * * *",
+   556→      siteCodes: policy?.scope.siteCodes ?? [],
+   557→      criticalities: policy?.scope.criticalities ?? [],
+   558→      statuses: policy?.scope.statuses ?? [],
+   559→      retentionDays: String(policy?.retentionDays ?? 90),
+   560→      isActive: policy?.isActive ?? true,
+   561→    }),
+   562→    [policy]
+   563→  );
+   564→
+   565→  const form = useForm<PolicyFormValues>({
+   566→    defaultValues,
+   567→    resolver: zodResolver(policyFormSchema),
+   568→    mode: "onSubmit",
+   569→  });
+   570→
+   571→  // useWatch (compiler-safe) instead of form.watch() — see device-form-sheet.
+   572→  const cronExpr = useWatch({ control: form.control, name: "cronExpr" });
+   573→  const siteCodes = useWatch({ control: form.control, name: "siteCodes" });
+   574→  const criticalities = useWatch({ control: form.control, name: "criticalities" });
+   575→  const statuses = useWatch({ control: form.control, name: "statuses" });
+   576→  const isActive = useWatch({ control: form.control, name: "isActive" });
+   577→
+   578→  useEffect(() => {
+   579→    if (open) {
+   580→      form.reset(defaultValues);
+   581→    }
+   582→  }, [open, defaultValues, form]);
+   583→
+   584→  const pending = createPolicy.isPending || updatePolicy.isPending;
+   585→
+   586→  const onSubmit = (values: PolicyFormValues) => {
+   587→    const payload = {
+   588→      name: values.name,
+   589→      cronExpr: values.cronExpr,
+   590→      scope: {
+   591→        siteCodes: values.siteCodes,
+   592→        criticalities: values.criticalities,
+   593→        statuses: values.statuses,
+   594→      },
+   595→      retentionDays: Number(values.retentionDays),
+   596→      isActive: values.isActive,
+   597→    };
+   598→    if (editing && policy) {
+   599→      updatePolicy.mutate(
+   600→        { id: policy.id, data: payload },
+   601→        { onSuccess: () => onOpenChange(false) }
+   602→      );
+   603→      return;
+   604→    }
+   605→    createPolicy.mutate(payload, { onSuccess: () => onOpenChange(false) });
+   606→  };
+   607→
+   608→  const sites = meta.data?.sites ?? [];
+   609→  const siteOptions = [
+   610→    { value: "*", label: "All sites (fleet-wide)" },
+   611→    ...sites.map((site) => ({ value: site.code, label: `${site.name} (${site.code})` })),
+   612→  ];
+   613→
+   614→  /** "All sites" is mutually exclusive with explicit site codes. */
+   615→  const handleSiteCodesChange = (next: string[]) => {
+   616→    const hadStar = siteCodes.includes("*");
+   617→    const hasStar = next.includes("*");
+   618→    if (!hadStar && hasStar) {
+   619→      form.setValue("siteCodes", ["*"], { shouldValidate: true });
+   620→      return;
+   621→    }
+   622→    form.setValue(
+   623→      "siteCodes",
+   624→      next.filter((code) => code !== "*" || next.length === 1),
+   625→      { shouldValidate: true }
+   626→    );
+   627→  };
+   628→
+   629→  const hint = cronHint(cronExpr ?? "");
+   630→
+   631→  return (
+   632→    <Dialog onOpenChange={onOpenChange} open={open}>
+   633→      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+   634→        <DialogHeader>
+   635→          <DialogTitle>{editing ? "Edit backup policy" : "New backup policy"}</DialogTitle>
+   636→          <DialogDescription>
+   637→            The worker scheduler evaluates active policies every 30 seconds —
+   638→            saved changes become live schedules automatically.
+   639→          </DialogDescription>
+   640→        </DialogHeader>
+   641→
+   642→        <form className="flex flex-col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
+   643→          <div className="flex flex-col gap-1.5">
+   644→            <Label htmlFor="policy-name">Name *</Label>
+   645→            <Input
+   646→              {...form.register("name")}
+   647→              aria-invalid={Boolean(form.formState.errors.name)}
+   648→              id="policy-name"
+   649→              placeholder="Daily Full Fleet 02:00"
+   650→            />
+   651→            {form.formState.errors.name && (
+   652→              <p className="text-xs text-danger">{form.formState.errors.name.message}</p>
+   653→            )}
+   654→          </div>
+   655→
+   656→          <div className="flex flex-col gap-1.5">
+   657→            <Label htmlFor="policy-cron">Schedule (cron) *</Label>
+   658→            <div className="flex flex-wrap gap-1.5">
+   659→              {CRON_PRESETS.map((preset) => (
+   660→                <Button
+   661→                  key={preset.value}
+   662→                  onClick={() =>
+   663→                    form.setValue("cronExpr", preset.value, { shouldValidate: true })
+   664→                  }
+   665→                  size="sm"
+   666→                  type="button"
+   667→                  variant={cronExpr === preset.value ? "secondary" : "outline"}
+   668→                >
+   669→                  {preset.label}
+   670→                </Button>
+   671→              ))}
+   672→            </div>
+   673→            <Input
+   674→              {...form.register("cronExpr")}
+   675→              aria-invalid={Boolean(form.formState.errors.cronExpr)}
+   676→              className="font-tech ltr-technical"
+   677→              id="policy-cron"
+   678→              placeholder="0 2 * * *"
+   679→            />
+   680→            {hint && !form.formState.errors.cronExpr && (
+   681→              <p className="text-xs text-info">{hint}</p>
+   682→            )}
+   683→            {form.formState.errors.cronExpr && (
+   684→              <p className="text-xs text-danger">{form.formState.errors.cronExpr.message}</p>
+   685→            )}
+   686→          </div>
+   687→
+   688→          <CheckboxGroup
+   689→            error={form.formState.errors.siteCodes?.message}
+   690→            hint="Devices from the selected sites. Leave empty for all sites."
+   691→            label="Sites"
+   692→            onChange={handleSiteCodesChange}
+   693→            options={siteOptions}
+   694→            value={siteCodes ?? []}
+   695→          />
+   696→
+   697→          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   698→            <CheckboxGroup
+   699→              label="Criticalities"
+   700→              onChange={(next) =>
+   701→                form.setValue("criticalities", next, { shouldValidate: true })
+   702→              }
+   703→              options={CRITICALITY_OPTIONS}
+   704→              value={criticalities ?? []}
+   705→            />
+   706→            <CheckboxGroup
+   707→              hint="Offline and unmanaged devices are never scheduled."
+   708→              label="Statuses"
+   709→              onChange={(next) =>
+   710→                form.setValue("statuses", next, { shouldValidate: true })
+   711→              }
+   712→              options={STATUS_OPTIONS}
+   713→              value={statuses ?? []}
+   714→            />
+   715→          </div>
+   716→
+   717→          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   718→            <div className="flex flex-col gap-1.5">
+   719→              <Label htmlFor="policy-retention">Retention (days) *</Label>
+   720→              <Input
+   721→                {...form.register("retentionDays")}
+   722→                aria-invalid={Boolean(form.formState.errors.retentionDays)}
+   723→                id="policy-retention"
+   724→                inputMode="numeric"
+   725→              />
+   726→              <p className="text-xs text-muted-foreground">
+   727→                Historical versions older than this are pruned by the scheduler.
+   728→              </p>
+   729→              {form.formState.errors.retentionDays && (
+   730→                <p className="text-xs text-danger">
+   731→                  {form.formState.errors.retentionDays.message}
+   732→                </p>
+   733→              )}
+   734→            </div>
+   735→            <div className="flex flex-col gap-1.5">
+   736→              <Label htmlFor="policy-active">Active</Label>
+   737→              <div className="flex h-9 items-center gap-2">
+   738→                <Switch
+   739→                  aria-label="Policy active"
+   740→                  checked={isActive}
+   741→                  id="policy-active"
+   742→                  onCheckedChange={(checked) => form.setValue("isActive", checked)}
+   743→                />
+   744→                <span className="text-sm text-muted-foreground">
+   745→                  {isActive ? "Scheduler runs this policy" : "Paused"}
+   746→                </span>
+   747→              </div>
+   748→            </div>
+   749→          </div>
+   750→
+   751→          <DialogFooter>
+   752→            <Button
+   753→              disabled={pending}
+   754→              onClick={() => onOpenChange(false)}
+   755→              type="button"
+   756→              variant="outline"
+   757→            >
+   758→              Cancel
+   759→            </Button>
+   760→            <Button disabled={pending} type="submit">
+   761→              {pending && <LoaderCircle aria-hidden="true" className="animate-spin" />}
+   762→              {editing ? "Save changes" : "Create policy"}
+   763→            </Button>
+   764→          </DialogFooter>
+   765→        </form>
+   766→      </DialogContent>
+   767→    </Dialog>
+   768→  );
+   769→}
+   770→
+   771→/* ------------------------------------------------------------------ */
+   772→/* Policies tab                                                         */
+   773→/* ------------------------------------------------------------------ */
+   774→
+   775→function ScopeChips({ policy }: { policy: BackupPolicyRow }) {
+   776→  const { scope } = policy;
+   777→  const chips: { label: string; value: string }[] = [];
+   778→
+   779→  if (scope.siteCodes.length > 0) {
+   780→    chips.push({
+   781→      label: "Sites",
+   782→      value: scope.siteCodes.includes("*")
+   783→        ? "All sites"
+   784→        : scope.siteCodes.join(", "),
+   785→    });
+   786→  }
+   787→  for (const criticality of scope.criticalities) {
+   788→    chips.push({
+   789→      label: "Criticality",
+   790→      value:
+   791→        CRITICALITY_OPTIONS.find((option) => option.value === criticality)?.label ??
+   792→        criticality,
+   793→    });
+   794→  }
+   795→  for (const status of scope.statuses) {
+   796→    chips.push({
+   797→      label: "Status",
+   798→      value: getStatusConfig(DEVICE_STATUS, status).label,
+   799→    });
+   800→  }
+   801→
+   802→  if (chips.length === 0) {
+   803→    return (
+   804→      <span className="text-xs text-muted-foreground">
+   805→        Fleet-wide — all manageable devices
+   806→      </span>
+   807→    );
+   808→  }
+   809→
+   810→  return (
+   811→    <div className="flex flex-wrap gap-1">
+   812→      {chips.map((chip) => (
+   813→        <FilterChip key={`${chip.label}-${chip.value}`} label={chip.label} value={chip.value} />
+   814→      ))}
+   815→    </div>
+   816→  );
+   817→}
+   818→
+   819→function PoliciesTab() {
+   820→  const policies = useBackupPolicies();
+   821→  const updatePolicy = useUpdateBackupPolicy();
+   822→  const deletePolicy = useDeleteBackupPolicy();
+   823→
+   824→  const [formOpen, setFormOpen] = useState(false);
+   825→  const [editing, setEditing] = useState<BackupPolicyRow | null>(null);
+   826→  const [deleting, setDeleting] = useState<BackupPolicyRow | null>(null);
+   827→
+   828→  const rows = policies.data ?? [];
+   829→
+   830→  return (
+   831→    <>
+   832→      <SectionCard
+   833→        contentClassName="p-0"
+   834→        actions={
+   835→          <Button
+   836→            onClick={() => {
+   837→              setEditing(null);
+   838→              setFormOpen(true);
+   839→            }}
+   840→            size="sm"
+   841→          >
+   842→            <Plus aria-hidden="true" />
+   843→            New policy
+   844→          </Button>
+   845→        }
+   846→        description="Schedules evaluated by the worker every 30 seconds; retention pruning runs on each tick"
+   847→        title="Backup policies"
+   848→      >
+   849→        {policies.isError ? (
+   850→          <div className="p-4">
+   851→            <ErrorState
+   852→              onRetry={() => void policies.refetch()}
+   853→              reason={policies.error.message}
+   854→              title="Backup policies could not be loaded"
+   855→            />
+   856→          </div>
+   857→        ) : policies.isLoading ? (
+   858→          <div className="flex flex-col gap-2 p-4">
+   859→            {Array.from({ length: 3 }).map((_, index) => (
+   860→              <div key={index} className="h-12 animate-pulse rounded-md bg-muted/60" />
+   861→            ))}
+   862→          </div>
+   863→        ) : rows.length === 0 ? (
+   864→          <div className="p-4">
+   865→            <EmptyState
+   866→              description="Create a policy with a cron schedule and scope — it starts enqueueing backup jobs on the next tick."
+   867→              icon={CalendarClock}
+   868→              title="No backup policies yet"
+   869→            />
+   870→          </div>
+   871→        ) : (
+   872→          <div className="overflow-x-auto">
+   873→            <Table className="min-w-[900px]">
+   874→              <TableHeader>
+   875→                <TableRow className="hover:bg-transparent">
+   876→                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Policy</TableHead>
+   877→                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Schedule</TableHead>
+   878→                  <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) lg:table-cell">
+   879→                    Scope
+   880→                  </TableHead>
+   881→                  <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
+   882→                    Devices
+   883→                  </TableHead>
+   884→                  <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) md:table-cell">
+   885→                    Retention
+   886→                  </TableHead>
+   887→                  <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) xl:table-cell">
+   888→                    Last enqueued
+   889→                  </TableHead>
+   890→                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Active</TableHead>
+   891→                  <TableHead className="h-(--density-row-h) px-(--density-cell-x) text-end">
+   892→                    Actions
+   893→                  </TableHead>
+   894→                </TableRow>
+   895→              </TableHeader>
+   896→              <TableBody>
+   897→                {rows.map((policy) => {
+   898→                  const hint = cronHint(policy.cronExpr);
+   899→                  return (
+   900→                    <TableRow key={policy.id}>
+   901→                      <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
+   902→                        <span className="text-sm font-medium">{policy.name}</span>
+   903→                      </TableCell>
+   904→                      <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
+   905→                        <div className="flex flex-col">
+   906→                          <span className="font-tech text-sm ltr-technical">
+   907→                            {policy.cronExpr}
+   908→                          </span>
+   909→                          {hint && (
+   910→                            <span className="text-xs text-muted-foreground">{hint}</span>
+   911→                          )}
+   912→                        </div>
+   913→                      </TableCell>
+   914→                      <TableCell className="hidden h-(--density-row-h) max-w-[280px] px-(--density-cell-x) lg:table-cell">
+   915→                        <ScopeChips policy={policy} />
+   916→                      </TableCell>
+   917→                      <TableCell className="hidden h-(--density-row-h) px-(--density-cell-x) tabular-nums sm:table-cell">
+   918→                        {policy.scopedDeviceCount}
+   919→                      </TableCell>
+   920→                      <TableCell className="hidden h-(--density-row-h) px-(--density-cell-x) text-xs tabular-nums md:table-cell">
+   921→                        {policy.retentionDays} days
+   922→                      </TableCell>
+   923→                      <TableCell className="hidden h-(--density-row-h) px-(--density-cell-x) text-xs text-muted-foreground tabular-nums xl:table-cell">
+   924→                        {policy.lastEnqueuedAt
+   925→                          ? formatDistanceToNow(new Date(policy.lastEnqueuedAt), {
+   926→                              addSuffix: true,
+   927→                            })
+   928→                          : "never"}
+   929→                      </TableCell>
+   930→                      <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
+   931→                        <Switch
+   932→                          aria-label={`${policy.isActive ? "Pause" : "Enable"} policy ${policy.name}`}
+   933→                          checked={policy.isActive}
+   934→                          disabled={updatePolicy.isPending}
+   935→                          onCheckedChange={(checked) =>
+   936→                            updatePolicy.mutate({
+   937→                              id: policy.id,
+   938→                              data: { isActive: checked },
+   939→                            })
+   940→                          }
+   941→                        />
+   942→                      </TableCell>
+   943→                      <TableCell className="h-(--density-row-h) px-(--density-cell-x) text-end">
+   944→                        <div className="flex items-center justify-end gap-1">
+   945→                          <Button
+   946→                            aria-label={`Edit policy ${policy.name}`}
+   947→                            onClick={() => {
+   948→                              setEditing(policy);
+   949→                              setFormOpen(true);
+   950→                            }}
+   951→                            size="sm"
+   952→                            variant="ghost"
+   953→                          >
+   954→                            <Pencil aria-hidden="true" />
+   955→                            <span className="sr-only">Edit</span>
+   956→                          </Button>
+   957→                          <Button
+   958→                            aria-label={`Delete policy ${policy.name}`}
+   959→                            onClick={() => setDeleting(policy)}
+   960→                            size="sm"
+   961→                            variant="ghost"
+   962→                          >
+   963→                            <Trash2 aria-hidden="true" className="text-danger" />
+   964→                            <span className="sr-only">Delete</span>
+   965→                          </Button>
+   966→                        </div>
+   967→                      </TableCell>
+   968→                    </TableRow>
+   969→                  );
+   970→                })}
+   971→              </TableBody>
+   972→            </Table>
+   973→          </div>
+   974→        )}
+   975→      </SectionCard>
+   976→
+   977→      <PolicyFormDialog
+   978→        onOpenChange={setFormOpen}
+   979→        open={formOpen}
+   980→        policy={editing}
+   981→      />
+   982→
+   983→      <AlertDialog
+   984→        onOpenChange={(open) => !open && setDeleting(null)}
+   985→        open={deleting !== null}
+   986→      >
+   987→        <AlertDialogContent>
+   988→          <AlertDialogHeader>
+   989→            <AlertDialogTitle>Delete backup policy?</AlertDialogTitle>
+   990→            <AlertDialogDescription>
+   991→              “{deleting?.name}” will stop enqueueing scheduled backups. Existing
+   992→              snapshots, jobs and audit history are kept. This action is recorded
+   993→              in the audit log.
+   994→            </AlertDialogDescription>
+   995→          </AlertDialogHeader>
+   996→          <AlertDialogFooter>
+   997→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   998→            <AlertDialogAction
+   999→              className={cn("bg-danger text-white hover:bg-danger/90")}
+  1000→              onClick={() => {
+  1001→                if (deleting) deletePolicy.mutate(deleting.id);
+  1002→                setDeleting(null);
+  1003→              }}
+  1004→            >
+  1005→              Delete policy
+  1006→            </AlertDialogAction>
+  1007→          </AlertDialogFooter>
+  1008→        </AlertDialogContent>
+  1009→      </AlertDialog>
+  1010→    </>
+  1011→  );
+  1012→}
+  1013→
+  1014→/* ------------------------------------------------------------------ */
+  1015→/* View                                                                 */
+  1016→/* ------------------------------------------------------------------ */
+  1017→
+  1018→export function BackupsView() {
+  1019→  const [tab, setTab] = useState("history");
+  1020→
+  1021→  return (
+  1022→    <div className="flex flex-col gap-4">
+  1023→      <PageHeader
+  1024→        description="Fleet-wide configuration backup history, policies and retention"
+  1025→        title="Backups"
+  1026→      />
+  1027→      <Tabs
+  1028→        onValueChange={setTab}
+  1029→        value={tab}
+  1030→      >
+  1031→        <TabsList>
+  1032→          <TabsTrigger value="history">History</TabsTrigger>
+  1033→          <TabsTrigger value="policies">Policies</TabsTrigger>
+  1034→        </TabsList>
+  1035→        <TabsContent className="mt-4" value="history">
+  1036→          <HistoryTab />
+  1037→        </TabsContent>
+  1038→        <TabsContent className="mt-4" value="policies">
+  1039→          <PoliciesTab />
+  1040→        </TabsContent>
+  1041→      </Tabs>
+  1042→    </div>
+  1043→  );
+  1044→}
+  1045→

@@ -3,16 +3,21 @@
 import { getViewMeta } from "@/lib/navigation/registry";
 import { useNavigationStore } from "@/stores/navigation";
 import { AlertsView } from "@/components/views/alerts-view";
+import { BackupComplianceView } from "@/components/views/backup-compliance-view";
+import { BackupsView } from "@/components/views/backups-view";
+import { BaselinesView } from "@/components/views/baselines-view";
 import { ChangesView } from "@/components/views/changes-view";
 import { CredentialsView } from "@/components/views/credentials-view";
 import { DashboardView } from "@/components/views/dashboard-view";
 import { DeviceDetailView } from "@/components/views/device-detail-view";
 import { DevicesView } from "@/components/views/devices-view";
 import { DiscoveryView } from "@/components/views/discovery-view";
+import { DriftView } from "@/components/views/drift-view";
 import { IncidentsView } from "@/components/views/incidents-view";
 import { JobsView } from "@/components/views/jobs-view";
 import { PlaceholderView } from "@/components/views/placeholder-view";
 import { SitesView } from "@/components/views/sites-view";
+import { SnapshotsView } from "@/components/views/snapshots-view";
 
 /**
  * Client-side view router (ADR-02): maps the active ViewKey from the
@@ -21,7 +26,9 @@ import { SitesView } from "@/components/views/sites-view";
  *
  * Implemented: dashboard, network.devices, network.device-detail (Phase 2),
  * network.sites (Phase 2), network.discovery (Phase 2-c), admin.credentials
- * (Phase 2-c), ops.alerts, ops.incidents, changes.all, ops.jobs.
+ * (Phase 2-c), ops.alerts, ops.incidents, changes.all, ops.jobs,
+ * config.backups + config.compliance (Phase 3-a), config.snapshots
+ * (Phase 3-b), config.baselines + config.drift (Phase 3-c).
  */
 export function ViewRouter() {
   const activeView = useNavigationStore((state) => state.activeView);
@@ -47,6 +54,16 @@ export function ViewRouter() {
       return <ChangesView />;
     case "ops.jobs":
       return <JobsView />;
+    case "config.backups":
+      return <BackupsView />;
+    case "config.snapshots":
+      return <SnapshotsView />;
+    case "config.compliance":
+      return <BackupComplianceView />;
+    case "config.baselines":
+      return <BaselinesView />;
+    case "config.drift":
+      return <DriftView />;
     default: {
       const meta = getViewMeta(activeView);
       return <PlaceholderView meta={meta} viewKey={activeView} />;

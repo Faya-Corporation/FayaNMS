@@ -659,3 +659,315 @@ export interface CreateJobResult {
     correlationId: string;
   };
 }
+
+/* ------------------ Backup engine (Task 3-a) ----------------------- */
+
+/**
+ * One row of the fleet-wide snapshot history (GET /api/v1/snapshots).
+ * Metadata only — raw config text is fetched per device or via the
+ * audited download endpoint.
+ */
+export interface FleetSnapshotRow {
+  id: string;
+  deviceId: string;
+  hostname: string;
+  siteName: string | null;
+  siteCode: string | null;
+  version: number;
+  source: string;
+  configType: string;
+  status: string;
+  sha256: string;
+  sizeBytes: number;
+  createdAt: string;
+  correlationId: string | null;
+}
+
+/** Type alias (not interface) so it satisfies ListParams / Record<string, unknown>. */
+export type FleetSnapshotParams = {
+  /** csv multi, e.g. "CURRENT,HISTORICAL" */
+  status?: string;
+  /** csv multi, e.g. "SCHEDULED,MANUAL" */
+  source?: string;
+  /** Device hostname / mgmtIp contains. */
+  q?: string;
+  deviceId?: string;
+  page?: number;
+  /** Hard-capped at 25 server-side. */
+  pageSize?: number;
+};
+
+/** Canonical policy scope (stored in scopeJson; legacy keys normalized on read). */
+export interface BackupPolicyScope {
+  /** Site codes; ["*"] = every site; [] = every site. */
+  siteCodes: string[];
+  /** LOW | MEDIUM | HIGH | CRITICAL; [] = all. */
+  criticalities: string[];
+  /** Status include-filter (ONLINE|DEGRADED|MAINTENANCE|UNKNOWN); [] = all. */
+  statuses: string[];
+}
+
+/** BackupPolicy row as served by GET /api/v1/backup-policies (+ computed stats). */
+export interface BackupPolicyRow {
+  id: string;
+  name: string;
+  cronExpr: string;
+  scope: BackupPolicyScope;
+  retentionDays: number;
+  isActive: boolean;
+  /** Devices matched by the scope (scheduler convention: UNMANAGED/OFFLINE excluded). */
+  scopedDeviceCount: number;
+  /** Most recent CONFIG_BACKUP job enqueued for this policy (any status). */
+  lastEnqueuedAt: string | null;
+}
+
+/** Raw BackupPolicy row as returned by POST/PATCH (scopeJson serialized). */
+export interface BackupPolicyRecord {
+  id: string;
+  name: string;
+  cronExpr: string;
+  scopeJson: string;
+  retentionDays: number;
+  isActive: boolean;
+}
+
+export interface BackupPolicyPayload {
+  name: string;
+  cronExpr: string;
+  scope?: Partial<BackupPolicyScope>;
+  retentionDays?: number;
+  isActive?: boolean;
+}
+
+/** PATCH body — every field optional (e.g. the inline isActive toggle). */
+export interface UpdateBackupPolicyPayload {
+  name?: string;
+  cronExpr?: string;
+  scope?: Partial<BackupPolicyScope>;
+  retentionDays?: number;
+  isActive?: boolean;
+}
+
+export interface BackupPolicyMutationResult {
+  policy: BackupPolicyRecord;
+  audit: {
+    id: string;
+    action: string;
+    resourceLabel: string | null;
+    correlationId: string;
+  };
+}
+
+export interface DeleteBackupPolicyResult {
+  deleted: boolean;
+  audit: {
+    id: string;
+    action: string;
+    resourceLabel: string | null;
+    correlationId: string;
+  };
+}
+
+/** Band key from the BACKUP_COMPLIANCE map (stale >72h renders as OVERDUE). */
+export type BackupComplianceBand = "COMPLIANT" | "OVERDUE" | "NEVER_BACKED_UP";
+
+export interface BackupCompliancePayload {
+  kpis: {
+    managedDevices: number;
+    compliant: number;
+    atRisk: number;
+    nonCompliant: number;
+    compliantPct: number;
+    snapshotsLast24h: number;
+  };
+  perSite: {
+    siteId: string | null;
+    siteName: string;
+    siteCode: string | null;
+    managed: number;
+    compliant: number;
+    atRisk: number;
+    nonCompliant: number;
+    compliantPct: number | null;
+  }[];
+  staleDevices: {
+    deviceId: string;
+    hostname: string;
+    siteName: string | null;
+    siteCode: string | null;
+    lastBackupAt: string | null;
+    band: BackupComplianceBand;
+  }[];
+  bands: {
+    compliantWindowHours: number;
+    atRiskWindowHours: number;
+    note: string;
+  };
+}
+
+/* ---------------- Baselines & drift (Task 3-c) ---------------------- */
+
+/**
+ * One row of GET /api/v1/baselines — the LATEST ConfigBaseline per device
+ * joined with its snapshot, approver, OPEN drift count and the device's
+ * latest CURRENT snapshot (powers the baseline-vs-running diff dialog).
+ */
+export interface BaselineRow {
+  id: string;
+  deviceId: string;
+  hostname: string;
+  siteName: string | null;
+  siteCode: string | null;
+  snapshotId: string;
+  version: number;
+  sha256: string;
+  snapshotStatus: string;
+  snapshotCreatedAt: string;
+  approvedAt: string;
+  approvedBy: string | null;
+  note: string | null;
+  openDriftCount: number;
+  current: { snapshotId: string; version: number } | null;
+}
+
+/** meta of GET /api/v1/baselines (unpaged — small table). */
+export interface BaselinesMeta {
+  baselineDevices: number;
+  devicesWithoutBaseline: number;
+  withoutBaselineDevices: { id: string; hostname: string }[];
+}
+
+export interface ApproveBaselinePayload {
+  deviceId: string;
+  snapshotId: string;
+  note?: string;
+}
+
+export interface BaselineMutationResult {
+  baseline: { id: string; deviceId: string; snapshotId: string };
+  version: number;
+  snapshotStatus: string;
+  audit: { action: string; correlationId: string };
+}
+
+export interface RevokeBaselineResult {
+  deleted: boolean;
+  id: string;
+  audit: { action: string; correlationId: string };
+}
+
+/** One row of GET /api/v1/drift. */
+export interface DriftRow {
+  id: string;
+  deviceId: string;
+  hostname: string;
+  siteName: string | null;
+  siteCode: string | null;
+  baselineSnapshotId: string;
+  baselineVersion: number;
+  baselineSha256: string;
+  currentSnapshotId: string;
+  currentVersion: number;
+  currentSha256: string;
+  currentCreatedAt: string;
+  detectedAt: string;
+  diffSummary: string | null;
+  status: string;
+  resolvedAt: string | null;
+}
+
+/** meta of GET /api/v1/drift (page fields + summary KPIs). */
+export interface DriftListMeta extends PageMetaInfo {
+  open: number;
+  accepted: number;
+  resolvedToday: number;
+  /** finishedAt of the latest DRIFT_CHECK job (null = never checked). */
+  lastCheckedAt: string | null;
+  /** Distinct devices with an OPEN drift record. */
+  devicesAffected: number;
+  /** Whether ANY device has a baseline (gates the "Run drift check" action). */
+  hasBaselines: boolean;
+}
+
+export interface DriftCheckPayload {
+  deviceId?: string;
+}
+
+export interface DriftCheckResult {
+  enqueued: number;
+  correlationId: string;
+  jobs?: { jobId?: string; deviceId: string; hostname: string }[];
+}
+
+export interface DriftActionResult {
+  record: {
+    id: string;
+    deviceId: string;
+    status: string;
+    resolvedAt: string | null;
+  };
+  audit: { action: string; correlationId: string };
+}
+
+export interface RestoreSnapshotPayload {
+  confirmHostname: string;
+  autoApprove?: boolean;
+}
+
+export interface RestoreSnapshotResult {
+  change: {
+    id: string;
+    number: string;
+    status: string;
+    riskScore: number;
+    riskLevel: string;
+  };
+  message: string;
+  audit: { action: string; correlationId: string };
+}
+
+/* ------------------ Config diff engine (Task 3-b) ------------------- */
+
+/** One rendered diff row (wire shape of src/lib/config/diff DiffRow). */
+export type SnapshotDiffRowType = "equal" | "added" | "removed" | "changed";
+
+export interface SnapshotDiffRow {
+  type: SnapshotDiffRowType;
+  /** 1-based line number in the FROM snapshot (removed/changed/equal). */
+  aLine?: number;
+  /** 1-based line number in the TO snapshot (added/changed/equal). */
+  bLine?: number;
+  aText?: string;
+  bText?: string;
+}
+
+export interface SnapshotDiffStats {
+  added: number;
+  removed: number;
+  changed: number;
+  unchanged: number;
+}
+
+/** Either endpoint of a diff (from/to). */
+export interface SnapshotDiffEndpoint {
+  snapshotId: string;
+  version: number;
+  createdAt: string;
+  sha256: string;
+  source: string;
+  status: string;
+}
+
+/** GET /api/v1/devices/[id]/snapshots/diff response payload. */
+export interface SnapshotDiffResult {
+  device: { id: string; hostname: string; vendorKey: string };
+  from: SnapshotDiffEndpoint;
+  to: SnapshotDiffEndpoint;
+  mode: "raw" | "normalized";
+  /** True when both snapshots share the same sha256 (rows are empty). */
+  identical: boolean;
+  rows: SnapshotDiffRow[];
+  stats: SnapshotDiffStats;
+  /** Whether the stored normalizedText was used (false = computed on the fly). */
+  normalized: { from: boolean; to: boolean };
+}

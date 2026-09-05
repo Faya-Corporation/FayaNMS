@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
+import { fail, firstIssueMessage, newCorrelationId, newJobCorrelationId, ok } from "../../_lib/api";
+import {
+  parsePolicyScope,
+  scopeDeviceWhere,
+  type ParsedPolicyScope,
+} from "../../_lib/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -14,11 +19,12 @@ export const dynamic = "force-dynamic";
  *      the policy is DUE when a matching minute mark falls inside the last
  *      tick window (default 65 s — a 30 s tick loop always lands inside one).
  *   2. if due, resolve the policy's target devices from its scopeJson
- *      ({ siteCodes: ["*"|codes], criticality: [...], excludeStatuses: [...] });
- *      UNMANAGED and OFFLINE devices are always excluded (unreachable devices
- *      are not scheduled — the seeded HQ-IDF-SW-01 failed-backup story stays
- *      untouched; manual backup-now on an OFFLINE device still fails
- *      realistically in the worker).
+ *      (legacy keys { siteCodes, criticality, excludeStatuses } and canonical
+ *      keys { siteCodes, criticalities, statuses }; `statuses` is an include
+ *      filter); UNMANAGED and OFFLINE devices are always excluded
+ *      (unreachable devices are not scheduled — the seeded HQ-IDF-SW-01
+ *      failed-backup story stays untouched; manual backup-now on an OFFLINE
+ *      device still fails realistically in the worker).
  *   3. dedupe per device: skip devices that already have a QUEUED/RUNNING
  *      CONFIG_BACKUP job, or a policy-tagged job (payloadJson contains the
  *      policyId) created within the 10-minute dedupe window. Repeated ticks
@@ -26,7 +32,27 @@ export const dynamic = "force-dynamic";
  *   4. enqueue CONFIG_BACKUP JobExecutions (payload: deviceId, policyId,
  *      policyName, source SCHEDULED), capped at 10 per policy per tick.
  *
- * Returns { enqueued, evaluatedAt, policies }.
+ * Retention pruning (Task 3-a), after enqueue processing:
+ *   For every active policy each scoped device's ConfigSnapshot rows with
+ *   status HISTORICAL older than the policy window become prune candidates.
+ *   A device covered by several policies keeps the LONGEST window (most
+ *   generous retention wins — one policy can never destroy another's
+ *   history). Safety caps, in order:
+ *     - CURRENT and BASELINE snapshots are never touched;
+ *     - a device's newest HISTORICAL version is never deleted;
+ *     - at least 2 snapshots per device always remain;
+ *     - max 50 deletes per tick (batch keeps transactions short on SQLite).
+ *   A single summary CONFIG_RETENTION_PRUNED audit event is written per
+ *   tick when rows were pruned (never one event per snapshot).
+ *
+ * Drift scheduling (Task 3-c), after the backup enqueue block:
+ *   Every device that HAS an approved ConfigBaseline gets a DRIFT_CHECK
+ *   job, deduped: a device with a QUEUED/RUNNING DRIFT_CHECK — or whose
+ *   last DRIFT_CHECK finished less than 30 minutes ago — is skipped;
+ *   capped at 20 devices per tick. Payload { deviceId, hostname,
+ *   triggeredBy: "SCHEDULE" }.
+ *
+ * Returns { enqueued, driftEnqueued, reapedOrphans, pruned, evaluatedAt, policies }.
  */
 
 const tickSchema = z.object({
@@ -35,6 +61,10 @@ const tickSchema = z.object({
 
 const PER_POLICY_CAP = 10;
 const DEDUPE_WINDOW_MIN = 10;
+const PRUNE_MAX_DELETES_PER_TICK = 50;
+const PRUNE_MIN_SNAPSHOTS_PER_DEVICE = 2;
+const DRIFT_CHECK_CAP_PER_TICK = 20;
+const DRIFT_CHECK_DEDUPE_MIN = 30;
 
 /* ── tiny 5-field cron matcher ──────────────────────────────────────────── */
 
@@ -100,25 +130,134 @@ function cronDueWithin(expr: string, windowSec: number, now: Date): boolean {
   return false;
 }
 
-/* ── scope resolution ───────────────────────────────────────────────────── */
+/* ── retention pruning ──────────────────────────────────────────────────── */
 
-function safeParseScope(text: string | null | undefined): Record<string, unknown> {
-  if (!text) return {};
-  try {
-    const v = JSON.parse(text);
-    return v && typeof v === "object" && !Array.isArray(v)
-      ? (v as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
+interface PruneOutcome {
+  pruned: number;
+  prunedDevices: number;
+}
+
+/**
+ * Prune HISTORICAL snapshots older than each scoped device's retention
+ * window. See the route header for the safety caps. Returns the number of
+ * rows deleted (0 when nothing was due for pruning).
+ */
+async function pruneRetention(
+  policies: Array<{ id: string; retentionDays: number; scopeJson: string }>,
+  now: Date
+): Promise<PruneOutcome> {
+  if (policies.length === 0) return { pruned: 0, prunedDevices: 0 };
+
+  // Per-device retention window. Devices scoped by several policies keep
+  // the longest window (most generous retention wins).
+  const cutoffs = new Map<string, Date>();
+  for (const policy of policies) {
+    const scope: ParsedPolicyScope = parsePolicyScope(policy.scopeJson);
+    const scoped = await db.device.findMany({
+      where: scopeDeviceWhere(scope),
+      select: { id: true },
+    });
+    const cutoff = new Date(
+      now.getTime() - policy.retentionDays * 24 * 60 * 60 * 1000
+    );
+    for (const device of scoped) {
+      const existing = cutoffs.get(device.id);
+      if (!existing || cutoff < existing) {
+        cutoffs.set(device.id, cutoff);
+      }
+    }
   }
+  if (cutoffs.size === 0) return { pruned: 0, prunedDevices: 0 };
+
+  // Cheap per-device totals in one grouped query (deviceId index).
+  const totals = await db.configSnapshot.groupBy({
+    by: ["deviceId"],
+    _count: { _all: true },
+    where: { deviceId: { in: Array.from(cutoffs.keys()) } },
+  });
+  const totalByDevice = new Map<string, number>(
+    totals.map((row) => [row.deviceId, row._count._all])
+  );
+
+  const deleteIds: string[] = [];
+  const touchedDevices = new Set<string>();
+
+  for (const [deviceId, cutoff] of cutoffs) {
+    if (deleteIds.length >= PRUNE_MAX_DELETES_PER_TICK) break;
+    const total = totalByDevice.get(deviceId) ?? 0;
+    // Hard safety cap: always keep at least 2 snapshots on the device.
+    const maxDeletable = total - PRUNE_MIN_SNAPSHOTS_PER_DEVICE;
+    if (maxDeletable <= 0) continue;
+
+    const budget = Math.min(
+      PRUNE_MAX_DELETES_PER_TICK - deleteIds.length,
+      maxDeletable
+    );
+    const candidates = await db.configSnapshot.findMany({
+      where: {
+        deviceId,
+        status: "HISTORICAL",
+        createdAt: { lt: cutoff },
+      },
+      orderBy: { createdAt: "desc" },
+      take: budget + 1,
+      select: { id: true, createdAt: true },
+    });
+    if (candidates.length === 0) continue;
+
+    // Never delete the device's newest HISTORICAL version: when a newer
+    // HISTORICAL row exists above the cutoff the global newest is outside
+    // this candidate list; otherwise candidates[0] IS the newest HISTORICAL.
+    const hasRecentHistorical =
+      (await db.configSnapshot.count({
+        where: {
+          deviceId,
+          status: "HISTORICAL",
+          createdAt: { gte: cutoff },
+        },
+      })) > 0;
+    const deletable = hasRecentHistorical ? candidates : candidates.slice(1);
+
+    for (const row of deletable) {
+      if (deleteIds.length >= PRUNE_MAX_DELETES_PER_TICK) break;
+      deleteIds.push(row.id);
+      touchedDevices.add(deviceId);
+    }
+  }
+
+  if (deleteIds.length === 0) return { pruned: 0, prunedDevices: 0 };
+
+  // One short interactive transaction: the delete is guarded by
+  // status = HISTORICAL so a snapshot promoted to BASELINE mid-flight
+  // (e.g. baseline approval) is never destroyed.
+  const result = await db.$transaction(
+    async (tx) => {
+      const deleted = await tx.configSnapshot.deleteMany({
+        where: { id: { in: deleteIds }, status: "HISTORICAL" },
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorName: "system:backup-worker",
+          action: "CONFIG_RETENTION_PRUNED",
+          resourceType: "ConfigSnapshot",
+          result: "SUCCESS",
+          correlationId: newCorrelationId("RET"),
+          afterJson: JSON.stringify({
+            count: deleted.count,
+            devices: touchedDevices.size,
+            policies: policies.length,
+          }),
+        },
+      });
+      return deleted;
+    },
+    { maxWait: 5_000, timeout: 20_000 }
+  );
+
+  return { pruned: result.count, prunedDevices: touchedDevices.size };
 }
 
-function stringArray(value: unknown): string[] | null {
-  if (!Array.isArray(value)) return null;
-  const arr = value.filter((v): v is string => typeof v === "string" && v.length > 0);
-  return arr.length > 0 ? arr : null;
-}
+/* ── tick handler ───────────────────────────────────────────────────────── */
 
 export async function POST(request: Request) {
   let body: unknown = {};
@@ -151,22 +290,10 @@ export async function POST(request: Request) {
       continue;
     }
 
-    const scope = safeParseScope(policy.scopeJson);
-    const siteCodes = stringArray(scope.siteCodes);
-    const criticality = stringArray(scope.criticality);
-    const excludeStatuses = stringArray(scope.excludeStatuses) ?? [];
-
-    // Unreachable/unmanaged devices are never scheduled (see header note).
-    const excluded = Array.from(new Set([...excludeStatuses, "UNMANAGED", "OFFLINE"]));
+    const scope = parsePolicyScope(policy.scopeJson);
 
     const devices = await db.device.findMany({
-      where: {
-        status: { notIn: excluded },
-        ...(criticality ? { criticality: { in: criticality } } : {}),
-        ...(siteCodes && !siteCodes.includes("*")
-          ? { site: { code: { in: siteCodes } } }
-          : {}),
-      },
+      where: scopeDeviceWhere(scope),
       select: { id: true, hostname: true },
       orderBy: { hostname: "asc" },
     });
@@ -234,7 +361,11 @@ export async function POST(request: Request) {
     });
   }
 
-  // Reaper: RUNNING CONFIG_BACKUP/DISCOVERY jobs whose startedAt is older
+  // Drift scheduling (Task 3-c): DRIFT_CHECK for every baseline-covered
+  // device, deduped by in-flight / recently-finished DRIFT_CHECK jobs.
+  const driftTargets = await enqueueDriftChecks(now);
+
+  // Reaper: RUNNING CONFIG_BACKUP/DISCOVERY/DRIFT_CHECK jobs whose startedAt is older
   // than 10 minutes were orphaned (server crash, worker restart mid-flight —
   // the in-memory runner state is gone) and would otherwise stay RUNNING
   // forever. Fail them so the Job Center shows the truth; retries happen
@@ -242,7 +373,7 @@ export async function POST(request: Request) {
   const STALE_RUNNING_MS = 10 * 60_000;
   const reaped = await db.jobExecution.updateMany({
     where: {
-      type: { in: ["CONFIG_BACKUP", "DISCOVERY"] },
+      type: { in: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK"] },
       status: "RUNNING",
       startedAt: { lt: new Date(now.getTime() - STALE_RUNNING_MS) },
     },
@@ -254,10 +385,86 @@ export async function POST(request: Request) {
     },
   });
 
+  // Retention pruning (Task 3-a) — after enqueue processing, before the
+  // response. One console line + one summary audit event per pruning tick.
+  const prune = await pruneRetention(policies, now);
+  if (prune.pruned > 0) {
+    console.log(
+      `[tick] retention prune: removed ${prune.pruned} historical snapshot(s) across ${prune.prunedDevices} device(s)`
+    );
+  }
+
   return ok({
     enqueued: enqueuedTotal,
+    driftEnqueued: driftTargets,
     reapedOrphans: reaped.count,
+    pruned: prune.pruned,
+    prunedDevices: prune.prunedDevices,
     evaluatedAt: now.toISOString(),
     policies: policyResults,
   });
+}
+
+/**
+ * Enqueue DRIFT_CHECK jobs for baseline-covered devices (Task 3-c).
+ * Dedupe: skip devices with a QUEUED/RUNNING DRIFT_CHECK, or whose last
+ * DRIFT_CHECK job finished within the 30-minute window. Returns the number
+ * of jobs created.
+ */
+async function enqueueDriftChecks(now: Date): Promise<number> {
+  const baselineDevices = await db.configBaseline.findMany({
+    select: { deviceId: true },
+    distinct: ["deviceId"],
+  });
+  if (baselineDevices.length === 0) return 0;
+
+  const deviceIds = baselineDevices.map((b) => b.deviceId);
+
+  const inFlight = await db.jobExecution.findMany({
+    where: {
+      type: "DRIFT_CHECK",
+      OR: [
+        { status: { in: ["QUEUED", "RUNNING"] } },
+        {
+          status: { in: ["SUCCEEDED", "FAILED", "DEAD", "CANCELLED"] },
+          finishedAt: {
+            gte: new Date(now.getTime() - DRIFT_CHECK_DEDUPE_MIN * 60_000),
+          },
+        },
+      ],
+    },
+    select: { targetId: true },
+  });
+  const skip = new Set(
+    inFlight.map((j) => j.targetId).filter((id): id is string => Boolean(id))
+  );
+
+  const candidates = deviceIds.filter((id) => !skip.has(id));
+  if (candidates.length === 0) return 0;
+
+  const devices = await db.device.findMany({
+    where: { id: { in: candidates.slice(0, DRIFT_CHECK_CAP_PER_TICK) } },
+    select: { id: true, hostname: true },
+    orderBy: { hostname: "asc" },
+  });
+  if (devices.length === 0) return 0;
+
+  const res = await db.jobExecution.createMany({
+    data: devices.map((d) => ({
+      type: "DRIFT_CHECK",
+      targetType: "DEVICE",
+      targetId: d.id,
+      status: "QUEUED",
+      progress: 0,
+      priority: 5,
+      maxAttempts: 3,
+      payloadJson: JSON.stringify({
+        deviceId: d.id,
+        hostname: d.hostname,
+        triggeredBy: "SCHEDULE",
+      }),
+      correlationId: newJobCorrelationId(),
+    })),
+  });
+  return res.count;
 }

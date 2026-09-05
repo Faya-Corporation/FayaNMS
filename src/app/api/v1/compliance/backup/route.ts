@@ -1,0 +1,181 @@
+import { db } from "@/lib/db";
+import { ok } from "../../_lib/api";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/v1/compliance/backup — fleet backup-compliance report (Task 3-a).
+ *
+ * Bands are recomputed live from Device.lastBackupAt and aligned with the
+ * BACKUP_COMPLIANCE keys in src/lib/domain/status.ts:
+ *   COMPLIANT        — last successful backup within 24 h
+ *   OVERDUE          — last successful backup within 72 h (at-risk band)
+ *   non-compliant    — older than 72 h (stale) or never backed up
+ *                      (NEVER_BACKED_UP)
+ * Managed fleet = every device except UNMANAGED (same convention as the
+ * dashboard). The dashboard's own compliance widget is untouched.
+ *
+ * The 24 h / 72 h windows are a static policy approximation and must be
+ * labeled as such in the UI.
+ */
+
+const HOURS_MS = 3_600_000;
+const COMPLIANT_WINDOW_MS = 24 * HOURS_MS;
+const AT_RISK_WINDOW_MS = 72 * HOURS_MS;
+const STALE_LIMIT = 10;
+
+const round1 = (value: number): number => Math.round(value * 10) / 10;
+
+export async function GET() {
+  const now = Date.now();
+  const compliantCutoff = new Date(now - COMPLIANT_WINDOW_MS);
+  const atRiskCutoff = new Date(now - AT_RISK_WINDOW_MS);
+  const snapshotsSince24h = new Date(now - COMPLIANT_WINDOW_MS);
+
+  const [devices, snapshotsLast24h] = await Promise.all([
+    db.device.findMany({
+      where: { status: { not: "UNMANAGED" } },
+      select: {
+        id: true,
+        hostname: true,
+        lastBackupAt: true,
+        siteId: true,
+        site: { select: { name: true, code: true } },
+      },
+    }),
+    db.configSnapshot.count({
+      where: { createdAt: { gte: snapshotsSince24h } },
+    }),
+  ]);
+
+  type Band = "COMPLIANT" | "OVERDUE" | "NEVER_BACKED_UP" | "STALE";
+  interface BandedDevice {
+    id: string;
+    hostname: string;
+    siteId: string | null;
+    siteName: string | null;
+    siteCode: string | null;
+    lastBackupAt: Date | null;
+    band: Band;
+  }
+
+  const banded: BandedDevice[] = devices.map((device) => {
+    const last = device.lastBackupAt;
+    let band: Band;
+    if (!last) band = "NEVER_BACKED_UP";
+    else if (last >= compliantCutoff) band = "COMPLIANT";
+    else if (last >= atRiskCutoff) band = "OVERDUE";
+    else band = "STALE";
+    return {
+      id: device.id,
+      hostname: device.hostname,
+      siteId: device.siteId,
+      siteName: device.site?.name ?? null,
+      siteCode: device.site?.code ?? null,
+      lastBackupAt: last,
+      band,
+    };
+  });
+
+  const managedDevices = banded.length;
+  const compliant = banded.filter((d) => d.band === "COMPLIANT").length;
+  const atRisk = banded.filter((d) => d.band === "OVERDUE").length;
+  const nonCompliant = managedDevices - compliant - atRisk;
+
+  // Per-site breakdown (devices without a site land in an "Unassigned" row).
+  const siteRows = await db.site.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, code: true },
+  });
+  const bySite = new Map<
+    string,
+    {
+      siteId: string | null;
+      siteName: string;
+      siteCode: string | null;
+      managed: number;
+      compliant: number;
+      atRisk: number;
+      nonCompliant: number;
+    }
+  >();
+  for (const site of siteRows) {
+    bySite.set(site.id, {
+      siteId: site.id,
+      siteName: site.name,
+      siteCode: site.code,
+      managed: 0,
+      compliant: 0,
+      atRisk: 0,
+      nonCompliant: 0,
+    });
+  }
+  bySite.set("__unassigned", {
+    siteId: null,
+    siteName: "Unassigned",
+    siteCode: null,
+    managed: 0,
+    compliant: 0,
+    atRisk: 0,
+    nonCompliant: 0,
+  });
+  for (const device of banded) {
+    const key = device.siteId ?? "__unassigned";
+    const row = bySite.get(key);
+    if (!row) continue;
+    row.managed += 1;
+    if (device.band === "COMPLIANT") row.compliant += 1;
+    else if (device.band === "OVERDUE") row.atRisk += 1;
+    else row.nonCompliant += 1;
+  }
+  const perSite = Array.from(bySite.values())
+    .filter((row) => row.managed > 0)
+    .map((row) => ({
+      ...row,
+      compliantPct:
+        row.managed > 0 ? round1((row.compliant / row.managed) * 100) : null,
+    }))
+    .sort((a, b) => (b.compliantPct ?? 0) - (a.compliantPct ?? 0));
+
+  // Stale devices — worst first: never backed up, then oldest lastBackupAt.
+  const staleDevices = banded
+    .filter((d) => d.band !== "COMPLIANT")
+    .sort((a, b) => {
+      if (!a.lastBackupAt && !b.lastBackupAt) {
+        return a.hostname.localeCompare(b.hostname);
+      }
+      if (!a.lastBackupAt) return -1;
+      if (!b.lastBackupAt) return 1;
+      return a.lastBackupAt.getTime() - b.lastBackupAt.getTime();
+    })
+    .slice(0, STALE_LIMIT)
+    .map((device) => ({
+      deviceId: device.id,
+      hostname: device.hostname,
+      siteName: device.siteName,
+      siteCode: device.siteCode,
+      lastBackupAt: device.lastBackupAt?.toISOString() ?? null,
+      // Badge key from the BACKUP_COMPLIANCE map; a stale (older than 72 h)
+      // device renders as OVERDUE — the relative-time column shows the age.
+      band: device.band === "STALE" ? "OVERDUE" : device.band,
+    }));
+
+  return ok({
+    kpis: {
+      managedDevices,
+      compliant,
+      atRisk,
+      nonCompliant,
+      compliantPct:
+        managedDevices > 0 ? round1((compliant / managedDevices) * 100) : 0,
+      snapshotsLast24h,
+    },
+    perSite,
+    staleDevices,
+    bands: {
+      compliantWindowHours: 24,
+      atRiskWindowHours: 72,
+      note: "COMPLIANT ≤ 24h · OVERDUE (at risk) 24–72h · non-compliant > 72h or never",
+    },
+  });
+}

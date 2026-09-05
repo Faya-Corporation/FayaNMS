@@ -18,6 +18,12 @@
  *   durationMs }. Candidates are persistence-free: they land in the job's
  *   resultJson and the import flow turns them into real Device rows.
  *
+ * DRIFT_CHECK branch (roadmap 3-c) — minimal: POST
+ * /api/v1/worker/drift-evaluate { jobId } (the evaluation service runs
+ * server-side, comparing baseline vs CURRENT snapshots), 2 progress posts,
+ * then complete SUCCEEDED with { outcome: skipped|no-drift|drift, ... }.
+ * Network errors propagate to the generic failure path (requeue/backoff).
+ *
  * Failure semantics live on the Next.js side: complete(FAILED) either requeues
  * with exponential-ish backoff (30 s * attempts) or dead-letters the job.
  * Any single job failure is contained — the loop never crashes.
@@ -344,12 +350,80 @@ async function runDiscoveryJob(job: ClaimedJob): Promise<void> {
   );
 }
 
+/* ───────────────────────── DRIFT_CHECK evaluation ────────────────────── */
+
+interface DriftEvaluateResponse {
+  skipped?: boolean;
+  reason?: string;
+  drift?: boolean;
+  recordId?: string;
+  created?: boolean;
+  baselineVersion?: number;
+  currentVersion?: number;
+  resolved?: number;
+  stats?: { added: number; removed: number; changed: number; unchanged: number };
+}
+
+/** DRIFT_CHECK execution — evaluation happens in the Next.js API. */
+async function runDriftCheckJob(job: ClaimedJob): Promise<void> {
+  const payload = job.payload ?? {};
+  const hostname = typeof payload.hostname === "string" ? payload.hostname : "device";
+  const triggeredBy = typeof payload.triggeredBy === "string" ? payload.triggeredBy : "SCHEDULE";
+
+  await reportProgress(job.id, 10, `Loading approved baseline and CURRENT config for ${hostname}`);
+
+  const evaluation = (await nextPost("/api/v1/worker/drift-evaluate", {
+    jobId: job.id,
+  }, 20_000)) as DriftEvaluateResponse;
+
+  await reportProgress(job.id, 70, `Comparing normalized configuration texts`);
+
+  let result: Record<string, unknown>;
+  let summary: string;
+  if (evaluation.skipped) {
+    result = { outcome: "skipped", reason: evaluation.reason ?? "unknown" };
+    summary = `skipped: ${evaluation.reason ?? "unknown"}`;
+  } else if (evaluation.drift) {
+    result = {
+      outcome: "drift",
+      recordId: evaluation.recordId,
+      baselineVersion: evaluation.baselineVersion,
+      currentVersion: evaluation.currentVersion,
+      stats: evaluation.stats,
+      triggeredBy,
+    };
+    const s = evaluation.stats;
+    summary = `DRIFT vs baseline v${evaluation.baselineVersion}: +${s?.added ?? "?"} −${s?.removed ?? "?"} ~${s?.changed ?? "?"} (record ${evaluation.recordId ?? "?"})`;
+  } else {
+    result = {
+      outcome: "no-drift",
+      baselineVersion: evaluation.baselineVersion,
+      currentVersion: evaluation.currentVersion,
+      resolved: evaluation.resolved ?? 0,
+      triggeredBy,
+    };
+    summary = `no drift vs baseline v${evaluation.baselineVersion} (running v${evaluation.currentVersion}${evaluation.resolved ? `, resolved ${evaluation.resolved} open record(s)` : ""})`;
+  }
+
+  await nextPost(
+    "/api/v1/worker/complete",
+    { jobId: job.id, outcome: "SUCCEEDED", result },
+    15_000
+  );
+
+  counters.completed += 1;
+  counters.completedByType.DRIFT_CHECK = (counters.completedByType.DRIFT_CHECK ?? 0) + 1;
+  await log(`job ${job.id} [${job.correlationId}] SUCCEEDED: drift-check ${summary}`);
+}
+
 async function executeJob(job: ClaimedJob): Promise<void> {
   try {
     if (job.type === "CONFIG_BACKUP") {
       await raceTimeout(runBackupJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "DISCOVERY") {
       await raceTimeout(runDiscoveryJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "DRIFT_CHECK") {
+      await raceTimeout(runDriftCheckJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else {
       throw new Error(`Unsupported job type for worker v1: ${job.type}`);
     }
@@ -368,7 +442,7 @@ async function claimTick(): Promise<void> {
     if (free <= 0) return;
     const jobs = (await nextPost(
       "/api/v1/worker/claim",
-      { types: ["CONFIG_BACKUP", "DISCOVERY"], limit: Math.min(CLAIM_BATCH, free) },
+      { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK"], limit: Math.min(CLAIM_BATCH, free) },
       10_000
     )) as ClaimedJob[];
     for (const job of Array.isArray(jobs) ? jobs : []) {

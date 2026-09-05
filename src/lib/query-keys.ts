@@ -19,6 +19,8 @@ export const queryKeys = {
   deviceMetrics: (id: string, window: string) =>
     ["devices", id, "metrics", window] as const,
   deviceSnapshots: (id: string) => ["devices", id, "snapshots"] as const,
+  deviceSnapshotDiff: (id: string, from: string, to: string, mode: string) =>
+    ["devices", id, "snapshotDiff", { from, to, mode }] as const,
   deviceInterfaces: (id: string, params: ListParams = {}) =>
     ["devices", id, "interfaces", params] as const,
   deviceAlerts: (id: string, params: ListParams = {}) =>
@@ -36,4 +38,15 @@ export const queryKeys = {
   jobs: (params: ListParams = {}) => ["jobs", params] as const,
   meta: ["meta"] as const,
   search: (q: string) => ["search", q] as const,
+  // Backup engine (Task 3-a)
+  snapshots: (params: ListParams = {}) => ["snapshots", params] as const,
+  backupPolicies: (params: ListParams = {}) =>
+    ["backupPolicies", params] as const,
+  backupCompliance: (params: ListParams = {}) =>
+    ["compliance", "backup", params] as const,
+  // Baselines & drift (Task 3-c)
+  baselines: () => ["baselines"] as const,
+  drift: (params: ListParams = {}) => ["drift", params] as const,
+  /** Mutation marker only — invalidating it refreshes drift + jobs. */
+  driftCheck: ["drift", "check"] as const,
 };
