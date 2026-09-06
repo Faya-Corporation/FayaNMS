@@ -52,7 +52,14 @@ export const dynamic = "force-dynamic";
  *   capped at 20 devices per tick. Payload { deviceId, hostname,
  *   triggeredBy: "SCHEDULE" }.
  *
- * Returns { enqueued, driftEnqueued, reapedOrphans, pruned, evaluatedAt, policies }.
+ * Alert evaluation scheduling (Task 5-a), after the drift block:
+ *   ONE recurring ALERT_EVALUATION job (SYSTEM target) whenever the last
+ *   one finished more than 3 minutes ago and none is queued/running —
+ *   repeated ticks can never stack duplicates. The worker claims it and
+ *   calls POST /api/v1/alerts/evaluate (evaluate-in-Next).
+ *
+ * Returns { enqueued, driftEnqueued, alertEvalEnqueued, reapedOrphans, pruned,
+ * evaluatedAt, policies }.
  */
 
 const tickSchema = z.object({
@@ -65,6 +72,7 @@ const PRUNE_MAX_DELETES_PER_TICK = 50;
 const PRUNE_MIN_SNAPSHOTS_PER_DEVICE = 2;
 const DRIFT_CHECK_CAP_PER_TICK = 20;
 const DRIFT_CHECK_DEDUPE_MIN = 30;
+const ALERT_EVALUATION_DEDUPE_MIN = 3;
 
 /* ── tiny 5-field cron matcher ──────────────────────────────────────────── */
 
@@ -365,15 +373,19 @@ export async function POST(request: Request) {
   // device, deduped by in-flight / recently-finished DRIFT_CHECK jobs.
   const driftTargets = await enqueueDriftChecks(now);
 
-  // Reaper: RUNNING CONFIG_BACKUP/DISCOVERY/DRIFT_CHECK jobs whose startedAt is older
-  // than 10 minutes were orphaned (server crash, worker restart mid-flight —
+  // Alert evaluation scheduling (Task 5-a): ONE recurring ALERT_EVALUATION
+  // job per dedupe window — the worker runs the evaluate-in-Next engine.
+  const alertEvalEnqueued = await enqueueAlertEvaluation(now);
+
+  // Reaper: RUNNING CONFIG_BACKUP/DISCOVERY/DRIFT_CHECK/ALERT_EVALUATION jobs whose
+  // startedAt is older than 10 minutes were orphaned (server crash, worker restart mid-flight —
   // the in-memory runner state is gone) and would otherwise stay RUNNING
   // forever. Fail them so the Job Center shows the truth; retries happen
   // through normal re-enqueue (manual backup-now or the next scheduler tick).
   const STALE_RUNNING_MS = 10 * 60_000;
   const reaped = await db.jobExecution.updateMany({
     where: {
-      type: { in: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK"] },
+      type: { in: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "ALERT_EVALUATION"] },
       status: "RUNNING",
       startedAt: { lt: new Date(now.getTime() - STALE_RUNNING_MS) },
     },
@@ -397,12 +409,51 @@ export async function POST(request: Request) {
   return ok({
     enqueued: enqueuedTotal,
     driftEnqueued: driftTargets,
+    alertEvalEnqueued,
     reapedOrphans: reaped.count,
     pruned: prune.pruned,
     prunedDevices: prune.prunedDevices,
     evaluatedAt: now.toISOString(),
     policies: policyResults,
   });
+}
+
+/**
+ * Enqueue ONE ALERT_EVALUATION job (Task 5-a). Dedupe: skip when an
+ * ALERT_EVALUATION job is QUEUED/RUNNING, or when the last one finished
+ * within the 3-minute cadence window. Returns 0 or 1.
+ */
+async function enqueueAlertEvaluation(now: Date): Promise<number> {
+  const inFlight = await db.jobExecution.findFirst({
+    where: {
+      type: "ALERT_EVALUATION",
+      OR: [
+        { status: { in: ["QUEUED", "RUNNING"] } },
+        {
+          status: { in: ["SUCCEEDED", "FAILED", "DEAD", "CANCELLED"] },
+          finishedAt: {
+            gte: new Date(now.getTime() - ALERT_EVALUATION_DEDUPE_MIN * 60_000),
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  if (inFlight) return 0;
+
+  await db.jobExecution.create({
+    data: {
+      type: "ALERT_EVALUATION",
+      targetType: "SYSTEM",
+      status: "QUEUED",
+      progress: 0,
+      priority: 6,
+      maxAttempts: 3,
+      payloadJson: JSON.stringify({ triggeredBy: "SCHEDULE" }),
+      correlationId: newJobCorrelationId(),
+    },
+  });
+  return 1;
 }
 
 /**

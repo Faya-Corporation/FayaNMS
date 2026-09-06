@@ -33,6 +33,7 @@ export type ViewKey =
   | "ops.noc"
   | "ops.alerts"
   | "ops.incidents"
+  | "ops.incident-detail"
   | "ops.maintenance"
   | "ops.events"
   | "ops.jobs"

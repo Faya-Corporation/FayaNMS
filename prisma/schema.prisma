@@ -48,6 +48,8 @@ model User {
   ownedIncidents    Incident[]       @relation("IncidentOwner")
   incidentEvents    IncidentEvent[]
   ackedAlerts       Alert[]          @relation("AlertAcknowledger")
+  assignedAlerts    Alert[]          @relation("AlertAssignee")
+  notifications     Notification[]   @relation("NotificationRecipient")
   auditEvents       AuditEvent[]
 
   @@index([role])
@@ -469,6 +471,20 @@ model Alert {
   acknowledgedById String?
   acknowledgedBy   User?    @relation("AlertAcknowledger", fields: [acknowledgedById], references: [id], onDelete: SetNull)
   acknowledgedAt   DateTime?
+  // Task 5-a — alert engine grouping/dedup/suppression/assignment.
+  // dedupKey: engine fingerprint "<deviceId>:<metric>:<ruleId|adhoc>" — the
+  // evaluator dedupes on this instead of creating duplicate rows.
+  dedupKey   String?
+  // Root/child grouping: a device-down (AVAILABILITY) root alert owns the
+  // dependent alerts fired on the same device while it was unreachable.
+  parentAlertId String?
+  parentAlert   Alert?   @relation("AlertGrouping", fields: [parentAlertId], references: [id], onDelete: SetNull)
+  childAlerts   Alert[]  @relation("AlertGrouping")
+  // Why the alert is SUPPRESSED: "Maintenance window: <name>" or
+  // "Suppressed by root alert: <id>" or a manual reason.
+  suppressReason String?
+  assignedToId String?
+  assignedTo   User?     @relation("AlertAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   @@index([deviceId, status])
   @@index([status])
@@ -476,6 +492,9 @@ model Alert {
   @@index([ruleId])
   @@index([incidentId])
   @@index([lastSeen])
+  @@index([dedupKey, status])
+  @@index([parentAlertId])
+  @@index([assignedToId])
 }
 
 model AlertRule {
@@ -561,10 +580,33 @@ model MetricRollup {
 // Job queue (ADR-01: JobExecution table funnels all background work)
 // ─────────────────────────────────────────────────────────────────────────────
 
+model Notification {
+  id     String  @id @default(cuid())
+  // null = broadcast (visible to every operator in the demo shell)
+  userId String?
+  user   User?   @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  // kind: ALERT | INCIDENT | CHANGE | JOB | SYSTEM (design §74 — the
+  // notifications center is a separate surface from the operational alert
+  // stream; the two systems are never mixed)
+  kind   String  @default("SYSTEM")
+  title  String
+  body   String
+  // link: a view key (e.g. "ops.alerts") or href the item deep-links to
+  link   String?
+  // severity: CRITICAL | HIGH | MEDIUM | LOW | INFO | SEV1..SEV4 (render hint)
+  severity String?
+  readAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([readAt])
+}
+
 model JobExecution {
   id         String    @id @default(cuid())
   // type: DISCOVERY | CONFIG_BACKUP | CONFIG_RESTORE | CONFIG_APPLY | VALIDATION |
-  //       INVENTORY_POLL | METRIC_POLL | REPORT_GENERATION | NOTIFICATION
+  //       INVENTORY_POLL | METRIC_POLL | REPORT_GENERATION | NOTIFICATION |
+  //       DRIFT_CHECK | CHANGE_EXECUTE | ALERT_EVALUATION
   type       String
   // targetType: DEVICE | SITE | POLICY | SYSTEM
   targetType String?

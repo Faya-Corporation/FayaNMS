@@ -18,6 +18,8 @@ import { DevicesView } from "@/components/views/devices-view";
 import { DiscoveryView } from "@/components/views/discovery-view";
 import { DriftView } from "@/components/views/drift-view";
 import { IncidentsView } from "@/components/views/incidents-view";
+import { IncidentDetailView } from "@/components/views/incident-detail-view";
+import { NocView } from "@/components/views/noc-view";
 import { JobsView } from "@/components/views/jobs-view";
 import { PlaceholderView } from "@/components/views/placeholder-view";
 import { SitesView } from "@/components/views/sites-view";
@@ -56,6 +58,10 @@ export function ViewRouter() {
       return <AlertsView />;
     case "ops.incidents":
       return <IncidentsView />;
+    case "ops.incident-detail":
+      return <IncidentDetailView />;
+    case "ops.noc":
+      return <NocView />;
     case "changes.all":
       return <ChangesView />;
     case "changes.mine":

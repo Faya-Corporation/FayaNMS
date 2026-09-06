@@ -242,6 +242,50 @@ export async function POST(request: Request) {
       });
     }
 
+    // ── ALERT_EVALUATION (5-a): the evaluate-in-Next engine persisted all
+    // alert/incident/notification/audit state and returns its summary; the
+    // job stores it verbatim as resultJson (Job Center shows the counts). ──
+    if (job.type === "ALERT_EVALUATION") {
+      const summaryShape = z.object({
+        evaluatedAt: z.string().optional(),
+        triggeredBy: z.string().max(40).optional(),
+        rulesEvaluated: z.number().int().nonnegative().optional(),
+        devicesConsidered: z.number().int().nonnegative().optional(),
+        fired: z.number().int().nonnegative().optional(),
+        deduped: z.number().int().nonnegative().optional(),
+        suppressed: z.number().int().nonnegative().optional(),
+        childrenSuppressed: z.number().int().nonnegative().optional(),
+        resolved: z.number().int().nonnegative().optional(),
+        incidentsCreated: z.number().int().nonnegative().optional(),
+        notificationsCreated: z.number().int().nonnegative().optional(),
+        caps: z.record(z.string(), z.boolean()).optional(),
+      });
+      const parsedSummary = summaryShape.safeParse(result ?? {});
+      if (!parsedSummary.success) {
+        return fail(
+          "INVALID_RESULT",
+          "SUCCEEDED ALERT_EVALUATION completion requires the evaluation summary object",
+          400
+        );
+      }
+      await db.jobExecution.update({
+        where: { id: job.id },
+        data: {
+          status: "SUCCEEDED",
+          progress: 100,
+          finishedAt: now,
+          error: null,
+          resultJson: JSON.stringify(parsedSummary.data),
+        },
+      });
+      return ok({
+        jobId,
+        updated: true,
+        status: "SUCCEEDED",
+        summary: parsedSummary.data,
+      });
+    }
+
     // ── CONFIG_BACKUP: validate the snapshot payload (unchanged behavior) ──
     const parsedBackup = backupResultSchema.safeParse(result);
     if (!parsedBackup.success) {

@@ -33,6 +33,10 @@ export const queryKeys = {
   discovery: (params: ListParams = {}) => ["discovery", params] as const,
   credentials: (params: ListParams = {}) => ["credentials", params] as const,
   incidents: (params: ListParams = {}) => ["incidents", params] as const,
+  // Incident lifecycle (Task 5-b) — nested under "incidents" so action
+  // mutations invalidate lists + stats + detail together.
+  incidentDetail: (id: string) => ["incidents", id, "detail"] as const,
+  incidentStats: () => ["incidents", "stats"] as const,
   changes: (params: ListParams = {}) => ["changes", params] as const,
   // Change management (Task 4-a) — nested under the "changes" prefix so
   // invalidating ["changes"] refreshes lists, detail and conflicts together.
@@ -43,6 +47,9 @@ export const queryKeys = {
   // ["changes"] together (queue ↔ detail ↔ lists).
   approvals: (params: ListParams = {}) => ["approvals", params] as const,
   alerts: (params: ListParams = {}) => ["alerts", params] as const,
+  // Alert rules + notifications center (Task 5-a)
+  alertRules: (params: ListParams = {}) => ["alertRules", params] as const,
+  notifications: (params: ListParams = {}) => ["notifications", params] as const,
   jobs: (params: ListParams = {}) => ["jobs", params] as const,
   meta: ["meta"] as const,
   search: (q: string) => ["search", q] as const,

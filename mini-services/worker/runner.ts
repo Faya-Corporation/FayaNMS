@@ -35,6 +35,13 @@
  * suggestIncident }). Per-call 409 STEP_IN_FLIGHT and network/5xx errors
  * propagate to the retryable failure path (existing backoff).
  *
+ * ALERT_EVALUATION branch (Task 5-a) — evaluate-in-Next like DRIFT_CHECK:
+ * POST /api/v1/alerts/evaluate { jobId } runs the whole threshold engine
+ * server-side and answers a summary; the worker reports progress and
+ * completes SUCCEEDED with the summary as resultJson (counts: evaluated/
+ * fired/deduped/suppressed/resolved/incidentsCreated/notificationsCreated).
+ * Network errors propagate to the generic failure path (requeue/backoff).
+ *
  * Failure semantics live on the Next.js side: complete(FAILED) either requeues
  * with exponential-ish backoff (30 s * attempts) or dead-letters the job.
  * Any single job failure is contained — the loop never crashes.
@@ -518,6 +525,55 @@ async function runChangeExecutionJob(job: ClaimedJob): Promise<void> {
   );
 }
 
+/* ───────────────────── ALERT_EVALUATION driver (5-a) ─────────────────── */
+
+interface AlertEvaluationResponse {
+  rulesEvaluated: number;
+  devicesConsidered: number;
+  fired: number;
+  deduped: number;
+  suppressed: number;
+  childrenSuppressed: number;
+  resolved: number;
+  incidentsCreated: number;
+  notificationsCreated: number;
+  triggeredBy?: string;
+}
+
+/** ALERT_EVALUATION execution — evaluation happens in the Next.js API. */
+async function runAlertEvaluationJob(job: ClaimedJob): Promise<void> {
+  const payload = job.payload ?? {};
+  const triggeredBy =
+    typeof payload.triggeredBy === "string" ? payload.triggeredBy : "JOB";
+
+  await reportProgress(job.id, 10, "Loading active alert rules and scoped devices");
+
+  const summary = (await nextPost(
+    "/api/v1/alerts/evaluate",
+    { jobId: job.id, triggeredBy },
+    60_000
+  )) as AlertEvaluationResponse;
+
+  await reportProgress(
+    job.id,
+    80,
+    `Evaluated ${summary.rulesEvaluated} rule(s) across ${summary.devicesConsidered} device(s)`
+  );
+
+  await nextPost(
+    "/api/v1/worker/complete",
+    { jobId: job.id, outcome: "SUCCEEDED", result: summary },
+    15_000
+  );
+
+  counters.completed += 1;
+  counters.completedByType.ALERT_EVALUATION =
+    (counters.completedByType.ALERT_EVALUATION ?? 0) + 1;
+  await log(
+    `job ${job.id} [${job.correlationId}] SUCCEEDED: alert-evaluation rules=${summary.rulesEvaluated} fired=${summary.fired} deduped=${summary.deduped} suppressed=${summary.suppressed} children=${summary.childrenSuppressed} resolved=${summary.resolved} incidents=${summary.incidentsCreated} notifications=${summary.notificationsCreated}`
+  );
+}
+
 async function executeJob(job: ClaimedJob): Promise<void> {
   try {
     if (job.type === "CONFIG_BACKUP") {
@@ -528,6 +584,8 @@ async function executeJob(job: ClaimedJob): Promise<void> {
       await raceTimeout(runDriftCheckJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "CHANGE_EXECUTE") {
       await raceTimeout(runChangeExecutionJob(job), CHANGE_JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "ALERT_EVALUATION") {
+      await raceTimeout(runAlertEvaluationJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else {
       throw new Error(`Unsupported job type for worker v1: ${job.type}`);
     }
@@ -546,7 +604,7 @@ async function claimTick(): Promise<void> {
     if (free <= 0) return;
     const jobs = (await nextPost(
       "/api/v1/worker/claim",
-      { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE"], limit: Math.min(CLAIM_BATCH, free) },
+      { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION"], limit: Math.min(CLAIM_BATCH, free) },
       10_000
     )) as ClaimedJob[];
     for (const job of Array.isArray(jobs) ? jobs : []) {

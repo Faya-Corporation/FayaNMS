@@ -157,7 +157,15 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
   "ops.incidents": {
     title: "Incidents",
     description: "Incident lifecycle with SLA timers",
-    phase: "Phase 1 — live slice (full build in Phase 5)",
+    phase: "Phase 5 — Operations",
+    group: "Operations",
+  },
+  // Hidden from the sidebar (opened via setActiveView("ops.incident-detail",
+  // { incidentId }) — same pattern as changes.change-detail). Task 5-b.
+  "ops.incident-detail": {
+    title: "Incident Detail",
+    description: "Full incident record — timeline, SLA, PIR and linked records",
+    phase: "Phase 5 — Operations",
     group: "Operations",
   },
   "ops.maintenance": {
@@ -275,6 +283,11 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
 
 export function getViewMeta(view: ViewKey): ViewMeta {
   return VIEW_REGISTRY[view];
+}
+
+/** Runtime guard: is an arbitrary string (e.g. a notification deep-link) a registered view key? */
+export function isValidViewKey(value: string): value is ViewKey {
+  return Object.prototype.hasOwnProperty.call(VIEW_REGISTRY, value);
 }
 
 /** Breadcrumb trail for the header, derived from the registry. */

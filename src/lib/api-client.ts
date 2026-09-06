@@ -117,9 +117,9 @@ export interface PagedMeta extends PageMetaInfo {
   [key: string]: unknown;
 }
 
-export interface PagedResult<T> {
+export interface PagedResult<T, TMeta = PageMetaInfo> {
   data: T[];
-  meta: PageMetaInfo;
+  meta: TMeta;
 }
 
 export interface DashboardKpis {
@@ -445,11 +445,197 @@ export interface IncidentRow {
   priority: string | null;
   status: string;
   source: string;
+  ownerTeam: string | null;
+  ownerId: string | null;
+  owner: { id: string; name: string } | null;
   createdAt: string;
+  acknowledgedAt: string | null;
   slaDueAt: string | null;
   resolvedAt: string | null;
+  updatedAt: string;
   site: { name: string; code: string } | null;
-  _count: { devices: number };
+  change: { id: string; number: string; status: string } | null;
+  _count: { devices: number; alerts: number };
+  /** Computed SLA state (Task 5-b — see lib/incidents/lifecycle.ts). */
+  sla: IncidentSlaState;
+}
+
+export interface IncidentSlaState {
+  tracked: boolean;
+  dueInMs: number | null;
+  breached: boolean;
+  remainingPct: number | null;
+  outcome: "MET" | "BREACHED" | null;
+  targetLabel: string | null;
+}
+
+/** Extended list meta (Task 5-b) — facet counts + SLA/open totals. */
+export interface IncidentListMeta extends PageMetaInfo {
+  counts: { byStatus: Record<string, number>; bySeverity: Record<string, number> };
+  openCount: number;
+  slaBreachedCount: number;
+}
+
+/* ------------------- Incident lifecycle (Task 5-b) ------------------- */
+
+export interface IncidentDetailDevice {
+  id: string;
+  deviceId: string;
+  createdAt: string;
+  device: {
+    id: string;
+    hostname: string;
+    status: string;
+    mgmtIp: string;
+    model: string | null;
+    site: { name: string; code: string } | null;
+  };
+}
+
+export interface IncidentDetailEvent {
+  id: string;
+  kind: "SYSTEM" | "USER" | "INTEGRATION" | string;
+  message: string;
+  createdAt: string;
+  actor: { id: string; name: string | null; email: string } | null;
+}
+
+export interface IncidentDetailAlert {
+  id: string;
+  severity: string;
+  message: string;
+  status: string;
+  count: number;
+  firstSeen: string;
+  lastSeen: string;
+  device: { id: string; hostname: string } | null;
+}
+
+export interface IncidentDetail {
+  id: string;
+  number: string;
+  title: string;
+  description: string | null;
+  severity: string;
+  priority: string | null;
+  status: string;
+  source: string;
+  ownerTeam: string | null;
+  ownerId: string | null;
+  owner: { id: string; name: string | null; email: string } | null;
+  changeId: string | null;
+  change: {
+    id: string;
+    number: string;
+    title: string;
+    status: string;
+    riskLevel: string;
+  } | null;
+  slaDueAt: string | null;
+  acknowledgedAt: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  rootCause: string | null;
+  correctiveAction: string | null;
+  preventiveAction: string | null;
+  createdAt: string;
+  updatedAt: string;
+  site: { id: string; name: string; code: string } | null;
+  devices: IncidentDetailDevice[];
+  events: IncidentDetailEvent[];
+  alerts: IncidentDetailAlert[];
+  sla: IncidentSlaState;
+}
+
+export interface IncidentStatsPayload {
+  openBySeverity: Record<string, number>;
+  openCount: number;
+  breachedCount: number;
+  mttaMinutes: number | null;
+  mttrMinutes: number | null;
+  mttaSamples: number;
+  mttrSamples: number;
+  slaCompliancePct: number | null;
+  slaResolvedTotal: number;
+  slaMetTotal: number;
+  topSites: {
+    siteId: string | null;
+    siteName: string | null;
+    siteCode: string | null;
+    openCount: number;
+  }[];
+  trend: { date: string; created: number }[];
+  window: { mttaMttrDays: number; trendDays: number };
+  generatedAt: string;
+}
+
+export interface IncidentCorrelationMatch {
+  id: string;
+  number: string;
+  title: string;
+  severity: string;
+  status: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  site: { name: string; code: string } | null;
+  deviceCount: number;
+  alertCount: number;
+  deviceHostnames: string[];
+  linked: boolean;
+  changeId: string | null;
+  matchedOn: ("created" | "resolved")[];
+  deltaMinutes: number;
+  deviceOverlap: boolean;
+}
+
+export interface IncidentCorrelationResult {
+  matches: IncidentCorrelationMatch[];
+  meta: {
+    changeId: string;
+    changeNumber: string;
+    changeStatus: string;
+    refAt: string;
+    refSource: string;
+    windowMinutes: number;
+  };
+}
+
+export interface IncidentActionResult {
+  incident: {
+    id: string;
+    number: string;
+    title: string;
+    severity: string;
+    status: string;
+    ownerId: string | null;
+    ownerTeam: string | null;
+    acknowledgedAt: string | null;
+    resolvedAt: string | null;
+    closedAt: string | null;
+    changeId: string | null;
+    pir: {
+      rootCause: string | null;
+      correctiveAction: string | null;
+      preventiveAction: string | null;
+    };
+  };
+  alreadyAcknowledged?: true;
+  alreadyClosed?: true;
+  alreadyAssigned?: true;
+  alreadyLinked?: true;
+  changeNumber?: string;
+}
+
+export interface IncidentLifecycleActionPayload {
+  actAsUserId?: string;
+  note?: string;
+  resolutionNote?: string;
+  ownerId?: string;
+  ownerTeam?: string;
+  changeId?: string;
+  rootCause?: string;
+  correctiveAction?: string;
+  preventiveAction?: string;
 }
 
 export interface ChangeRow {
@@ -745,6 +931,129 @@ export interface AlertRow {
   count: number;
   device: { id: string; hostname: string };
   acknowledgedAt: string | null;
+}
+
+/** Alert stream row (Task 5-a) — rule/site/incident chips + grouping fields. */
+export interface AlertStreamRow {
+  id: string;
+  deviceId: string;
+  severity: string;
+  message: string;
+  status: string;
+  firstSeen: string;
+  lastSeen: string;
+  count: number;
+  dedupKey: string | null;
+  parentAlertId: string | null;
+  suppressReason: string | null;
+  acknowledgedAt: string | null;
+  device: {
+    id: string;
+    hostname: string;
+    site: { id: string; name: string; code: string } | null;
+  };
+  rule: { id: string; name: string; severity: string } | null;
+  incident: {
+    id: string;
+    number: string;
+    severity: string;
+    status: string;
+  } | null;
+  acknowledgedBy: { id: string; name: string } | null;
+  assignedTo: { id: string; name: string } | null;
+  _count: { childAlerts: number };
+}
+
+export interface AlertStreamMeta extends PageMetaInfo {
+  counts: {
+    byStatus: Record<string, number>;
+    bySeverity: Record<string, number>;
+  };
+  linkedOpenIncidents: number;
+}
+
+/** Alert rule row (Task 5-a, Rules tab). */
+export interface AlertRuleRow {
+  id: string;
+  name: string;
+  metric: string;
+  operator: string;
+  threshold: number;
+  durationMinutes: number;
+  severity: string;
+  scopeJson: string | null;
+  isActive: boolean;
+  openAlerts: number;
+  scopedDeviceCount: number;
+  scope: {
+    siteCodes?: string[];
+    criticalities?: string[];
+    deviceRoles?: string[];
+  };
+  _count?: { alerts: number };
+}
+
+export interface AlertRulePayload {
+  name: string;
+  metric: string;
+  operator: string;
+  threshold: number;
+  durationMinutes: number;
+  severity: string;
+  scope?: {
+    siteCodes?: string[];
+    criticalities?: string[];
+    deviceRoles?: string[];
+  };
+  isActive: boolean;
+}
+
+export interface AlertRuleMutationResult {
+  rule: { id: string; name: string; isActive: boolean };
+  audit: { correlationId: string };
+}
+
+export interface DeleteAlertRuleResult {
+  deleted: boolean;
+  audit: { correlationId: string };
+}
+
+/** Action result shared by acknowledge/assign/suppress/unsuppress/resolve. */
+export interface AlertActionResult {
+  alert: AlertStreamRow | { id: string; status: string };
+  audit: { correlationId: string };
+}
+
+export interface CreateIncidentFromAlertResult {
+  incident: {
+    id: string;
+    number: string;
+    title: string;
+    severity: string;
+    priority: string;
+    status: string;
+    slaDueAt: string;
+  };
+  message: string;
+}
+
+/** Notifications center row (Task 5-a; §74 — separate from ops alerts). */
+export interface NotificationRow {
+  id: string;
+  userId: string | null;
+  kind: string;
+  title: string;
+  body: string;
+  link: string | null;
+  severity: string | null;
+  readAt: string | null;
+  createdAt: string;
+  mine: boolean;
+}
+
+export interface NotificationsPayload {
+  data: NotificationRow[];
+  meta: { unreadCount: number; total: number; identity: { id: string; name: string } | null };
 }
 
 export interface JobRow {

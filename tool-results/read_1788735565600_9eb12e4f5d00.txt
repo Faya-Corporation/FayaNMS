@@ -1,0 +1,1105 @@
+     1→"use client";
+     2→
+     3→import { useState } from "react";
+     4→import { format, formatDistanceToNow } from "date-fns";
+     5→import {
+     6→  ArrowLeft,
+     7→  CalendarClock,
+     8→  CheckCircle2,
+     9→  CircleAlert,
+    10→  CircleX,
+    11→  ClipboardList,
+    12→  FileText,
+    13→  GitPullRequest,
+    14→  Info,
+    15→  LoaderCircle,
+    16→  Pencil,
+    17→  Play,
+    18→  Send,
+    19→  Siren,
+    20→  Trash2,
+    21→  XCircle,
+    22→} from "lucide-react";
+    23→
+    24→import { useChangeDetail } from "@/hooks/api/use-change-detail";
+    25→import {
+    26→  useCreateIncidentFromChange,
+    27→  useExecuteChange,
+    28→  useUpdateChange,
+    29→} from "@/hooks/api/use-change-mutations";
+    30→import { useActingUser } from "@/hooks/api/use-approvals";
+    31→import { useDecideApproval } from "@/hooks/api/use-approval-mutations";
+    32→import { usePreferencesStore } from "@/stores/preferences";
+    33→import {
+    34→  getStatusConfig,
+    35→  INCIDENT_SEVERITY,
+    36→  SEVERITY,
+    37→  SNAPSHOT_STATUS,
+    38→} from "@/lib/domain/status";
+    39→
+    40→import { ChangeRiskBadge } from "@/components/domain/change-risk-badge";
+    41→import { EmptyState } from "@/components/domain/empty-state";
+    42→import { ErrorState } from "@/components/domain/error-state";
+    43→import { KpiCard } from "@/components/domain/kpi-card";
+    44→import { SectionCard } from "@/components/domain/section-card";
+    45→import { StatusBadge } from "@/components/domain/status-badge";
+    46→import { StatusIcon } from "@/components/domain/status-icon";
+    47→import { Badge } from "@/components/ui/badge";
+    48→import { Button } from "@/components/ui/button";
+    49→import { Label } from "@/components/ui/label";
+    50→import { Textarea } from "@/components/ui/textarea";
+    51→import {
+    52→  AlertDialog,
+    53→  AlertDialogAction,
+    54→  AlertDialogCancel,
+    55→  AlertDialogContent,
+    56→  AlertDialogDescription,
+    57→  AlertDialogFooter,
+    58→  AlertDialogHeader,
+    59→  AlertDialogTitle,
+    60→} from "@/components/ui/alert-dialog";
+    61→import {
+    62→  Dialog,
+    63→  DialogContent,
+    64→  DialogDescription,
+    65→  DialogFooter,
+    66→  DialogHeader,
+    67→  DialogTitle,
+    68→} from "@/components/ui/dialog";
+    69→import {
+    70→  Select,
+    71→  SelectContent,
+    72→  SelectItem,
+    73→  SelectTrigger,
+    74→  SelectValue,
+    75→} from "@/components/ui/select";
+    76→import {
+    77→  Tooltip,
+    78→  TooltipContent,
+    79→  TooltipTrigger,
+    80→} from "@/components/ui/tooltip";
+    81→import { useNavigationStore } from "@/stores/navigation";
+    82→import { approvalLevelsFor } from "@/lib/change/risk";
+    83→import { ChangeWizard } from "@/components/change/change-wizard";
+    84→import {
+    85→  lookupStatusConfig,
+    86→  CHANGE_APPROVAL_LEVEL_UI,
+    87→  CHANGE_APPROVAL_STATUS_UI,
+    88→  CHANGE_DEVICE_RESULT_UI,
+    89→  CHANGE_STEP_STATUS_UI,
+    90→  CHANGE_STEP_TYPE_UI,
+    91→  CHANGE_STATUS_UI,
+    92→  CHANGE_TYPE_UI,
+    93→  INCIDENT_STATUS_UI,
+    94→} from "@/components/views/status-extras";
+    95→import type { ChangeDetailStep } from "@/lib/api-client";
+    96→
+    97→/** Statuses whose detail still offers Edit/Submit (mirrors the API guard). */
+    98→const EDITABLE_STATUSES = ["DRAFT"];
+    99→const CANCELLABLE_STATUSES = ["DRAFT", "AWAITING_APPROVAL", "APPROVED", "SCHEDULED"];
+   100→/** Execute action guard (mirrors the execute endpoint). */
+   101→const EXECUTABLE_STATUSES = ["APPROVED", "SCHEDULED"];
+   102→/** Statuses the engine is actively driving — the UI shows live state. */
+   103→const EXECUTION_STATUSES = ["PRE_CHECK", "EXECUTING", "VALIDATING", "ROLLBACK"];
+   104→/** Statuses that offer the incident-creation follow-up. */
+   105→const FAILED_STATUSES = ["FAILED", "ROLLBACK_FAILED"];
+   106→/** SoD-gated risk levels (mirrors the server rule). */
+   107→const SOD_GATED_RISK_LEVELS = ["HIGH", "CRITICAL"];
+   108→
+   109→function formatDate(value: string | null | undefined, pattern = "EEE, MMM d, HH:mm"): string {
+   110→  if (!value) return "—";
+   111→  const date = new Date(value);
+   112→  return Number.isNaN(date.getTime()) ? "—" : format(date, pattern);
+   113→}
+   114→
+   115→/** Human step duration between startedAt/finishedAt. */
+   116→function stepDuration(step: ChangeDetailStep): string | null {
+   117→  if (!step.startedAt || !step.finishedAt) return null;
+   118→  const start = new Date(step.startedAt).getTime();
+   119→  const end = new Date(step.finishedAt).getTime();
+   120→  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return null;
+   121→  const seconds = Math.max(1, Math.round((end - start) / 1000));
+   122→  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+   123→}
+   124→
+   125→/** One prose plan block (plans are normal text, pre-wrapped). */
+   126→function PlanBlock({ label, text }: { label: string; text: string | null }) {
+   127→  return (
+   128→    <div className="flex flex-col gap-1">
+   129→      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+   130→      {text ? (
+   131→        <p className="whitespace-pre-wrap rounded-lg border bg-surface-subtle/60 p-3 text-sm leading-relaxed">
+   132→          {text}
+   133→        </p>
+   134→      ) : (
+   135→        <p className="flex items-center gap-1.5 rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+   136→          <CircleAlert aria-hidden="true" className="size-3.5" />
+   137→          Not documented yet
+   138→        </p>
+   139→      )}
+   140→    </div>
+   141→  );
+   142→}
+   143→
+   144→/** Expandable font-tech block for step output/error lines. */
+   145→function StepOutputBlock({ text, tone }: { text: string; tone: "output" | "error" }) {
+   146→  return (
+   147→    <details className="mt-1">
+   148→      <summary
+   149→        className={
+   150→          tone === "error"
+   151→            ? "cursor-pointer text-xs font-medium text-danger"
+   152→            : "cursor-pointer text-xs font-medium text-muted-foreground"
+   153→        }
+   154→      >
+   155→        {tone === "error" ? "error detail" : "output"}
+   156→      </summary>
+   157→      <pre
+   158→        className={`font-tech ltr-technical mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border px-2 py-1.5 text-xs leading-relaxed ${
+   159→          tone === "error"
+   160→            ? "border-danger/30 bg-danger-subtle text-danger"
+   161→            : "bg-surface-subtle/60 text-muted-foreground"
+   162→        }`}
+   163→      >
+   164→        {text}
+   165→      </pre>
+   166→    </details>
+   167→  );
+   168→}
+   169→
+   170→/** Vertical step timeline — live-updates while the engine drives the change. */
+   171→function StepTimeline({ steps }: { steps: ChangeDetailStep[] }) {
+   172→  return (
+   173→    <ol className="relative flex flex-col gap-0 ps-1">
+   174→      {steps.map((step, index) => {
+   175→        const typeConfig = lookupStatusConfig(CHANGE_STEP_TYPE_UI, step.type);
+   176→        const statusConfig = lookupStatusConfig(CHANGE_STEP_STATUS_UI, step.status);
+   177→        const running = step.status === "RUNNING";
+   178→        const last = index === steps.length - 1;
+   179→        const duration = stepDuration(step);
+   180→        return (
+   181→          <li className="relative flex gap-3 pb-4" key={step.id}>
+   182→            {!last && (
+   183→              <span
+   184→                aria-hidden="true"
+   185→                className="absolute start-[15px] top-8 h-[calc(100%-16px)] w-px bg-border"
+   186→              />
+   187→            )}
+   188→            <span className="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border bg-card">
+   189→              {running ? (
+   190→                <LoaderCircle
+   191→                  aria-hidden="true"
+   192→                  className="size-4 animate-spin text-info"
+   193→                />
+   194→              ) : (
+   195→                <StatusIcon className={typeConfig.iconClass} icon={typeConfig.icon} />
+   196→              )}
+   197→            </span>
+   198→            <div className="min-w-0 flex-1 pt-1">
+   199→              <div className="flex flex-wrap items-center gap-2">
+   200→                <span className="font-tech text-xs tabular-nums text-muted-foreground">
+   201→                  {step.order}.
+   202→                </span>
+   203→                <span className="text-sm font-medium">{step.name}</span>
+   204→                <Badge className="font-tech" variant="outline">
+   205→                  {step.type}
+   206→                </Badge>
+   207→                <StatusBadge config={statusConfig} />
+   208→                {running && (
+   209→                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-info">
+   210→                    <span
+   211→                      aria-hidden="true"
+   212→                      className="size-1.5 animate-pulse rounded-full bg-info"
+   213→                    />
+   214→                    running…
+   215→                  </span>
+   216→                )}
+   217→              </div>
+   218→              {(step.startedAt || step.finishedAt) && (
+   219→                <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+   220→                  {step.startedAt && `started ${formatDate(step.startedAt, "MMM d HH:mm")}`}
+   221→                  {step.startedAt && step.finishedAt && " · "}
+   222→                  {step.finishedAt && `finished ${formatDate(step.finishedAt, "MMM d HH:mm")}`}
+   223→                  {duration && ` · took ${duration}`}
+   224→                </p>
+   225→              )}
+   226→              {step.error && <StepOutputBlock text={step.error} tone="error" />}
+   227→              {step.output && <StepOutputBlock text={step.output} tone="output" />}
+   228→            </div>
+   229→          </li>
+   230→        );
+   231→      })}
+   232→    </ol>
+   233→  );
+   234→}
+   235→
+   236→/**
+   237→ * Change detail view (Tasks 4-a + 4-b) — reached via row click from the
+   238→ * changes lists; hidden view key `changes.change-detail` with params
+   239→ * { changeId }. 4-b adds the approval actions (SoD-aware), the guarded
+   240→ * execute dialog with the demo failAt control, the live step timeline
+   241→ * (2 s polling while the engine drives the change), the outcome banner
+   242→ * with incident creation and the Mark-closed sign-off.
+   243→ */
+   244→export function ChangeDetailView() {
+   245→  const params = useNavigationStore((state) => state.params);
+   246→  const setActiveView = useNavigationStore((state) => state.setActiveView);
+   247→  const changeId = params?.changeId ?? null;
+   248→
+   249→  const actAsUserId = usePreferencesStore((state) => state.actAsUserId);
+   250→  const { actingUser } = useActingUser(actAsUserId);
+   251→
+   252→  const detail = useChangeDetail(changeId);
+   253→  const updateChange = useUpdateChange();
+   254→  const executeChange = useExecuteChange();
+   255→  const decide = useDecideApproval();
+   256→  const createIncident = useCreateIncidentFromChange();
+   257→
+   258→  const [wizardOpen, setWizardOpen] = useState(false);
+   259→  const [confirmAction, setConfirmAction] = useState<
+   260→    "SUBMIT" | "CANCEL" | "CLOSE" | null
+   261→  >(null);
+   262→  const [executeOpen, setExecuteOpen] = useState(false);
+   263→  const [failAt, setFailAt] = useState<string>("NONE");
+   264→  const [decision, setDecision] = useState<{
+   265→    level: string;
+   266→    decision: "APPROVED" | "REJECTED";
+   267→  } | null>(null);
+   268→  const [comment, setComment] = useState("");
+   269→
+   270→  if (!changeId) {
+   271→    return (
+   272→      <div className="flex flex-col gap-4">
+   273→        <EmptyState
+   274→          description="Open a change from the All Changes list."
+   275→          icon={GitPullRequest}
+   276→          title="No change selected"
+   277→        />
+   278→      </div>
+   279→    );
+   280→  }
+   281→
+   282→  if (detail.isError) {
+   283→    return (
+   284→      <ErrorState
+   285→        onRetry={() => void detail.refetch()}
+   286→        reason={detail.error.message}
+   287→        title="Change could not be loaded"
+   288→      />
+   289→    );
+   290→  }
+   291→
+   292→  if (detail.isLoading || !detail.data) {
+   293→    return (
+   294→      <div className="flex flex-col gap-4" aria-busy="true" aria-live="polite">
+   295→        <div className="h-8 w-64 animate-pulse rounded-md bg-muted/60" />
+   296→        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+   297→          {Array.from({ length: 4 }).map((_, index) => (
+   298→            <div className="h-24 animate-pulse rounded-xl bg-muted/60" key={index} />
+   299→          ))}
+   300→        </div>
+   301→        <div className="h-64 animate-pulse rounded-xl bg-muted/60" />
+   302→      </div>
+   303→    );
+   304→  }
+   305→
+   306→  const change = detail.data;
+   307→  const canEdit = EDITABLE_STATUSES.includes(change.status);
+   308→  const canCancel = CANCELLABLE_STATUSES.includes(change.status);
+   309→  const canExecute =
+   310→    EXECUTABLE_STATUSES.includes(change.status) &&
+   311→    change.approvals.every(
+   312→      (approval) => approval.status === "APPROVED" || approval.status === "NOT_REQUIRED"
+   313→    ) &&
+   314→    change.approvals.length > 0;
+   315→  const canClose = change.status === "SUCCESSFUL";
+   316→  const executing = EXECUTION_STATUSES.includes(change.status);
+   317→  const stepsDone = change.steps.filter(
+   318→    (step) => step.status === "PASSED" || step.status === "SKIPPED"
+   319→  ).length;
+   320→  const pendingApprovals = change.approvals.filter(
+   321→    (approval) => approval.status === "PENDING"
+   322→  ).length;
+   323→  const requiredLevels = approvalLevelsFor(change.riskLevel);
+   324→  const missingApprovalRows = requiredLevels.filter(
+   325→    (level) => !change.approvals.some((approval) => approval.level === level)
+   326→  );
+   327→  const showFailedBanner =
+   328→    FAILED_STATUSES.includes(change.status) && change.incidents.length === 0;
+   329→
+   330→  /** SoD pre-check — the requester cannot decide a HIGH/CRITICAL change. */
+   331→  const sodBlocked = Boolean(
+   332→    actingUser &&
+   333→      change.requester.id === actingUser.id &&
+   334→      SOD_GATED_RISK_LEVELS.includes(change.riskLevel)
+   335→  );
+   336→
+   337→  const confirmRun = () => {
+   338→    if (!confirmAction) return;
+   339→    updateChange.mutate(
+   340→      { id: change.id, data: { action: confirmAction } },
+   341→      {
+   342→        onSuccess: () => {
+   343→          setConfirmAction(null);
+   344→          void detail.refetch();
+   345→        },
+   346→        onError: () => setConfirmAction(null),
+   347→      }
+   348→    );
+   349→  };
+   350→
+   351→  const submitDecision = () => {
+   352→    if (!decision) return;
+   353→    const trimmed = comment.trim();
+   354→    if (decision.decision === "REJECTED" && trimmed.length < 4) return;
+   355→    decide.mutate(
+   356→      {
+   357→        changeId: change.id,
+   358→        payload: {
+   359→          level: decision.level,
+   360→          decision: decision.decision,
+   361→          comment: trimmed || undefined,
+   362→          actAsUserId: actAsUserId || undefined,
+   363→        },
+   364→      },
+   365→      {
+   366→        onSuccess: () => {
+   367→          setDecision(null);
+   368→          setComment("");
+   369→          void detail.refetch();
+   370→        },
+   371→      }
+   372→    );
+   373→  };
+   374→
+   375→  const submitExecute = () => {
+   376→    executeChange.mutate(
+   377→      {
+   378→        id: change.id,
+   379→        payload: {
+   380→          failAt: failAt === "APPLY" || failAt === "VALIDATE" ? failAt : null,
+   381→          actAsUserId: actAsUserId || undefined,
+   382→        },
+   383→      },
+   384→      { onSuccess: () => setExecuteOpen(false) }
+   385→    );
+   386→  };
+   387→
+   388→  return (
+   389→    <div className="flex flex-col gap-5">
+   390→      {/* Header */}
+   391→      <div className="flex flex-col gap-3">
+   392→        <div>
+   393→          <Button
+   394→            onClick={() => setActiveView("changes.all")}
+   395→            size="sm"
+   396→            variant="ghost"
+   397→          >
+   398→            <ArrowLeft aria-hidden="true" />
+   399→            All Changes
+   400→          </Button>
+   401→        </div>
+   402→        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+   403→          <div className="min-w-0 space-y-1.5">
+   404→            <div className="flex flex-wrap items-center gap-2">
+   405→              <span className="font-tech text-sm font-semibold ltr-technical text-muted-foreground">
+   406→                {change.number}
+   407→              </span>
+   408→              <StatusBadge
+   409→                config={lookupStatusConfig(CHANGE_STATUS_UI, change.status)}
+   410→              />
+   411→              <StatusBadge
+   412→                config={lookupStatusConfig(CHANGE_TYPE_UI, change.type)}
+   413→              />
+   414→              <ChangeRiskBadge value={change.riskLevel} />
+   415→            </div>
+   416→            <h1 className="text-xl font-semibold tracking-tight md:text-2xl">
+   417→              {change.title}
+   418→            </h1>
+   419→            {change.description && (
+   420→              <p className="max-w-3xl whitespace-pre-wrap text-sm text-muted-foreground">
+   421→                {change.description}
+   422→              </p>
+   423→            )}
+   424→          </div>
+   425→          <div className="flex flex-wrap items-center gap-2 md:shrink-0">
+   426→            {canEdit && (
+   427→              <>
+   428→                <Button
+   429→                  onClick={() => setWizardOpen(true)}
+   430→                  size="sm"
+   431→                  variant="outline"
+   432→                >
+   433→                  <Pencil aria-hidden="true" />
+   434→                  Edit
+   435→                </Button>
+   436→                <Button
+   437→                  onClick={() => setConfirmAction("SUBMIT")}
+   438→                  size="sm"
+   439→                  variant="outline"
+   440→                >
+   441→                  <Send aria-hidden="true" />
+   442→                  Submit for approval
+   443→                </Button>
+   444→              </>
+   445→            )}
+   446→            {canExecute && (
+   447→              <Button onClick={() => setExecuteOpen(true)} size="sm">
+   448→                <Play aria-hidden="true" />
+   449→                Execute
+   450→              </Button>
+   451→            )}
+   452→            {canClose && (
+   453→              <Button
+   454→                onClick={() => setConfirmAction("CLOSE")}
+   455→                size="sm"
+   456→                variant="outline"
+   457→              >
+   458→                <CheckCircle2 aria-hidden="true" />
+   459→                Mark closed
+   460→              </Button>
+   461→            )}
+   462→            {canCancel && (
+   463→              <Button
+   464→                onClick={() => setConfirmAction("CANCEL")}
+   465→                size="sm"
+   466→                variant="ghost"
+   467→              >
+   468→                <Trash2 aria-hidden="true" className="text-danger" />
+   469→                Cancel change
+   470→              </Button>
+   471→            )}
+   472→          </div>
+   473→        </div>
+   474→        {/* Live-state banner */}
+   475→        {executing && (
+   476→          <p className="flex items-start gap-2 rounded-lg border border-info/25 bg-info-subtle px-3 py-2 text-xs text-info">
+   477→            <LoaderCircle
+   478→              aria-hidden="true"
+   479→              className="mt-0.5 size-3.5 shrink-0 animate-spin"
+   480→            />
+   481→            Execution in progress — the step timeline below live-updates every 2 s.
+   482→          </p>
+   483→        )}
+   484→      </div>
+   485→
+   486→      {/* Outcome banners (4-b) */}
+   487→      {change.status === "SUCCESSFUL" && (
+   488→        <div className="flex items-start gap-2 rounded-lg border border-success/25 bg-success-subtle px-3 py-2 text-xs text-success">
+   489→          <CheckCircle2 aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+   490→          All steps passed — the change completed successfully. Mark it closed to
+   491→          sign off the record.
+   492→        </div>
+   493→      )}
+   494→      {showFailedBanner && (
+   495→        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-danger/25 bg-danger-subtle px-3 py-2 text-xs text-danger">
+   496→          <CircleX aria-hidden="true" className="size-3.5 shrink-0" />
+   497→          <span className="min-w-0 flex-1">
+   498→            {change.status === "ROLLBACK_FAILED"
+   499→              ? "The change failed AND the rollback could not be completed — investigate before re-attempting."
+   500→              : "The change failed during execution. Correlate an incident so the response is tracked."}
+   501→          </span>
+   502→          <Button
+   503→            disabled={createIncident.isPending}
+   504→            onClick={() =>
+   505→              createIncident.mutate({
+   506→                changeId: change.id,
+   507→                actAsUserId: actAsUserId || undefined,
+   508→              })
+   509→            }
+   510→            size="sm"
+   511→            type="button"
+   512→            variant="outline"
+   513→          >
+   514→            <Siren aria-hidden="true" />
+   515→            Create incident from failed change
+   516→          </Button>
+   517→        </div>
+   518→      )}
+   519→
+   520→      {/* KPI strip */}
+   521→      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+   522→        <KpiCard
+   523→          description={`${change.riskScore}/100 score`}
+   524→          icon={ClipboardList}
+   525→          label="Risk"
+   526→          value={change.riskLevel}
+   527→        />
+   528→        <KpiCard
+   529→          icon={GitPullRequest}
+   530→          label="Devices in scope"
+   531→          value={change.devices.length}
+   532→        />
+   533→        <KpiCard
+   534→          description={`${stepsDone}/${change.steps.length} passed or skipped`}
+   535→          icon={Play}
+   536→          label="Steps done"
+   537→          value={`${stepsDone}/${change.steps.length}`}
+   538→        />
+   539→        <KpiCard
+   540→          description={
+   541→            missingApprovalRows.length > 0
+   542→              ? `Missing rows: ${missingApprovalRows.join(", ")}`
+   543→              : "Per risk policy"
+   544→          }
+   545→          icon={ClipboardList}
+   546→          label="Approvals pending"
+   547→          value={pendingApprovals}
+   548→        />
+   549→      </div>
+   550→
+   551→      <div className="grid gap-5 xl:grid-cols-2">
+   552→        {/* Details */}
+   553→        <SectionCard title="Details">
+   554→          <dl className="flex flex-col gap-2 text-sm">
+   555→            {[
+   556→              {
+   557→                label: "Site",
+   558→                value: change.site
+   559→                  ? `${change.site.name} (${change.site.code})`
+   560→                  : "—",
+   561→              },
+   562→              {
+   563→                label: "Requester",
+   564→                value: change.requester?.name ?? change.requester?.email ?? "—",
+   565→              },
+   566→              {
+   567→                label: "Owner",
+   568→                value: change.owner?.name ?? "—",
+   569→              },
+   570→              {
+   571→                label: "Technical owner",
+   572→                value: change.technicalOwner?.name ?? "—",
+   573→              },
+   574→              {
+   575→                label: "Created",
+   576→                value: formatDate(change.createdAt),
+   577→              },
+   578→            ].map((row) => (
+   579→              <div className="flex items-center justify-between gap-3" key={row.label}>
+   580→                <dt className="shrink-0 text-xs text-muted-foreground">{row.label}</dt>
+   581→                <dd className="min-w-0 truncate text-end">{row.value}</dd>
+   582→              </div>
+   583→            ))}
+   584→            <div className="mt-1 rounded-lg border bg-surface-subtle/60 p-3">
+   585→              <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+   586→                <CalendarClock aria-hidden="true" className="size-3.5" />
+   587→                Schedule window
+   588→              </p>
+   589→              {change.scheduledStart ? (
+   590→                <>
+   591→                  <p className="mt-1 text-sm tabular-nums">
+   592→                    {formatDate(change.scheduledStart)} → {formatDate(change.scheduledEnd)}
+   593→                  </p>
+   594→                  <p className="mt-1 text-xs text-muted-foreground">
+   595→                    Execute is available while the change is APPROVED or SCHEDULED.
+   596→                  </p>
+   597→                </>
+   598→              ) : (
+   599→                <p className="mt-1 text-sm text-muted-foreground">Unscheduled</p>
+   600→              )}
+   601→            </div>
+   602→          </dl>
+   603→        </SectionCard>
+   604→
+   605→        {/* Plans */}
+   606→        <SectionCard
+   607→          description="Prose plans are rendered as written — no pre-formatting"
+   608→          title="Plans"
+   609→        >
+   610→          <div className="flex flex-col gap-4">
+   611→            <PlanBlock label="Implementation" text={change.implementationPlan} />
+   612→            <PlanBlock label="Validation" text={change.validationPlan} />
+   613→            <PlanBlock label="Rollback" text={change.rollbackPlan} />
+   614→          </div>
+   615→        </SectionCard>
+   616→      </div>
+   617→
+   618→      {/* Devices */}
+   619→      <SectionCard
+   620→        description={`${change.devices.length} device${change.devices.length === 1 ? "" : "s"} targeted`}
+   621→        title="Devices"
+   622→      >
+   623→        {change.devices.length === 0 ? (
+   624→          <EmptyState
+   625→            description="This change has no device links."
+   626→            icon={GitPullRequest}
+   627→            title="No devices"
+   628→          />
+   629→        ) : (
+   630→          <ul className="max-h-96 divide-y overflow-y-auto">
+   631→            {change.devices.map((device) => (
+   632→              <li className="flex flex-wrap items-center gap-3 py-2" key={device.linkId}>
+   633→                <button
+   634→                  className="min-w-0 flex-1 truncate text-start font-tech text-sm ltr-technical hover:text-primary hover:underline"
+   635→                  onClick={() =>
+   636→                    setActiveView("network.device-detail", { deviceId: device.deviceId })
+   637→                  }
+   638→                  type="button"
+   639→                >
+   640→                  {device.hostname}
+   641→                </button>
+   642→                <span className="hidden text-xs text-muted-foreground sm:inline">
+   643→                  {device.siteCode ?? "no site"}
+   644→                </span>
+   645→                <StatusBadge config={getStatusConfig(SEVERITY, device.criticality)} />
+   646→                {device.result && (
+   647→                  <StatusBadge
+   648→                    config={lookupStatusConfig(CHANGE_DEVICE_RESULT_UI, device.result)}
+   649→                  />
+   650→                )}
+   651→              </li>
+   652→            ))}
+   653→          </ul>
+   654→        )}
+   655→      </SectionCard>
+   656→
+   657→      {/* Steps timeline */}
+   658→      <SectionCard
+   659→        description={
+   660→          executing
+   661→            ? "Live — statuses stream from the execution engine"
+   662→            : "Ordered execution plan — appended rollback steps appear after a failure"
+   663→        }
+   664→        title="Steps"
+   665→      >
+   666→        {change.steps.length === 0 ? (
+   667→          <EmptyState
+   668→            description="This change has no execution steps."
+   669→            icon={Play}
+   670→            title="No steps"
+   671→          />
+   672→        ) : (
+   673→          <div className="max-h-[480px] overflow-y-auto pt-1">
+   674→            <StepTimeline steps={change.steps} />
+   675→          </div>
+   676→        )}
+   677→      </SectionCard>
+   678→
+   679→      <div className="grid gap-5 xl:grid-cols-2">
+   680→        {/* Approvals */}
+   681→        <SectionCard
+   682→          actions={
+   683→            change.status === "AWAITING_APPROVAL" && (
+   684→              <span className="text-xs text-muted-foreground">
+   685→                Acting as:{" "}
+   686→                <span className="font-medium text-foreground">
+   687→                  {actingUser?.name ?? actAsUserId}
+   688→                </span>{" "}
+   689→                — demo identity
+   690→              </span>
+   691→            )
+   692→          }
+   693→          description="Levels required by the risk policy — decide as the acting user"
+   694→          title="Approvals"
+   695→        >
+   696→          <div className="flex flex-col gap-2">
+   697→            {requiredLevels.map((level) => {
+   698→              const approval = change.approvals.find((row) => row.level === level);
+   699→              const levelConfig = lookupStatusConfig(CHANGE_APPROVAL_LEVEL_UI, level);
+   700→              const statusConfig = lookupStatusConfig(
+   701→                CHANGE_APPROVAL_STATUS_UI,
+   702→                approval?.status
+   703→              );
+   704→              const isPending = approval?.status === "PENDING";
+   705→              return (
+   706→                <div
+   707→                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border p-3"
+   708→                  key={level}
+   709→                >
+   710→                  <StatusIcon className={levelConfig.iconClass} icon={levelConfig.icon} />
+   711→                  <span className="text-sm font-medium">{levelConfig.label}</span>
+   712→                  <StatusBadge config={statusConfig} />
+   713→                  <span className="ms-auto text-xs text-muted-foreground">
+   714→                    {approval?.approverName ?? "unassigned"}
+   715→                    {approval?.decidedAt
+   716→                      ? ` · ${formatDate(approval.decidedAt, "MMM d HH:mm")}`
+   717→                      : ""}
+   718→                  </span>
+   719→                  {approval?.comment && (
+   720→                    <p className="w-full text-xs text-muted-foreground">
+   721→                      “{approval.comment}”
+   722→                    </p>
+   723→                  )}
+   724→                  {isPending && change.status === "AWAITING_APPROVAL" && (
+   725→                    <div className="flex w-full items-center gap-2">
+   726→                      <Tooltip>
+   727→                        <TooltipTrigger asChild>
+   728→                          <span className="inline-block">
+   729→                            <Button
+   730→                              aria-label={`Approve ${levelConfig.label}`}
+   731→                              className="h-8"
+   732→                              disabled={
+   733→                                sodBlocked ||
+   734→                                decide.isPending ||
+   735→                                updateChange.isPending
+   736→                              }
+   737→                              onClick={() => {
+   738→                                setComment("");
+   739→                                setDecision({ level, decision: "APPROVED" });
+   740→                              }}
+   741→                              size="sm"
+   742→                              type="button"
+   743→                              variant="outline"
+   744→                            >
+   745→                              Approve
+   746→                            </Button>
+   747→                          </span>
+   748→                        </TooltipTrigger>
+   749→                        {sodBlocked && (
+   750→                          <TooltipContent>
+   751→                            Blocked by separation of duties — the requester cannot
+   752→                            approve a {change.riskLevel} change
+   753→                          </TooltipContent>
+   754→                        )}
+   755→                      </Tooltip>
+   756→                      <Tooltip>
+   757→                        <TooltipTrigger asChild>
+   758→                          <span className="inline-block">
+   759→                            <Button
+   760→                              aria-label={`Reject ${levelConfig.label}`}
+   761→                              className="h-8"
+   762→                              disabled={
+   763→                                sodBlocked ||
+   764→                                decide.isPending ||
+   765→                                updateChange.isPending
+   766→                              }
+   767→                              onClick={() => {
+   768→                                setComment("");
+   769→                                setDecision({ level, decision: "REJECTED" });
+   770→                              }}
+   771→                              size="sm"
+   772→                              type="button"
+   773→                              variant="outline"
+   774→                            >
+   775→                              <XCircle aria-hidden="true" className="text-danger" />
+   776→                              Reject
+   777→                            </Button>
+   778→                          </span>
+   779→                        </TooltipTrigger>
+   780→                        {sodBlocked && (
+   781→                          <TooltipContent>
+   782→                            Blocked by separation of duties — the requester cannot
+   783→                            reject a {change.riskLevel} change
+   784→                          </TooltipContent>
+   785→                        )}
+   786→                      </Tooltip>
+   787→                      {sodBlocked && (
+   788→                        <span className="text-xs text-warning">
+   789→                          SoD — switch the acting user to decide
+   790→                        </span>
+   791→                      )}
+   792→                    </div>
+   793→                  )}
+   794→                </div>
+   795→              );
+   796→            })}
+   797→            {missingApprovalRows.length > 0 && (
+   798→              <p className="flex items-center gap-1.5 text-xs text-warning">
+   799→                <CircleAlert aria-hidden="true" className="size-3.5" />
+   800→                No approval rows yet for: {missingApprovalRows.join(", ")} — submit the
+   801→                change to create them.
+   802→              </p>
+   803→            )}
+   804→            {change.status === "DRAFT" && (
+   805→              <p className="text-xs text-muted-foreground">
+   806→                Draft changes carry no approval rows — they are created on submit per the
+   807→                {` ${change.riskLevel}`} policy ({requiredLevels.join(" → ")}) for
+   808→                approvers to action in the approvals queue.
+   809→              </p>
+   810→            )}
+   811→          </div>
+   812→        </SectionCard>
+   813→
+   814→        {/* Linked records */}
+   815→        <SectionCard
+   816→          description="Pre/post-change snapshots and correlated incidents"
+   817→          title="Linked records"
+   818→        >
+   819→          <div className="flex flex-col gap-4">
+   820→            <div>
+   821→              <p className="mb-2 text-xs font-medium text-muted-foreground">
+   822→                Snapshots ({change.snapshots.length})
+   823→              </p>
+   824→              {change.snapshots.length === 0 ? (
+   825→                <p className="text-sm text-muted-foreground">
+   826→                  None yet — pre/post-change backups appear here when the executor runs.
+   827→                </p>
+   828→              ) : (
+   829→                <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto text-sm">
+   830→                  {change.snapshots.map((snapshot) => (
+   831→                    <li className="flex items-center gap-2" key={snapshot.id}>
+   832→                      <span className="font-tech ltr-technical">
+   833→                        {snapshot.hostname} v{snapshot.version}
+   834→                      </span>
+   835→                      <StatusBadge
+   836→                        config={getStatusConfig(SNAPSHOT_STATUS, snapshot.status)}
+   837→                      />
+   838→                      <Badge variant="outline">{snapshot.source}</Badge>
+   839→                      <span className="ms-auto text-xs tabular-nums text-muted-foreground">
+   840→                        {formatDistanceToNow(new Date(snapshot.createdAt), {
+   841→                          addSuffix: true,
+   842→                        })}
+   843→                      </span>
+   844→                    </li>
+   845→                  ))}
+   846→                </ul>
+   847→              )}
+   848→            </div>
+   849→            <div>
+   850→              <p className="mb-2 text-xs font-medium text-muted-foreground">
+   851→                Incidents ({change.incidents.length})
+   852→              </p>
+   853→              {change.incidents.length === 0 ? (
+   854→                <p className="text-sm text-muted-foreground">
+   855→                  No incidents correlated to this change.
+   856→                </p>
+   857→              ) : (
+   858→                <ul className="flex flex-col gap-1 text-sm">
+   859→                  {change.incidents.map((incident) => (
+   860→                    <li className="flex flex-wrap items-center gap-2" key={incident.id}>
+   861→                      <span className="font-tech ltr-technical">{incident.number}</span>
+   862→                      <StatusBadge
+   863→                        config={lookupStatusConfig(INCIDENT_SEVERITY, incident.severity)}
+   864→                      />
+   865→                      <StatusBadge
+   866→                        config={lookupStatusConfig(INCIDENT_STATUS_UI, incident.status)}
+   867→                      />
+   868→                      <span className="min-w-0 flex-1 truncate text-muted-foreground">
+   869→                        {incident.title}
+   870→                      </span>
+   871→                    </li>
+   872→                  ))}
+   873→                </ul>
+   874→              )}
+   875→            </div>
+   876→          </div>
+   877→        </SectionCard>
+   878→      </div>
+   879→
+   880→      {/* Pre-checks (when seeded or produced by the engine) */}
+   881→      {change.preChecks.length > 0 && (
+   882→        <SectionCard
+   883→          description="Engine pre-check results merge into this list per device"
+   884→          title="Pre-checks"
+   885→        >
+   886→          <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto text-sm">
+   887→            {change.preChecks.map((preCheck, index) => (
+   888→              <li className="flex items-start gap-2" key={`${preCheck.name}-${index}`}>
+   889→                <FileText aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+   890→                <span className="min-w-0 flex-1">
+   891→                  <span className="font-medium">{preCheck.name}</span>
+   892→                  {preCheck.detail && (
+   893→                    <span className="block text-xs text-muted-foreground">
+   894→                      {preCheck.detail}
+   895→                    </span>
+   896→                  )}
+   897→                </span>
+   898→                <Badge
+   899→                  className={
+   900→                    preCheck.status === "FAILED"
+   901→                      ? "border-danger/25 bg-danger-subtle text-danger"
+   902→                      : preCheck.status === "PASSED"
+   903→                        ? "border-success/25 bg-success-subtle text-success"
+   904→                        : undefined
+   905→                  }
+   906→                  variant="outline"
+   907→                >
+   908→                  {preCheck.status}
+   909→                </Badge>
+   910→              </li>
+   911→            ))}
+   912→          </ul>
+   913→        </SectionCard>
+   914→      )}
+   915→
+   916→      {/* Edit wizard (DRAFT only — same component as create, edit mode) */}
+   917→      <ChangeWizard
+   918→        change={change}
+   919→        onOpenChange={setWizardOpen}
+   920→        open={wizardOpen}
+   921→      />
+   922→
+   923→      {/* Execute dialog (Task 4-b) */}
+   924→      <Dialog onOpenChange={setExecuteOpen} open={executeOpen}>
+   925→        <DialogContent className="sm:max-w-lg">
+   926→          <DialogHeader>
+   927→            <DialogTitle>
+   928→              Execute <span className="font-tech ltr-technical">{change.number}</span>?
+   929→            </DialogTitle>
+   930→            <DialogDescription>
+   931→              Queues a CHANGE_EXECUTE job — the worker drives each step
+   932→              (pre-checks, pre-change backup, apply, validation). Acting as{" "}
+   933→              {actingUser?.name ?? actAsUserId} (demo identity).
+   934→            </DialogDescription>
+   935→          </DialogHeader>
+   936→          <div className="flex flex-col gap-3">
+   937→            <div>
+   938→              <p className="text-xs font-medium text-muted-foreground">
+   939→                Steps preview ({change.steps.length})
+   940→              </p>
+   941→              <ol className="mt-1 flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border bg-surface-subtle/60 p-2 text-sm">
+   942→                {change.steps.map((step) => (
+   943→                  <li className="flex items-center gap-2" key={step.id}>
+   944→                    <span className="font-tech text-xs tabular-nums text-muted-foreground">
+   945→                      {step.order}.
+   946→                    </span>
+   947→                    <span className="min-w-0 flex-1 truncate">{step.name}</span>
+   948→                    <Badge className="font-tech" variant="outline">
+   949→                      {step.type}
+   950→                    </Badge>
+   951→                  </li>
+   952→                ))}
+   953→              </ol>
+   954→            </div>
+   955→            <div className="flex flex-col gap-1.5">
+   956→              <Label htmlFor="fail-at-select">Simulate failure at</Label>
+   957→              <Select onValueChange={setFailAt} value={failAt}>
+   958→                <SelectTrigger id="fail-at-select">
+   959→                  <SelectValue />
+   960→                </SelectTrigger>
+   961→                <SelectContent>
+   962→                  <SelectItem value="NONE">None — run the happy path</SelectItem>
+   963→                  <SelectItem value="APPLY">APPLY — simulated apply failure</SelectItem>
+   964→                  <SelectItem value="VALIDATE">
+   965→                    VALIDATE — simulated validation failure
+   966→                  </SelectItem>
+   967→                </SelectContent>
+   968→              </Select>
+   969→              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+   970→                <Info aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
+   971→                Demo control — forces the engine down its rollback path (restore
+   972→                pre-change config, post-rollback validation + backup).
+   973→              </p>
+   974→            </div>
+   975→          </div>
+   976→          <DialogFooter>
+   977→            <Button
+   978→              onClick={() => setExecuteOpen(false)}
+   979→              type="button"
+   980→              variant="ghost"
+   981→            >
+   982→              Cancel
+   983→            </Button>
+   984→            <Button
+   985→              disabled={executeChange.isPending}
+   986→              onClick={submitExecute}
+   987→              type="button"
+   988→            >
+   989→              {executeChange.isPending && (
+   990→                <LoaderCircle aria-hidden="true" className="animate-spin" />
+   991→              )}
+   992→              Queue execution
+   993→            </Button>
+   994→          </DialogFooter>
+   995→        </DialogContent>
+   996→      </Dialog>
+   997→
+   998→      {/* Approval decision dialog (Task 4-b) */}
+   999→      <Dialog
+  1000→        onOpenChange={(open) => !open && setDecision(null)}
+  1001→        open={decision !== null}
+  1002→      >
+  1003→        <DialogContent className="sm:max-w-md">
+  1004→          {decision && (
+  1005→            <>
+  1006→              <DialogHeader>
+  1007→                <DialogTitle>
+  1008→                  {decision.decision === "APPROVED" ? "Approve" : "Reject"}{" "}
+  1009→                  {lookupStatusConfig(CHANGE_APPROVAL_LEVEL_UI, decision.level).label}
+  1010→                </DialogTitle>
+  1011→                <DialogDescription>
+  1012→                  {decision.decision === "APPROVED"
+  1013→                    ? `Recorded as ${actingUser?.name ?? actAsUserId} — a comment is optional.`
+  1014→                    : `Recorded as ${actingUser?.name ?? actAsUserId} — a short reason (min 4 characters) is required.`}
+  1015→                </DialogDescription>
+  1016→              </DialogHeader>
+  1017→              <div className="flex flex-col gap-2">
+  1018→                <Label htmlFor="detail-approval-comment">
+  1019→                  Comment {decision.decision === "APPROVED" ? "(optional)" : "(required)"}
+  1020→                </Label>
+  1021→                <Textarea
+  1022→                  aria-label="Decision comment"
+  1023→                  id="detail-approval-comment"
+  1024→                  onChange={(event) => setComment(event.target.value)}
+  1025→                  rows={3}
+  1026→                  value={comment}
+  1027→                />
+  1028→              </div>
+  1029→              <DialogFooter>
+  1030→                <Button onClick={() => setDecision(null)} type="button" variant="ghost">
+  1031→                  Cancel
+  1032→                </Button>
+  1033→                <Button
+  1034→                  className={
+  1035→                    decision.decision === "REJECTED"
+  1036→                      ? "bg-danger text-white hover:bg-danger/90"
+  1037→                      : undefined
+  1038→                  }
+  1039→                  disabled={
+  1040→                    decide.isPending ||
+  1041→                    (decision.decision === "REJECTED" && comment.trim().length < 4)
+  1042→                  }
+  1043→                  onClick={submitDecision}
+  1044→                  type="button"
+  1045→                >
+  1046→                  {decision.decision === "APPROVED" ? "Approve" : "Reject"}
+  1047→                </Button>
+  1048→              </DialogFooter>
+  1049→            </>
+  1050→          )}
+  1051→        </DialogContent>
+  1052→      </Dialog>
+  1053→
+  1054→      {/* Submit / Cancel / Close confirmation */}
+  1055→      <AlertDialog
+  1056→        onOpenChange={(open) => !open && setConfirmAction(null)}
+  1057→        open={confirmAction !== null}
+  1058→      >
+  1059→        <AlertDialogContent>
+  1060→          <AlertDialogHeader>
+  1061→            <AlertDialogTitle>
+  1062→              {confirmAction === "SUBMIT"
+  1063→                ? `Submit ${change.number} for approval?`
+  1064→                : confirmAction === "CLOSE"
+  1065→                  ? `Mark ${change.number} closed?`
+  1066→                  : `Cancel ${change.number}?`}
+  1067→            </AlertDialogTitle>
+  1068→            <AlertDialogDescription>
+  1069→              {confirmAction === "SUBMIT"
+  1070→                ? `The draft moves to AWAITING_APPROVAL and PENDING approval rows are created per the ${change.riskLevel} policy: ${requiredLevels.join(", ")}.`
+  1071→                : confirmAction === "CLOSE"
+  1072→                  ? "The successful change is signed off as CLOSED. Closed changes leave every active queue."
+  1073→                  : "The change is marked CANCELLED and leaves every planning queue. Execution states cannot be cancelled once the engine starts."}
+  1074→            </AlertDialogDescription>
+  1075→          </AlertDialogHeader>
+  1076→          <AlertDialogFooter>
+  1077→            <AlertDialogCancel>Keep as is</AlertDialogCancel>
+  1078→            <AlertDialogAction
+  1079→              className={
+  1080→                confirmAction === "CANCEL"
+  1081→                  ? "bg-danger text-white hover:bg-danger/90"
+  1082→                  : undefined
+  1083→              }
+  1084→              disabled={updateChange.isPending}
+  1085→              onClick={(event) => {
+  1086→                event.preventDefault();
+  1087→                confirmRun();
+  1088→              }}
+  1089→            >
+  1090→              {updateChange.isPending && (
+  1091→                <LoaderCircle aria-hidden="true" className="animate-spin" />
+  1092→              )}
+  1093→              {confirmAction === "SUBMIT"
+  1094→                ? "Submit"
+  1095→                : confirmAction === "CLOSE"
+  1096→                  ? "Mark closed"
+  1097→                  : "Cancel change"}
+  1098→            </AlertDialogAction>
+  1099→          </AlertDialogFooter>
+  1100→        </AlertDialogContent>
+  1101→      </AlertDialog>
+  1102→    </div>
+  1103→  );
+  1104→}
+  1105→

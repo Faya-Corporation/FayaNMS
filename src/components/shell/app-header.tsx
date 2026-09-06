@@ -1,7 +1,8 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 import { useTheme } from "next-themes";
+import { formatDistanceToNow, parseISO } from "date-fns";
 import {
   Bell,
   Check,
@@ -18,6 +19,10 @@ import {
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
+import {
+  useMarkNotificationsRead,
+  useNotifications,
+} from "@/hooks/api/use-notifications";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -39,7 +44,7 @@ import {
 import { EmptyState } from "@/components/domain/empty-state";
 import { StatusDot } from "@/components/domain/status-dot";
 import { cn } from "@/lib/utils";
-import { breadcrumbFor } from "@/lib/navigation/registry";
+import { breadcrumbFor, isValidViewKey } from "@/lib/navigation/registry";
 import { useNavigationStore } from "@/stores/navigation";
 import { usePreferencesStore, type Density } from "@/stores/preferences";
 import type { SidebarCounts } from "./sidebar-nav";
@@ -76,25 +81,19 @@ export function AppHeader({
   criticalAlerts,
 }: AppHeaderProps) {
   const activeView = useNavigationStore((state) => state.activeView);
+  const setActiveView = useNavigationStore((state) => state.setActiveView);
   const density = usePreferencesStore((state) => state.density);
   const setDensity = usePreferencesStore((state) => state.setDensity);
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
 
-  const [notifications, setNotifications] = useState([
-    {
-      id: "n1",
-      title: "Report ready",
-      description: "Weekly availability report finished generating.",
-      time: "12 min ago",
-    },
-    {
-      id: "n2",
-      title: "Approval requested",
-      description: "CHG-2026-00403 awaits your technical approval.",
-      time: "48 min ago",
-    },
-  ]);
+  // Notifications center (Task 5-a; design §74 — separate surface from the
+  // operational alert stream). Data-driven: unread badge, mark read,
+  // deep-link into the ops views.
+  const notificationsQuery = useNotifications({ refetchInterval: 15_000, limit: 30 });
+  const markRead = useMarkNotificationsRead();
+  const notificationItems = notificationsQuery.data?.data ?? [];
+  const unreadCount = notificationsQuery.data?.meta.unreadCount ?? 0;
 
   const healthy = criticalAlerts === 0;
   const crumbs = breadcrumbFor(activeView);
@@ -212,32 +211,36 @@ export function AppHeader({
           )}
         </Button>
 
-        {/* Notifications */}
+        {/* Notifications (§74 — separate from the alert stream) */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
-              aria-label="Notifications"
+              aria-label={
+                unreadCount > 0
+                  ? `Notifications (${unreadCount} unread)`
+                  : "Notifications"
+              }
               className="relative"
               size="icon"
               variant="ghost"
             >
               <Bell aria-hidden="true" />
-              {notifications.length > 0 && (
-                <span
-                  aria-hidden="true"
-                  className="absolute right-1.5 top-1.5 size-2 rounded-full bg-danger"
-                />
+              {unreadCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-danger text-[10px] font-semibold text-white tabular-nums">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
               )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel className="flex items-center justify-between">
               Notifications
-              {notifications.length > 0 && (
+              {unreadCount > 0 && (
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground transition-colors hover:text-foreground"
-                  onClick={() => setNotifications([])}
+                  disabled={markRead.isPending}
+                  onClick={() => markRead.mutate({ all: true })}
                 >
                   <Check aria-hidden="true" className="size-3" />
                   Mark all read
@@ -245,32 +248,80 @@ export function AppHeader({
               )}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {notifications.length === 0 ? (
+            {notificationItems.length === 0 ? (
               <div className="p-1">
                 <EmptyState
                   className="border-none bg-transparent py-8"
-                  description="New report and approval updates will show up here."
+                  description="Alert escalations, incidents and change updates will show up here."
                   icon={Bell}
                   title="You're all caught up"
                 />
               </div>
             ) : (
-              notifications.map((notification) => (
-                <DropdownMenuItem
-                  key={notification.id}
-                  className="flex-col items-start gap-0.5 py-2.5"
-                >
-                  <span className="flex w-full items-center justify-between gap-2">
-                    <span className="text-sm font-medium">{notification.title}</span>
-                    <span className="text-[11px] text-muted-foreground">
-                      {notification.time}
-                    </span>
-                  </span>
-                  <span className="line-clamp-2 text-xs text-muted-foreground">
-                    {notification.description}
-                  </span>
-                </DropdownMenuItem>
-              ))
+              <div className="max-h-96 overflow-y-auto">
+                {notificationItems.map((notification) => {
+                  const severityToken =
+                    notification.severity === "CRITICAL" ||
+                    notification.severity === "SEV1"
+                      ? "bg-danger"
+                      : notification.severity === "HIGH" ||
+                          notification.severity === "SEV2"
+                        ? "bg-danger-orange"
+                        : notification.severity === "MEDIUM" ||
+                            notification.severity === "SEV3"
+                          ? "bg-warning"
+                          : "bg-info";
+                  return (
+                    <DropdownMenuItem
+                      key={notification.id}
+                      className="flex-col items-start gap-0.5 py-2.5"
+                      onClick={() => {
+                        if (!notification.readAt) {
+                          markRead.mutate({ ids: [notification.id] });
+                        }
+                        if (
+                          notification.link &&
+                          isValidViewKey(notification.link)
+                        ) {
+                          setActiveView(notification.link);
+                        }
+                      }}
+                    >
+                      <span className="flex w-full items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          {!notification.readAt && (
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                "size-1.5 shrink-0 rounded-full",
+                                severityToken
+                              )}
+                            />
+                          )}
+                          <span
+                            className={cn(
+                              "truncate text-sm",
+                              notification.readAt
+                                ? "font-normal"
+                                : "font-medium"
+                            )}
+                          >
+                            {notification.title}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                          {formatDistanceToNow(parseISO(notification.createdAt), {
+                            addSuffix: true,
+                          })}
+                        </span>
+                      </span>
+                      <span className="line-clamp-2 text-xs text-muted-foreground">
+                        {notification.body}
+                      </span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </div>
             )}
           </DropdownMenuContent>
         </DropdownMenu>

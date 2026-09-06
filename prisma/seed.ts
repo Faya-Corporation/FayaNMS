@@ -1164,6 +1164,7 @@ function metricValue(d: DeviceSpec, metric: MetricKey, ts: Date): number {
 async function wipe() {
   // FK-safe order: children (or SetNull referencers) before parents.
   await db.auditEvent.deleteMany();
+  await db.notification.deleteMany();
   await db.alert.deleteMany();
   await db.alertRule.deleteMany();
   await db.incidentEvent.deleteMany();
@@ -1741,7 +1742,7 @@ async function seedIncidentsAndAlerts() {
     data: [
       { id: "alert-01", deviceId: "dev-hq-edge-rtr-01", severity: "CRITICAL", message: "BGP neighbor 203.0.113.1 (ISP-A) state changed to DOWN", status: "ACTIVE", firstSeen: ago(41), lastSeen: ago(11), count: 3, incidentId: "inc-2026-00101" },
       { id: "alert-02", deviceId: "dev-dc-dmz-fw-01", ruleId: "rule-cpu-critical", severity: "HIGH", message: "CPU utilization 97% (≥95% for 5m) — HA secondary active, UTM without offload", status: "ACTIVE", firstSeen: ago(200), lastSeen: ago(5), count: 14, incidentId: "inc-2026-00102" },
-      { id: "alert-03", deviceId: "dev-hq-idf-sw-01", ruleId: "rule-device-down", severity: "HIGH", message: "Device unreachable — 9 consecutive failed polls (ICMP + SNMP)", status: "ACTIVE", firstSeen: ago(620), lastSeen: ago(20), count: 9 },
+      { id: "alert-03", deviceId: "dev-hq-idf-sw-01", ruleId: "rule-device-down", severity: "HIGH", message: "Device unreachable — 9 consecutive failed polls (ICMP + SNMP)", status: "ACTIVE", firstSeen: ago(620), lastSeen: ago(20), count: 9, dedupKey: "dev-hq-idf-sw-01:AVAILABILITY:rule-device-down" },
       { id: "alert-04", deviceId: "dev-hq-core-sw-01", ruleId: "rule-util-high", severity: "HIGH", message: "Utilization_in 94.2% on Te1/1/1 (≥90% for 15m)", status: "ACTIVE", firstSeen: ago(90), lastSeen: ago(10), count: 4 },
       { id: "alert-05", deviceId: "dev-br1-edge-rtr-01", severity: "MEDIUM", message: "Latency 128 ms to probe target (threshold 100 ms)", status: "ACTIVE", firstSeen: ago(240), lastSeen: ago(15), count: 6 },
       { id: "alert-06", deviceId: "dev-br2-edge-rtr-01", severity: "MEDIUM", message: "Packet loss 3.8% on WAN uplink Gi0/0/0", status: "ACTIVE", firstSeen: ago(300), lastSeen: ago(25), count: 5 },
@@ -1749,8 +1750,23 @@ async function seedIncidentsAndAlerts() {
       { id: "alert-08", deviceId: "dev-dc-srv-tor-01", severity: "LOW", message: "Chassis temperature 58 °C (warning threshold 55 °C)", status: "ACTIVE", firstSeen: ago(150), lastSeen: ago(30), count: 2 },
       { id: "alert-09", deviceId: "dev-br1-access-sw-01", ruleId: "rule-cpu-critical", severity: "HIGH", message: "CPU utilization 96% on aging Catalyst 2960X (IP processes)", status: "ACKNOWLEDGED", firstSeen: ago(400), lastSeen: ago(60), count: 8, acknowledgedById: "usr-noc1", acknowledgedAt: ago(100) },
       { id: "alert-10", deviceId: "dev-dc-fw-01", severity: "MEDIUM", message: "Session count 1.42M approaching license ceiling (1.5M)", status: "ACKNOWLEDGED", firstSeen: ago(500), lastSeen: ago(35), count: 7, acknowledgedById: "usr-noc1", acknowledgedAt: ago(30) },
-      { id: "alert-11", deviceId: "dev-br2-access-sw-01", severity: "LOW", message: "Link flap on 1/1/6 — suppressed by maintenance window MW-2026-011", status: "SUPPRESSED", firstSeen: ago(80), lastSeen: ago(20), count: 4 },
+      { id: "alert-11", deviceId: "dev-br2-access-sw-01", severity: "LOW", message: "Link flap on 1/1/6 — suppressed by maintenance window MW-2026-011", status: "SUPPRESSED", firstSeen: ago(80), lastSeen: ago(20), count: 4, suppressReason: "Maintenance window: BR2-Access-SW-01 firmware prep (MW-2026-011)" },
+      // Task 5-a grouping demo: dependent alert suppressed by the device-down root (alert-03).
+      { id: "alert-13", deviceId: "dev-hq-idf-sw-01", ruleId: "rule-util-high", severity: "HIGH", message: "Utilization_in 100% on uplink Te1/1/1 (device unreachable — likely root cause: device down)", status: "SUPPRESSED", firstSeen: ago(615), lastSeen: ago(20), count: 6, dedupKey: "dev-hq-idf-sw-01:UTILIZATION_IN:rule-util-high", parentAlertId: "alert-03", suppressReason: "Suppressed by root alert: alert-03 (Device unreachable)" },
       { id: "alert-12", deviceId: "dev-hq-wan-fw-01", severity: "MEDIUM", message: "HA sync sequence gaps detected on heartbeat port3", status: "RESOLVED", firstSeen: ago(5900), lastSeen: ago(5810), count: 11, incidentId: "inc-2026-00106" },
+    ],
+  });
+}
+
+async function seedNotifications() {
+  await db.notification.createMany({
+    data: [
+      { kind: "INCIDENT", severity: "SEV1", title: "SEV1 incident — BGP peer down (HQ-Edge-RTR-01)", body: "INC-2026-00101 auto-created from a CRITICAL alert. SLA due in ~1 h — needs an owner.", link: "ops.incidents", createdAt: ago(40) },
+      { kind: "ALERT", severity: "CRITICAL", title: "CRITICAL alert — BGP neighbor 203.0.113.1 DOWN", body: "Fired on HQ-Edge-RTR-01 by rule “Device unreachable”. Root alert — dependent alerts suppressed.", link: "ops.alerts", createdAt: ago(41) },
+      { kind: "CHANGE", title: "Approval requested — CHG-2026-00403", body: "Technical approval requested by Layla Hassan (network engineer). Risk score 18 — low.", link: "changes.approvals", readAt: ago(20), createdAt: ago(48) },
+      { kind: "ALERT", severity: "HIGH", title: "Device unreachable — HQ-IDF-SW-01", body: "9 consecutive failed polls. Root alert grouping is active — dependent alerts are suppressed while the device is down.", link: "ops.alerts", createdAt: ago(600) },
+      { kind: "JOB", title: "Nightly backup failed — HQ-IDF-SW-01", body: "CONFIG_BACKUP failed after 3 attempts (SSH timeout). Retry is queued; incident INC-2026-00103 tracks the impact.", link: "ops.jobs", readAt: ago(30), createdAt: ago(300) },
+      { kind: "SYSTEM", title: "Weekly availability report ready", body: "The Availability & Capacity weekly report finished generating and is ready to download.", link: "reports.reports", readAt: ago(10), createdAt: ago(12) },
     ],
   });
 }
@@ -1879,6 +1895,7 @@ async function printSummary(extra: { samples: number; rollups: number }) {
     ["Alert", await db.alert.count()],
     ["AlertRule", await db.alertRule.count()],
     ["MaintenanceWindow", await db.maintenanceWindow.count()],
+    ["Notification", await db.notification.count()],
     ["MetricSample", extra.samples],
     ["MetricRollup", extra.rollups],
     ["JobExecution", await db.jobExecution.count()],
@@ -1909,6 +1926,7 @@ async function main() {
   await seedMaintenance();
   await seedJobs();
   await seedAudit();
+  await seedNotifications();
   const metrics = await seedMetrics(uplinkByDevice);
   await printSummary(metrics);
   await db.$disconnect();
