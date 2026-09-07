@@ -179,10 +179,10 @@ export function NocView() {
       {/* Header: title + clock + fullscreen */}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-neutral-800 pb-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300">
+          <h1 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300">
             <Siren aria-hidden className="size-4 text-danger" />
             NOC — Operations Wallboard
-          </span>
+          </h1>
           {stats.data && stats.data.breachedCount > 0 && (
             <span className="animate-pulse rounded-full bg-danger px-2 py-0.5 text-xs font-bold text-white">
               {stats.data.breachedCount} SLA BREACHED
@@ -211,14 +211,14 @@ export function NocView() {
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[1.5fr_1fr]">
         {/* Left: active incidents */}
         <section aria-label="Active incidents" className="flex min-h-0 flex-col">
-          <h3 className="flex items-center gap-2 pb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+          <h2 className="flex items-center gap-2 pb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400">
             <Activity aria-hidden className="size-3.5" />
             Active incidents
             <span className="text-neutral-500">
               — {stats.data?.openCount ?? openIncidents.length} open
               {stats.data ? ` · MTTA ${stats.data.mttaMinutes ?? "—"}m · MTTR ${stats.data.mttrMinutes ?? "—"}m` : ""}
             </span>
-          </h3>
+          </h2>
           <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
             {sortedIncidents.length === 0 ? (
               <li className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-4 text-sm text-neutral-400">
@@ -279,9 +279,9 @@ export function NocView() {
         <section aria-label="Fleet health" className="grid min-h-0 grid-cols-1 content-start gap-3">
           {/* Devices by status */}
           <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
-            <h3 className="pb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+            <h2 className="pb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
               Devices by status — {kpis ? `${kpis.online}/${kpis.managedDevices} online` : "…"}
-            </h3>
+            </h2>
             <div className="flex flex-wrap gap-2">
               {DEVICE_STATUS_ORDER.map((status) => {
                 const slice = health.find((entry) => entry.status === status);
@@ -303,10 +303,10 @@ export function NocView() {
 
           {/* Active alerts by severity */}
           <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
-            <h3 className="flex items-center gap-2 pb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+            <h2 className="flex items-center gap-2 pb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
               <BellRing aria-hidden className="size-3.5" />
               Active alerts — top {alertRows.length}
-            </h3>
+            </h2>
             <div className="flex flex-wrap gap-2">
               {alertsBySeverity.map((entry) => (
                 <span
@@ -338,10 +338,10 @@ export function NocView() {
           {/* Jobs + backup compliance */}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
-              <h3 className="flex items-center gap-2 pb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+              <h2 className="flex items-center gap-2 pb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400">
                 <LoaderCircle aria-hidden className="size-3.5" />
                 Jobs
-              </h3>
+              </h2>
               <p className="text-2xl font-semibold tabular-nums">{kpis?.activeJobs ?? "—"}</p>
               <p className="text-xs text-neutral-500">active in the queue</p>
               <div className="mt-2 flex items-center gap-2 text-xs text-neutral-400">
@@ -351,10 +351,10 @@ export function NocView() {
               </div>
             </div>
             <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
-              <h3 className="flex items-center gap-2 pb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+              <h2 className="flex items-center gap-2 pb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400">
                 <DatabaseBackup aria-hidden className="size-3.5" />
                 Backup compliance
-              </h3>
+              </h2>
               <p className="text-2xl font-semibold tabular-nums">{kpis?.backupCompliancePct ?? "—"}%</p>
               <p className="text-xs text-neutral-500">fleet-wide · 24h window</p>
               {dashboard.data?.backupCompliance && (

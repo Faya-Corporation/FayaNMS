@@ -253,7 +253,7 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table className="min-w-[860px]">
+            <Table aria-label="Change requests — number, title, type, risk, status and schedule per change" className="min-w-[860px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Number</TableHead>

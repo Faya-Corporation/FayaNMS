@@ -522,7 +522,7 @@ export function DevicesView() {
             </button>
             <button
               aria-label={`Remove saved view ${view.name}`}
-              className="absolute -end-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full border bg-background text-muted-foreground transition-colors hover:text-danger"
+              className="absolute -end-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full border bg-background text-muted-foreground transition-colors after:absolute after:-inset-1 after:rounded-full after:content-[''] hover:text-danger"
               onClick={() => removeView(view.id)}
               type="button"
             >
@@ -822,7 +822,7 @@ export function DevicesView() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table className="min-w-[980px]">
+            <Table aria-label="Device inventory — hostname, management IP, vendor, model, site, status and backup compliance per device" className="min-w-[980px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="h-(--density-row-h) px-(--density-cell-x) w-10">

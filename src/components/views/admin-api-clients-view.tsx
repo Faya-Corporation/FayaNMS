@@ -142,7 +142,7 @@ export function AdminApiClientsView() {
             description="Create a scoped token to let integrations read or write FayaNMS data."
           />
         ) : (
-          <Table>
+          <Table aria-label="API clients — name, prefix, scopes and last rotation per client (tokens stored hashed)">
             <TableHeader>
               <TableRow>
                 <TableHead>Client</TableHead>

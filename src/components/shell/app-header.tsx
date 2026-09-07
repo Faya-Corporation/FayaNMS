@@ -2,11 +2,13 @@
 
 import { Fragment } from "react";
 import { useTheme } from "next-themes";
+import { useTranslations } from "next-intl";
 import { signOut, useSession } from "next-auth/react";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import {
   Bell,
   Check,
+  Languages,
   ListTodo,
   LogOut,
   Menu,
@@ -46,7 +48,9 @@ import {
 import { EmptyState } from "@/components/domain/empty-state";
 import { StatusDot } from "@/components/domain/status-dot";
 import { cn } from "@/lib/utils";
-import { breadcrumbFor, isValidViewKey } from "@/lib/navigation/registry";
+import { isValidViewKey } from "@/lib/navigation/registry";
+import { useLocalizedViewMeta } from "@/i18n/view-labels";
+import { LOCALES, LOCALE_LABELS } from "@/i18n/locale";
 import { ROLE_LABELS, type UserRole } from "@/lib/auth/roles";
 import { useNavigationStore } from "@/stores/navigation";
 import { usePermissionsStore } from "@/stores/permissions";
@@ -54,10 +58,10 @@ import { usePreferencesStore, type Density } from "@/stores/preferences";
 import type { SidebarCounts } from "./sidebar-nav";
 
 const DENSITY_ORDER: Density[] = ["comfortable", "compact", "dense"];
-const DENSITY_LABEL: Record<Density, string> = {
-  comfortable: "Comfortable",
-  compact: "Compact",
-  dense: "Dense",
+const DENSITY_LABEL_KEY: Record<Density, string> = {
+  comfortable: "densityComfortable",
+  compact: "densityCompact",
+  dense: "densityDense",
 };
 
 interface AppHeaderProps {
@@ -84,10 +88,16 @@ export function AppHeader({
   counts,
   criticalAlerts,
 }: AppHeaderProps) {
+  const tHeader = useTranslations("header");
+  const tA11y = useTranslations("a11y");
+  const localizedViewMeta = useLocalizedViewMeta();
+
   const activeView = useNavigationStore((state) => state.activeView);
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   const density = usePreferencesStore((state) => state.density);
   const setDensity = usePreferencesStore((state) => state.setDensity);
+  const locale = usePreferencesStore((state) => state.locale);
+  const setLocale = usePreferencesStore((state) => state.setLocale);
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
 
@@ -124,7 +134,13 @@ export function AppHeader({
   const unreadCount = notificationsQuery.data?.meta.unreadCount ?? 0;
 
   const healthy = criticalAlerts === 0;
-  const crumbs = breadcrumbFor(activeView);
+  // Localized breadcrumbs mirror breadcrumbFor(): dashboard is a lone crumb,
+  // every other view is group → title (registry English fallback intact).
+  const activeMeta = localizedViewMeta(activeView);
+  const crumbs =
+    activeView === "dashboard"
+      ? [{ label: activeMeta.title }]
+      : [{ label: activeMeta.group }, { label: activeMeta.title }];
 
   const cycleTheme = () => {
     if (theme === "light") setTheme("dark");
@@ -144,20 +160,20 @@ export function AppHeader({
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur md:px-4">
       {/* Layout controls */}
       <Button
-        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={collapsed ? tHeader("expandSidebar") : tHeader("collapseSidebar")}
         className="hidden lg:inline-flex"
         onClick={onToggleSidebar}
         size="icon"
         variant="ghost"
       >
         {collapsed ? (
-          <PanelLeftOpen aria-hidden="true" />
+          <PanelLeftOpen aria-hidden="true" className="rtl:-scale-x-100" />
         ) : (
-          <PanelLeftClose aria-hidden="true" />
+          <PanelLeftClose aria-hidden="true" className="rtl:-scale-x-100" />
         )}
       </Button>
       <Button
-        aria-label="Open navigation menu"
+        aria-label={tHeader("openNavigation")}
         className="lg:hidden"
         onClick={onOpenMobileNav}
         size="icon"
@@ -172,7 +188,7 @@ export function AppHeader({
           {crumbs.map((crumb, index) => {
             const isLast = index === crumbs.length - 1;
             return (
-              <Fragment key={crumb.label}>
+              <Fragment key={`${index}-${crumb.label}`}>
                 <BreadcrumbItem>
                   {isLast ? (
                     <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
@@ -196,11 +212,11 @@ export function AppHeader({
             "flex h-9 items-center gap-2 rounded-md border border-input bg-background text-sm text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground",
             "w-9 justify-center md:w-56 md:justify-start md:px-3 lg:w-64"
           )}
-          aria-label="Search (opens command palette)"
+          aria-label={tHeader("searchAria")}
         >
           <Search aria-hidden="true" className="size-4 shrink-0" />
           <span className="hidden md:inline md:flex-1 md:truncate md:text-start">
-            Search devices, incidents…
+            {tHeader("searchPlaceholder")}
           </span>
           <kbd className="hidden h-5 items-center rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground md:flex">
             ⌘K
@@ -212,7 +228,7 @@ export function AppHeader({
           className="hidden items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium xl:flex"
           role="status"
           aria-label={
-            healthy ? "System health: operational" : "System health: critical alerts active"
+            healthy ? tHeader("healthOkAria") : tHeader("healthCriticalAria")
           }
         >
           <StatusDot
@@ -220,12 +236,14 @@ export function AppHeader({
             pulse={!healthy}
             token={healthy ? "success" : "danger"}
           />
-          {healthy ? "All systems operational" : `${criticalAlerts} critical alert${criticalAlerts === 1 ? "" : "s"}`}
+          {healthy
+            ? tHeader("systemHealthy")
+            : tHeader("systemCritical", { count: criticalAlerts })}
         </span>
 
         {/* Job center */}
         <Button
-          aria-label="Open job center"
+          aria-label={tHeader("jobCenter")}
           className="relative"
           onClick={onOpenJobCenter}
           size="icon"
@@ -233,7 +251,7 @@ export function AppHeader({
         >
           <ListTodo aria-hidden="true" />
           {counts.jobs > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground tabular-nums">
+            <span className="absolute -end-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground tabular-nums">
               {counts.jobs > 9 ? "9+" : counts.jobs}
             </span>
           )}
@@ -245,8 +263,8 @@ export function AppHeader({
             <Button
               aria-label={
                 unreadCount > 0
-                  ? `Notifications (${unreadCount} unread)`
-                  : "Notifications"
+                  ? tHeader("notificationsUnreadAria", { count: unreadCount })
+                  : tHeader("notifications")
               }
               className="relative"
               size="icon"
@@ -254,7 +272,7 @@ export function AppHeader({
             >
               <Bell aria-hidden="true" />
               {unreadCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-danger text-[10px] font-semibold text-white tabular-nums">
+                <span className="absolute -end-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-danger text-[10px] font-semibold text-white tabular-nums">
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
@@ -262,7 +280,7 @@ export function AppHeader({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel className="flex items-center justify-between">
-              Notifications
+              {tHeader("notifications")}
               {unreadCount > 0 && (
                 <button
                   type="button"
@@ -271,7 +289,7 @@ export function AppHeader({
                   onClick={() => markRead.mutate({ all: true })}
                 >
                   <Check aria-hidden="true" className="size-3" />
-                  Mark all read
+                  {tHeader("markAllRead")}
                 </button>
               )}
             </DropdownMenuLabel>
@@ -280,9 +298,9 @@ export function AppHeader({
               <div className="p-1">
                 <EmptyState
                   className="border-none bg-transparent py-8"
-                  description="Alert escalations, incidents and change updates will show up here."
+                  description={tHeader("notifEmptyDescription")}
                   icon={Bell}
-                  title="You're all caught up"
+                  title={tHeader("notifEmptyTitle")}
                 />
               </div>
             ) : (
@@ -356,7 +374,14 @@ export function AppHeader({
 
         {/* Theme toggle */}
         <Button
-          aria-label={`Theme: ${theme ?? "system"} (click to cycle light, dark, system)`}
+          aria-label={tHeader("themeAria", {
+            mode:
+              theme === "light"
+                ? tHeader("themeLight")
+                : theme === "dark"
+                  ? tHeader("themeDark")
+                  : tHeader("themeSystem"),
+          })}
           onClick={cycleTheme}
           size="icon"
           variant="ghost"
@@ -366,7 +391,9 @@ export function AppHeader({
 
         {/* Density toggle */}
         <Button
-          aria-label={`Density: ${DENSITY_LABEL[density]} (click to cycle)`}
+          aria-label={tHeader("densityAria", {
+            tier: tHeader(DENSITY_LABEL_KEY[density]),
+          })}
           onClick={cycleDensity}
           size="icon"
           variant="ghost"
@@ -374,11 +401,43 @@ export function AppHeader({
           <Rows3 aria-hidden="true" />
         </Button>
 
+        {/* Language switcher (Task 8-a) — persisted in the preferences store. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={tA11y("languageSwitch")}
+              size="icon"
+              variant="ghost"
+            >
+              <Languages aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>{tHeader("language")}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {LOCALES.map((option) => (
+              <DropdownMenuItem
+                key={option}
+                onClick={() => setLocale(option)}
+              >
+                <Check
+                  aria-hidden="true"
+                  className={cn(
+                    "size-4",
+                    option === locale ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                {LOCALE_LABELS[option]}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         {/* User menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
-              aria-label="User menu"
+              aria-label={tHeader("userMenu")}
               className="ms-1 gap-2 ps-1.5"
               variant="ghost"
             >
@@ -389,7 +448,7 @@ export function AppHeader({
               </Avatar>
               <span className="hidden min-w-0 flex-col items-start leading-tight xl:flex">
                 <span className="truncate text-sm font-medium">
-                  {currentUser?.name ?? "Signed in"}
+                  {currentUser?.name ?? tHeader("signedIn")}
                 </span>
                 <span className="truncate text-[11px] text-muted-foreground">
                   {roleLabel}
@@ -400,7 +459,7 @@ export function AppHeader({
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
               <span className="block text-sm font-medium">
-                {currentUser?.name ?? "Signed in"}
+                {currentUser?.name ?? tHeader("signedIn")}
               </span>
               <span className="block truncate text-xs font-normal text-muted-foreground">
                 {currentUser?.email ?? ""}
@@ -413,20 +472,20 @@ export function AppHeader({
               }}
             >
               <User aria-hidden="true" />
-              Users &amp; roles
+              {tHeader("usersAndRoles")}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
                 signOut({ callbackUrl: "/" }).then(() => {
                   toast({
-                    title: "Signed out",
-                    description: "Your session has been cleared.",
+                    title: tHeader("signedOut"),
+                    description: tHeader("signedOutDescription"),
                   });
                 })
               }
             >
               <LogOut aria-hidden="true" />
-              Sign out
+              {tHeader("signOut")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

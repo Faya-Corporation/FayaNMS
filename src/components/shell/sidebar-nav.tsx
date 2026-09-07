@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { ChevronDown, LayoutDashboard } from "lucide-react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -15,7 +16,11 @@ import {
   SIDEBAR_GROUPS,
   type SidebarBadgeKey,
 } from "@/lib/navigation/sidebar-config";
-import { getViewMeta } from "@/lib/navigation/registry";
+import { useLocaleInfo } from "@/i18n/locale-provider";
+import {
+  useLocalizedGroupLabel,
+  useLocalizedViewMeta,
+} from "@/i18n/view-labels";
 import { useNavigationStore, type ViewKey } from "@/stores/navigation";
 
 export interface SidebarCounts {
@@ -55,6 +60,10 @@ export function SidebarNav({
   onNavigate,
   className,
 }: SidebarNavProps) {
+  const tA11y = useTranslations("a11y");
+  const localizedViewMeta = useLocalizedViewMeta();
+  const localizedGroupLabel = useLocalizedGroupLabel();
+
   const activeView = useNavigationStore((state) => state.activeView);
   const setActiveView = useNavigationStore((state) => state.setActiveView);
 
@@ -73,7 +82,7 @@ export function SidebarNav({
   return (
     <ScrollArea className={cn("flex-1 min-h-0", className)}>
       <nav
-        aria-label="Primary"
+        aria-label={tA11y("mainNavigation")}
         className={cn("flex flex-col gap-1 pb-4", collapsed ? "px-2" : "px-3")}
       >
         {/* Dashboard is a standalone top-level entry. */}
@@ -81,7 +90,7 @@ export function SidebarNav({
           active={activeView === "dashboard"}
           collapsed={collapsed}
           icon={LayoutDashboard}
-          label={getViewMeta("dashboard").title}
+          label={localizedViewMeta("dashboard").title}
           onClick={() => navigate("dashboard")}
         />
 
@@ -106,7 +115,7 @@ export function SidebarNav({
                     active={activeView === item.view}
                     collapsed
                     icon={item.icon}
-                    label={getViewMeta(item.view).title}
+                    label={localizedViewMeta(item.view).title}
                     badgeCount={badgeFor(item.badge)}
                     badgeDotTone={item.badge ? BADGE_DOT_TONE[item.badge] : undefined}
                     onClick={() => navigate(item.view)}
@@ -131,7 +140,7 @@ export function SidebarNav({
                 )}
                 aria-expanded={isOpen}
               >
-                {group.label}
+                {localizedGroupLabel(group.id, group.label)}
                 <ChevronDown
                   aria-hidden="true"
                   className={cn(
@@ -148,7 +157,7 @@ export function SidebarNav({
                       active={activeView === item.view}
                       collapsed={false}
                       icon={item.icon}
-                      label={getViewMeta(item.view).title}
+                      label={localizedViewMeta(item.view).title}
                       badgeCount={badgeFor(item.badge)}
                       badgeTone={item.badge ? BADGE_TONE[item.badge] : undefined}
                       onClick={() => navigate(item.view)}
@@ -189,6 +198,8 @@ function NavItem({
   badgeDotTone,
   onClick,
 }: NavItemProps) {
+  const { isRtl } = useLocaleInfo();
+
   const button = (
     <button
       type="button"
@@ -205,7 +216,7 @@ function NavItem({
       {active && (
         <span
           aria-hidden="true"
-          className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-primary"
+          className="absolute inset-y-1.5 start-0 w-0.5 rounded-full bg-primary"
         />
       )}
       <Icon className="size-5 shrink-0" />
@@ -224,7 +235,7 @@ function NavItem({
         <span
           aria-hidden="true"
           className={cn(
-            "absolute right-2 top-1.5 size-1.5 rounded-full",
+            "absolute end-2 top-1.5 size-1.5 rounded-full",
             badgeDotTone ?? "bg-primary"
           )}
         />
@@ -237,7 +248,8 @@ function NavItem({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent side="right" className="font-medium">
+      {/* Tooltip flips with the reading direction. */}
+      <TooltipContent className="font-medium" side={isRtl ? "left" : "right"}>
         {label}
       </TooltipContent>
     </Tooltip>

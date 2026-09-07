@@ -318,7 +318,7 @@ function HistoryTab() {
       ) : (
         <div className="max-h-[600px] overflow-y-auto">
           <div className="min-w-[980px]">
-            <Table>
+            <Table aria-label="Backup history — device, captured-at, source, version, size and checksum per snapshot">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Time</TableHead>
@@ -870,7 +870,7 @@ function PoliciesTab() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table className="min-w-[900px]">
+            <Table aria-label="Backup policies — schedule, scope, retention and last run per policy" className="min-w-[900px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Policy</TableHead>

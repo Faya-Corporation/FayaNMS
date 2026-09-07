@@ -173,7 +173,7 @@ export function AdminIntegrationsView() {
             description="Subscribe an endpoint to alert, incident and change events — deliveries are signed."
           />
         ) : (
-          <Table>
+          <Table aria-label="Webhook endpoints — URL, events, enabled state and last delivery outcome">
             <TableHeader>
               <TableRow>
                 <TableHead>Endpoint</TableHead>
@@ -281,7 +281,7 @@ export function AdminIntegrationsView() {
             description="Add an email address or a webhook URL to route platform notifications."
           />
         ) : (
-          <Table>
+          <Table aria-label="Notification channels — type, destination, enabled state and last test outcome">
             <TableHeader>
               <TableRow>
                 <TableHead>Channel</TableHead>

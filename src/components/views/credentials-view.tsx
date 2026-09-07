@@ -213,7 +213,7 @@ export function CredentialsView() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table className="min-w-[860px]">
+            <Table aria-label="Credential profiles — name, type, owner and last rotation per profile" className="min-w-[860px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Name</TableHead>

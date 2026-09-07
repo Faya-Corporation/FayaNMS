@@ -139,7 +139,7 @@ export function AdminCredentialsView() {
           />
         ) : (
           <div className="overflow-x-auto">
-            <Table>
+            <Table aria-label="Credential vault — profile name, type, owner and rotation metadata (secrets are masked and never displayed)">
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>

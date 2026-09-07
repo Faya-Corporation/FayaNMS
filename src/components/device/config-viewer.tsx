@@ -82,11 +82,14 @@ function CodeBlock({
   maxHeightClass: string;
 }) {
   return (
+    // dir="ltr" + text-left: device configuration text is technical ASCII
+    // and must never mirror under the RTL Arabic layout (Task 8-a).
     <div
       className={cn(
-        "overflow-auto rounded-lg border bg-surface-subtle font-tech leading-relaxed",
+        "overflow-auto rounded-lg border bg-surface-subtle text-left font-tech leading-relaxed",
         maxHeightClass
       )}
+      dir="ltr"
     >
       <table className="w-full border-collapse">
         <tbody>
@@ -191,11 +194,11 @@ export function ConfigViewer({
           <div className="relative w-40">
             <Search
               aria-hidden="true"
-              className="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+              className="absolute start-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
             />
             <Input
               aria-label="Search in config"
-              className="h-8 pl-7"
+              className="h-8 ps-7"
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search in file"
               value={query}

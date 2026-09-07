@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { format } from "date-fns";
 import {
   CartesianGrid,
@@ -38,6 +39,7 @@ export function UtilizationCard({
   range,
   onRangeChange,
 }: UtilizationCardProps) {
+  const t = useTranslations("dashboard");
   const colors = useTokenColors();
   const isWide = range === "7d";
   const tickFormatter = (period: string) =>
@@ -56,8 +58,10 @@ export function UtilizationCard({
     <SectionCard
       className="md:col-span-2 xl:col-span-8"
       contentClassName="pt-4"
-      title="Network Utilization Trend"
-      description={`Fleet average across managed devices — CPU and memory (%), last ${isWide ? "7 days" : "24 hours"}`}
+      title={t("utilization.title")}
+      description={
+        isWide ? t("utilization.description7d") : t("utilization.description24h")
+      }
       actions={
         <TimeRangeSelect onChange={onRangeChange} value={range} />
       }
@@ -66,11 +70,17 @@ export function UtilizationCard({
         <WidgetSkeleton className="h-[280px]" rows={6} />
       ) : data.length === 0 ? (
         <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
-          No utilization rollups available for this window yet.
+          {t("utilization.empty")}
         </div>
       ) : (
         <div
-          aria-label={`Utilization trend chart. CPU averaged ${avg(cpuValues)} percent, peaking at ${peak(cpuValues)} percent. Memory averaged ${avg(memoryValues)} percent, peaking at ${peak(memoryValues)} percent.`}
+          aria-label={t("utilization.aria", {
+            cpu: avg(cpuValues),
+            cpuPeak: peak(cpuValues),
+            memory: avg(memoryValues),
+            memoryPeak: peak(memoryValues),
+          })}
+          dir="ltr"
           role="img"
         >
           <ResponsiveContainer height={280} width="100%">
@@ -136,7 +146,7 @@ export function UtilizationCard({
                 className="h-0.5 w-4 rounded-full"
                 style={{ backgroundColor: colors.primary }}
               />
-              CPU %
+              {t("utilization.legendCpu")}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span
@@ -144,14 +154,16 @@ export function UtilizationCard({
                 className="h-0.5 w-4 rounded-full"
                 style={{ backgroundColor: colors.accent }}
               />
-              Memory %
+              {t("utilization.legendMemory")}
             </span>
           </div>
           <p className="sr-only">
-            Line chart of fleet-average CPU and memory utilization over the
-            selected window. CPU averaged {avg(cpuValues)} percent with a peak
-            of {peak(cpuValues)} percent. Memory averaged {avg(memoryValues)}{" "}
-            percent with a peak of {peak(memoryValues)} percent.
+            {t("utilization.srOnly", {
+              cpu: avg(cpuValues),
+              cpuPeak: peak(cpuValues),
+              memory: avg(memoryValues),
+              memoryPeak: peak(memoryValues),
+            })}
           </p>
         </div>
       )}

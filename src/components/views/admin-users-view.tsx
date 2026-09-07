@@ -251,7 +251,7 @@ export function AdminUsersView() {
           />
         ) : (
           <div className="overflow-x-auto">
-            <Table>
+            <Table aria-label="User accounts — email, role, active state and last activity per user">
               <TableHeader>
                 <TableRow>
                   <TableHead>User</TableHead>

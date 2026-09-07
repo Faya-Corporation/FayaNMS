@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Waypoints } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -22,11 +23,16 @@ export function AppSidebar({
   onToggleCollapsed,
   counts,
 }: AppSidebarProps) {
+  const tNav = useTranslations("nav");
+  const tHeader = useTranslations("header");
+
   return (
     <aside
       data-collapsed={collapsed}
       className={cn(
-        "sticky top-0 hidden h-screen shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-in-out lg:flex",
+        // border-e (logical): the rail sits on the inline-start side and
+        // flips with the document direction under RTL.
+        "sticky top-0 hidden h-screen shrink-0 flex-col border-e bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-in-out lg:flex",
         collapsed ? "w-[72px]" : "w-[264px]"
       )}
     >
@@ -48,7 +54,7 @@ export function AppSidebar({
               FayaNMS
             </span>
             <span className="block text-[11px] leading-tight text-muted-foreground">
-              Network Operations
+              {tNav("brand.subtitle")}
             </span>
           </span>
         )}
@@ -63,16 +69,16 @@ export function AppSidebar({
         )}
       >
         <Button
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={collapsed ? tHeader("expandSidebar") : tHeader("collapseSidebar")}
           className="text-muted-foreground"
           onClick={onToggleCollapsed}
           size="icon"
           variant="ghost"
         >
           {collapsed ? (
-            <PanelLeftOpen aria-hidden="true" />
+            <PanelLeftOpen aria-hidden="true" className="rtl:-scale-x-100" />
           ) : (
-            <PanelLeftClose aria-hidden="true" />
+            <PanelLeftClose aria-hidden="true" className="rtl:-scale-x-100" />
           )}
         </Button>
       </div>

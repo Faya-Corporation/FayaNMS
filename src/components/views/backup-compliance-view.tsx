@@ -177,7 +177,7 @@ export function BackupComplianceView() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table className="min-w-[760px]">
+            <Table aria-label="Devices needing backup attention — last backup age and compliance state per device" className="min-w-[760px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Site</TableHead>

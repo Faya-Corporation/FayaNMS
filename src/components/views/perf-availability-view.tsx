@@ -175,14 +175,17 @@ function SiteTable({
         </div>
       ) : (
         <div className="max-h-80 overflow-y-auto">
-          <table className="w-full text-sm">
+          <table
+            aria-label="Availability by site — uptime vs the SLA target, worst sites first"
+            className="w-full text-sm"
+          >
             <thead className="sticky top-0 z-10 bg-card">
               <tr className="border-b text-xs text-muted-foreground">
-                <th className="px-4 py-2 text-start font-medium">Site</th>
-                <th className="px-4 py-2 text-end font-medium">Uptime</th>
-                <th className="hidden px-4 py-2 text-end font-medium sm:table-cell">Degraded</th>
-                <th className="hidden px-4 py-2 text-end font-medium sm:table-cell">Downtime</th>
-                <th className="px-4 py-2 text-end font-medium">Devices</th>
+                <th className="px-4 py-2 text-start font-medium" scope="col">Site</th>
+                <th className="px-4 py-2 text-end font-medium" scope="col">Uptime</th>
+                <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">Degraded</th>
+                <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">Downtime</th>
+                <th className="px-4 py-2 text-end font-medium" scope="col">Devices</th>
               </tr>
             </thead>
             <tbody>
@@ -256,13 +259,16 @@ function DeviceTable({
         </div>
       ) : (
         <div className="max-h-96 overflow-y-auto">
-          <table className="w-full text-sm">
+          <table
+            aria-label="Availability by device — uptime vs the SLA target, worst devices first"
+            className="w-full text-sm"
+          >
             <thead className="sticky top-0 z-10 bg-card">
               <tr className="border-b text-xs text-muted-foreground">
-                <th className="px-4 py-2 text-start font-medium">Device</th>
-                <th className="px-4 py-2 text-start font-medium">Site</th>
-                <th className="px-4 py-2 text-end font-medium">Uptime</th>
-                <th className="px-4 py-2 text-end font-medium">Downtime</th>
+                <th className="px-4 py-2 text-start font-medium" scope="col">Device</th>
+                <th className="px-4 py-2 text-start font-medium" scope="col">Site</th>
+                <th className="px-4 py-2 text-end font-medium" scope="col">Uptime</th>
+                <th className="px-4 py-2 text-end font-medium" scope="col">Downtime</th>
               </tr>
             </thead>
             <tbody>

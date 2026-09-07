@@ -22,6 +22,7 @@ import {
 } from "recharts";
 
 import { usePerformanceCapacity } from "@/hooks/api/use-performance";
+import { ChartSummary } from "@/components/domain/chart-summary";
 import { EmptyState } from "@/components/domain/empty-state";
 import { ErrorState } from "@/components/domain/error-state";
 import { KpiCard } from "@/components/domain/kpi-card";
@@ -176,14 +177,17 @@ export function PerfCapacityView() {
               </div>
             ) : (
               <div className="max-h-[560px] overflow-auto">
-                <table className="w-full min-w-[640px] text-sm">
+                <table
+                  aria-label={`Capacity risks — days to cross the ${HORIZON_PCT} percent horizon, ${risks.length} tracked series`}
+                  className="w-full min-w-[640px] text-sm"
+                >
                   <thead className="sticky top-0 z-10 bg-card">
                     <tr className="border-b text-xs text-muted-foreground">
-                      <th className="px-4 py-2 text-start font-medium">Device / Metric</th>
-                      <th className="px-4 py-2 text-end font-medium">Current</th>
-                      <th className="hidden px-4 py-2 text-end font-medium sm:table-cell">Slope</th>
-                      <th className="px-4 py-2 text-end font-medium">Horizon</th>
-                      <th className="hidden px-4 py-2 text-end font-medium md:table-cell">Confidence</th>
+                      <th className="px-4 py-2 text-start font-medium" scope="col">Device / Metric</th>
+                      <th className="px-4 py-2 text-end font-medium" scope="col">Current</th>
+                      <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">Slope</th>
+                      <th className="px-4 py-2 text-end font-medium" scope="col">Horizon</th>
+                      <th className="hidden px-4 py-2 text-end font-medium md:table-cell" scope="col">Confidence</th>
                       <th className="w-10 px-2 py-2">
                         <span className="sr-only">Inspect forecast</span>
                       </th>
@@ -192,12 +196,22 @@ export function PerfCapacityView() {
                   <tbody>
                     {risks.map((risk) => (
                       <tr
+                        aria-selected={selectedKey === riskKey(risk)}
                         className={cn(
                           "border-b transition-colors last:border-0 hover:bg-accent/50",
                           selectedKey === riskKey(risk) && "bg-accent/60"
                         )}
                         key={riskKey(risk)}
                         onClick={() => setSelectedKey(riskKey(risk))}
+                        onKeyDown={(event) => {
+                          // Keyboard parity for the click-to-inspect row
+                          // (the chevron button below is the labeled path).
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedKey(riskKey(risk));
+                          }
+                        }}
+                        tabIndex={0}
                       >
                         <td className="px-4 py-2">
                           <button
@@ -360,9 +374,9 @@ function ForecastChart({
 
   return (
     <div className="flex flex-col gap-3">
-      <div
+      <ChartSummary
         aria-label={`Forecast chart for ${risk.hostname} ${metricLabel(risk.metric)}. Currently ${fmtCurrent(risk.metric, risk.current)}, ${risk.daysToThreshold === null ? "no crossing forecast" : `crossing the ${horizonPct} percent horizon in ${Math.round(risk.daysToThreshold)} days`}.`}
-        role="img"
+        summary={`Composed chart: ${risk.series.length} daily history points followed by a dashed linear projection to the ${horizonPct} percent horizon. Model confidence ${risk.confidence} (R² ${r2}).`}
       >
         <ResponsiveContainer height={280} width="100%">
           <ComposedChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
@@ -431,7 +445,7 @@ function ForecastChart({
             />
           </ComposedChart>
         </ResponsiveContainer>
-      </div>
+      </ChartSummary>
       <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <span

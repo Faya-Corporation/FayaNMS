@@ -288,7 +288,7 @@ export function DiscoveryView() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table className="min-w-[860px]">
+            <Table aria-label="Discovery scan history — sweep target, method, status, found devices and progress" className="min-w-[860px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Scan</TableHead>
@@ -440,7 +440,7 @@ export function DiscoveryView() {
               )}
 
               <div className="overflow-x-auto">
-                <Table className="min-w-[980px]">
+                <Table aria-label="Importable device candidates — IP, hostname, vendor, confidence and import selection" className="min-w-[980px]">
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
                       <TableHead className="h-(--density-row-h) w-10 px-(--density-cell-x)">

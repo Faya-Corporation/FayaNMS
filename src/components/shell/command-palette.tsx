@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   Activity,
   BadgeCheck,
@@ -57,6 +58,7 @@ import { useDevices } from "@/hooks/api/use-devices";
 import { useCreateJob } from "@/hooks/api/use-jobs";
 import { useSearch } from "@/hooks/api/use-search";
 import { getViewMeta } from "@/lib/navigation/registry";
+import { useLocalizedViewMeta } from "@/i18n/view-labels";
 import { useNavigationStore, type ViewKey } from "@/stores/navigation";
 
 interface CommandPaletteProps {
@@ -117,6 +119,10 @@ export function CommandPalette({
   onOpenChange,
   onOpenJobCenter,
 }: CommandPaletteProps) {
+  const tPalette = useTranslations("palette");
+  const tCommon = useTranslations("common");
+  const localizedViewMeta = useLocalizedViewMeta();
+
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   const { toast } = useToast();
 
@@ -184,33 +190,33 @@ export function CommandPalette({
     <CommandDialog
       description={
         mode === "backup"
-          ? "Pick a device to queue an immediate configuration backup."
-          : "Type a command or search devices, incidents and changes."
+          ? tPalette("descriptionBackup")
+          : tPalette("description")
       }
       open={open}
       onOpenChange={handleOpenChange}
-      title={mode === "backup" ? "Backup now" : "Command Palette"}
+      title={mode === "backup" ? tPalette("titleBackup") : tPalette("title")}
     >
       <CommandInput
         onValueChange={setInput}
         placeholder={
           mode === "backup"
-            ? "Select a device…"
-            : "Search commands, devices, incidents…"
+            ? tPalette("placeholderDevices")
+            : tPalette("placeholder")
         }
         value={input}
       />
       <CommandList>
         <CommandEmpty>
           {mode === "backup"
-            ? "No matching devices."
+            ? tPalette("emptyDevices")
             : debounced.length >= 2
-              ? "No results found."
-              : "Type to search or pick a destination below."}
+              ? tCommon("noResults")
+              : tPalette("emptyHint")}
         </CommandEmpty>
 
         {mode === "backup" ? (
-          <CommandGroup heading="Devices">
+          <CommandGroup heading={tPalette("headingDevices")}>
             {(devices.data?.data ?? []).map((device) => (
               <CommandItem
                 key={device.id}
@@ -231,7 +237,7 @@ export function CommandPalette({
         ) : (
           <>
             {debounced.length >= 2 && search.data && (
-              <CommandGroup heading="Search Results">
+              <CommandGroup heading={tPalette("headingSearchResults")}>
                 {search.data.devices.map((device) => (
                   <CommandItem
                     key={`device-${device.id}`}
@@ -252,8 +258,8 @@ export function CommandPalette({
                     key={`incident-${incident.id}`}
                     onSelect={() =>
                       showToastFor(
-                        "Incident detail arrives with Phase 5",
-                        `${incident.number} opened from the command palette.`
+                        tPalette("incidentToastTitle"),
+                        tPalette("incidentToastBody", { number: incident.number })
                       )
                     }
                     value={`incident ${incident.number} ${incident.title}`}
@@ -268,8 +274,8 @@ export function CommandPalette({
                     key={`change-${change.id}`}
                     onSelect={() =>
                       showToastFor(
-                        "Change detail arrives with Phase 4",
-                        `${change.number} — open the change module for the full record.`
+                        tPalette("changeToastTitle"),
+                        tPalette("changeToastBody", { number: change.number })
                       )
                     }
                     value={`change ${change.number} ${change.title}`}
@@ -285,7 +291,7 @@ export function CommandPalette({
               </CommandGroup>
             )}
 
-            <CommandGroup heading="Quick Actions">
+            <CommandGroup heading={tPalette("headingQuickActions")}>
               <CommandItem
                 onSelect={() => {
                   setMode("backup");
@@ -294,9 +300,9 @@ export function CommandPalette({
                 value="backup now configuration device"
               >
                 <CloudUpload aria-hidden="true" className="text-muted-foreground" />
-                <span>Backup now…</span>
+                <span>{tPalette("backupNow")}</span>
                 <span className="ms-auto text-xs text-muted-foreground">
-                  pick a device
+                  {tPalette("backupPickDevice")}
                 </span>
               </CommandItem>
               <CommandItem
@@ -307,24 +313,28 @@ export function CommandPalette({
                 value="open job center queue"
               >
                 <ListTodo aria-hidden="true" className="text-muted-foreground" />
-                <span>Open Job Center</span>
+                <span>{tPalette("openJobCenter")}</span>
               </CommandItem>
             </CommandGroup>
 
             <CommandSeparator />
-            <CommandGroup heading="Navigation">
+            <CommandGroup heading={tPalette("headingNavigation")}>
               {NAVIGATION_ITEMS.map((item) => {
                 const Icon = item.icon;
+                const enMeta = getViewMeta(item.view);
+                const meta = localizedViewMeta(item.view);
                 return (
                   <CommandItem
                     key={item.view}
                     onSelect={() => navigateTo(item.view)}
-                    value={`${getViewMeta(item.view).group} ${getViewMeta(item.view).title} ${getViewMeta(item.view).description}`}
+                    // Matching matches BOTH the English registry labels and
+                    // the localized ones, so a query works in either language.
+                    value={`${enMeta.group} ${enMeta.title} ${enMeta.description} ${meta.title} ${meta.group}`}
                   >
                     <Icon aria-hidden="true" className="text-muted-foreground" />
-                    <span>{getViewMeta(item.view).title}</span>
+                    <span>{meta.title}</span>
                     <span className="ms-auto text-xs text-muted-foreground">
-                      {getViewMeta(item.view).group}
+                      {meta.group}
                     </span>
                   </CommandItem>
                 );

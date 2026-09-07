@@ -244,7 +244,7 @@ export function DriftView() {
         ) : (
           <div className="max-h-[600px] overflow-y-auto">
             <div className="min-w-[980px]">
-              <Table>
+              <Table aria-label="Drift records — device, baseline vs current version, status and detection time">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Device</TableHead>

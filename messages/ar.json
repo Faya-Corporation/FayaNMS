@@ -1,0 +1,279 @@
+{
+  "common": {
+    "refresh": "تحديث",
+    "search": "بحث",
+    "create": "إنشاء",
+    "edit": "تعديل",
+    "delete": "حذف",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "close": "إغلاق",
+    "confirm": "تأكيد",
+    "loading": "جارٍ التحميل…",
+    "retry": "إعادة المحاولة",
+    "viewAll": "عرض الكل",
+    "filter": "تصفية",
+    "clear": "مسح",
+    "export": "تصدير",
+    "dismiss": "تجاهل",
+    "noResults": "لا توجد نتائج.",
+    "back": "رجوع",
+    "copy": "نسخ",
+    "copied": "تم النسخ",
+    "actions": "إجراءات",
+    "all": "الكل",
+    "open": "فتح",
+    "success": "نجاح",
+    "failure": "فشل",
+    "emptyTitle": "لا يوجد محتوى بعد",
+    "emptyDescription": "سيظهر المحتوى هنا عند توفر البيانات.",
+    "trend": {
+      "noChange": "دون تغيير",
+      "worse": "تغيّر نحو الأسوأ",
+      "better": "تغيّر نحو الأفضل",
+      "up": "يتجه نحو الارتفاع",
+      "down": "يتجه نحو الانخفاض"
+    }
+  },
+  "nav": {
+    "brand": {
+      "subtitle": "عمليات الشبكة"
+    },
+    "groups": {
+      "overview": "نظرة عامة",
+      "network": "الشبكة",
+      "configurations": "التهيئات",
+      "changes": "التغييرات",
+      "operations": "العمليات",
+      "performance": "الأداء",
+      "reports": "التقارير",
+      "administration": "الإدارة"
+    },
+    "items": {
+      "dashboard": { "title": "لوحة القيادة" },
+      "network": {
+        "devices": { "title": "الأجهزة" },
+        "device-detail": { "title": "تفاصيل الجهاز" },
+        "sites": { "title": "المواقع" },
+        "interfaces": { "title": "الواجهات" },
+        "topology": { "title": "طوبولوجيا الشبكة" },
+        "discovery": { "title": "الاستكشاف" }
+      },
+      "config": {
+        "backups": { "title": "النسخ الاحتياطي" },
+        "snapshots": { "title": "لقطات التهيئة" },
+        "baselines": { "title": "خطوط الأساس" },
+        "drift": { "title": "انحراف التهيئة" },
+        "compliance": { "title": "الامتثال" }
+      },
+      "changes": {
+        "all": { "title": "جميع التغييرات" },
+        "mine": { "title": "تغييراتي" },
+        "approvals": { "title": "الموافقات" },
+        "calendar": { "title": "التقويم" },
+        "templates": { "title": "القوالب" },
+        "change-detail": { "title": "تفاصيل التغيير" }
+      },
+      "ops": {
+        "noc": { "title": "شاشة مركز العمليات" },
+        "alerts": { "title": "التنبيهات" },
+        "incidents": { "title": "الحوادث" },
+        "incident-detail": { "title": "تفاصيل الحادث" },
+        "maintenance": { "title": "نوافذ الصيانة" },
+        "events": { "title": "سجل الأحداث" },
+        "jobs": { "title": "مركز المهام" }
+      },
+      "perf": {
+        "overview": { "title": "نظرة عامة على الأداء" },
+        "devices": { "title": "أداء الأجهزة" },
+        "interfaces": { "title": "استغلال الواجهات" },
+        "availability": { "title": "الإتاحة" },
+        "capacity": { "title": "السعة" }
+      },
+      "reports": {
+        "reports": { "title": "التقارير" },
+        "scheduled": { "title": "التقارير المجدولة" },
+        "builder": { "title": "منشئ التقارير" }
+      },
+      "admin": {
+        "users": { "title": "المستخدمون والأدوار" },
+        "credentials": { "title": "بيانات الاعتماد" },
+        "apiClients": { "title": "عملاء الواجهة البرمجية" },
+        "collectors": { "title": "المجمّعات" },
+        "drivers": { "title": "تعريفات الأجهزة" },
+        "integrations": { "title": "التكاملات" },
+        "system": { "title": "إعدادات النظام" }
+      }
+    }
+  },
+  "header": {
+    "collapseSidebar": "طي الشريط الجانبي",
+    "expandSidebar": "توسيع الشريط الجانبي",
+    "openNavigation": "فتح قائمة التنقل",
+    "searchPlaceholder": "ابحث في الأجهزة والحوادث…",
+    "searchAria": "بحث (يفتح لوحة الأوامر)",
+    "systemHealthy": "جميع الأنظمة تعمل بشكل سليم",
+    "systemCritical": "{count, plural, one {تنبيه حرج نشط واحد} two {تنبيهان حرجان نشطان} few {# تنبيهات حرجة نشطة} many {# تنبيهًا حرجًا نشطًا} other {# تنبيه حرج نشط}}",
+    "healthOkAria": "حالة النظام: تعمل بشكل سليم",
+    "healthCriticalAria": "حالة النظام: تنبيهات حرجة نشطة",
+    "jobCenter": "فتح مركز المهام",
+    "notifications": "الإشعارات",
+    "notificationsUnreadAria": "الإشعارات ({count} غير مقروءة)",
+    "markAllRead": "تحديد الكل كمقروء",
+    "notifEmptyTitle": "لا جديد لديك",
+    "notifEmptyDescription": "ستظهر هنا تصعيدات التنبيهات والحوادث وتحديثات التغييرات.",
+    "theme": "المظهر",
+    "themeLight": "فاتح",
+    "themeDark": "داكن",
+    "themeSystem": "حسب النظام",
+    "themeAria": "المظهر: {mode} (انقر للتبديل بين الفاتح والداكن وحسب النظام)",
+    "density": "الكثافة",
+    "densityComfortable": "مريحة",
+    "densityCompact": "مضغوطة",
+    "densityDense": "مكثّفة",
+    "densityAria": "الكثافة: {tier} (انقر للتبديل)",
+    "language": "اللغة",
+    "userMenu": "قائمة المستخدم",
+    "signedIn": "مسجَّل الدخول",
+    "usersAndRoles": "المستخدمون والأدوار",
+    "signOut": "تسجيل الخروج",
+    "signedOut": "تم تسجيل الخروج",
+    "signedOutDescription": "تم إنهاء جلستك.",
+    "actingAs": "بالنيابة عن: {name}"
+  },
+  "footer": {
+    "systemOperational": "جميع الأنظمة تعمل بشكل سليم",
+    "version": "FayaNMS v0.1.0 — المرحلة 1: الأساس",
+    "lastRefresh": "آخر تحديث {time}"
+  },
+  "palette": {
+    "title": "لوحة الأوامر",
+    "titleBackup": "نسخ احتياطي الآن",
+    "description": "اكتب أمرًا أو ابحث في الأجهزة والحوادث والتغييرات.",
+    "descriptionBackup": "اختر جهازًا لجدولة نسخة احتياطية فورية للتهيئة.",
+    "placeholder": "ابحث في الأوامر والأجهزة والحوادث…",
+    "placeholderDevices": "اختر جهازًا…",
+    "emptyDevices": "لا توجد أجهزة مطابقة.",
+    "emptyHint": "اكتب للبحث أو اختر وجهة من الأسفل.",
+    "headingDevices": "الأجهزة",
+    "headingSearchResults": "نتائج البحث",
+    "headingQuickActions": "إجراءات سريعة",
+    "headingNavigation": "التنقل",
+    "backupNow": "نسخ احتياطي الآن…",
+    "backupPickDevice": "اختر جهازًا",
+    "openJobCenter": "فتح مركز المهام",
+    "incidentToastTitle": "تفاصيل الحادث تصل مع المرحلة 5",
+    "incidentToastBody": "تم فتح {number} من لوحة الأوامر.",
+    "changeToastTitle": "تفاصيل التغيير تصل مع المرحلة 4",
+    "changeToastBody": "{number} — افتح وحدة التغييرات للسجل الكامل."
+  },
+  "dashboard": {
+    "title": "لوحة القيادة",
+    "description": "نظرة عامة على عمليات الشبكة",
+    "updated": "آخر تحديث {time}",
+    "errorTitle": "تعذّر تحميل لوحة القيادة",
+    "kpi": {
+      "managedDevices": "الأجهزة المُدارة",
+      "managedDevicesHint": "لا تشمل الأجهزة غير المُدارة",
+      "online": "متصل",
+      "onlineHint": "تستجيب للاستطلاع",
+      "criticalAlerts": "التنبيهات الحرجة",
+      "criticalAlertsHint": "نشطة بخطورة حرجة",
+      "activeIncidents": "الحوادث النشطة",
+      "activeIncidentsHint": "مفتوحة خلال دورة الحياة",
+      "pendingApprovals": "الموافقات المعلّقة",
+      "pendingApprovalsHint": "طلبات تغيير قيد المراجعة",
+      "backupCompliance": "الالتزام بالنسخ الاحتياطي",
+      "backupComplianceHint": "أجهزة ملتزمة من إجمالي المُدارة"
+    },
+    "status": {
+      "live": "مباشر",
+      "attention": "يتطلب انتباهًا",
+      "clear": "سليم",
+      "queue": "في قائمة الانتظار",
+      "onTarget": "ضمن المستهدف",
+      "watch": "قيد المراقبة",
+      "atRisk": "معرّض للخطر"
+    },
+    "incidents": {
+      "title": "الحوادث النشطة",
+      "description": "الحوادث المفتوحة مرتبة بحسب الخطورة",
+      "emptyTitle": "لا توجد حوادث نشطة",
+      "emptyDescription": "تمت معالجة جميع الحوادث — الشبكة هادئة."
+    },
+    "changes": {
+      "title": "التغييرات القادمة",
+      "description": "الأعمال المعتمدة والمجدولة، الأقرب أولًا",
+      "emptyTitle": "لا توجد تغييرات قادمة",
+      "emptyDescription": "ستظهر هنا التغييرات المعتمدة أو المجدولة.",
+      "unscheduled": "غير مجدول"
+    },
+    "compliance": {
+      "title": "الالتزام بالنسخ الاحتياطي",
+      "description": "الأجهزة المُدارة بحسب حالة آخر نسخة احتياطية",
+      "compliant": "ملتزمة",
+      "countCompliant": "ملتزمة",
+      "countOverdue": "متأخرة",
+      "countFailed": "فاشلة",
+      "countNever": "أبدًا",
+      "lastSuccess": "آخر نسخة احتياطية ناجحة {time}",
+      "aria": "الالتزام بالنسخ الاحتياطي {value} في المئة"
+    },
+    "drift": {
+      "title": "انحراف التهيئة",
+      "description": "التهيئة الحالية مقابل خط الأساس المعتمد",
+      "emptyTitle": "لم يُرصد أي انحراف في التهيئة",
+      "emptyDescription": "لم تُعلّم استطلاعات خط الأساس أي أجهزة.",
+      "open": "مفتوحة",
+      "body": "تهيئات التشغيل تختلف عن خطوط الأساس المعتمدة. راجع الفروقات، ثم عالج كل سجل أو اقبله.",
+      "cta": "فتح وحدة الانحراف"
+    },
+    "capacity": {
+      "title": "مخاطر السعة",
+      "description": "ذروة استغلال الواجهات خلال 24 ساعة فوق 75%",
+      "emptyTitle": "لا توجد مخاطر سعة حاليًا",
+      "emptyDescription": "لا توجد واجهة تتجاوز حد الاستغلال 75%.",
+      "inbound": "صادر إلى الشبكة",
+      "outbound": "صادر من الشبكة",
+      "srOnly": "تتحول أشرطة الاستغلال إلى تحذير فوق 85 في المئة وإلى خطر فوق 95 في المئة."
+    },
+    "activity": {
+      "title": "النشاط الأخير",
+      "description": "أحدث 12 حدث تدقيق",
+      "emptyTitle": "لم تُسجَّل أي أحداث تدقيق بعد",
+      "colTime": "الوقت",
+      "colActor": "الفاعل",
+      "colAction": "الإجراء",
+      "colResource": "المورد",
+      "colResult": "النتيجة"
+    },
+    "health": {
+      "title": "توزيع الحالة",
+      "description": "الأجهزة بحسب الحالة التشغيلية",
+      "empty": "لا توجد أجهزة مسجلة بعد.",
+      "devices": "أجهزة",
+      "deviceCount": "{count, plural, one {جهاز واحد} two {جهازان} few {# أجهزة} many {# جهازًا} other {# جهاز}}",
+      "srOnly": "مخطط دائري لتوزيع حالة الأجهزة. {details}"
+    },
+    "utilization": {
+      "title": "اتجاه استغلال الشبكة",
+      "description24h": "متوسط الأسطول عبر الأجهزة المُدارة — المعالج والذاكرة (%)، آخر 24 ساعة",
+      "description7d": "متوسط الأسطول عبر الأجهزة المُدارة — المعالج والذاكرة (%)، آخر 7 أيام",
+      "empty": "لا تتوفر بيانات تجميع للاستغلال في هذه النافذة بعد.",
+      "legendCpu": "المعالج %",
+      "legendMemory": "الذاكرة %",
+      "aria": "مخطط اتجاه الاستغلال. متوسط المعالج {cpu} في المئة بذروة بلغت {cpuPeak} في المئة. متوسط الذاكرة {memory} في المئة بذروة بلغت {memoryPeak} في المئة.",
+      "srOnly": "مخطط خطي لمتوسط استغلال المعالج والذاكرة على مستوى الأسطول خلال النافذة المحددة. متوسط المعالج {cpu} في المئة بذروة بلغت {cpuPeak} في المئة. متوسط الذاكرة {memory} في المئة بذروة بلغت {memoryPeak} في المئة."
+    }
+  },
+  "a11y": {
+    "skipToContent": "تجاوز إلى المحتوى",
+    "mainNavigation": "التنقل الرئيسي",
+    "languageSwitch": "تغيير اللغة",
+    "loadingApp": "جارٍ تحميل FayaNMS"
+  },
+  "language": {
+    "en": "English",
+    "ar": "العربية"
+  }
+}

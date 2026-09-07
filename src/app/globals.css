@@ -425,3 +425,31 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Phase 8-b — WCAG 2.2 AA a11y additions (additive block only)        */
+/*                                                                     */
+/* Already provided by the base layer above and VERIFIED, not changed: */
+/*   • prefers-reduced-motion — the media block above neutralizes all  */
+/*     CSS transitions/animations (0.01ms + single iteration + auto    */
+/*     scroll-behavior); framer-motion runs under <MotionProvider      */
+/*     reducedMotion="user"> (src/components/providers/motion-        */
+/*     provider.tsx). Static rendering is unaffected.                  */
+/*   • :focus-visible — 2px outline in --ring (brand accent,           */
+/*     brightened in dark mode), 2px offset, on every element;         */
+/*     components that opt out via focus-visible:ring-* utilities      */
+/*     render the equivalent ring-ring/50 ring instead.                */
+/*                                                                     */
+/* New below: direction (RTL) letter-spacing correction.               */
+/* ------------------------------------------------------------------ */
+
+/* Arabic script is connected/cursive — any letter-spacing (e.g. the
+   tracking-* utilities used for uppercase Latin headers) breaks glyph
+   joining and legibility. Neutralize it under RTL for all text while
+   keeping technical LTR islands (.ltr-technical, .font-tech, code) at
+   their intended tracking. Unlayered on purpose: cascade layers put
+   Tailwind utilities in @layer utilities, so this rule wins there
+   without !important. Safe with the existing token/density systems. */
+[dir="rtl"] :where(:not(.ltr-technical, .font-tech, code, kbd, pre, samp)) {
+  letter-spacing: normal;
+}

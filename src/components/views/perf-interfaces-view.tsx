@@ -206,16 +206,19 @@ export function PerfInterfacesView() {
           </div>
         ) : (
           <div className="max-h-[600px] overflow-auto">
-            <table className="w-full min-w-[720px] text-sm">
+            <table
+              aria-label={`Interface performance — utilization in/out, peak and loss for ${perfRangeLabel(range)}`}
+              className="w-full min-w-[720px] text-sm"
+            >
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b text-xs text-muted-foreground">
-                  <th className="px-4 py-2 text-start font-medium">Interface</th>
-                  <th className="px-4 py-2 text-start font-medium">Oper</th>
-                  <th className="hidden px-4 py-2 text-end font-medium sm:table-cell">Speed</th>
-                  <th className="px-4 py-2 text-start font-medium">In</th>
-                  <th className="px-4 py-2 text-start font-medium">Out</th>
-                  <th className="px-4 py-2 text-end font-medium">Peak</th>
-                  <th className="px-4 py-2 text-end font-medium">Loss</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">Interface</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">Oper</th>
+                  <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">Speed</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">In</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">Out</th>
+                  <th className="px-4 py-2 text-end font-medium" scope="col">Peak</th>
+                  <th className="px-4 py-2 text-end font-medium" scope="col">Loss</th>
                 </tr>
               </thead>
               <tbody>

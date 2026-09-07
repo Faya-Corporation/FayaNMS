@@ -289,7 +289,7 @@ export function SnapshotsView() {
         ) : (
           <div className="max-h-[600px] overflow-y-auto">
             <div className="min-w-[1020px]">
-              <Table>
+              <Table aria-label="Snapshot version browser — timestamp, version, source, size, checksum and status per snapshot">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="h-(--density-row-h) w-10 px-(--density-cell-x)">

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 import { SectionCard } from "@/components/domain/section-card";
@@ -42,6 +43,7 @@ export function HealthDistributionCard({
   loading,
   total,
 }: HealthDistributionCardProps) {
+  const t = useTranslations("dashboard");
   const colors = useTokenColors();
   const chartData = data.map((slice) => ({
     ...slice,
@@ -53,24 +55,26 @@ export function HealthDistributionCard({
   return (
     <SectionCard
       className="md:col-span-2 xl:col-span-4"
-      title="Health Distribution"
-      description="Devices by operational status"
+      title={t("health.title")}
+      description={t("health.description")}
     >
       {loading ? (
         <WidgetSkeleton className="h-[240px]" rows={5} />
       ) : chartData.length === 0 ? (
         <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">
-          No devices registered yet.
+          {t("health.empty")}
         </div>
       ) : (
         <div
-          aria-label={`Health distribution: ${chartData
+          aria-label={`${t("health.title")}: ${chartData
             .map((slice) => `${slice.count} ${slice.label}`)
             .join(", ")}`}
           className="flex flex-col items-center gap-3"
           role="img"
         >
-          <div className="relative h-[190px] w-full max-w-[240px]">
+          {/* dir="ltr": the donut geometry and its center overlay never
+              mirror under RTL (Task 8-a chart rule). */}
+          <div className="relative h-[190px] w-full max-w-[240px]" dir="ltr">
             <ResponsiveContainer height="100%" width="100%">
               <PieChart>
                 <Pie
@@ -102,7 +106,7 @@ export function HealthDistributionCard({
                     color: "var(--popover-foreground)",
                   }}
                   formatter={(value: number | string, _name: string, item) => [
-                    `${value} device${value === 1 ? "" : "s"}`,
+                    t("health.deviceCount", { count: Number(value) }),
                     String(item?.payload?.label ?? ""),
                   ]}
                 />
@@ -110,7 +114,7 @@ export function HealthDistributionCard({
             </ResponsiveContainer>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-2xl font-semibold tabular-nums">{total}</span>
-              <span className="text-[11px] text-muted-foreground">devices</span>
+              <span className="text-[11px] text-muted-foreground">{t("health.devices")}</span>
             </div>
           </div>
 
@@ -133,8 +137,11 @@ export function HealthDistributionCard({
             ))}
           </ul>
           <p className="sr-only">
-            Donut chart of device health distribution.{" "}
-            {chartData.map((slice) => `${slice.count} ${slice.label}`).join(", ")}.
+            {t("health.srOnly", {
+              details: chartData
+                .map((slice) => `${slice.count} ${slice.label}`)
+                .join(", "),
+            })}
           </p>
         </div>
       )}

@@ -345,9 +345,9 @@ export function IncidentDetailView() {
                   </Badge>
                 )}
               </div>
-              <h2 className="truncate text-lg font-semibold" title={detail.title}>
+              <h1 className="truncate text-lg font-semibold" title={detail.title}>
                 {detail.title}
-              </h2>
+              </h1>
               <p className="text-xs text-muted-foreground">
                 {detail.site ? `${detail.site.name} · ` : ""}
                 created {formatDistanceToNow(new Date(detail.createdAt), { addSuffix: true })}

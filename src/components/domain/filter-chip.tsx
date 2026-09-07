@@ -31,7 +31,7 @@ export function FilterChip({ label, value, onRemove, className }: FilterChipProp
       {onRemove && (
         <button
           aria-label={removeLabel}
-          className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="relative rounded-sm p-0.5 text-muted-foreground transition-colors after:absolute after:-inset-1 after:content-[''] hover:bg-muted hover:text-foreground"
           onClick={onRemove}
           type="button"
         >

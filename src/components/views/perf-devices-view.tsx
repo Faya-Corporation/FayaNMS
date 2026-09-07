@@ -187,18 +187,21 @@ export function PerfDevicesView() {
           </div>
         ) : (
           <div className="max-h-[600px] overflow-auto">
-            <table className="w-full min-w-[760px] text-sm">
+            <table
+              aria-label={`Device performance — ${metric.toLowerCase()} per device for ${perfRangeLabel(range)}`}
+              className="w-full min-w-[760px] text-sm"
+            >
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b text-xs text-muted-foreground">
-                  <th className="px-4 py-2 text-start font-medium">Device</th>
-                  <th className="px-4 py-2 text-start font-medium">Site</th>
-                  <th className="px-4 py-2 text-start font-medium">Status</th>
-                  <th className="px-4 py-2 text-start font-medium">Trend</th>
-                  <th className="px-4 py-2 text-end font-medium">Latest</th>
-                  <th className="hidden px-4 py-2 text-end font-medium sm:table-cell">Avg</th>
-                  <th className="hidden px-4 py-2 text-end font-medium sm:table-cell">Max</th>
-                  <th className="hidden px-4 py-2 text-end font-medium md:table-cell">P95</th>
-                  <th className="px-4 py-2 text-end font-medium">Δ Window</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">Device</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">Site</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">Status</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">Trend</th>
+                  <th className="px-4 py-2 text-end font-medium" scope="col">Latest</th>
+                  <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">Avg</th>
+                  <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">Max</th>
+                  <th className="hidden px-4 py-2 text-end font-medium md:table-cell" scope="col">P95</th>
+                  <th className="px-4 py-2 text-end font-medium" scope="col">Δ Window</th>
                 </tr>
               </thead>
               <tbody>

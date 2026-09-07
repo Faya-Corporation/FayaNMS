@@ -318,7 +318,7 @@ export function ChangeApprovalsView() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table className="min-w-[900px]">
+            <Table aria-label="Approval queue — pending technical, security and manager approvals per change request" className="min-w-[900px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Number</TableHead>

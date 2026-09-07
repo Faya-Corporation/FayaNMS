@@ -1,0 +1,279 @@
+{
+  "common": {
+    "refresh": "Refresh",
+    "search": "Search",
+    "create": "Create",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirm": "Confirm",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "viewAll": "View all",
+    "filter": "Filter",
+    "clear": "Clear",
+    "export": "Export",
+    "dismiss": "Dismiss",
+    "noResults": "No results found.",
+    "back": "Back",
+    "copy": "Copy",
+    "copied": "Copied",
+    "actions": "Actions",
+    "all": "All",
+    "open": "Open",
+    "success": "Success",
+    "failure": "Failure",
+    "emptyTitle": "Nothing here yet",
+    "emptyDescription": "Content will appear here once data is available.",
+    "trend": {
+      "noChange": "no change",
+      "worse": "changed for the worse",
+      "better": "changed for the better",
+      "up": "trending up",
+      "down": "trending down"
+    }
+  },
+  "nav": {
+    "brand": {
+      "subtitle": "Network Operations"
+    },
+    "groups": {
+      "overview": "Overview",
+      "network": "Network",
+      "configurations": "Configurations",
+      "changes": "Changes",
+      "operations": "Operations",
+      "performance": "Performance",
+      "reports": "Reports",
+      "administration": "Administration"
+    },
+    "items": {
+      "dashboard": { "title": "Dashboard" },
+      "network": {
+        "devices": { "title": "Devices" },
+        "device-detail": { "title": "Device Detail" },
+        "sites": { "title": "Sites" },
+        "interfaces": { "title": "Interfaces" },
+        "topology": { "title": "Topology" },
+        "discovery": { "title": "Discovery" }
+      },
+      "config": {
+        "backups": { "title": "Backups" },
+        "snapshots": { "title": "Snapshots" },
+        "baselines": { "title": "Baselines" },
+        "drift": { "title": "Drift" },
+        "compliance": { "title": "Compliance" }
+      },
+      "changes": {
+        "all": { "title": "All Changes" },
+        "mine": { "title": "My Changes" },
+        "approvals": { "title": "Approvals" },
+        "calendar": { "title": "Calendar" },
+        "templates": { "title": "Templates" },
+        "change-detail": { "title": "Change Detail" }
+      },
+      "ops": {
+        "noc": { "title": "NOC View" },
+        "alerts": { "title": "Alerts" },
+        "incidents": { "title": "Incidents" },
+        "incident-detail": { "title": "Incident Detail" },
+        "maintenance": { "title": "Maintenance Windows" },
+        "events": { "title": "Event Stream" },
+        "jobs": { "title": "Job Center" }
+      },
+      "perf": {
+        "overview": { "title": "Performance Overview" },
+        "devices": { "title": "Device Performance" },
+        "interfaces": { "title": "Interface Utilization" },
+        "availability": { "title": "Availability" },
+        "capacity": { "title": "Capacity" }
+      },
+      "reports": {
+        "reports": { "title": "Reports" },
+        "scheduled": { "title": "Scheduled Reports" },
+        "builder": { "title": "Report Builder" }
+      },
+      "admin": {
+        "users": { "title": "Users & Roles" },
+        "credentials": { "title": "Credential Profiles" },
+        "apiClients": { "title": "API Clients" },
+        "collectors": { "title": "Collectors" },
+        "drivers": { "title": "Device Drivers" },
+        "integrations": { "title": "Integrations" },
+        "system": { "title": "System Settings" }
+      }
+    }
+  },
+  "header": {
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "openNavigation": "Open navigation menu",
+    "searchPlaceholder": "Search devices, incidents…",
+    "searchAria": "Search (opens command palette)",
+    "systemHealthy": "All systems operational",
+    "systemCritical": "{count, plural, one {# critical alert} other {# critical alerts}}",
+    "healthOkAria": "System health: operational",
+    "healthCriticalAria": "System health: critical alerts active",
+    "jobCenter": "Open job center",
+    "notifications": "Notifications",
+    "notificationsUnreadAria": "Notifications ({count} unread)",
+    "markAllRead": "Mark all read",
+    "notifEmptyTitle": "You're all caught up",
+    "notifEmptyDescription": "Alert escalations, incidents and change updates will show up here.",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System",
+    "themeAria": "Theme: {mode} (click to cycle light, dark, system)",
+    "density": "Density",
+    "densityComfortable": "Comfortable",
+    "densityCompact": "Compact",
+    "densityDense": "Dense",
+    "densityAria": "Density: {tier} (click to cycle)",
+    "language": "Language",
+    "userMenu": "User menu",
+    "signedIn": "Signed in",
+    "usersAndRoles": "Users & roles",
+    "signOut": "Sign out",
+    "signedOut": "Signed out",
+    "signedOutDescription": "Your session has been cleared.",
+    "actingAs": "Acting as: {name}"
+  },
+  "footer": {
+    "systemOperational": "All systems operational",
+    "version": "FayaNMS v0.1.0 — Phase 1 Foundation",
+    "lastRefresh": "Last refresh {time}"
+  },
+  "palette": {
+    "title": "Command Palette",
+    "titleBackup": "Backup now",
+    "description": "Type a command or search devices, incidents and changes.",
+    "descriptionBackup": "Pick a device to queue an immediate configuration backup.",
+    "placeholder": "Search commands, devices, incidents…",
+    "placeholderDevices": "Select a device…",
+    "emptyDevices": "No matching devices.",
+    "emptyHint": "Type to search or pick a destination below.",
+    "headingDevices": "Devices",
+    "headingSearchResults": "Search Results",
+    "headingQuickActions": "Quick Actions",
+    "headingNavigation": "Navigation",
+    "backupNow": "Backup now…",
+    "backupPickDevice": "pick a device",
+    "openJobCenter": "Open Job Center",
+    "incidentToastTitle": "Incident detail arrives with Phase 5",
+    "incidentToastBody": "{number} opened from the command palette.",
+    "changeToastTitle": "Change detail arrives with Phase 4",
+    "changeToastBody": "{number} — open the change module for the full record."
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "description": "Network operations overview",
+    "updated": "Updated {time}",
+    "errorTitle": "The dashboard could not be loaded",
+    "kpi": {
+      "managedDevices": "Managed Devices",
+      "managedDevicesHint": "Excludes unmanaged devices",
+      "online": "Online",
+      "onlineHint": "Responding to polls",
+      "criticalAlerts": "Critical Alerts",
+      "criticalAlertsHint": "ACTIVE severity CRITICAL",
+      "activeIncidents": "Active Incidents",
+      "activeIncidentsHint": "Open across the lifecycle",
+      "pendingApprovals": "Pending Approvals",
+      "pendingApprovalsHint": "Change requests in review",
+      "backupCompliance": "Backup Compliance",
+      "backupComplianceHint": "Compliant devices / managed"
+    },
+    "status": {
+      "live": "live",
+      "attention": "attention",
+      "clear": "clear",
+      "queue": "queue",
+      "onTarget": "on target",
+      "watch": "watch",
+      "atRisk": "at risk"
+    },
+    "incidents": {
+      "title": "Active Incidents",
+      "description": "Open incidents ordered by severity",
+      "emptyTitle": "No active incidents",
+      "emptyDescription": "Every incident is resolved — the network is quiet."
+    },
+    "changes": {
+      "title": "Upcoming Changes",
+      "description": "Approved and scheduled work, next first",
+      "emptyTitle": "No upcoming changes",
+      "emptyDescription": "Approved or scheduled changes will appear here.",
+      "unscheduled": "unscheduled"
+    },
+    "compliance": {
+      "title": "Backup Compliance",
+      "description": "Managed devices by last-backup state",
+      "compliant": "compliant",
+      "countCompliant": "Compliant",
+      "countOverdue": "Overdue",
+      "countFailed": "Failed",
+      "countNever": "Never",
+      "lastSuccess": "Last successful backup {time}",
+      "aria": "Backup compliance {value} percent"
+    },
+    "drift": {
+      "title": "Configuration Drift",
+      "description": "Current config vs. approved baseline",
+      "emptyTitle": "No configuration drift detected",
+      "emptyDescription": "Baseline polling has not flagged any devices.",
+      "open": "open",
+      "body": "Running configs differ from their approved baselines. Review the diffs, then resolve or accept each record.",
+      "cta": "Open Drift module"
+    },
+    "capacity": {
+      "title": "Capacity Risks",
+      "description": "Peak 24h interface utilization above 75%",
+      "emptyTitle": "No capacity risks right now",
+      "emptyDescription": "No interface is above the 75% utilization threshold.",
+      "inbound": "Inbound",
+      "outbound": "Outbound",
+      "srOnly": "Utilization bars turn warning above 85 percent and danger above 95 percent."
+    },
+    "activity": {
+      "title": "Recent Activity",
+      "description": "Latest 12 audit events",
+      "emptyTitle": "No audit events recorded yet",
+      "colTime": "Time",
+      "colActor": "Actor",
+      "colAction": "Action",
+      "colResource": "Resource",
+      "colResult": "Result"
+    },
+    "health": {
+      "title": "Health Distribution",
+      "description": "Devices by operational status",
+      "empty": "No devices registered yet.",
+      "devices": "devices",
+      "deviceCount": "{count, plural, one {# device} other {# devices}}",
+      "srOnly": "Donut chart of device health distribution. {details}"
+    },
+    "utilization": {
+      "title": "Network Utilization Trend",
+      "description24h": "Fleet average across managed devices — CPU and memory (%), last 24 hours",
+      "description7d": "Fleet average across managed devices — CPU and memory (%), last 7 days",
+      "empty": "No utilization rollups available for this window yet.",
+      "legendCpu": "CPU %",
+      "legendMemory": "Memory %",
+      "aria": "Utilization trend chart. CPU averaged {cpu} percent, peaking at {cpuPeak} percent. Memory averaged {memory} percent, peaking at {memoryPeak} percent.",
+      "srOnly": "Line chart of fleet-average CPU and memory utilization over the selected window. CPU averaged {cpu} percent with a peak of {cpuPeak} percent. Memory averaged {memory} percent with a peak of {memoryPeak} percent."
+    }
+  },
+  "a11y": {
+    "skipToContent": "Skip to content",
+    "mainNavigation": "Primary",
+    "languageSwitch": "Switch language",
+    "loadingApp": "Loading FayaNMS"
+  },
+  "language": {
+    "en": "English",
+    "ar": "العربية"
+  }
+}

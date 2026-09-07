@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { format } from "date-fns";
 
 import { StatusDot } from "@/components/domain/status-dot";
@@ -15,21 +16,22 @@ interface AppFooterProps {
  * short (root flex column + mt-auto) and respects iOS safe-area insets.
  */
 export function AppFooter({ lastRefreshAt }: AppFooterProps) {
+  const tFooter = useTranslations("footer");
+
   return (
     <footer className="mt-auto border-t bg-surface-subtle pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col items-center justify-between gap-1 px-4 py-2.5 text-xs text-muted-foreground sm:flex-row md:px-6">
         <span className="inline-flex items-center gap-2" role="status">
-          <StatusDot label="All systems operational" pulse token="success" />
-          All systems operational
+          <StatusDot label={tFooter("systemOperational")} pulse token="success" />
+          {tFooter("systemOperational")}
         </span>
         <span className="hidden md:block">
-          FayaNMS v0.1.0 — Phase 1 Foundation
+          {tFooter("version")}
         </span>
         <span className="tabular-nums">
-          Last refresh{" "}
-          <span className="font-tech ltr-technical">
-            {lastRefreshAt ? format(lastRefreshAt, "HH:mm:ss") : "—"}
-          </span>
+          {tFooter("lastRefresh", {
+            time: lastRefreshAt ? format(lastRefreshAt, "HH:mm:ss") : "—",
+          })}
         </span>
       </div>
     </footer>

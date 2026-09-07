@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   ArrowRight,
@@ -13,7 +14,6 @@ import {
   Wifi,
 } from "lucide-react";
 
-import { useToast } from "@/hooks/use-toast";
 import { useDashboard } from "@/hooks/api/use-dashboard";
 import { BackupComplianceBadge } from "@/components/domain/backup-status-badge";
 import { ChangeRiskBadge } from "@/components/domain/change-risk-badge";
@@ -48,8 +48,29 @@ function relative(iso: string | null): string {
   return formatDistanceToNow(new Date(iso), { addSuffix: true });
 }
 
+/**
+ * ─── i18n MIGRATION PATTERN (Task 8-a — reference for the remaining views) ───
+ *
+ * 1. `const t = useTranslations("<namespace>")` (next-intl) inside the view
+ *    and each widget sub-component; replace string literals with keys.
+ * 2. Add/extend the namespace in `messages/en.json` (exact current English
+ *    strings) and `messages/ar.json` (professional NMS Arabic) — keys stay
+ *    stable, dot-free inside a level and nested by domain.
+ * 3. Interpolate with ICU placeholders ({time}, {count, plural, ...}) —
+ *    never string concatenation.
+ * 4. Keep numbers, IP addresses, hashes, change/incident numbers and time
+ *    axes in Western digits and LTR (wrap technical blocks in dir="ltr",
+ *    keep the `ltr-technical`/`font-tech` classes on tech spans).
+ * 5. Use logical CSS utilities only (start/end, ps/pe, ms/me, border-s/e,
+ *    text-start/end); flip directional icons with `rtl:` variants; wrap
+ *    Recharts containers in dir="ltr" so axes never mirror.
+ * 6. Relative dates currently stay English (date-fns "en") until the
+ *    date-locale pass — see worklog Task 8-a.
+ */
+
 /** Gate G1 showpiece: fleet KPIs, trends, risks and activity. */
 export function DashboardView() {
+  const t = useTranslations("dashboard");
   const [range, setRange] = useState<"24h" | "7d">("24h");
   const dashboard = useDashboard(range);
   const data = dashboard.data;
@@ -66,98 +87,99 @@ export function DashboardView() {
       <PageHeader
         actions={
           <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline">
-            Updated{" "}
-            {dashboard.dataUpdatedAt
-              ? format(dashboard.dataUpdatedAt, "HH:mm:ss")
-              : "—"}
+            {t("updated", {
+              time: dashboard.dataUpdatedAt
+                ? format(dashboard.dataUpdatedAt, "HH:mm:ss")
+                : "—",
+            })}
           </span>
         }
-        description="Network operations overview"
+        description={t("description")}
         primaryAction={
           <TimeRangeSelect
             onChange={onRangeChange}
             value={range}
           />
         }
-        title="Dashboard"
+        title={t("title")}
       />
 
       {dashboard.isError ? (
         <ErrorState
           onRetry={() => void dashboard.refetch()}
           reason={dashboard.error.message}
-          title="The dashboard could not be loaded"
+          title={t("errorTitle")}
         />
       ) : (
         <div className="flex flex-col gap-4">
           {/* KPI row */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
             <KpiCard
-              description="Excludes unmanaged devices"
+              description={t("kpi.managedDevicesHint")}
               icon={Router}
-              label="Managed Devices"
+              label={t("kpi.managedDevices")}
               loading={!data}
               value={kpis?.managedDevices ?? "—"}
             />
             <KpiCard
-              description="Responding to polls"
+              description={t("kpi.onlineHint")}
               icon={Wifi}
-              label="Online"
+              label={t("kpi.online")}
               loading={!data}
               status={
                 kpis
-                  ? { label: "live", pulse: true, token: "success" }
+                  ? { label: t("status.live"), pulse: true, token: "success" }
                   : undefined
               }
               value={kpis?.online ?? "—"}
             />
             <KpiCard
               className={cn(kpis && kpis.criticalAlerts > 0 && "border-danger/40")}
-              description="ACTIVE severity CRITICAL"
+              description={t("kpi.criticalAlertsHint")}
               icon={Siren}
-              label="Critical Alerts"
+              label={t("kpi.criticalAlerts")}
               loading={!data}
               status={
                 kpis
                   ? kpis.criticalAlerts > 0
-                    ? { label: "attention", pulse: true, token: "danger" }
-                    : { label: "clear", token: "success" }
+                    ? { label: t("status.attention"), pulse: true, token: "danger" }
+                    : { label: t("status.clear"), token: "success" }
                   : undefined
               }
               value={kpis?.criticalAlerts ?? "—"}
             />
             <KpiCard
-              description="Open across the lifecycle"
+              description={t("kpi.activeIncidentsHint")}
               icon={TriangleAlert}
-              label="Active Incidents"
+              label={t("kpi.activeIncidents")}
               loading={!data}
               value={kpis?.activeIncidents ?? "—"}
             />
             <KpiCard
-              description="Change requests in review"
+              description={t("kpi.pendingApprovalsHint")}
               icon={ClipboardCheck}
-              label="Pending Approvals"
+              label={t("kpi.pendingApprovals")}
               loading={!data}
               status={
                 kpis && kpis.pendingApprovals > 0
-                  ? { label: "queue", token: "warning" }
+                  ? { label: t("status.queue"), token: "warning" }
                   : undefined
               }
               value={kpis?.pendingApprovals ?? "—"}
             />
             <KpiCard
-              description="Compliant devices / managed"
+              description={t("kpi.backupComplianceHint")}
               icon={DatabaseBackup}
-              label="Backup Compliance"
+              label={t("kpi.backupCompliance")}
               loading={!data}
               status={
                 kpis === undefined
                   ? undefined
                   : kpis.backupCompliancePct >= 95
-                    ? { label: "on target", token: "success" }
+                    ? { label: t("status.onTarget"), token: "success" }
                     : kpis.backupCompliancePct >= 80
-                      ? { label: "watch", token: "warning" }
-                      : { label: "at risk", token: "danger" }
+                      ? { label: t("status.watch"), token: "warning" }
+                      : { label: t("status.atRisk"), token: "danger" }
               }
               value={kpis ? `${kpis.backupCompliancePct}%` : "—"}
             />
@@ -213,20 +235,22 @@ function ActiveIncidentsCard({
   incidents: DashboardIncident[];
   loading: boolean;
 }) {
+  const t = useTranslations("dashboard");
+  const tCommon = useTranslations("common");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
 
   return (
     <SectionCard
-      description="Open incidents ordered by severity"
-      title="Active Incidents"
+      description={t("incidents.description")}
+      title={t("incidents.title")}
       actions={
         <Button
           onClick={() => setActiveView("ops.incidents")}
           size="sm"
           variant="ghost"
         >
-          View all
-          <ArrowRight aria-hidden="true" />
+          {tCommon("viewAll")}
+          <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
         </Button>
       }
     >
@@ -235,9 +259,9 @@ function ActiveIncidentsCard({
       ) : incidents.length === 0 ? (
         <EmptyState
           className="border-none bg-transparent py-8"
-          description="Every incident is resolved — the network is quiet."
+          description={t("incidents.emptyDescription")}
           icon={Siren}
-          title="No active incidents"
+          title={t("incidents.emptyTitle")}
         />
       ) : (
         <ul className="-my-1 flex flex-col">
@@ -279,19 +303,21 @@ function UpcomingChangesCard({
   changes: DashboardChange[];
   loading: boolean;
 }) {
+  const t = useTranslations("dashboard");
+
   return (
     <SectionCard
-      description="Approved and scheduled work, next first"
-      title="Upcoming Changes"
+      description={t("changes.description")}
+      title={t("changes.title")}
     >
       {loading ? (
         <WidgetSkeleton rows={5} />
       ) : changes.length === 0 ? (
         <EmptyState
           className="border-none bg-transparent py-8"
-          description="Approved or scheduled changes will appear here."
+          description={t("changes.emptyDescription")}
           icon={ClipboardCheck}
-          title="No upcoming changes"
+          title={t("changes.emptyTitle")}
         />
       ) : (
         <ul className="-my-1 flex flex-col">
@@ -315,7 +341,7 @@ function UpcomingChangesCard({
               <span className="w-28 shrink-0 text-end text-xs text-muted-foreground tabular-nums">
                 {change.scheduledStart
                   ? format(new Date(change.scheduledStart), "MMM d, HH:mm")
-                  : "unscheduled"}
+                  : t("changes.unscheduled")}
               </span>
             </li>
           ))}
@@ -358,19 +384,21 @@ function BackupComplianceCard({
       ? Math.round((summary.compliant / total) * 1000) / 10
       : 0;
 
+  const t = useTranslations("dashboard");
+
   const counts = summary
     ? [
-        { label: "Compliant", token: "success" as const, value: summary.compliant },
-        { label: "Overdue", token: "warning" as const, value: summary.overdue },
-        { label: "Failed", token: "danger" as const, value: summary.failed },
-        { label: "Never", token: "neutral" as const, value: summary.never },
+        { label: t("compliance.countCompliant"), token: "success" as const, value: summary.compliant },
+        { label: t("compliance.countOverdue"), token: "warning" as const, value: summary.overdue },
+        { label: t("compliance.countFailed"), token: "danger" as const, value: summary.failed },
+        { label: t("compliance.countNever"), token: "neutral" as const, value: summary.never },
       ]
     : [];
 
   return (
     <SectionCard
-      description="Managed devices by last-backup state"
-      title="Backup Compliance"
+      description={t("compliance.description")}
+      title={t("compliance.title")}
     >
       {loading || !summary ? (
         <WidgetSkeleton rows={4} />
@@ -378,14 +406,14 @@ function BackupComplianceCard({
         <div className="flex flex-col gap-3">
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-semibold tabular-nums">{pct}%</span>
-            <span className="text-sm text-muted-foreground">compliant</span>
+            <span className="text-sm text-muted-foreground">{t("compliance.compliant")}</span>
             <BackupComplianceBadge
               className="ms-auto"
               value={pct >= 95 ? "COMPLIANT" : pct >= 80 ? "OVERDUE" : "FAILED"}
             />
           </div>
           <Progress
-            aria-label={`Backup compliance ${pct} percent`}
+            aria-label={t("compliance.aria", { value: pct })}
             value={pct}
           />
           <ul className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
@@ -400,10 +428,9 @@ function BackupComplianceCard({
             ))}
           </ul>
           <p className="text-xs text-muted-foreground">
-            Last successful backup{" "}
-            <span className="font-medium text-foreground">
-              {relative(summary.lastSuccessfulBackupAt)}
-            </span>
+            {t("compliance.lastSuccess", {
+              time: relative(summary.lastSuccessfulBackupAt),
+            })}
           </p>
         </div>
       )}
@@ -431,32 +458,32 @@ function StatusDotSpan({
 }
 
 function DriftCard({ count, loading }: { count: number | undefined; loading: boolean }) {
+  const t = useTranslations("dashboard");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
 
   return (
     <SectionCard
-      description="Current config vs. approved baseline"
-      title="Configuration Drift"
+      description={t("drift.description")}
+      title={t("drift.title")}
     >
       {loading || count === undefined ? (
         <WidgetSkeleton rows={4} />
       ) : count === 0 ? (
         <EmptyState
           className="border-none bg-transparent py-8"
-          description="Baseline polling has not flagged any devices."
+          description={t("drift.emptyDescription")}
           icon={FileDiff}
-          title="No configuration drift detected"
+          title={t("drift.emptyTitle")}
         />
       ) : (
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <span className="text-3xl font-semibold tabular-nums">{count}</span>
-            <span className="text-sm text-muted-foreground">open</span>
+            <span className="text-sm text-muted-foreground">{t("drift.open")}</span>
             <DriftStatusBadge className="ms-auto" value="OPEN" />
           </div>
           <p className="text-xs text-muted-foreground">
-            Running configs differ from their approved baselines. Review the
-            diffs, then resolve or accept each record.
+            {t("drift.body")}
           </p>
           <Button
             className="self-start"
@@ -464,8 +491,8 @@ function DriftCard({ count, loading }: { count: number | undefined; loading: boo
             size="sm"
             variant="outline"
           >
-            Open Drift module
-            <ArrowRight aria-hidden="true" />
+            {t("drift.cta")}
+            <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
           </Button>
         </div>
       )}
@@ -480,21 +507,22 @@ function CapacityRisksCard({
   loading: boolean;
   risks: CapacityRisk[];
 }) {
+  const t = useTranslations("dashboard");
   const metricLabel = (metric: string) =>
-    metric === "UTILIZATION_IN" ? "Inbound" : "Outbound";
+    metric === "UTILIZATION_IN" ? t("capacity.inbound") : t("capacity.outbound");
 
   return (
     <SectionCard
-      description="Peak 24h interface utilization above 75%"
-      title="Capacity Risks"
+      description={t("capacity.description")}
+      title={t("capacity.title")}
     >
       {loading ? (
         <WidgetSkeleton rows={4} />
       ) : risks.length === 0 ? (
         <EmptyState
           className="border-none bg-transparent py-8"
-          description="No interface is above the 75% utilization threshold."
-          title="No capacity risks right now"
+          description={t("capacity.emptyDescription")}
+          title={t("capacity.emptyTitle")}
         />
       ) : (
         <ul className="flex flex-col gap-3">
@@ -533,8 +561,7 @@ function CapacityRisksCard({
         </ul>
       )}
       <span className="sr-only">
-        Utilization bars turn warning above 85 percent and danger above 95
-        percent.
+        {t("capacity.srOnly")}
       </span>
     </SectionCard>
   );
@@ -558,11 +585,14 @@ function RecentActivityCard({
   }[];
   loading: boolean;
 }) {
+  const t = useTranslations("dashboard");
+  const tCommon = useTranslations("common");
+
   return (
     <SectionCard
       contentClassName="p-0"
-      description="Latest 12 audit events"
-      title="Recent Activity"
+      description={t("activity.description")}
+      title={t("activity.title")}
     >
       {loading ? (
         <div className="p-4">
@@ -572,21 +602,21 @@ function RecentActivityCard({
         <div className="p-4">
           <EmptyState
             className="border-none bg-transparent py-8"
-            title="No audit events recorded yet"
+            title={t("activity.emptyTitle")}
           />
         </div>
       ) : (
         <div className="max-h-96 overflow-y-auto">
-          <table className="w-full text-sm">
+          <table aria-label={t("activity.title")} className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-card">
               <tr className="border-b text-xs text-muted-foreground">
-                <th className="px-4 py-2 text-start font-medium">Time</th>
-                <th className="px-4 py-2 text-start font-medium">Actor</th>
-                <th className="px-4 py-2 text-start font-medium">Action</th>
-                <th className="hidden px-4 py-2 text-start font-medium md:table-cell">
-                  Resource
+                <th className="px-4 py-2 text-start font-medium" scope="col">{t("activity.colTime")}</th>
+                <th className="px-4 py-2 text-start font-medium" scope="col">{t("activity.colActor")}</th>
+                <th className="px-4 py-2 text-start font-medium" scope="col">{t("activity.colAction")}</th>
+                <th className="hidden px-4 py-2 text-start font-medium md:table-cell" scope="col">
+                  {t("activity.colResource")}
                 </th>
-                <th className="px-4 py-2 text-end font-medium">Result</th>
+                <th className="px-4 py-2 text-end font-medium" scope="col">{t("activity.colResult")}</th>
               </tr>
             </thead>
             <tbody>
@@ -620,7 +650,7 @@ function RecentActivityCard({
                             : "bg-danger-subtle text-danger"
                         )}
                       >
-                        {success ? "Success" : "Failure"}
+                        {success ? tCommon("success") : tCommon("failure")}
                       </span>
                     </td>
                   </tr>

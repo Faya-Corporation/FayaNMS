@@ -3,8 +3,10 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { MotionProvider } from "@/components/providers/motion-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
+import { LocaleProvider } from "@/i18n/locale-provider";
 
 const fontSans = Inter({
   variable: "--font-sans",
@@ -43,7 +45,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" dir="ltr" suppressHydrationWarning>
       <body
         className={`${fontSans.variable} ${fontMono.variable} font-sans antialiased bg-background text-foreground`}
       >
@@ -53,12 +55,20 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AuthSessionProvider>
-            <QueryProvider>
-              {children}
-              <Toaster />
-            </QueryProvider>
-          </AuthSessionProvider>
+          {/* LocaleProvider (Task 8-a): SSR/hydration always render "en"/ltr;
+              a persisted "ar" applies post-mount and flips <html dir>. */}
+          <LocaleProvider>
+            {/* MotionProvider (Task 8-b): framer-motion honors the OS
+                reduced-motion preference (WCAG 2.3.3). */}
+            <MotionProvider>
+              <AuthSessionProvider>
+                <QueryProvider>
+                  {children}
+                  <Toaster />
+                </QueryProvider>
+              </AuthSessionProvider>
+            </MotionProvider>
+          </LocaleProvider>
         </ThemeProvider>
       </body>
     </html>

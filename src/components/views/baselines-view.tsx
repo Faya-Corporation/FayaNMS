@@ -105,7 +105,7 @@ export function BaselinesView() {
         ) : (
           <div className="max-h-[560px] overflow-y-auto">
             <div className="min-w-[980px]">
-              <Table>
+              <Table aria-label="Approved baselines — device, approved version, approval time and open drift count">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Device</TableHead>

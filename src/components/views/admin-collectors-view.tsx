@@ -95,7 +95,7 @@ export function AdminCollectorsView() {
             description="Collectors appear here once the worker service reports its first health probe."
           />
         ) : (
-          <Table>
+          <Table aria-label="Collector registry — collector, endpoint, capabilities and last-seen health">
             <TableHeader>
               <TableRow>
                 <TableHead>Collector</TableHead>

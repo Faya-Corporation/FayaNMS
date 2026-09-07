@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useSession } from "next-auth/react";
 import { Waypoints } from "lucide-react";
 
@@ -9,7 +10,9 @@ import { useDashboard } from "@/hooks/api/use-dashboard";
 import { fetchAuthSession } from "@/lib/api-client";
 import { queryKeys } from "@/lib/query-keys";
 import { usePermissionsStore } from "@/stores/permissions";
+import { useLocaleInfo } from "@/i18n/locale-provider";
 import { SignInGate } from "@/components/auth/sign-in-gate";
+import { SkipLink } from "@/components/domain/skip-link";
 import { AppFooter } from "./app-footer";
 import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
@@ -42,6 +45,8 @@ const useMounted = () =>
 export function AppShell() {
   const mounted = useMounted();
   const { status } = useSession();
+  const { isRtl } = useLocaleInfo();
+  const tA11y = useTranslations("a11y");
 
   // Permission bootstrap (Task 7-a): /api/v1/auth/session is the SERVER
   // permission source of truth — hydrate the zustand store once the client
@@ -111,7 +116,7 @@ export function AppShell() {
     return (
       <div
         aria-busy="true"
-        aria-label="Loading FayaNMS"
+        aria-label={tA11y("loadingApp")}
         className="flex min-h-screen flex-col bg-background"
       >
         <div className="h-14 border-b" />
@@ -120,7 +125,7 @@ export function AppShell() {
             <span className="flex size-12 animate-pulse items-center justify-center rounded-xl bg-primary/10 text-primary">
               <Waypoints className="size-6" />
             </span>
-            <span className="text-sm">Loading FayaNMS…</span>
+            <span className="text-sm">{tA11y("loadingApp")}…</span>
           </span>
         </main>
         <div className="h-10 border-t" />
@@ -134,12 +139,7 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <a
-        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
-        href="#main-content"
-      >
-        Skip to content
-      </a>
+      <SkipLink label={tA11y("skipToContent")} />
 
       <div className="flex flex-1 items-stretch">
         <AppSidebar
@@ -173,9 +173,9 @@ export function AppShell() {
 
       <AppFooter lastRefreshAt={dashboard.dataUpdatedAt ?? null} />
 
-      {/* Mobile navigation drawer */}
+      {/* Mobile navigation drawer — side flips with the reading direction. */}
       <Sheet onOpenChange={setMobileNavOpen} open={mobileNavOpen}>
-        <SheetContent className="flex flex-col gap-0 p-0" side="left">
+        <SheetContent className="flex flex-col gap-0 p-0" side={isRtl ? "right" : "left"}>
           <SheetHeader className="border-b">
             <SheetTitle className="flex items-center gap-2.5">
               <span

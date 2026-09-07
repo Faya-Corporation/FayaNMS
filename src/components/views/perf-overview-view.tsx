@@ -32,6 +32,7 @@ import {
   usePruneMetricsRetention,
   useSaveMetricsRetention,
 } from "@/hooks/api/use-metrics-retention";
+import { ChartSummary } from "@/components/domain/chart-summary";
 import { HealthDistributionCard } from "@/components/dashboard/health-distribution-card";
 import { WidgetSkeleton } from "@/components/dashboard/widget-skeleton";
 import { EmptyState } from "@/components/domain/empty-state";
@@ -327,9 +328,9 @@ function AvailabilityCard({
       ) : points.length === 0 ? (
         <ChartEmpty range={range} />
       ) : (
-        <div
+        <ChartSummary
           aria-label={`Availability trend, averaged ${values.length > 0 ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(2) : "—"} percent over ${perfRangeLabel(range)}.`}
-          role="img"
+          summary={`Area chart of ${points.length} samples over ${perfRangeLabel(range)}; lowest ${values.length > 0 ? Math.min(...values).toFixed(2) : "—"} percent, highest ${values.length > 0 ? Math.max(...values).toFixed(2) : "—"} percent.`}
         >
           <ResponsiveContainer height={260} width="100%">
             <AreaChart
@@ -380,7 +381,7 @@ function AvailabilityCard({
               />
             </AreaChart>
           </ResponsiveContainer>
-        </div>
+        </ChartSummary>
       )}
     </SectionCard>
   );
@@ -410,9 +411,9 @@ function LatencyCard({
       ) : points.length === 0 ? (
         <ChartEmpty range={range} />
       ) : (
-        <div
+        <ChartSummary
           aria-label={`Latency p95 trend, peaking at ${values.length > 0 ? Math.round(Math.max(...values)) : 0} milliseconds over ${perfRangeLabel(range)}.`}
-          role="img"
+          summary={`Line chart of ${points.length} samples of the 95th-percentile round-trip latency over ${perfRangeLabel(range)}; highest ${values.length > 0 ? Math.round(Math.max(...values)) : 0} ms.`}
         >
           <ResponsiveContainer height={260} width="100%">
             <LineChart
@@ -455,7 +456,7 @@ function LatencyCard({
               />
             </LineChart>
           </ResponsiveContainer>
-        </div>
+        </ChartSummary>
       )}
     </SectionCard>
   );

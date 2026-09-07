@@ -1,3 +1,6 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, Minus, type LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -60,6 +63,7 @@ export function KpiCard({
   loading = false,
   className,
 }: KpiCardProps) {
+  const tCommon = useTranslations("common");
   const TrendIcon = trend ? TREND_ICONS[trend.direction] : null;
   const valueText = String(value);
 
@@ -117,12 +121,14 @@ export function KpiCard({
             <span className="tabular-nums">{trend.value}</span>
             <span className="sr-only">
               {trend.direction === "flat"
-                ? "no change"
+                ? tCommon("trend.noChange")
                 : trend.positive === false
-                  ? "changed for the worse"
+                  ? tCommon("trend.worse")
                   : trend.positive === true
-                    ? "changed for the better"
-                    : `trending ${trend.direction}`}
+                    ? tCommon("trend.better")
+                    : trend.direction === "up"
+                      ? tCommon("trend.up")
+                      : tCommon("trend.down")}
             </span>
           </span>
         )}

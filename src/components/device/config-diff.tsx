@@ -365,11 +365,14 @@ function UnifiedDiff({
   maxHeightClass: string;
 }) {
   return (
+    // dir="ltr" + text-left: diff content and the +/- gutter columns are
+    // technical blocks that must never mirror under RTL (Task 8-a).
     <div
       className={cn(
-        "overflow-auto rounded-lg border bg-card font-tech text-[13px] leading-relaxed",
+        "overflow-auto rounded-lg border bg-card text-left font-tech text-[13px] leading-relaxed",
         maxHeightClass
       )}
+      dir="ltr"
     >
       <table className="w-full border-collapse">
         <thead className="sticky top-0 z-10">
@@ -436,11 +439,14 @@ function SplitDiff({
   maxHeightClass: string;
 }) {
   return (
+    // dir="ltr" + text-left: the removed|added split columns never mirror
+    // under RTL (Task 8-a).
     <div
       className={cn(
-        "overflow-auto rounded-lg border bg-card font-tech text-[13px] leading-relaxed",
+        "overflow-auto rounded-lg border bg-card text-left font-tech text-[13px] leading-relaxed",
         maxHeightClass
       )}
+      dir="ltr"
     >
       <table className="w-full table-fixed border-collapse">
         <thead className="sticky top-0 z-10">
