@@ -2,6 +2,13 @@
 
 import { getViewMeta } from "@/lib/navigation/registry";
 import { useNavigationStore } from "@/stores/navigation";
+import { AdminApiClientsView } from "@/components/views/admin-api-clients-view";
+import { AdminCollectorsView } from "@/components/views/admin-collectors-view";
+import { AdminCredentialsView } from "@/components/views/admin-credentials-view";
+import { AdminDriversView } from "@/components/views/admin-drivers-view";
+import { AdminIntegrationsView } from "@/components/views/admin-integrations-view";
+import { AdminSystemView } from "@/components/views/admin-system-view";
+import { AdminUsersView } from "@/components/views/admin-users-view";
 import { AlertsView } from "@/components/views/alerts-view";
 import { BackupComplianceView } from "@/components/views/backup-compliance-view";
 import { BackupsView } from "@/components/views/backups-view";
@@ -11,7 +18,6 @@ import { ChangeApprovalsView } from "@/components/views/change-approvals-view";
 import { ChangesCalendarView } from "@/components/views/changes-calendar-view";
 import { ChangeTemplatesView } from "@/components/views/changes-templates-view";
 import { ChangesView } from "@/components/views/changes-view";
-import { CredentialsView } from "@/components/views/credentials-view";
 import { DashboardView } from "@/components/views/dashboard-view";
 import { DeviceDetailView } from "@/components/views/device-detail-view";
 import { DevicesView } from "@/components/views/devices-view";
@@ -38,8 +44,9 @@ import { SnapshotsView } from "@/components/views/snapshots-view";
  * renders a phase-accurate placeholder.
  *
  * Implemented: dashboard, network.devices, network.device-detail (Phase 2),
- * network.sites (Phase 2), network.discovery (Phase 2-c), admin.credentials
- * (Phase 2-c), ops.alerts, ops.incidents, ops.maintenance, ops.events
+ * network.sites (Phase 2), network.discovery (Phase 2-c),
+ * admin.users + admin.credentials (Phase 7-a), ops.alerts, ops.incidents,
+ * ops.maintenance, ops.events
  * (Phase 5-a/5-b/5-c), perf.overview, perf.devices, perf.interfaces,
  * perf.availability, perf.capacity (Phase 6-b), changes.all + changes.mine +
  * changes.calendar + changes.templates + changes.change-detail (Phase 4-a),
@@ -59,10 +66,22 @@ export function ViewRouter() {
       return <DeviceDetailView />;
     case "network.sites":
       return <SitesView />;
+    case "admin.users":
+      return <AdminUsersView />;
+    case "admin.credentials":
+      return <AdminCredentialsView />;
+    case "admin.apiClients":
+      return <AdminApiClientsView />;
+    case "admin.integrations":
+      return <AdminIntegrationsView />;
+    case "admin.collectors":
+      return <AdminCollectorsView />;
+    case "admin.drivers":
+      return <AdminDriversView />;
+    case "admin.system":
+      return <AdminSystemView />;
     case "network.discovery":
       return <DiscoveryView />;
-    case "admin.credentials":
-      return <CredentialsView />;
     case "ops.alerts":
       return <AlertsView />;
     case "ops.incidents":

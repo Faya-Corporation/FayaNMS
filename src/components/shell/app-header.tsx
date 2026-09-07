@@ -2,11 +2,13 @@
 
 import { Fragment } from "react";
 import { useTheme } from "next-themes";
+import { signOut, useSession } from "next-auth/react";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import {
   Bell,
   Check,
   ListTodo,
+  LogOut,
   Menu,
   Monitor,
   Moon,
@@ -45,7 +47,9 @@ import { EmptyState } from "@/components/domain/empty-state";
 import { StatusDot } from "@/components/domain/status-dot";
 import { cn } from "@/lib/utils";
 import { breadcrumbFor, isValidViewKey } from "@/lib/navigation/registry";
+import { ROLE_LABELS, type UserRole } from "@/lib/auth/roles";
 import { useNavigationStore } from "@/stores/navigation";
+import { usePermissionsStore } from "@/stores/permissions";
 import { usePreferencesStore, type Density } from "@/stores/preferences";
 import type { SidebarCounts } from "./sidebar-nav";
 
@@ -86,6 +90,30 @@ export function AppHeader({
   const setDensity = usePreferencesStore((state) => state.setDensity);
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
+
+  // Real session identity (Task 7-a) — replaces the pre-auth hardcoded
+  // "Admin" chip. Permission store carries the server-verified role.
+  const { data: sessionData } = useSession();
+  const permissionUser = usePermissionsStore((state) => state.user);
+  const currentUser = permissionUser ??
+    (sessionData?.user
+      ? {
+          id: sessionData.user.id,
+          email: sessionData.user.email ?? "",
+          name: sessionData.user.name,
+          role: sessionData.user.role,
+          isActive: true,
+          createdAt: "",
+        }
+      : null);
+  const initials = (currentUser?.name ?? currentUser?.email ?? "?")
+    .split(/\s+/)
+    .map((part) => part[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const roleLabel =
+    ROLE_LABELS[currentUser?.role as UserRole] ?? currentUser?.role ?? "";
 
   // Notifications center (Task 5-a; design §74 — separate surface from the
   // operational alert stream). Data-driven: unread badge, mark read,
@@ -356,44 +384,49 @@ export function AppHeader({
             >
               <Avatar className="size-7">
                 <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
-                  AD
+                  {initials || "?"}
                 </AvatarFallback>
               </Avatar>
               <span className="hidden min-w-0 flex-col items-start leading-tight xl:flex">
-                <span className="truncate text-sm font-medium">Admin</span>
+                <span className="truncate text-sm font-medium">
+                  {currentUser?.name ?? "Signed in"}
+                </span>
                 <span className="truncate text-[11px] text-muted-foreground">
-                  System Administrator
+                  {roleLabel}
                 </span>
               </span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
-              <span className="block text-sm font-medium">Admin</span>
-              <span className="block text-xs font-normal text-muted-foreground">
-                admin@fayanms.local
+              <span className="block text-sm font-medium">
+                {currentUser?.name ?? "Signed in"}
+              </span>
+              <span className="block truncate text-xs font-normal text-muted-foreground">
+                {currentUser?.email ?? ""}
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem
+              onClick={() => {
+                setActiveView("admin.users");
+              }}
+            >
+              <User aria-hidden="true" />
+              Users &amp; roles
+            </DropdownMenuItem>
+            <DropdownMenuItem
               onClick={() =>
-                toast({
-                  title: "Profile management arrives in Phase 7",
-                  description: "User accounts and roles ship with the Administration module.",
+                signOut({ callbackUrl: "/" }).then(() => {
+                  toast({
+                    title: "Signed out",
+                    description: "Your session has been cleared.",
+                  });
                 })
               }
             >
-              <User aria-hidden="true" />
-              Profile
-              <span className="ms-auto text-[11px] text-muted-foreground">
-                Phase 7
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled>
+              <LogOut aria-hidden="true" />
               Sign out
-              <span className="ms-auto text-[11px] text-muted-foreground">
-                Phase 7
-              </span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

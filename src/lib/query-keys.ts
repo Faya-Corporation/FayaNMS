@@ -79,4 +79,26 @@ export const queryKeys = {
   // mutations invalidate this key; prune also refreshes "performance"
   // (pruning shrinks the series the perf views read).
   metricsRetention: ["metrics", "retention"] as const,
+
+  // ── Admin: users/roles (Task 7-a) ─────────────────────────────────────
+  // Nested under the "admin" prefix so user/role mutations invalidate
+  // every admin surface at once. authSession is the permission bootstrap
+  // (hydrated into the permissions store); it lives under "auth" so
+  // sign-in/out can invalidate it independently.
+  adminUsers: (params: ListParams = {}) => ["admin", "users", params] as const,
+  adminRoles: () => ["admin", "roles"] as const,
+  authSession: () => ["auth", "session"] as const,
+
+  // ── Admin: governance & integrations (Task 7-b) ──────────────────────
+  // Same "admin" prefix tree; governance mutations invalidate ["admin"]
+  // (users/roles incl.) plus "events" via the hooks (every admin action
+  // is audited into the event stream).
+  apiClients: (params: ListParams = {}) => ["admin", "apiClients", params] as const,
+  webhooks: (params: ListParams = {}) => ["admin", "webhooks", params] as const,
+  notificationChannels: (params: ListParams = {}) =>
+    ["admin", "notificationChannels", params] as const,
+  collectors: () => ["admin", "collectors"] as const,
+  drivers: () => ["admin", "drivers"] as const,
+  adminSettings: () => ["admin", "settings"] as const,
+  auditChain: () => ["admin", "auditChain"] as const,
 };

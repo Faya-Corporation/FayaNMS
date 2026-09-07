@@ -14,8 +14,12 @@
  *    history and one explicit drift story (HQ-Access-SW-01).
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
+
+// Task 7-a: the storable scrypt hash format lives in ONE place (the app's
+// auth helper) — the seed reuses it so seeded users can actually sign in.
+import { hashPassword } from "../src/lib/auth/password";
 
 const db = new PrismaClient();
 
@@ -88,6 +92,13 @@ const SITES = [
   { id: "site-br2-muk", name: "Branch — Mukalla", code: "BR2-MUK", region: "Al Mukalla", address: "Dawood Street, Floor 2, Mukalla" },
 ];
 
+/**
+ * Demo sign-in password for every seeded user (Task 7-a). Only the scrypt
+ * hash is persisted — the plaintext lives here so the sign-in gate can
+ * advertise the demo credentials.
+ */
+const DEMO_PASSWORD = "faya123";
+
 const USERS = [
   { id: "usr-admin", email: "admin@faya.local", name: "Amal Al-Sabri", role: "admin" },
   { id: "usr-noc1", email: "noc1@faya.local", name: "Yousef Ghalib", role: "operator" },
@@ -96,25 +107,47 @@ const USERS = [
   { id: "usr-manager1", email: "manager1@faya.local", name: "Salma Al-Attar", role: "manager" },
 ];
 
+/**
+ * Permission keys (Task 7-a) — the contract the /api/v1/auth/session
+ * endpoint serves to the UI. admin keeps the "*" superuser wildcard;
+ * auditor is read-only by design (*.read + audit export) and the middleware
+ * additionally blocks every non-GET for that role.
+ */
 const ROLES = [
   { id: "role-admin", name: "admin", description: "Full platform administration", permissionsJson: JSON.stringify(["*"]) },
   {
     id: "role-operator",
     name: "operator",
     description: "NOC operator — run operational actions, ack alerts",
-    permissionsJson: JSON.stringify(["device.read", "config.read", "config.backup", "alert.ack", "incident.write", "job.run"]),
+    permissionsJson: JSON.stringify([
+      "device.read", "config.read", "config.backup",
+      "alert.read", "alert.ack", "alert.suppress",
+      "incident.read", "incident.write",
+      "change.read", "maintenance.read", "maintenance.write",
+      "job.read", "job.run", "metrics.read",
+    ]),
   },
   {
     id: "role-engineer",
     name: "engineer",
     description: "Network engineer — device + config authoring",
-    permissionsJson: JSON.stringify(["device.read", "device.write", "config.read", "config.write", "config.backup", "change.create", "job.run"]),
+    permissionsJson: JSON.stringify([
+      "device.read", "device.write",
+      "config.read", "config.write", "config.backup", "config.baseline",
+      "change.read", "change.create",
+      "alert.read", "maintenance.read",
+      "job.read", "job.run", "metrics.read",
+    ]),
   },
   {
     id: "role-manager",
     name: "manager",
     description: "Service manager — approvals and reporting",
-    permissionsJson: JSON.stringify(["device.read", "config.read", "change.approve", "report.read"]),
+    permissionsJson: JSON.stringify([
+      "device.read", "config.read",
+      "change.read", "change.approve",
+      "incident.read", "alert.read", "metrics.read", "report.read",
+    ]),
   },
   {
     id: "role-auditor",
@@ -158,6 +191,32 @@ const SETTINGS = [
   },
   // Task 6-a — SLA target consumed by /api/v1/performance/availability.
   { key: "performance.sla.target", valueJson: JSON.stringify(99.9) },
+];
+
+// Task 7-b — integration demo fixtures. Secrets/tokens are NOT seeded:
+// api-client tokens and webhook signing secrets only exist via the
+// create flow (shown once). The webhook url is intentionally unreachable
+// in the sandbox — test deliveries record a FAILED outcome, which is the
+// documented demo behavior.
+const WEBHOOKS = [
+  {
+    id: "wh-soc-hook",
+    name: "SOC ticketing hook",
+    url: "https://hooks.example.int/soc",
+    secret: randomBytes(32).toString("hex"),
+    eventsJson: JSON.stringify(["alert.fired", "incident.created"]),
+    isActive: true,
+  },
+];
+
+const NOTIFICATION_CHANNELS = [
+  {
+    id: "ch-noc-mail",
+    name: "NOC mailbox",
+    type: "EMAIL",
+    configJson: JSON.stringify({ address: "noc@faya.ye", displayName: "FayaNMS NOC" }),
+    isActive: true,
+  },
 ];
 
 const REPORT_SCHEDULES = [
@@ -1284,6 +1343,11 @@ function ifaceId(hostname: string, name: string): string {
 async function wipe() {
   // FK-safe order: children (or SetNull referencers) before parents.
   await db.auditEvent.deleteMany();
+  // Task 7-b admin surfaces (no FK dependencies — cleared alongside audits).
+  await db.apiClient.deleteMany();
+  await db.webhookEndpoint.deleteMany();
+  await db.notificationChannel.deleteMany();
+  await db.collector.deleteMany();
   await db.notification.deleteMany();
   await db.alert.deleteMany();
   await db.alertRule.deleteMany();
@@ -1319,8 +1383,16 @@ async function seedReference() {
   await db.site.createMany({ data: SITES.map((s) => ({ ...s, organizationId: ORG.id })) });
   await db.vendor.createMany({ data: VENDORS });
   await db.role.createMany({ data: ROLES });
+  // Task 7-a: every seeded user gets the demo scrypt password hash so the
+  // credentials provider can verify sign-in attempts.
   await db.user.createMany({
-    data: USERS.map((u) => ({ ...u, isActive: true, passwordHash: null })),
+    data: await Promise.all(
+      USERS.map(async (u) => ({
+        ...u,
+        isActive: true,
+        passwordHash: await hashPassword(DEMO_PASSWORD),
+      }))
+    ),
   });
   await db.credentialProfile.createMany({
     data: CREDENTIALS.map((c) => ({ ...c, lastRotatedAt: ago(ri(2880, 20000)) })),
@@ -1328,6 +1400,9 @@ async function seedReference() {
   await db.backupPolicy.createMany({ data: BACKUP_POLICIES });
   await db.reportSchedule.createMany({ data: REPORT_SCHEDULES });
   await db.setting.createMany({ data: SETTINGS });
+  // Task 7-b — integrations demo fixtures.
+  await db.webhookEndpoint.createMany({ data: WEBHOOKS });
+  await db.notificationChannel.createMany({ data: NOTIFICATION_CHANNELS });
 }
 
 async function seedDevices() {

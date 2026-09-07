@@ -2013,3 +2013,445 @@ export async function pruneMetricsRetention(): Promise<MetricsPruneResult> {
     body: JSON.stringify({}),
   });
 }
+
+/* ------------------------------------------------------------------ */
+/* Admin: auth session, users & roles (Task 7-a)                       */
+/* ------------------------------------------------------------------ */
+
+/** User row served by /api/v1/admin/users — passwordHash NEVER crosses the wire. */
+export interface AdminUserRow {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface AdminUsersListMeta extends PageMetaInfo {
+  counts: {
+    total: number;
+    active: number;
+    byRole: Record<string, number>;
+  };
+}
+
+export interface AdminUsersResult {
+  data: AdminUserRow[];
+  meta: AdminUsersListMeta;
+}
+
+/** Role row served by /api/v1/admin/roles (permissionsJson pre-parsed). */
+export interface AdminRoleRow {
+  id: string;
+  name: string;
+  description: string | null;
+  permissions: string[];
+  userCount: number;
+}
+
+/** Fresh user + permissions from /api/v1/auth/session (UI permission source). */
+export interface AuthSessionPayload {
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+    isActive: boolean;
+    createdAt: string;
+  };
+  role: {
+    name: string;
+    description: string | null;
+  };
+  permissions: string[];
+  canWrite: boolean;
+}
+
+export interface CreateUserPayload {
+  email: string;
+  name: string;
+  role: string;
+  isActive: boolean;
+  password: string;
+}
+
+export interface UpdateUserPayload {
+  name?: string;
+  role?: string;
+  isActive?: boolean;
+  password?: string;
+}
+
+export interface UserMutationResult {
+  user: AdminUserRow;
+}
+
+export interface ResetPasswordResult {
+  reset: boolean;
+  email: string;
+}
+
+export async function fetchAuthSession(): Promise<AuthSessionPayload> {
+  return apiFetch<AuthSessionPayload>("/api/v1/auth/session");
+}
+
+export async function fetchAdminUsers(
+  params: { q?: string; page?: number; pageSize?: number } = {}
+): Promise<AdminUsersResult> {
+  const envelope = await apiRequest<AdminUserRow[]>(
+    `/api/v1/admin/users${buildQueryString(params)}`
+  );
+  return {
+    data: envelope.data,
+    meta: envelope.meta as unknown as AdminUsersListMeta,
+  };
+}
+
+export async function fetchAdminRoles(): Promise<AdminRoleRow[]> {
+  return apiFetch<AdminRoleRow[]>("/api/v1/admin/roles");
+}
+
+export async function createUser(
+  payload: CreateUserPayload
+): Promise<UserMutationResult> {
+  return apiFetch<UserMutationResult>("/api/v1/admin/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateUser(
+  id: string,
+  payload: UpdateUserPayload
+): Promise<UserMutationResult> {
+  return apiFetch<UserMutationResult>(`/api/v1/admin/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function resetUserPassword(
+  id: string,
+  password: string
+): Promise<ResetPasswordResult> {
+  return apiFetch<ResetPasswordResult>(
+    `/api/v1/admin/users/${id}/reset-password`,
+    { method: "POST", body: JSON.stringify({ password }) }
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Admin: governance & integrations (Task 7-b)                         */
+/* ------------------------------------------------------------------ */
+
+export interface AdminApiClientRow {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  scopes: string[];
+  isActive: boolean;
+  lastUsedAt: string | null;
+  createdAt: string;
+  createdBy: string | null;
+}
+
+export interface ApiClientsResult {
+  clients: AdminApiClientRow[];
+  scopes: string[];
+}
+
+export interface ApiClientCreatePayload {
+  name: string;
+  scopes: string[];
+  isActive?: boolean;
+}
+
+export interface ApiClientCreateResult {
+  client: AdminApiClientRow;
+  /** Plaintext bearer token — shown exactly once, never stored server-side. */
+  token: string;
+  audit: { correlationId: string };
+}
+
+export interface ApiClientRotateResult {
+  client: AdminApiClientRow;
+  token: string;
+  audit: { correlationId: string };
+}
+
+export interface WebhookRow {
+  id: string;
+  name: string;
+  url: string;
+  secretMasked: string;
+  events: string[];
+  isActive: boolean;
+  lastStatus: string | null;
+  lastStatusCode: number | null;
+  lastDeliveredAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+}
+
+export interface WebhooksResult {
+  webhooks: WebhookRow[];
+  events: string[];
+}
+
+export interface WebhookCreatePayload {
+  name: string;
+  url: string;
+  events: string[];
+  isActive?: boolean;
+}
+
+export interface WebhookCreateResult {
+  webhook: WebhookRow;
+  secretOnce: string;
+  audit: { correlationId: string };
+}
+
+export interface WebhookTestResult {
+  delivered: boolean;
+  statusCode: number | null;
+  durationMs: number;
+  error: string | null;
+  webhook: {
+    id: string;
+    lastStatus: string | null;
+    lastStatusCode: number | null;
+    lastError: string | null;
+  };
+  audit: { correlationId: string };
+}
+
+export interface NotificationChannelRow {
+  id: string;
+  name: string;
+  type: "EMAIL" | "WEBHOOK" | string;
+  config: Record<string, unknown>;
+  isActive: boolean;
+  lastTestAt: string | null;
+  lastTestResult: string | null;
+  createdAt: string;
+}
+
+export interface ChannelsResult {
+  channels: NotificationChannelRow[];
+  types: string[];
+}
+
+export interface ChannelCreatePayload {
+  name: string;
+  type: string;
+  config: { address?: string; displayName?: string; url?: string };
+  isActive?: boolean;
+}
+
+export interface ChannelTestResult {
+  tested: boolean;
+  type: string;
+  result: string;
+  audit: { correlationId: string };
+}
+
+export interface CollectorRow {
+  id: string;
+  name: string;
+  kind: string;
+  status: string;
+  capabilities: string[];
+  host: string | null;
+  lastSeenAt: string | null;
+  stats: Record<string, unknown>;
+}
+
+export interface CollectorsResult {
+  collectors: CollectorRow[];
+  workerReachable: boolean;
+}
+
+export interface DriverCapabilityEntry {
+  key: string;
+  label: string;
+}
+
+export interface DriverRow {
+  adapter: string;
+  vendor: string;
+  vendorLabel: string;
+  configFlavor: string;
+  capabilities: DriverCapabilityEntry[];
+  modelFlavors: string[];
+  notes: string;
+}
+
+export interface DriversResult {
+  drivers: DriverRow[];
+}
+
+export interface AdminSettingRow {
+  key: string;
+  value: unknown;
+  type: "number" | "string" | "boolean" | string;
+  label: string;
+  updatedAt: string | null;
+}
+
+export interface SettingsResult {
+  settings: AdminSettingRow[];
+}
+
+export interface SettingsUpdatePayload {
+  updates: { key: string; value: string | number | boolean }[];
+}
+
+export interface SettingsUpdateResult {
+  updated: string[];
+  settings: Record<string, unknown>;
+  audit: { correlationId: string };
+}
+
+export interface AuditChainVerifyResult {
+  valid: boolean;
+  checked: number;
+  brokenAt?: { id: string; index: number; reason: string };
+}
+
+export interface AuditChainBackfillResult {
+  filled: number;
+  remaining: number;
+  audit?: { correlationId: string };
+}
+
+export async function fetchApiClients(): Promise<ApiClientsResult> {
+  return apiFetch<ApiClientsResult>("/api/v1/admin/api-clients");
+}
+
+export async function createApiClient(
+  payload: ApiClientCreatePayload
+): Promise<ApiClientCreateResult> {
+  return apiFetch<ApiClientCreateResult>("/api/v1/admin/api-clients", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateApiClient(
+  id: string,
+  payload: { name?: string; scopes?: string[]; isActive?: boolean }
+): Promise<{ client: AdminApiClientRow; audit: { correlationId: string } }> {
+  return apiFetch(`/api/v1/admin/api-clients/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function rotateApiClient(id: string): Promise<ApiClientRotateResult> {
+  return apiFetch<ApiClientRotateResult>(`/api/v1/admin/api-clients/${id}/rotate`, {
+    method: "POST",
+  });
+}
+
+export async function fetchWebhooks(): Promise<WebhooksResult> {
+  return apiFetch<WebhooksResult>("/api/v1/admin/webhooks");
+}
+
+export async function createWebhook(
+  payload: WebhookCreatePayload
+): Promise<WebhookCreateResult> {
+  return apiFetch<WebhookCreateResult>("/api/v1/admin/webhooks", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateWebhook(
+  id: string,
+  payload: { name?: string; url?: string; events?: string[]; isActive?: boolean }
+): Promise<{ webhook: WebhookRow; audit: { correlationId: string } }> {
+  return apiFetch(`/api/v1/admin/webhooks/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteWebhook(id: string): Promise<{ deleted: boolean }> {
+  return apiFetch(`/api/v1/admin/webhooks/${id}`, { method: "DELETE" });
+}
+
+export async function testWebhook(id: string): Promise<WebhookTestResult> {
+  return apiFetch<WebhookTestResult>(`/api/v1/admin/webhooks/${id}/test`, {
+    method: "POST",
+  });
+}
+
+export async function fetchNotificationChannels(): Promise<ChannelsResult> {
+  return apiFetch<ChannelsResult>("/api/v1/admin/notification-channels");
+}
+
+export async function createNotificationChannel(
+  payload: ChannelCreatePayload
+): Promise<{ channel: NotificationChannelRow; audit: { correlationId: string } }> {
+  return apiFetch("/api/v1/admin/notification-channels", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateNotificationChannel(
+  id: string,
+  payload: { name?: string; config?: Record<string, unknown>; isActive?: boolean }
+): Promise<{ channel: NotificationChannelRow; audit: { correlationId: string } }> {
+  return apiFetch(`/api/v1/admin/notification-channels/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteNotificationChannel(
+  id: string
+): Promise<{ deleted: boolean }> {
+  return apiFetch(`/api/v1/admin/notification-channels/${id}`, { method: "DELETE" });
+}
+
+export async function testNotificationChannel(
+  id: string
+): Promise<ChannelTestResult> {
+  return apiFetch<ChannelTestResult>(
+    `/api/v1/admin/notification-channels/${id}/test`,
+    { method: "POST" }
+  );
+}
+
+export async function fetchCollectors(): Promise<CollectorsResult> {
+  return apiFetch<CollectorsResult>("/api/v1/admin/collectors");
+}
+
+export async function fetchDrivers(): Promise<DriversResult> {
+  return apiFetch<DriversResult>("/api/v1/admin/drivers");
+}
+
+export async function fetchAdminSettings(): Promise<SettingsResult> {
+  return apiFetch<SettingsResult>("/api/v1/admin/settings");
+}
+
+export async function updateAdminSettings(
+  payload: SettingsUpdatePayload
+): Promise<SettingsUpdateResult> {
+  return apiFetch<SettingsUpdateResult>("/api/v1/admin/settings", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function verifyAuditChain(): Promise<AuditChainVerifyResult> {
+  return apiFetch<AuditChainVerifyResult>("/api/v1/admin/audit-chain/verify");
+}
+
+export async function backfillAuditChainApi(): Promise<AuditChainBackfillResult> {
+  return apiFetch<AuditChainBackfillResult>("/api/v1/admin/audit-chain/backfill", {
+    method: "POST",
+  });
+}

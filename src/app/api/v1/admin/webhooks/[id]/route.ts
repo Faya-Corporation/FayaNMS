@@ -1,0 +1,152 @@
+import { z } from "zod";
+
+import { db } from "@/lib/db";
+import {
+  fail,
+  firstIssueMessage,
+  newCorrelationId,
+  ok,
+  requestContext,
+} from "../../../_lib/api";
+import { resolveAdminActor } from "@/lib/auth/acting-admin";
+import { authErrorToFail } from "@/lib/auth/session";
+import {
+  WEBHOOK_EVENT_CATALOG,
+  webhookView,
+} from "@/lib/integrations/webhooks";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * /api/v1/admin/webhooks/[id] (Task 7-b)
+ *
+ * PATCH  — partial update: name / url / events / isActive (revoke = false).
+ *          Regenerating the secret is NOT part of PATCH (keep it explicit —
+ *          a future rotate endpoint would follow the api-clients pattern).
+ * DELETE — remove the endpoint. Audited WEBHOOK_UPDATED / WEBHOOK_DELETED.
+ */
+
+const patchSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  url: z
+    .string()
+    .trim()
+    .url("url must be a valid absolute URL")
+    .refine((v) => v.startsWith("http://") || v.startsWith("https://"), {
+      message: "url must use http(s)",
+    })
+    .optional(),
+  events: z.array(z.enum(WEBHOOK_EVENT_CATALOG)).min(1).max(WEBHOOK_EVENT_CATALOG.length).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { actor } = await resolveAdminActor(request);
+    const { id } = await params;
+    const body = await request.json().catch(() => null);
+    const parsed = patchSchema.safeParse(body);
+    if (!parsed.success) {
+      return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
+    }
+
+    const existing = await db.webhookEndpoint.findUnique({ where: { id } });
+    if (!existing) {
+      return fail("WEBHOOK_NOT_FOUND", `No webhook endpoint with id ${id}`, 404);
+    }
+
+    const data: Record<string, unknown> = {};
+    if (parsed.data.name !== undefined) data.name = parsed.data.name;
+    if (parsed.data.url !== undefined) data.url = parsed.data.url;
+    if (parsed.data.events !== undefined) {
+      data.eventsJson = JSON.stringify(parsed.data.events);
+    }
+    if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
+
+    const row = await db.webhookEndpoint.update({ where: { id }, data });
+
+    const correlationId = newCorrelationId("WH");
+    await db.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        actorName: actor.name,
+        action: "WEBHOOK_UPDATED",
+        resourceType: "WebhookEndpoint",
+        resourceId: id,
+        resourceLabel: row.name,
+        result: "SUCCESS",
+        correlationId,
+        beforeJson: JSON.stringify({
+          name: existing.name,
+          url: existing.url,
+          isActive: existing.isActive,
+        }),
+        afterJson: JSON.stringify({
+          name: row.name,
+          url: row.url,
+          isActive: row.isActive,
+        }),
+      },
+    });
+
+    return ok(
+      { webhook: webhookView(row), audit: { correlationId } },
+      undefined,
+      200,
+      requestContext(request)
+    );
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (authFail) return authFail;
+    throw error;
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { actor } = await resolveAdminActor(request);
+    const { id } = await params;
+
+    const existing = await db.webhookEndpoint.findUnique({ where: { id } });
+    if (!existing) {
+      return fail("WEBHOOK_NOT_FOUND", `No webhook endpoint with id ${id}`, 404);
+    }
+
+    await db.webhookEndpoint.delete({ where: { id } });
+
+    const correlationId = newCorrelationId("WH");
+    await db.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        actorName: actor.name,
+        action: "WEBHOOK_DELETED",
+        resourceType: "WebhookEndpoint",
+        resourceId: id,
+        resourceLabel: existing.name,
+        result: "SUCCESS",
+        correlationId,
+        beforeJson: JSON.stringify({
+          name: existing.name,
+          url: existing.url,
+        }),
+      },
+    });
+
+    return ok(
+      { deleted: true, audit: { correlationId } },
+      undefined,
+      200,
+      requestContext(request)
+    );
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (authFail) return authFail;
+    throw error;
+  }
+}

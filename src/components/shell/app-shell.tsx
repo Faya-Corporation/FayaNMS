@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
 import { Waypoints } from "lucide-react";
 
 import { useDashboard } from "@/hooks/api/use-dashboard";
+import { fetchAuthSession } from "@/lib/api-client";
+import { queryKeys } from "@/lib/query-keys";
+import { usePermissionsStore } from "@/stores/permissions";
+import { SignInGate } from "@/components/auth/sign-in-gate";
 import { AppFooter } from "./app-footer";
 import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
@@ -35,6 +41,26 @@ const useMounted = () =>
  */
 export function AppShell() {
   const mounted = useMounted();
+  const { status } = useSession();
+
+  // Permission bootstrap (Task 7-a): /api/v1/auth/session is the SERVER
+  // permission source of truth — hydrate the zustand store once the client
+  // session is authenticated (and clear it on sign-out).
+  const sessionQuery = useQuery({
+    queryKey: queryKeys.authSession(),
+    queryFn: fetchAuthSession,
+    enabled: status === "authenticated",
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (status === "authenticated" && sessionQuery.data) {
+      usePermissionsStore.getState().hydrate(sessionQuery.data);
+    } else if (status === "unauthenticated") {
+      usePermissionsStore.getState().reset();
+    }
+  }, [status, sessionQuery.data]);
 
   const density = usePreferencesStore((state) => state.density);
   const sidebarCollapsed = usePreferencesStore(
@@ -77,7 +103,11 @@ export function AppShell() {
       }
     : ZERO_COUNTS;
 
-  if (!mounted) {
+  // Gate order (Task 7-a): hydration → session status → permission
+  // bootstrap. While any is pending, keep the loading screen; with no
+  // session at all, replace the whole shell with the sign-in gate.
+  const permissionsReady = sessionQuery.isSuccess || sessionQuery.isError;
+  if (!mounted || status === "loading" || (status === "authenticated" && !permissionsReady)) {
     return (
       <div
         aria-busy="true"
@@ -96,6 +126,10 @@ export function AppShell() {
         <div className="h-10 border-t" />
       </div>
     );
+  }
+
+  if (status === "unauthenticated") {
+    return <SignInGate />;
   }
 
   return (

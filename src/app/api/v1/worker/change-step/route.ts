@@ -395,7 +395,7 @@ export async function POST(request: Request) {
           },
         });
         if (engagedRollback) {
-          await engageRollback(tx, change.id, change.steps);
+          await engageRollback(tx as unknown as TxClient, change.id, change.steps);
         } else {
           await tx.changeRequest.update({
             where: { id: change.id },
@@ -794,11 +794,11 @@ async function executeBackupStep(
     async (tx) => {
       for (const link of change.devices) {
         const rawText = generated.get(link.deviceId) ?? "";
-        const reused = await snapshotForJob(tx, link.deviceId, jobId, source);
+        const reused = await snapshotForJob(tx as unknown as TxClient, link.deviceId, jobId, source);
         const snapshot =
           reused ??
           (
-            await createSnapshot(tx, {
+            await createSnapshot(tx as unknown as TxClient, {
               deviceId: link.deviceId,
               rawText,
               source,
@@ -903,17 +903,17 @@ async function executeApplyStep(
             error: `Apply failed: ${firstError}`,
           },
         });
-        await engageRollback(tx, change.id, change.steps);
+        await engageRollback(tx as unknown as TxClient, change.id, change.steps);
         return;
       }
 
       for (const link of change.devices) {
         const result = results.get(link.deviceId);
-        const reused = await snapshotForJob(tx, link.deviceId, jobId, "POST_CHANGE");
+        const reused = await snapshotForJob(tx as unknown as TxClient, link.deviceId, jobId, "POST_CHANGE");
         const snapshot =
           reused ??
           (
-            await createSnapshot(tx, {
+            await createSnapshot(tx as unknown as TxClient, {
               deviceId: link.deviceId,
               rawText: result?.configText ?? "",
               source: "POST_CHANGE",
@@ -987,7 +987,7 @@ async function executeValidateStep(
             error: "Post-change validation reported errors (simulated failure)",
           },
         });
-        await engageRollback(tx, change.id, change.steps);
+        await engageRollback(tx as unknown as TxClient, change.id, change.steps);
       },
       { maxWait: 5_000, timeout: 20_000 }
     );
@@ -1145,7 +1145,7 @@ async function executeRollbackStep(
         const snapshot =
           existing && existing.sha256 === restoredSha
             ? { ok: true as const, version: existing.version, sha256: existing.sha256 }
-            : await createSnapshot(tx, {
+            : await createSnapshot(tx as unknown as TxClient, {
                 deviceId: link.deviceId,
                 rawText: source.rawText,
                 // Documented: the restored running config is part of the

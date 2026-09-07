@@ -661,7 +661,11 @@ model AuditEvent {
   // beforeJson / afterJson: serialized JSON snapshots of the resource
   beforeJson String?
   afterJson  String?
-  createdAt  DateTime @default(now())
+  // Audit hash chain (Task 7-b): hash = sha256(prevHash + canonical payload).
+  // Nullable during backfill; the chain verifier treats nulls as chain gaps.
+  hash      String?
+  prevHash  String?
+  createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([resourceType])
@@ -693,4 +697,77 @@ model Setting {
   // valueJson: serialized JSON value (string, number, boolean, object…)
   valueJson String
   updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Administration & security (Task 7-b — API governance and integrations)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ApiClient {
+  id          String   @id @default(cuid())
+  name        String
+  // tokenHash: sha256 of the bearer token — the plaintext token is shown ONCE
+  // at creation and never stored (same posture as CredentialProfile).
+  tokenHash   String   @unique
+  tokenPrefix String
+  // scopes: JSON array, e.g. ["metrics.read","devices.read","alerts.write"]
+  scopesJson  String
+  isActive    Boolean  @default(true)
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  createdBy   String?
+
+  @@index([isActive])
+}
+
+model WebhookEndpoint {
+  id          String   @id @default(cuid())
+  name        String
+  url         String
+  // secret: HMAC-SHA256 signing secret (masked in API responses)
+  secret      String
+  // events: JSON array of subscribed event keys, e.g. ["alert.fired","incident.created"]
+  eventsJson  String
+  isActive    Boolean  @default(true)
+  // last delivery bookkeeping (demo-safe: deliveries recorded, network calls timeout-bounded)
+  lastStatus  String?
+  lastStatusCode Int?
+  lastDeliveredAt DateTime?
+  lastError   String?
+  createdAt   DateTime @default(now())
+
+  @@index([isActive])
+}
+
+model NotificationChannel {
+  id          String   @id @default(cuid())
+  name        String
+  // type: EMAIL | WEBHOOK
+  type        String
+  // configJson: EMAIL {address,displayName?} | WEBHOOK {url} — secrets masked in responses
+  configJson  String
+  isActive    Boolean  @default(true)
+  lastTestAt  DateTime?
+  lastTestResult String?
+  createdAt   DateTime @default(now())
+
+  @@index([type])
+}
+
+model Collector {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  // kind: POLLER | CONFIG_COLLECTOR | ALERT_ENGINE | RETENTION
+  kind        String
+  // status: ONLINE | OFFLINE | DEGRADED
+  status      String   @default("ONLINE")
+  // capabilities: JSON array, e.g. ["CONFIG_BACKUP","DRIFT_CHECK"]
+  capabilitiesJson String
+  host        String?
+  lastSeenAt  DateTime?
+  // statsJson: { jobsCompleted, uptimeSec, version? }
+  statsJson   String?
+  createdAt   DateTime @default(now())
+
+  @@index([kind])
 }

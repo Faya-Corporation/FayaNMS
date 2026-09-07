@@ -1,0 +1,87 @@
+import { db } from "@/lib/db";
+import { getSessionUser } from "@/lib/auth/session";
+import { ok, fail } from "../../_lib/api";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/v1/auth/session — permission bootstrap (Task 7-a).
+ *
+ * Returns the current user (fresh from the database, not just the JWT) plus
+ * the parsed permission array from Role.permissionsJson. This endpoint is
+ * the FRONTEND permission source of truth (canWrite gate for the UI); the
+ * middleware stays the coarse API gate.
+ *
+ * 401 envelope when signed out — the caller (permissions store hydration)
+ * treats that as "show the sign-in gate".
+ */
+
+function parsePermissions(permissionsJson: string | null): string[] {
+  if (!permissionsJson) return [];
+  try {
+    const parsed: unknown = JSON.parse(permissionsJson);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((p): p is string => typeof p === "string");
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export async function GET(request: Request) {
+  const claims = await getSessionUser(request as never);
+  if (!claims) {
+    return fail(
+      "UNAUTHENTICATED",
+      "Sign in required — no active session.",
+      401
+    );
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: claims.id },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      isActive: true,
+      createdAt: true,
+    },
+  });
+
+  if (!user || !user.isActive) {
+    return fail(
+      "ACCOUNT_DISABLED",
+      "This account is no longer active — sign in again or contact an administrator.",
+      401
+    );
+  }
+
+  const role = await db.role.findUnique({
+    where: { name: user.role },
+    select: { name: true, description: true, permissionsJson: true },
+  });
+
+  const permissions = parsePermissions(role?.permissionsJson ?? null);
+
+  return ok({
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      isActive: user.isActive,
+      createdAt: user.createdAt.toISOString(),
+    },
+    role: {
+      name: role?.name ?? user.role,
+      description: role?.description ?? null,
+    },
+    permissions,
+    // UI write gate (Task 7-a): auditors are read-only, disabled accounts
+    // can never write.
+    canWrite: user.role !== "auditor" && user.isActive,
+  });
+}

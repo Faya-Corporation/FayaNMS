@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { createSnapshot } from "@/lib/config/create-snapshot";
+import { createSnapshot, type TxClient } from "@/lib/config/create-snapshot";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import { z } from "zod";
 
@@ -359,7 +359,7 @@ export async function POST(request: Request) {
         : "SCHEDULED";
 
     const persisted = await db.$transaction(async (tx) => {
-      const snapshot = await createSnapshot(tx, {
+      const snapshot = await createSnapshot(tx as unknown as TxClient, {
         deviceId,
         rawText: backupResult.rawText,
         source,
