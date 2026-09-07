@@ -64,4 +64,10 @@ export const queryKeys = {
   drift: (params: ListParams = {}) => ["drift", params] as const,
   /** Mutation marker only — invalidating it refreshes drift + jobs. */
   driftCheck: ["drift", "check"] as const,
+  // Maintenance windows + audit-event stream (Task 5-c). Mutations
+  // invalidate the whole "maintenance" / "events" trees; maintenance
+  // writes also refresh "alerts" (suppression semantics) and "events"
+  // (audit trail).
+  maintenance: (params: ListParams = {}) => ["maintenance", params] as const,
+  events: (params: ListParams = {}) => ["events", params] as const,
 };

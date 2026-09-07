@@ -170,14 +170,14 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
   },
   "ops.maintenance": {
     title: "Maintenance Windows",
-    description: "Planned windows and alert suppression",
-    phase: "Phase 5 — Operations",
+    description: "Planned windows — CRUD with live suppression status",
+    phase: "Phase 5 — Operations (5-c)",
     group: "Operations",
   },
   "ops.events": {
     title: "Event Stream",
-    description: "Syslog, traps and collector events",
-    phase: "Phase 5 — Operations",
+    description: "Audit-event timeline — actors, actions and payloads",
+    phase: "Phase 5 — Operations (5-c)",
     group: "Operations",
   },
   "ops.jobs": {

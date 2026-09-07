@@ -17,8 +17,10 @@ import { DeviceDetailView } from "@/components/views/device-detail-view";
 import { DevicesView } from "@/components/views/devices-view";
 import { DiscoveryView } from "@/components/views/discovery-view";
 import { DriftView } from "@/components/views/drift-view";
+import { EventsView } from "@/components/views/events-view";
 import { IncidentsView } from "@/components/views/incidents-view";
 import { IncidentDetailView } from "@/components/views/incident-detail-view";
+import { MaintenanceView } from "@/components/views/maintenance-view";
 import { NocView } from "@/components/views/noc-view";
 import { JobsView } from "@/components/views/jobs-view";
 import { PlaceholderView } from "@/components/views/placeholder-view";
@@ -32,11 +34,11 @@ import { SnapshotsView } from "@/components/views/snapshots-view";
  *
  * Implemented: dashboard, network.devices, network.device-detail (Phase 2),
  * network.sites (Phase 2), network.discovery (Phase 2-c), admin.credentials
- * (Phase 2-c), ops.alerts, ops.incidents, changes.all + changes.mine +
- * changes.calendar + changes.templates + changes.change-detail (Phase 4-a),
- * changes.approvals (Phase 4-b), ops.jobs, config.backups +
- * config.compliance (Phase 3-a), config.snapshots (Phase 3-b),
- * config.baselines + config.drift (Phase 3-c).
+ * (Phase 2-c), ops.alerts, ops.incidents, ops.maintenance, ops.events
+ * (Phase 5-a/5-b/5-c), changes.all + changes.mine + changes.calendar +
+ * changes.templates + changes.change-detail (Phase 4-a), changes.approvals
+ * (Phase 4-b), ops.jobs, config.backups + config.compliance (Phase 3-a),
+ * config.snapshots (Phase 3-b), config.baselines + config.drift (Phase 3-c).
  */
 export function ViewRouter() {
   const activeView = useNavigationStore((state) => state.activeView);
@@ -62,6 +64,10 @@ export function ViewRouter() {
       return <IncidentDetailView />;
     case "ops.noc":
       return <NocView />;
+    case "ops.maintenance":
+      return <MaintenanceView />;
+    case "ops.events":
+      return <EventsView />;
     case "changes.all":
       return <ChangesView />;
     case "changes.mine":

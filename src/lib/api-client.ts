@@ -1558,3 +1558,116 @@ export interface SnapshotDiffResult {
   /** Whether the stored normalizedText was used (false = computed on the fly). */
   normalized: { from: boolean; to: boolean };
 }
+
+/* --------------- Maintenance windows (Task 5-c) --------------------- */
+
+/** Time-derived status; the isActive flag is orthogonal ("paused"). */
+export type MaintenanceStatus = "ACTIVE" | "UPCOMING" | "PAST";
+
+/** MaintenanceWindow row as served by GET /api/v1/maintenance. */
+export interface MaintenanceRow {
+  id: string;
+  name: string;
+  reason: string | null;
+  isActive: boolean;
+  startsAt: string;
+  endsAt: string;
+  status: MaintenanceStatus;
+  site: { id: string; name: string; code: string } | null;
+  device: { id: string; hostname: string } | null;
+  change: { id: string; number: string; title: string } | null;
+}
+
+export interface MaintenanceListMeta extends PageMetaInfo {
+  /** Windows covering "now" AND isActive — matches engine suppression. */
+  activeNow: number;
+  upcoming24h: number;
+  past7d: number;
+  total: number;
+}
+
+export interface MaintenanceWindowPayload {
+  name: string;
+  siteId?: string | null;
+  deviceId?: string | null;
+  changeId?: string | null;
+  /** ISO timestamps. */
+  startsAt: string;
+  endsAt: string;
+  reason?: string | null;
+  isActive?: boolean;
+  /** Demo acting identity (Task 4-b act-as selector). */
+  actAsUserId?: string;
+}
+
+/** PATCH body — every field optional; explicit null clears the link. */
+export interface UpdateMaintenanceWindowPayload {
+  name?: string;
+  siteId?: string | null;
+  deviceId?: string | null;
+  changeId?: string | null;
+  startsAt?: string;
+  endsAt?: string;
+  reason?: string | null;
+  isActive?: boolean;
+  actAsUserId?: string;
+}
+
+/** Non-blocking same-scope overlap warning attached to write responses. */
+export interface MaintenanceOverlapWarning {
+  id: string;
+  name: string;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface MaintenanceMutationResult {
+  window: {
+    id: string;
+    name: string;
+    startsAt: string;
+    endsAt: string;
+    reason: string | null;
+    isActive: boolean;
+    siteId: string | null;
+    deviceId: string | null;
+    changeId: string | null;
+  };
+  overlap: MaintenanceOverlapWarning[];
+  audit: { correlationId: string };
+}
+
+export interface DeleteMaintenanceWindowResult {
+  deleted: boolean;
+  audit: { correlationId: string };
+}
+
+/* --------------- Audit-event stream (Task 5-c) ----------------------- */
+
+/** GET /api/v1/events row (AuditEvent timeline; before/after pre-parsed). */
+export interface AuditEventRow {
+  id: string;
+  actorId: string | null;
+  actorName: string;
+  action: string;
+  resourceType: string;
+  resourceId: string | null;
+  resourceLabel: string | null;
+  result: string;
+  ip: string | null;
+  userAgent: string | null;
+  correlationId: string | null;
+  beforeJson: unknown;
+  afterJson: unknown;
+  createdAt: string;
+}
+
+export interface EventListMeta extends PageMetaInfo {
+  total: number;
+  /** Events in the trailing 24 h over the same filters (fresh window). */
+  last24h: number;
+  distinctActors: number;
+  topActors: { actor: string; count: number }[];
+  topActions: { action: string; count: number }[];
+  entityTypes: { entityType: string; count: number }[];
+}
