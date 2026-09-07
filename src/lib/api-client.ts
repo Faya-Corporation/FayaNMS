@@ -1671,3 +1671,345 @@ export interface EventListMeta extends PageMetaInfo {
   topActions: { action: string; count: number }[];
   entityTypes: { entityType: string; count: number }[];
 }
+
+/* --------------- Performance slice (Task 6-b) ------------------------ */
+/* Frozen contract with the Phase 6-a backend: range is one of
+   "1H" | "24H" | "7D" | "30D"; every response meta carries
+   { range, granularity, generatedAt }.                                  */
+
+export type PerfRange = "1H" | "24H" | "7D" | "30D";
+
+/** Meta shared by all /api/v1/performance/* responses. */
+export interface PerfMetaInfo {
+  range: string;
+  /** Rollup bucket the series is served at, e.g. "5M", "1H" or "1D". */
+  granularity: string;
+  generatedAt: string;
+}
+
+/* --- 1. Overview: GET /api/v1/performance/overview?range= --- */
+
+export interface PerfOverviewKpis {
+  avgAvailabilityPct: number;
+  p95LatencyMs: number;
+  avgCpuPct: number;
+  avgMemoryPct: number;
+  avgUtilizationPct: number;
+  packetLossPct: number;
+}
+
+/** Sparse series point — only the keys the backend computed are present. */
+export interface PerfOverviewPoint {
+  ts: string;
+  availabilityPct?: number;
+  latencyP95?: number;
+  cpuAvg?: number;
+  memAvg?: number;
+  utilInAvg?: number;
+  utilOutAvg?: number;
+}
+
+export interface PerfTopUtilizer {
+  deviceId: string;
+  hostname: string;
+  siteCode: string;
+  utilPct: number;
+}
+
+export type PerfHealthDistribution = Record<
+  "ONLINE" | "DEGRADED" | "OFFLINE" | "MAINTENANCE" | "UNKNOWN" | "UNMANAGED",
+  number
+>;
+
+export interface PerfOverviewPayload {
+  kpis: PerfOverviewKpis;
+  series: PerfOverviewPoint[];
+  topUtilizers: PerfTopUtilizer[];
+  healthDistribution: PerfHealthDistribution;
+}
+
+export interface PerfOverviewResult {
+  data: PerfOverviewPayload;
+  meta: PerfMetaInfo;
+}
+
+/* --- 2. Device performance: GET /api/v1/performance/devices --- */
+
+export type PerfDeviceMetric =
+  | "CPU"
+  | "MEMORY"
+  | "LATENCY_MS"
+  | "PACKET_LOSS"
+  | "UTILIZATION";
+
+export type PerfDeviceParams = {
+  metric?: PerfDeviceMetric;
+  range?: PerfRange;
+  siteCode?: string;
+  q?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export interface PerfDeviceRow {
+  deviceId: string;
+  hostname: string;
+  siteCode: string;
+  criticality: string;
+  status: string;
+  latest: { value: number; ts: string };
+  avg: number;
+  max: number;
+  p95: number;
+  /** Change of the metric across the window, % (sign matters). */
+  deltaPct: number;
+  /** Small sparkline series (oldest → newest). */
+  trend: number[];
+}
+
+export type PerfDeviceListMeta = PageMetaInfo;
+
+export interface PerfDeviceListResult {
+  data: PerfDeviceRow[];
+  meta: PerfDeviceListMeta;
+}
+
+/* --- 3. Interface utilization: GET /api/v1/performance/interfaces --- */
+
+export type PerfInterfaceParams = {
+  range?: PerfRange;
+  siteCode?: string;
+  q?: string;
+  sort?: "UTIL" | "PACKET_LOSS";
+  page?: number;
+  pageSize?: number;
+};
+
+export interface PerfInterfaceRow {
+  interfaceId: string;
+  deviceId: string;
+  hostname: string;
+  siteCode: string;
+  ifName: string;
+  operStatus: string;
+  speedMbps: number;
+  utilInPct: number;
+  utilOutPct: number;
+  utilPeakPct: number;
+  packetLossPct: number;
+  ts: string;
+}
+
+export interface PerfInterfaceListMeta extends PageMetaInfo {
+  /** Facet counts over the filtered set, e.g. { UP: 42, DOWN: 1 }. */
+  operStatusCounts?: Record<string, number>;
+}
+
+export interface PerfInterfaceListResult {
+  data: PerfInterfaceRow[];
+  meta: PerfInterfaceListMeta;
+}
+
+/* --- 4. Availability: GET /api/v1/performance/availability?range= --- */
+
+export interface PerfAvailabilitySite {
+  siteCode: string;
+  siteName: string;
+  uptimePct: number;
+  degradedPct: number;
+  downtimeMinutes: number;
+  deviceCount: number;
+}
+
+export interface PerfAvailabilityDevice {
+  deviceId: string;
+  hostname: string;
+  siteCode: string;
+  uptimePct: number;
+  downtimeMinutes: number;
+}
+
+export interface PerfAvailabilityPayload {
+  overallPct: number;
+  slaTargetPct: number;
+  /** Worst site first. */
+  bySite: PerfAvailabilitySite[];
+  /** Worst device first. */
+  byDevice: PerfAvailabilityDevice[];
+}
+
+export interface PerfAvailabilityResult {
+  data: PerfAvailabilityPayload;
+  meta: PerfMetaInfo;
+}
+
+/* --- 5. Capacity: GET /api/v1/performance/capacity --- */
+
+export interface CapacityForecastPoint {
+  ts: string;
+  value: number;
+}
+
+export interface CapacityRiskRow {
+  deviceId: string;
+  hostname: string;
+  siteCode: string;
+  metric: string;
+  current: number;
+  /** Least-squares slope, metric units per day. */
+  slopePerDay: number;
+  /** Days until `horizonPct` is crossed; null = no crossing forecast. */
+  daysToThreshold: number | null;
+  r2: number;
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+  /** 1D-rollup history backing the forecast. */
+  series: CapacityForecastPoint[];
+}
+
+export interface CapacitySummary {
+  atRisk30d: number;
+  atRisk90d: number;
+  noRisk: number;
+}
+
+export interface CapacityPayload {
+  forecastModel: "LINEAR";
+  horizonPct: number;
+  /** Sorted by daysToThreshold ascending (nulls last). */
+  risks: CapacityRiskRow[];
+  summary: CapacitySummary;
+}
+
+export type CapacityParams = {
+  range?: PerfRange;
+  horizonPct?: number;
+  horizonDays?: number;
+};
+
+export interface CapacityResult {
+  data: CapacityPayload;
+  meta: PerfMetaInfo;
+}
+
+/* --- 6-8. Metrics retention: /api/v1/metrics/retention --- */
+
+export interface RetentionTierConfig {
+  days: number;
+  enabled: boolean;
+}
+
+export type RetentionTierKey = "raw" | "rollup5M" | "rollup1H" | "rollup1D";
+
+export interface MetricsRetentionConfig {
+  raw: RetentionTierConfig;
+  rollup5M: RetentionTierConfig;
+  rollup1H: RetentionTierConfig;
+  rollup1D: RetentionTierConfig;
+  lastPrunedAt: string | null;
+  lastPruneResult: MetricsPruneResult | null;
+}
+
+export interface MetricsRetentionUpdatePayload {
+  raw?: RetentionTierConfig;
+  rollup5M?: RetentionTierConfig;
+  rollup1H?: RetentionTierConfig;
+  rollup1D?: RetentionTierConfig;
+}
+
+export interface MetricsPruneResult {
+  metricSamplesDeleted: number;
+  rollup5MDeleted: number;
+  rollup1HDeleted: number;
+  rollup1DDeleted: number;
+  durationMs: number;
+}
+
+/* --------------------- Performance fetchers --------------------------- */
+
+/**
+ * 6-a serves paged performance lists as `data: { rows: [...] }`; the
+ * contract also allows a bare array. Unwrap both so the UI is tolerant.
+ */
+function unwrapRows<T>(body: unknown): T[] {
+  if (Array.isArray(body)) return body as T[];
+  if (body && typeof body === "object" && Array.isArray((body as { rows?: unknown }).rows)) {
+    return (body as { rows: T[] }).rows;
+  }
+  return [];
+}
+
+export async function fetchPerformanceOverview(
+  range: PerfRange
+): Promise<PerfOverviewResult> {
+  const envelope = await apiRequest<PerfOverviewPayload>(
+    `/api/v1/performance/overview?range=${range}`
+  );
+  return { data: envelope.data, meta: envelope.meta as unknown as PerfMetaInfo };
+}
+
+export async function fetchPerformanceDevices(
+  params: PerfDeviceParams
+): Promise<PerfDeviceListResult> {
+  const envelope = await apiRequest<unknown>(
+    `/api/v1/performance/devices${buildQueryString(params)}`
+  );
+  return {
+    data: unwrapRows<PerfDeviceRow>(envelope.data),
+    meta: envelope.meta as unknown as PerfDeviceListMeta,
+  };
+}
+
+export async function fetchPerformanceInterfaces(
+  params: PerfInterfaceParams
+): Promise<PerfInterfaceListResult> {
+  const envelope = await apiRequest<unknown>(
+    `/api/v1/performance/interfaces${buildQueryString(params)}`
+  );
+  return {
+    data: unwrapRows<PerfInterfaceRow>(envelope.data),
+    meta: envelope.meta as unknown as PerfInterfaceListMeta,
+  };
+}
+
+export async function fetchPerformanceAvailability(
+  range: PerfRange
+): Promise<PerfAvailabilityResult> {
+  const envelope = await apiRequest<PerfAvailabilityPayload>(
+    `/api/v1/performance/availability?range=${range}`
+  );
+  return {
+    data: envelope.data,
+    meta: envelope.meta as unknown as PerfMetaInfo,
+  };
+}
+
+export async function fetchPerformanceCapacity(
+  params: CapacityParams
+): Promise<CapacityResult> {
+  const envelope = await apiRequest<CapacityPayload>(
+    `/api/v1/performance/capacity${buildQueryString(params)}`
+  );
+  return { data: envelope.data, meta: envelope.meta as unknown as PerfMetaInfo };
+}
+
+/* ---------------------- Retention fetchers ---------------------------- */
+
+export async function fetchMetricsRetention(): Promise<MetricsRetentionConfig> {
+  return apiFetch<MetricsRetentionConfig>("/api/v1/metrics/retention");
+}
+
+export async function updateMetricsRetention(
+  payload: MetricsRetentionUpdatePayload
+): Promise<MetricsRetentionConfig> {
+  return apiFetch<MetricsRetentionConfig>("/api/v1/metrics/retention", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function pruneMetricsRetention(): Promise<MetricsPruneResult> {
+  return apiFetch<MetricsPruneResult>("/api/v1/metrics/retention/prune", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}

@@ -42,6 +42,14 @@
  * fired/deduped/suppressed/resolved/incidentsCreated/notificationsCreated).
  * Network errors propagate to the generic failure path (requeue/backoff).
  *
+ * METRIC_RETENTION branch (Task 6-a) — evaluate-in-Next like ALERT_EVALUATION:
+ * POST /api/v1/metrics/retention/prune { triggeredBy: "SCHEDULE" } runs the
+ * retention policy server-side (the worker NEVER opens SQLite) and answers
+ * the deleted-row counts; the job completes SUCCEEDED with those counts as
+ * resultJson. A 429 PRUNE_THROTTLED answer (operator ran a manual prune
+ * within the 60 s guard) is a graceful no-op: the job still completes
+ * SUCCEEDED with { outcome: "throttled" } so it never dead-letters.
+ *
  * Failure semantics live on the Next.js side: complete(FAILED) either requeues
  * with exponential-ish backoff (30 s * attempts) or dead-letters the job.
  * Any single job failure is contained — the loop never crashes.
@@ -574,6 +582,82 @@ async function runAlertEvaluationJob(job: ClaimedJob): Promise<void> {
   );
 }
 
+/* ───────────────────── METRIC_RETENTION driver (6-a) ─────────────────── */
+
+interface MetricRetentionResult {
+  outcome: "pruned" | "throttled";
+  metricSamplesDeleted?: number;
+  rollup5MDeleted?: number;
+  rollup1HDeleted?: number;
+  rollup1DDeleted?: number;
+  durationMs?: number;
+  reason?: string;
+}
+
+/**
+ * METRIC_RETENTION execution — the prune logic (deletes + Setting + audit)
+ * lives entirely in the Next.js API; the worker just triggers it and
+ * reports the counts. A throttled run (manual prune within 60 s) is a
+ * SUCCESS for the job — it means the fleet was pruned recently enough.
+ */
+async function runMetricRetentionJob(job: ClaimedJob): Promise<void> {
+  await reportProgress(job.id, 10, "Loading metric retention policy (raw/5M/1H/1D windows)");
+
+  try {
+    const counts = (await nextPost(
+      "/api/v1/metrics/retention/prune",
+      { triggeredBy: "SCHEDULE" },
+      60_000
+    )) as {
+      metricSamplesDeleted?: number;
+      rollup5MDeleted?: number;
+      rollup1HDeleted?: number;
+      rollup1DDeleted?: number;
+      durationMs?: number;
+    };
+
+    await reportProgress(
+      job.id,
+      80,
+      `Pruned samples=${counts.metricSamplesDeleted ?? 0} rollup5M=${counts.rollup5MDeleted ?? 0} rollup1H=${counts.rollup1HDeleted ?? 0} rollup1D=${counts.rollup1DDeleted ?? 0}`
+    );
+
+    const result: MetricRetentionResult = { outcome: "pruned", ...counts };
+    await nextPost(
+      "/api/v1/worker/complete",
+      { jobId: job.id, outcome: "SUCCEEDED", result },
+      15_000
+    );
+    counters.completed += 1;
+    counters.completedByType.METRIC_RETENTION =
+      (counters.completedByType.METRIC_RETENTION ?? 0) + 1;
+    await log(
+      `job ${job.id} [${job.correlationId}] SUCCEEDED: metric-retention samples=${counts.metricSamplesDeleted ?? 0} 5M=${counts.rollup5MDeleted ?? 0} 1H=${counts.rollup1HDeleted ?? 0} 1D=${counts.rollup1DDeleted ?? 0} in ${counts.durationMs ?? "?"}ms`
+    );
+  } catch (e) {
+    const message = (e as Error)?.message ?? String(e);
+    if (message.includes("PRUNE_THROTTLED") || message.includes("HTTP 429")) {
+      const result: MetricRetentionResult = {
+        outcome: "throttled",
+        reason: "A metric retention prune ran less than 60s ago (PRUNE_THROTTLED)",
+      };
+      await nextPost(
+        "/api/v1/worker/complete",
+        { jobId: job.id, outcome: "SUCCEEDED", result },
+        15_000
+      );
+      counters.completed += 1;
+      counters.completedByType.METRIC_RETENTION =
+        (counters.completedByType.METRIC_RETENTION ?? 0) + 1;
+      await log(
+        `job ${job.id} [${job.correlationId}] SUCCEEDED: metric-retention throttled (recent manual prune)`
+      );
+      return;
+    }
+    throw e;
+  }
+}
+
 async function executeJob(job: ClaimedJob): Promise<void> {
   try {
     if (job.type === "CONFIG_BACKUP") {
@@ -586,6 +670,8 @@ async function executeJob(job: ClaimedJob): Promise<void> {
       await raceTimeout(runChangeExecutionJob(job), CHANGE_JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "ALERT_EVALUATION") {
       await raceTimeout(runAlertEvaluationJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "METRIC_RETENTION") {
+      await raceTimeout(runMetricRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else {
       throw new Error(`Unsupported job type for worker v1: ${job.type}`);
     }
@@ -604,7 +690,7 @@ async function claimTick(): Promise<void> {
     if (free <= 0) return;
     const jobs = (await nextPost(
       "/api/v1/worker/claim",
-      { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION"], limit: Math.min(CLAIM_BATCH, free) },
+      { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION"], limit: Math.min(CLAIM_BATCH, free) },
       10_000
     )) as ClaimedJob[];
     for (const job of Array.isArray(jobs) ? jobs : []) {

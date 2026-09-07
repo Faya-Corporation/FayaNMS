@@ -286,6 +286,46 @@ export async function POST(request: Request) {
       });
     }
 
+    // ── METRIC_RETENTION (6-a): the prune endpoint persisted the deletes,
+    // the Setting bookkeeping and the audit — store the counts verbatim as
+    // resultJson. outcome "throttled" is a graceful no-op (a manual prune
+    // ran within the 60 s guard). ──
+    if (job.type === "METRIC_RETENTION") {
+      const retentionShape = z.object({
+        outcome: z.enum(["pruned", "throttled"]),
+        metricSamplesDeleted: z.number().int().nonnegative().optional(),
+        rollup5MDeleted: z.number().int().nonnegative().optional(),
+        rollup1HDeleted: z.number().int().nonnegative().optional(),
+        rollup1DDeleted: z.number().int().nonnegative().optional(),
+        durationMs: z.number().int().nonnegative().optional(),
+        reason: z.string().max(300).optional(),
+      });
+      const parsedRetention = retentionShape.safeParse(result);
+      if (!parsedRetention.success) {
+        return fail(
+          "INVALID_RESULT",
+          "SUCCEEDED METRIC_RETENTION completion requires result.outcome (pruned|throttled)",
+          400
+        );
+      }
+      await db.jobExecution.update({
+        where: { id: job.id },
+        data: {
+          status: "SUCCEEDED",
+          progress: 100,
+          finishedAt: now,
+          error: null,
+          resultJson: JSON.stringify(parsedRetention.data),
+        },
+      });
+      return ok({
+        jobId,
+        updated: true,
+        status: "SUCCEEDED",
+        outcome: parsedRetention.data.outcome,
+      });
+    }
+
     // ── CONFIG_BACKUP: validate the snapshot payload (unchanged behavior) ──
     const parsedBackup = backupResultSchema.safeParse(result);
     if (!parsedBackup.success) {

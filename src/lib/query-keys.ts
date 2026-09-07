@@ -70,4 +70,13 @@ export const queryKeys = {
   // (audit trail).
   maintenance: (params: ListParams = {}) => ["maintenance", params] as const,
   events: (params: ListParams = {}) => ["events", params] as const,
+  // Performance slice (Task 6-b) — one nested tree per facet:
+  // ["performance", "overview"|"devices"|"interfaces"|"availability"|"capacity", params]
+  // so invalidating ["performance"] refreshes every perf surface at once.
+  performance: (facet: string, params: ListParams = {}) =>
+    ["performance", facet, params] as const,
+  // Metrics retention settings + prune results (Task 6-b). Retention
+  // mutations invalidate this key; prune also refreshes "performance"
+  // (pruning shrinks the series the perf views read).
+  metricsRetention: ["metrics", "retention"] as const,
 };

@@ -190,31 +190,31 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
   "perf.overview": {
     title: "Performance Overview",
     description: "Fleet-wide performance at a glance",
-    phase: "Phase 6 — Performance & Metrics",
+    phase: "Phase 6 — Performance & Metrics (6-b)",
     group: "Performance",
   },
   "perf.devices": {
     title: "Device Performance",
     description: "CPU, memory and per-device metrics",
-    phase: "Phase 6 — Performance & Metrics",
+    phase: "Phase 6 — Performance & Metrics (6-b)",
     group: "Performance",
   },
   "perf.interfaces": {
     title: "Interface Utilization",
     description: "Per-interface traffic and errors",
-    phase: "Phase 6 — Performance & Metrics",
+    phase: "Phase 6 — Performance & Metrics (6-b)",
     group: "Performance",
   },
   "perf.availability": {
     title: "Availability",
     description: "Uptime and SLA attainment",
-    phase: "Phase 6 — Performance & Metrics",
+    phase: "Phase 6 — Performance & Metrics (6-b)",
     group: "Performance",
   },
   "perf.capacity": {
     title: "Capacity",
     description: "Capacity risks and growth forecast",
-    phase: "Phase 6 — Performance & Metrics",
+    phase: "Phase 6 — Performance & Metrics (6-b)",
     group: "Performance",
   },
 

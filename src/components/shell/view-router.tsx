@@ -23,6 +23,11 @@ import { IncidentDetailView } from "@/components/views/incident-detail-view";
 import { MaintenanceView } from "@/components/views/maintenance-view";
 import { NocView } from "@/components/views/noc-view";
 import { JobsView } from "@/components/views/jobs-view";
+import { PerfAvailabilityView } from "@/components/views/perf-availability-view";
+import { PerfCapacityView } from "@/components/views/perf-capacity-view";
+import { PerfDevicesView } from "@/components/views/perf-devices-view";
+import { PerfInterfacesView } from "@/components/views/perf-interfaces-view";
+import { PerfOverviewView } from "@/components/views/perf-overview-view";
 import { PlaceholderView } from "@/components/views/placeholder-view";
 import { SitesView } from "@/components/views/sites-view";
 import { SnapshotsView } from "@/components/views/snapshots-view";
@@ -35,10 +40,12 @@ import { SnapshotsView } from "@/components/views/snapshots-view";
  * Implemented: dashboard, network.devices, network.device-detail (Phase 2),
  * network.sites (Phase 2), network.discovery (Phase 2-c), admin.credentials
  * (Phase 2-c), ops.alerts, ops.incidents, ops.maintenance, ops.events
- * (Phase 5-a/5-b/5-c), changes.all + changes.mine + changes.calendar +
- * changes.templates + changes.change-detail (Phase 4-a), changes.approvals
- * (Phase 4-b), ops.jobs, config.backups + config.compliance (Phase 3-a),
- * config.snapshots (Phase 3-b), config.baselines + config.drift (Phase 3-c).
+ * (Phase 5-a/5-b/5-c), perf.overview, perf.devices, perf.interfaces,
+ * perf.availability, perf.capacity (Phase 6-b), changes.all + changes.mine +
+ * changes.calendar + changes.templates + changes.change-detail (Phase 4-a),
+ * changes.approvals (Phase 4-b), ops.jobs, config.backups + config.compliance
+ * (Phase 3-a), config.snapshots (Phase 3-b), config.baselines + config.drift
+ * (Phase 3-c).
  */
 export function ViewRouter() {
   const activeView = useNavigationStore((state) => state.activeView);
@@ -92,6 +99,16 @@ export function ViewRouter() {
       return <BaselinesView />;
     case "config.drift":
       return <DriftView />;
+    case "perf.overview":
+      return <PerfOverviewView />;
+    case "perf.devices":
+      return <PerfDevicesView />;
+    case "perf.interfaces":
+      return <PerfInterfacesView />;
+    case "perf.availability":
+      return <PerfAvailabilityView />;
+    case "perf.capacity":
+      return <PerfCapacityView />;
     default: {
       const meta = getViewMeta(activeView);
       return <PlaceholderView meta={meta} viewKey={activeView} />;

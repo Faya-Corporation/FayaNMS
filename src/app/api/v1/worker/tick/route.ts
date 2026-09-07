@@ -58,8 +58,15 @@ export const dynamic = "force-dynamic";
  *   repeated ticks can never stack duplicates. The worker claims it and
  *   calls POST /api/v1/alerts/evaluate (evaluate-in-Next).
  *
- * Returns { enqueued, driftEnqueued, alertEvalEnqueued, reapedOrphans, pruned,
- * evaluatedAt, policies }.
+ * Metric retention scheduling (Task 6-a), after the alert block:
+ *   ONE recurring METRIC_RETENTION job per 24 h (daily prune cadence) —
+ *   skipped while one is QUEUED/RUNNING or when the last one finished
+ *   within the dedupe window. The worker claims it and calls
+ *   POST /api/v1/metrics/retention/prune (evaluate-in-Next; a 429
+ *   PRUNE_THROTTLED from the 60 s manual-prune guard is a graceful no-op).
+ *
+ * Returns { enqueued, driftEnqueued, alertEvalEnqueued,
+ * metricRetentionEnqueued, reapedOrphans, pruned, evaluatedAt, policies }.
  */
 
 const tickSchema = z.object({
@@ -73,6 +80,7 @@ const PRUNE_MIN_SNAPSHOTS_PER_DEVICE = 2;
 const DRIFT_CHECK_CAP_PER_TICK = 20;
 const DRIFT_CHECK_DEDUPE_MIN = 30;
 const ALERT_EVALUATION_DEDUPE_MIN = 3;
+const METRIC_RETENTION_DEDUPE_HOURS = 24;
 
 /* ── tiny 5-field cron matcher ──────────────────────────────────────────── */
 
@@ -377,6 +385,10 @@ export async function POST(request: Request) {
   // job per dedupe window — the worker runs the evaluate-in-Next engine.
   const alertEvalEnqueued = await enqueueAlertEvaluation(now);
 
+  // Metric retention scheduling (Task 6-a): ONE recurring METRIC_RETENTION
+  // job per 24 h — the worker triggers the evaluate-in-Next prune.
+  const metricRetentionEnqueued = await enqueueMetricRetention(now);
+
   // Reaper: RUNNING CONFIG_BACKUP/DISCOVERY/DRIFT_CHECK/ALERT_EVALUATION jobs whose
   // startedAt is older than 10 minutes were orphaned (server crash, worker restart mid-flight —
   // the in-memory runner state is gone) and would otherwise stay RUNNING
@@ -385,7 +397,7 @@ export async function POST(request: Request) {
   const STALE_RUNNING_MS = 10 * 60_000;
   const reaped = await db.jobExecution.updateMany({
     where: {
-      type: { in: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "ALERT_EVALUATION"] },
+      type: { in: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "ALERT_EVALUATION", "METRIC_RETENTION"] },
       status: "RUNNING",
       startedAt: { lt: new Date(now.getTime() - STALE_RUNNING_MS) },
     },
@@ -410,12 +422,51 @@ export async function POST(request: Request) {
     enqueued: enqueuedTotal,
     driftEnqueued: driftTargets,
     alertEvalEnqueued,
+    metricRetentionEnqueued,
     reapedOrphans: reaped.count,
     pruned: prune.pruned,
     prunedDevices: prune.prunedDevices,
     evaluatedAt: now.toISOString(),
     policies: policyResults,
   });
+}
+
+/**
+ * Enqueue ONE METRIC_RETENTION job per 24 h (Task 6-a). Dedupe: skip when
+ * a METRIC_RETENTION job is QUEUED/RUNNING, or when the last one finished
+ * within the daily cadence window. Returns 0 or 1.
+ */
+async function enqueueMetricRetention(now: Date): Promise<number> {
+  const inFlight = await db.jobExecution.findFirst({
+    where: {
+      type: "METRIC_RETENTION",
+      OR: [
+        { status: { in: ["QUEUED", "RUNNING"] } },
+        {
+          status: { in: ["SUCCEEDED", "FAILED", "DEAD", "CANCELLED"] },
+          finishedAt: {
+            gte: new Date(now.getTime() - METRIC_RETENTION_DEDUPE_HOURS * 3_600_000),
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  if (inFlight) return 0;
+
+  await db.jobExecution.create({
+    data: {
+      type: "METRIC_RETENTION",
+      targetType: "SYSTEM",
+      status: "QUEUED",
+      progress: 0,
+      priority: 7,
+      maxAttempts: 3,
+      payloadJson: JSON.stringify({ triggeredBy: "SCHEDULE" }),
+      correlationId: newJobCorrelationId(),
+    },
+  });
+  return 1;
 }
 
 /**

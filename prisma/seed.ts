@@ -143,6 +143,21 @@ const SETTINGS = [
   { key: "drift.check.intervalMinutes", valueJson: JSON.stringify(15) },
   { key: "alert.suppression.maintenanceWindows", valueJson: JSON.stringify(true) },
   { key: "metrics.rollup.retention.days", valueJson: JSON.stringify(90) },
+  // Task 6-a — metric retention policy (defaults; the prune endpoint/worker
+  // job appends lastPrunedAt + lastPruneResult into the same row).
+  {
+    key: "metrics.retention",
+    valueJson: JSON.stringify({
+      raw: { days: 14, enabled: true },
+      rollup5M: { days: 3, enabled: true },
+      rollup1H: { days: 90, enabled: true },
+      rollup1D: { days: 365, enabled: true },
+      lastPrunedAt: null,
+      lastPruneResult: null,
+    }),
+  },
+  // Task 6-a — SLA target consumed by /api/v1/performance/availability.
+  { key: "performance.sla.target", valueJson: JSON.stringify(99.9) },
 ];
 
 const REPORT_SCHEDULES = [
@@ -1122,7 +1137,17 @@ function buildSnapshotPlans(): Map<string, SnapPlan[]> {
 
 /* ────────────────────────────── metrics ────────────────────────────── */
 
-const METRIC_KEYS = ["CPU", "MEMORY", "UTILIZATION_IN", "UTILIZATION_OUT"] as const;
+// Task 6-a adds LATENCY_MS + PACKET_LOSS to the fleet telemetry set (the
+// performance dashboards chart them; alert rules are unaffected — they
+// only reference CPU and the AVAILABILITY pseudo-metric).
+const METRIC_KEYS = [
+  "CPU",
+  "MEMORY",
+  "UTILIZATION_IN",
+  "UTILIZATION_OUT",
+  "LATENCY_MS",
+  "PACKET_LOSS",
+] as const;
 type MetricKey = (typeof METRIC_KEYS)[number];
 
 function sampleTimestamps(): Date[] {
@@ -1156,7 +1181,102 @@ function metricValue(d: DeviceSpec, metric: MetricKey, ts: Date): number {
       return round1(clamp(d.utilBase + busy * 24 + noise() * 6, 1, 98.5));
     case "UTILIZATION_OUT":
       return round1(clamp(d.utilBase * 0.72 + busy * 19 + noise() * 5, 1, 98.5));
+    case "LATENCY_MS": {
+      // Round-trip latency baseline per role (ms): branches sit behind WAN
+      // links, ToR switches at the fabric edge answer fastest.
+      const roleBase: Record<string, number> = {
+        CORE_ROUTER: 6,
+        EDGE_ROUTER: 12,
+        BRANCH_ROUTER: 30,
+        WAN_GATEWAY: 35,
+        CORE_SWITCH: 3,
+        ACCESS_SWITCH: 4,
+        TOP_OF_RACK: 2,
+        FIREWALL: 8,
+        WIRELESS_CONTROLLER: 7,
+      };
+      const base = roleBase[d.role] ?? 10;
+      const degraded = d.status === "DEGRADED" ? 14 : 0;
+      return round1(clamp(base + busy * base * 0.6 + noise() * Math.max(2, base * 0.15) + degraded, 0.5, 400));
+    }
+    case "PACKET_LOSS": {
+      // % loss: sub-0.5% for healthy devices, ~1–3% with bursts on the
+      // degraded firewall.
+      const degraded = d.status === "DEGRADED";
+      let v = (degraded ? 1.2 : 0.12) + busy * (degraded ? 1.5 : 0.15) + Math.abs(noise()) * (degraded ? 0.8 : 0.1);
+      if (degraded && rnd() < 0.08) v = ri(4, 9); // loss bursts
+      return round1(clamp(v, 0, 40));
+    }
   }
+}
+
+/* ── growth stories (Task 6-a capacity demo) ────────────────────────────
+ * Additive daily offsets layered on top of metricValue(): each story is
+ * { offsetNow, slopePerDay } → offset(daysAgo) = offsetNow − slope × daysAgo.
+ * Values are chosen so the resulting rollups read like the narrative:
+ *   DC-SRV-TOR-02   CPU ~35 → ~50 over 30d (+0.5%/day)
+ *   HQ-WAN-FW-01    UTILIZATION_OUT ~55 → ~68 over 30d (+0.45%/day)
+ *   BR1-Edge-RTR-01 MEMORY gentle +0.2%/day (centered ±3 over the month)
+ * The offsets apply to raw samples AND every rollup tier, so the last
+ * daily bucket (~current) stays consistent with the live 5-min samples.
+ */
+const GROWTH_STORIES: Record<string, Partial<Record<MetricKey, { offsetNow: number; slopePerDay: number }>>> = {
+  "dev-dc-srv-tor-02": { CPU: { offsetNow: 25, slopePerDay: 0.5 } },
+  "dev-hq-wan-fw-01": { UTILIZATION_OUT: { offsetNow: 27, slopePerDay: 0.45 } },
+  "dev-br1-edge-rtr-01": { MEMORY: { offsetNow: 3, slopePerDay: 0.2 } },
+};
+
+function growthOffset(d: DeviceSpec, metric: MetricKey, ts: Date): number {
+  const story = GROWTH_STORIES[d.id]?.[metric];
+  if (!story) return 0;
+  const daysAgo = (NOW - ts.getTime()) / 86_400_000;
+  return story.offsetNow - story.slopePerDay * daysAgo;
+}
+
+/** metricValue + growth story, re-clamped to the metric's sane band. */
+function sampleValue(d: DeviceSpec, metric: MetricKey, ts: Date): number {
+  const v = metricValue(d, metric, ts) + growthOffset(d, metric, ts);
+  switch (metric) {
+    case "CPU":
+      return round1(clamp(v, 2, 99.5));
+    case "MEMORY":
+      return round1(clamp(v, 5, 97));
+    case "UTILIZATION_IN":
+    case "UTILIZATION_OUT":
+      return round1(clamp(v, 1, 98.5));
+    default:
+      return round1(v); // LATENCY_MS / PACKET_LOSS clamp inside metricValue
+  }
+}
+
+/* ── synthetic per-device availability (Task 6-a) ───────────────────────
+ * Time-deterministic availability % used to seed metric "AVAILABILITY"
+ * rollups: 100 for healthy devices, ~58–92 dips for DEGRADED, 0 from the
+ * outage start for OFFLINE devices (outage begins at the device's lastSeen).
+ */
+function availabilityValue(d: DeviceSpec, ts: Date): number {
+  if (d.status === "OFFLINE") {
+    const outageStartMs = NOW - d.lastSeenMin * 60_000;
+    return ts.getTime() < outageStartMs ? 100 : 0;
+  }
+  if (d.status === "DEGRADED") return round1(clamp(76 + (rnd() * 2 - 1) * 10, 58, 92));
+  return rnd() < 0.03 ? 99.8 : 100;
+}
+
+/** Interface utilization sample (% of capacity) from the port's role. */
+function ifaceUtilValue(description: string, ts: Date): number {
+  const u = description.toUpperCase();
+  let base = 14;
+  if (/(UPLINK|WAN|DC-INTERCONNECT|AGG|TRUNK|MLAG|LACP|CORE)/.test(u)) base = 48;
+  else if (/(MGMT|HA-)/.test(u)) base = 3;
+  else if (/(LAN|ACCESS|SRV|ESX|AP-)/.test(u)) base = 24;
+  const busy = diurnal(ts);
+  return round1(clamp(base + busy * 26 + (rnd() * 2 - 1) * 9, 0.5, 98.5));
+}
+
+/** Deterministic interface id (same formula as seedDevices). */
+function ifaceId(hostname: string, name: string): string {
+  return `if-${hostname.toLowerCase()}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 }
 
 /* ────────────────────────────── main ────────────────────────────── */
@@ -1242,7 +1362,7 @@ async function seedDevices() {
   const uplinkByDevice = new Map<string, string>();
   for (const d of D) {
     for (const f of ifacesFor(d)) {
-      const id = `if-${d.hostname.toLowerCase()}-${f.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+      const id = ifaceId(d.hostname, f.name);
       if (f.operStatus === "UP" && !uplinkByDevice.has(d.id)) uplinkByDevice.set(d.id, id);
       ifaceRows.push({
         id,
@@ -1329,9 +1449,17 @@ async function seedBaselinesAndDrift() {
 
 async function seedMetrics(uplinkByDevice: Map<string, string>) {
   const metricDevices = D.filter((d) => d.status !== "OFFLINE" && d.status !== "UNMANAGED");
+  const availabilityDevices = D.filter((d) => d.status !== "UNMANAGED");
   const timestamps = sampleTimestamps();
 
+  const HOUR_MS = 3_600_000;
+  const DAY_MS = 86_400_000;
+  const HOUR = 60; // minutes
+
   const sampleRows: Prisma.MetricSampleCreateManyInput[] = [];
+  const rollupRows: Prisma.MetricRollupCreateManyInput[] = [];
+
+  // ── 24h raw samples per device × metric (15-min older tier, 5-min recent) ──
   for (const d of metricDevices) {
     const uplinkId = uplinkByDevice.get(d.id) ?? null;
     for (const metric of METRIC_KEYS) {
@@ -1341,41 +1469,159 @@ async function seedMetrics(uplinkByDevice: Map<string, string>) {
           deviceId: d.id,
           interfaceId: metric === "UTILIZATION_IN" || metric === "UTILIZATION_OUT" ? uplinkId : null,
           metric,
-          value: metricValue(d, metric, ts),
+          value: sampleValue(d, metric, ts),
           ts,
         });
       }
     }
   }
-  for (let i = 0; i < sampleRows.length; i += 1000) {
-    await db.metricSample.createMany({ data: sampleRows.slice(i, i + 1000) });
+
+  // ── interface-level utilization samples (Task 6-a) ──────────────────────
+  // Hourly for the last 24h on every UP interface except each device's
+  // uplink (the uplink is already covered by the device-level UTILIZATION
+  // samples above, which carry the growth stories). Values are % of the
+  // interface's capacity — the same unit convention as device-level samples.
+  const ifaceHourStamps: Date[] = [];
+  for (let h = 24; h >= 0; h -= 1) ifaceHourStamps.push(ago(h * HOUR));
+  for (const d of metricDevices) {
+    const uplinkId = uplinkByDevice.get(d.id);
+    for (const f of ifacesFor(d)) {
+      if (f.operStatus !== "UP") continue;
+      const id = ifaceId(d.hostname, f.name);
+      if (id === uplinkId) continue;
+      for (const metric of ["UTILIZATION_IN", "UTILIZATION_OUT"] as const) {
+        for (const ts of ifaceHourStamps) {
+          sampleRows.push({
+            id: `msif-${id}-${metric}-${ts.getTime()}`,
+            deviceId: d.id,
+            interfaceId: id,
+            metric,
+            value: ifaceUtilValue(f.description, ts),
+            ts,
+          });
+        }
+      }
+    }
   }
 
-  // 1H rollups from the raw samples
-  const rollupRows: Prisma.MetricRollupCreateManyInput[] = [];
+  // ── 1H rollup builder ───────────────────────────────────────────────────
+  const pushRollup = (
+    id: string,
+    deviceId: string,
+    metric: string,
+    granularity: string,
+    bucket: number,
+    values: number[]
+  ) => {
+    rollupRows.push({
+      id,
+      deviceId,
+      metric,
+      granularity,
+      periodStart: new Date(bucket),
+      avg: round1(values.reduce((a, b) => a + b, 0) / values.length),
+      max: round1(Math.max(...values)),
+      min: round1(Math.min(...values)),
+      p95: round1(p95(values)),
+    });
+  };
+
+  // 1H rollups from the raw samples (last ~24h — existing behavior).
   for (const d of metricDevices) {
     for (const metric of METRIC_KEYS) {
       const buckets = new Map<number, number[]>();
       for (const ts of timestamps) {
-        const bucket = Math.floor(ts.getTime() / 3_600_000) * 3_600_000;
+        const bucket = Math.floor(ts.getTime() / HOUR_MS) * HOUR_MS;
         const arr = buckets.get(bucket) ?? [];
-        arr.push(metricValue(d, metric, ts));
+        arr.push(sampleValue(d, metric, ts));
         buckets.set(bucket, arr);
       }
       for (const [bucket, values] of buckets) {
-        rollupRows.push({
-          id: `mr-${d.id}-${metric}-1H-${bucket}`,
-          deviceId: d.id,
-          metric,
-          granularity: "1H",
-          periodStart: new Date(bucket),
-          avg: round1(values.reduce((a, b) => a + b, 0) / values.length),
-          max: round1(Math.max(...values)),
-          min: round1(Math.min(...values)),
-          p95: round1(p95(values)),
-        });
+        pushRollup(`mr-${d.id}-${metric}-1H-${bucket}`, d.id, metric, "1H", bucket, values);
       }
     }
+  }
+
+  // ── 7d of 1H rollups per device × metric (Task 6-a) ────────────────────
+  // Buckets strictly OLDER than the 24h window above (no @@unique overlap).
+  // Each hourly bucket averages six synthetic 10-min-spaced values.
+  const first24hBucket = Math.floor(ago(24 * HOUR).getTime() / HOUR_MS) * HOUR_MS;
+  const bucket7dStart = Math.floor(ago(7 * 24 * HOUR).getTime() / HOUR_MS) * HOUR_MS;
+  for (const d of metricDevices) {
+    for (const metric of METRIC_KEYS) {
+      for (let bucket = bucket7dStart; bucket < first24hBucket; bucket += HOUR_MS) {
+        const values: number[] = [];
+        for (let sub = 0; sub < 6; sub += 1) {
+          values.push(sampleValue(d, metric, new Date(bucket + sub * 10 * 60_000)));
+        }
+        pushRollup(`mr-${d.id}-${metric}-1H-${bucket}`, d.id, metric, "1H", bucket, values);
+      }
+    }
+  }
+
+  // ── 30d of 1D rollups per device × metric (Task 6-a) ───────────────────
+  // Daily buckets (UTC-aligned) from 30d ago through today; each day
+  // averages six synthetic 4h-spaced values (covers the diurnal curve).
+  const bucket30dStart = Math.floor(ago(30 * 24 * HOUR).getTime() / DAY_MS) * DAY_MS;
+  const bucketToday = Math.floor(NOW / DAY_MS) * DAY_MS;
+  for (const d of metricDevices) {
+    for (const metric of METRIC_KEYS) {
+      for (let bucket = bucket30dStart; bucket <= bucketToday; bucket += DAY_MS) {
+        const values: number[] = [];
+        for (let sub = 0; sub < 6; sub += 1) {
+          values.push(sampleValue(d, metric, new Date(bucket + sub * 4 * HOUR_MS)));
+        }
+        pushRollup(`mr-${d.id}-${metric}-1D-${bucket}`, d.id, metric, "1D", bucket, values);
+      }
+    }
+  }
+
+  // ── metric "AVAILABILITY" rollups (Task 6-a) ───────────────────────────
+  // 1H for 7d + 1D for 30d per monitored device: 100 for healthy devices,
+  // ~58–92 dips for DEGRADED, 0 from the outage start for OFFLINE devices
+  // — the availability views aggregate these buckets.
+  const avail7dStart = Math.floor(ago(7 * 24 * HOUR).getTime() / HOUR_MS) * HOUR_MS;
+  const availNowBucket = Math.floor(NOW / HOUR_MS) * HOUR_MS;
+  for (const d of availabilityDevices) {
+    for (let bucket = avail7dStart; bucket <= availNowBucket; bucket += HOUR_MS) {
+      pushRollup(`mr-${d.id}-AVAILABILITY-1H-${bucket}`, d.id, "AVAILABILITY", "1H", bucket, [
+        availabilityValue(d, new Date(bucket)),
+      ]);
+    }
+  }
+  for (const d of availabilityDevices) {
+    for (let bucket = bucket30dStart; bucket <= bucketToday; bucket += DAY_MS) {
+      const hourly: number[] = [];
+      for (let h = 0; h < 24; h += 1) {
+        hourly.push(availabilityValue(d, new Date(bucket + h * HOUR_MS)));
+      }
+      pushRollup(`mr-${d.id}-AVAILABILITY-1D-${bucket}`, d.id, "AVAILABILITY", "1D", bucket, hourly);
+    }
+  }
+
+  // ── prune-bait rows (Task 6-a retention demo) ──────────────────────────
+  // ~60 raw samples 20 days old (raw window default 14d) + ~20 old 1H
+  // rollups ~100 days old (1H window default 90d) — POST .../prune provably
+  // deletes > 0 right after seeding.
+  for (let i = 0; i < 60; i += 1) {
+    const d = metricDevices[i % metricDevices.length];
+    sampleRows.push({
+      id: `ms-old-${i}`,
+      deviceId: d.id,
+      interfaceId: null,
+      metric: i % 2 === 0 ? "CPU" : "MEMORY",
+      value: round1(clamp(18 + rnd() * 22, 2, 99.5)),
+      ts: ago(20 * 24 * HOUR + i * 7),
+    });
+  }
+  for (let i = 0; i < 20; i += 1) {
+    const d = metricDevices[i % metricDevices.length];
+    const bucket = Math.floor(ago(100 * 24 * HOUR + i * 150).getTime() / HOUR_MS) * HOUR_MS;
+    pushRollup(`mr-old-${i}`, d.id, "CPU", "1H", bucket, [ri(14, 38), ri(14, 38), ri(14, 38)]);
+  }
+
+  for (let i = 0; i < sampleRows.length; i += 1000) {
+    await db.metricSample.createMany({ data: sampleRows.slice(i, i + 1000) });
   }
   for (let i = 0; i < rollupRows.length; i += 1000) {
     await db.metricRollup.createMany({ data: rollupRows.slice(i, i + 1000) });
