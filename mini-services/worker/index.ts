@@ -14,9 +14,15 @@
  *                              (Task 4-b apply step; HTTP 500 when the demo
  *                              control payload.failAt === "APPLY")
  *
- * Background loops:
- *   runner.ts    — claims CONFIG_BACKUP jobs from Next.js every 3 s
- *   scheduler.ts — pokes POST /api/v1/worker/tick every 30 s (+10 s after boot)
+ * Background loops (Task 10-a: both self-schedule with exponential backoff
+ * and auto-recover while the backend is down):
+ *   runner.ts    — claims QUEUED jobs from Next.js (3 s cadence, backoff to
+ *                  5 min on backend outage, greppable recovery line)
+ *   scheduler.ts — pokes POST /api/v1/worker/tick every 30 s (+10 s after boot,
+ *                  same backoff pattern)
+ *
+ * Process guards: unhandledRejection / uncaughtException are logged and
+ * contained — the HTTP server keeps answering /health.
  *
  * This service never touches SQLite; all persistence flows through
  * http://localhost:3000 (see next-client.ts header note).
@@ -24,7 +30,7 @@
 
 import { adapters, pickAdapter, type DeviceTarget } from "./adapters";
 import { startRunner, getCounters } from "./runner";
-import { startScheduler } from "./scheduler";
+import { startScheduler, getSchedulerState } from "./scheduler";
 import { log } from "./next-client";
 
 const PORT = 3030; // hardcoded — do not read PORT env (task 2-b contract)
@@ -39,6 +45,7 @@ async function handle(req: Request): Promise<Response> {
         service: "fayanms-worker",
         uptimeSec: Math.floor((Date.now() - STARTED_AT) / 1000),
         jobs: getCounters(),
+        scheduler: getSchedulerState(),
         adapters: adapters.map((a) => a.adapter),
       });
     }
@@ -242,4 +249,24 @@ process.on("SIGINT", () => {
   log("SIGINT received — shutting down");
   server.stop(true);
   process.exit(0);
+});
+
+/* ───────────── process-level guards (Task 10-a) ───────────── */
+
+/**
+ * Contain, never exit (Task 10-a): a rejected async job/report path or an
+ * unexpected throw must not kill the HTTP surface — /health keeps answering
+ * so the orchestrator can observe the worker (and its backoff state).
+ */
+process.on("unhandledRejection", (reason: unknown) => {
+  const text =
+    reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+  void log(`unhandled rejection (contained): ${text}`);
+});
+
+// Contained on purpose for this simulator service: log and keep serving.
+process.on("uncaughtException", (error: Error) => {
+  void log(
+    `uncaught exception (contained): ${(error as Error)?.stack ?? String(error)}`
+  );
 });

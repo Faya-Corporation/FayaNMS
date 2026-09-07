@@ -182,7 +182,7 @@ export function AppHeader({
       </Button>
       <Button
         aria-label={tHeader("openNavigation")}
-        className="lg:hidden"
+        className="size-8 md:size-9 lg:hidden"
         onClick={onOpenMobileNav}
         size="icon"
         variant="ghost"
@@ -217,8 +217,8 @@ export function AppHeader({
           type="button"
           onClick={onOpenCommandPalette}
           className={cn(
-            "flex h-9 items-center gap-2 rounded-md border border-input bg-background text-sm text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground",
-            "w-9 justify-center md:w-56 md:justify-start md:px-3 lg:w-64"
+            "flex h-8 items-center gap-2 rounded-md border border-input bg-background text-sm text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground md:h-9",
+            "w-8 justify-center md:w-56 md:justify-start md:px-3 lg:w-64"
           )}
           aria-label={tHeader("searchAria")}
         >
@@ -252,7 +252,7 @@ export function AppHeader({
         {/* Job center */}
         <Button
           aria-label={tHeader("jobCenter")}
-          className="relative"
+          className="relative size-8 md:size-9"
           onClick={onOpenJobCenter}
           size="icon"
           variant="ghost"
@@ -274,7 +274,7 @@ export function AppHeader({
                   ? tHeader("notificationsUnreadAria", { count: unreadCount })
                   : tHeader("notifications")
               }
-              className="relative"
+              className="relative size-8 md:size-9"
               size="icon"
               variant="ghost"
             >
@@ -390,6 +390,7 @@ export function AppHeader({
                   ? tHeader("themeDark")
                   : tHeader("themeSystem"),
           })}
+          className="size-8 md:size-9"
           onClick={cycleTheme}
           size="icon"
           variant="ghost"
@@ -402,6 +403,7 @@ export function AppHeader({
           aria-label={tHeader("densityAria", {
             tier: tHeader(DENSITY_LABEL_KEY[density]),
           })}
+          className="size-8 md:size-9"
           onClick={cycleDensity}
           size="icon"
           variant="ghost"
@@ -414,6 +416,7 @@ export function AppHeader({
           <TooltipTrigger asChild>
             <Button
               aria-label={tTour("startTour")}
+              className="size-8 md:size-9"
               onClick={startTour}
               size="icon"
               variant="ghost"
@@ -429,6 +432,7 @@ export function AppHeader({
           <DropdownMenuTrigger asChild>
             <Button
               aria-label={tA11y("languageSwitch")}
+              className="size-8 md:size-9"
               size="icon"
               variant="ghost"
             >
@@ -461,7 +465,7 @@ export function AppHeader({
           <DropdownMenuTrigger asChild>
             <Button
               aria-label={tHeader("userMenu")}
-              className="ms-1 gap-2 ps-1.5"
+              className="ms-1 h-8 gap-2 ps-1 md:h-9 md:ps-1.5"
               variant="ghost"
             >
               <Avatar className="size-7">

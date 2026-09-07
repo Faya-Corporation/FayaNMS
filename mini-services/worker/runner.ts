@@ -4,6 +4,9 @@
  * Every 3 s the runner claims QUEUED JobExecutions from the Next.js API
  * (POST /api/v1/worker/claim), executes them with a concurrency cap of 3 and
  * a per-job timeout of 30 s, and reports progress/completion back over HTTP.
+ * Task 10-a hardening: the claim loop is self-scheduling and immortal (the
+ * next tick is always scheduled), backs off exponentially on claim failures
+ * (3 s → 5 min cap) and auto-recovers with a greppable log line.
  * The runner is a pure orchestration/simulation engine — no DB access.
  *
  * CONFIG_BACKUP step sequence (progress reported via /api/v1/worker/progress):
@@ -70,6 +73,8 @@ import { pickAdapter, sleep, randInt, type DeviceTarget } from "./adapters";
 import { nextPost, selfPost, log } from "./next-client";
 
 const CLAIM_INTERVAL_MS = 3_000;
+/** Claim-loop exponential backoff cap (Task 10-a) — 5 minutes. */
+const MAX_BACKOFF_MS = 300_000;
 const CONCURRENCY_CAP = 3;
 const CLAIM_BATCH = 3;
 const JOB_TIMEOUT_MS = 30_000;
@@ -112,6 +117,11 @@ const counters = {
   failed: 0,
   running: 0,
   completedByType: {} as Record<string, number>,
+  // Task 10-a resilience observability (exposed via /health):
+  consecutiveClaimFailures: 0,
+  lastClaimAttemptAt: null as string | null,
+  lastClaimOkAt: null as string | null,
+  currentBackoffMs: CLAIM_INTERVAL_MS,
 };
 
 export function getCounters() {
@@ -736,23 +746,59 @@ async function executeJob(job: ClaimedJob): Promise<void> {
       throw new Error(`Unsupported job type for worker v1: ${job.type}`);
     }
   } catch (e) {
-    await reportFailure(job.id, job.correlationId, (e as Error)?.message ?? String(e));
+    const message = (e as Error)?.message ?? String(e);
+    // Task 10-a: the failure path itself must never produce an unhandled
+    // rejection (e.g. backend down → reportFailure can fail too).
+    try {
+      await reportFailure(job.id, job.correlationId, message);
+    } catch (reportErr) {
+      await log(
+        `failed to report failure for ${job.id}: ${(reportErr as Error)?.message ?? String(reportErr)}`
+      );
+    }
   }
 }
 
 let claiming = false;
 
-async function claimTick(): Promise<void> {
-  if (claiming) return;
+/**
+ * Exponential claim backoff (Task 10-a): 3 s → 6 → 12 → 24 → 48 → 96 →
+ * 192 → 300 s (capped at MAX_BACKOFF_MS). Pure function of the consecutive
+ * failure count, so the scheduler and the failure log always agree.
+ */
+function claimBackoffDelay(failures: number): number {
+  return Math.min(CLAIM_INTERVAL_MS * 2 ** failures, MAX_BACKOFF_MS);
+}
+
+async function claimTick(): Promise<"ok" | "failed" | "busy"> {
+  if (claiming) return "busy";
   claiming = true;
   try {
     const free = CONCURRENCY_CAP - counters.running;
-    if (free <= 0) return;
-    const jobs = (await nextPost(
-      "/api/v1/worker/claim",
-      { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION", "REPORT_RUN"], limit: Math.min(CLAIM_BATCH, free) },
-      10_000
-    )) as ClaimedJob[];
+    if (free <= 0) return "busy";
+    counters.lastClaimAttemptAt = new Date().toISOString();
+    let jobs: ClaimedJob[];
+    try {
+      jobs = (await nextPost(
+        "/api/v1/worker/claim",
+        { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION", "REPORT_RUN"], limit: Math.min(CLAIM_BATCH, free) },
+        10_000
+      )) as ClaimedJob[];
+    } catch (e) {
+      counters.consecutiveClaimFailures += 1;
+      const delay = claimBackoffDelay(counters.consecutiveClaimFailures);
+      await log(
+        `claim failed (consecutive=${counters.consecutiveClaimFailures}, next retry in ${Math.round(delay / 1000)}s): ${(e as Error)?.message ?? String(e)}`
+      );
+      return "failed";
+    }
+    if (counters.consecutiveClaimFailures > 0) {
+      await log(
+        `backend recovered after ${counters.consecutiveClaimFailures} consecutive claim failures`
+      );
+    }
+    counters.consecutiveClaimFailures = 0;
+    counters.lastClaimOkAt = new Date().toISOString();
     for (const job of Array.isArray(jobs) ? jobs : []) {
       counters.claimed += 1;
       counters.running += 1;
@@ -763,17 +809,49 @@ async function claimTick(): Promise<void> {
         counters.running -= 1;
       });
     }
+    return "ok";
   } catch (e) {
-    await log(`claim failed: ${(e as Error).message}`);
+    // Absolute containment: nothing from the tick body may escape to the
+    // scheduler — an unexpected error here is logged and the loop continues.
+    await log(`claim tick unexpected error (contained): ${(e as Error)?.message ?? String(e)}`);
+    return "failed";
   } finally {
     claiming = false;
   }
 }
 
+/**
+ * Self-scheduling claim loop (Task 10-a) — replaces the fixed setInterval.
+ * The next tick is ALWAYS scheduled in `finally`, so no rejection (claim
+ * failure, unexpected error, logging failure) can ever break the chain.
+ * While the backend is unreachable the delay backs off exponentially up to
+ * MAX_BACKOFF_MS; the first successful claim POST resets to CLAIM_INTERVAL_MS.
+ */
+async function runClaimCycle(): Promise<void> {
+  let nextDelay = CLAIM_INTERVAL_MS;
+  try {
+    const result = await claimTick();
+    if (result === "failed") {
+      nextDelay = claimBackoffDelay(counters.consecutiveClaimFailures);
+    }
+  } catch (e) {
+    // claimTick already contains its own errors; belt-and-braces guard so the
+    // self-scheduling chain is truly immortal.
+    nextDelay = claimBackoffDelay(counters.consecutiveClaimFailures + 1);
+    try {
+      await log(`claim loop unexpected error (contained): ${(e as Error)?.message ?? String(e)}`);
+    } catch {
+      /* logging must never break the loop */
+    }
+  } finally {
+    counters.currentBackoffMs = nextDelay;
+    setTimeout(() => void runClaimCycle(), nextDelay);
+  }
+}
+
 export function startRunner(): void {
   log(
-    `runner started: claim every ${CLAIM_INTERVAL_MS / 1000}s, batch ${CLAIM_BATCH}, concurrency ${CONCURRENCY_CAP}, per-job timeout ${JOB_TIMEOUT_MS / 1000}s`
+    `runner started: claim every ${CLAIM_INTERVAL_MS / 1000}s (exponential backoff up to ${MAX_BACKOFF_MS / 1000}s on backend outage), batch ${CLAIM_BATCH}, concurrency ${CONCURRENCY_CAP}, per-job timeout ${JOB_TIMEOUT_MS / 1000}s`
   );
-  void claimTick();
-  setInterval(() => void claimTick(), CLAIM_INTERVAL_MS);
+  void runClaimCycle();
 }

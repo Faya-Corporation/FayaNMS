@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Clock } from "lucide-react";
 
 import {
@@ -30,13 +31,32 @@ interface TimeRangeSelectProps {
   disabled?: boolean;
 }
 
-/** Shared time-range control used across dashboards and performance views. */
+/**
+ * Shared time-range control used across dashboards and performance views.
+ *
+ * Labels resolve at render time from the value through the "timeRange"
+ * namespace (timeRange.options.<value>) so the control localizes with the
+ * locale switch; the English label on TIME_RANGES stays as the fallback
+ * (the constant remains exported for the value type).
+ */
 export function TimeRangeSelect({
   value,
   onChange,
   className,
   disabled,
 }: TimeRangeSelectProps) {
+  const t = useTranslations("timeRange");
+
+  const labelFor = (rangeValue: string): string => {
+    try {
+      const key = `options.${rangeValue}`;
+      if (t.has(key)) return t(key);
+    } catch {
+      /* missing namespace → fall through to the English label */
+    }
+    return TIME_RANGES.find((range) => range.value === rangeValue)?.label ?? "Time range";
+  };
+
   return (
     <Select
       disabled={disabled}
@@ -44,17 +64,17 @@ export function TimeRangeSelect({
       value={value}
     >
       <SelectTrigger
-        aria-label="Time range"
+        aria-label={t("ariaLabel")}
         className={cn("h-8 w-[9.5rem] gap-1.5 text-xs", className)}
         size="sm"
       >
         <Clock aria-hidden="true" className="size-3.5 text-muted-foreground" />
-        <SelectValue placeholder="Time range" />
+        <SelectValue placeholder={t("placeholder")} />
       </SelectTrigger>
       <SelectContent>
         {TIME_RANGES.map((range) => (
           <SelectItem key={range.value} value={range.value}>
-            {range.label}
+            {labelFor(range.value)}
           </SelectItem>
         ))}
       </SelectContent>

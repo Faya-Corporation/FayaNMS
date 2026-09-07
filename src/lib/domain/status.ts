@@ -12,6 +12,12 @@
  *       Low -> info      | Info  -> neutral
  * No external dependencies; icon names are resolved to lucide components
  * by the StatusIcon registry in src/components/domain/status-icon.tsx.
+ *
+ * i18n: every config built here carries a `labelKey` into the "status"
+ * namespace of messages/{en,ar}.json (e.g. "status.device.ONLINE"). The
+ * English `label` remains the canonical fallback — shared badges resolve
+ * the label through useStatusLabel() (src/hooks/use-status-label.ts), so
+ * server-side consumers and any missing key keep rendering English.
  */
 
 export type StatusToken =
@@ -26,8 +32,15 @@ export type StatusToken =
 export interface StatusBadgeConfig {
   /** Canonical state key, e.g. "ONLINE", "SEV1", "ROLLED_BACK". */
   key: string;
-  /** Human label. */
+  /** Human label (English — the canonical fallback for i18n). */
   label: string;
+  /**
+   * i18n key under the status namespace, e.g. "status.device.ONLINE";
+   * English fallback stays in `label`. Optional so out-of-tree config
+   * builders (src/components/views/status-extras.ts) stay valid — those
+   * configs simply render the English label via the fallback path.
+   */
+  labelKey?: string;
   /** Token color key mapped in globals.css. */
   token: StatusToken;
   /** lucide icon name (resolved via StatusIcon registry). */
@@ -76,7 +89,15 @@ const TOKEN_CLASSES: Record<
   },
 };
 
+/**
+ * Builds a config for a status family. `family` is the lowerCamelCase slug
+ * of the grouping the status belongs to (mirrors the section headers below:
+ * device, interfaceAdmin, interfaceOper, snapshot, snapshotSource, severity,
+ * incident, change, risk, backup, backupCompliance, drift, job, alert,
+ * incidentStatus, common) and produces the labelKey used for i18n lookup.
+ */
 function makeConfig(
+  family: string,
   key: string,
   label: string,
   token: StatusToken,
@@ -86,6 +107,7 @@ function makeConfig(
   return {
     key,
     label,
+    labelKey: `status.${family}.${key}`,
     token,
     icon,
     dotClass: classes.dot,
@@ -99,12 +121,12 @@ function makeConfig(
 /* ------------------------------------------------------------------ */
 
 export const DEVICE_STATUS = {
-  ONLINE: makeConfig("ONLINE", "Online", "success", "CircleCheck"),
-  OFFLINE: makeConfig("OFFLINE", "Offline", "danger", "CircleOff"),
-  DEGRADED: makeConfig("DEGRADED", "Degraded", "warning", "TriangleAlert"),
-  MAINTENANCE: makeConfig("MAINTENANCE", "Maintenance", "info", "Wrench"),
-  UNKNOWN: makeConfig("UNKNOWN", "Unknown", "neutral", "CircleHelp"),
-  UNMANAGED: makeConfig("UNMANAGED", "Unmanaged", "neutral", "CircleDashed"),
+  ONLINE: makeConfig("device", "ONLINE", "Online", "success", "CircleCheck"),
+  OFFLINE: makeConfig("device", "OFFLINE", "Offline", "danger", "CircleOff"),
+  DEGRADED: makeConfig("device", "DEGRADED", "Degraded", "warning", "TriangleAlert"),
+  MAINTENANCE: makeConfig("device", "MAINTENANCE", "Maintenance", "info", "Wrench"),
+  UNKNOWN: makeConfig("device", "UNKNOWN", "Unknown", "neutral", "CircleHelp"),
+  UNMANAGED: makeConfig("device", "UNMANAGED", "Unmanaged", "neutral", "CircleDashed"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type DeviceStatusKey = keyof typeof DEVICE_STATUS;
@@ -114,21 +136,28 @@ export type DeviceStatusKey = keyof typeof DEVICE_STATUS;
 /* ------------------------------------------------------------------ */
 
 export const INTERFACE_ADMIN_STATUS = {
-  UP: makeConfig("UP", "Admin Up", "success", "CircleCheck"),
-  DOWN: makeConfig("DOWN", "Admin Down", "neutral", "CircleMinus"),
-  TESTING: makeConfig("TESTING", "Testing", "warning", "CircleAlert"),
+  UP: makeConfig("interfaceAdmin", "UP", "Admin Up", "success", "CircleCheck"),
+  DOWN: makeConfig("interfaceAdmin", "DOWN", "Admin Down", "neutral", "CircleMinus"),
+  TESTING: makeConfig("interfaceAdmin", "TESTING", "Testing", "warning", "CircleAlert"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type InterfaceAdminStatusKey = keyof typeof INTERFACE_ADMIN_STATUS;
 
 export const INTERFACE_OPER_STATUS = {
-  UP: makeConfig("UP", "Up", "success", "CircleCheck"),
-  DOWN: makeConfig("DOWN", "Down", "danger", "CircleOff"),
-  TESTING: makeConfig("TESTING", "Testing", "warning", "CircleAlert"),
-  UNKNOWN: makeConfig("UNKNOWN", "Unknown", "neutral", "CircleHelp"),
-  DORMANT: makeConfig("DORMANT", "Dormant", "warning", "Clock"),
-  NOT_PRESENT: makeConfig("NOT_PRESENT", "Not Present", "neutral", "CircleDashed"),
+  UP: makeConfig("interfaceOper", "UP", "Up", "success", "CircleCheck"),
+  DOWN: makeConfig("interfaceOper", "DOWN", "Down", "danger", "CircleOff"),
+  TESTING: makeConfig("interfaceOper", "TESTING", "Testing", "warning", "CircleAlert"),
+  UNKNOWN: makeConfig("interfaceOper", "UNKNOWN", "Unknown", "neutral", "CircleHelp"),
+  DORMANT: makeConfig("interfaceOper", "DORMANT", "Dormant", "warning", "Clock"),
+  NOT_PRESENT: makeConfig(
+    "interfaceOper",
+    "NOT_PRESENT",
+    "Not Present",
+    "neutral",
+    "CircleDashed"
+  ),
   LOWER_LAYER_DOWN: makeConfig(
+    "interfaceOper",
     "LOWER_LAYER_DOWN",
     "Lower Layer Down",
     "danger-orange",
@@ -143,19 +172,31 @@ export type InterfaceOperStatusKey = keyof typeof INTERFACE_OPER_STATUS;
 /* ------------------------------------------------------------------ */
 
 export const SNAPSHOT_STATUS = {
-  CURRENT: makeConfig("CURRENT", "Current", "success", "CircleCheck"),
-  HISTORICAL: makeConfig("HISTORICAL", "Historical", "neutral", "Archive"),
-  BASELINE: makeConfig("BASELINE", "Baseline", "info", "ShieldCheck"),
+  CURRENT: makeConfig("snapshot", "CURRENT", "Current", "success", "CircleCheck"),
+  HISTORICAL: makeConfig("snapshot", "HISTORICAL", "Historical", "neutral", "Archive"),
+  BASELINE: makeConfig("snapshot", "BASELINE", "Baseline", "info", "ShieldCheck"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type SnapshotStatusKey = keyof typeof SNAPSHOT_STATUS;
 
 export const SNAPSHOT_SOURCE = {
-  SCHEDULED: makeConfig("SCHEDULED", "Scheduled", "info", "Clock"),
-  MANUAL: makeConfig("MANUAL", "Manual", "neutral", "FilePen"),
-  PRE_CHANGE: makeConfig("PRE_CHANGE", "Pre-Change", "warning", "FileDiff"),
-  POST_CHANGE: makeConfig("POST_CHANGE", "Post-Change", "info", "ShieldCheck"),
-  EVENT: makeConfig("EVENT", "Event-Driven", "warning", "TriangleAlert"),
+  SCHEDULED: makeConfig("snapshotSource", "SCHEDULED", "Scheduled", "info", "Clock"),
+  MANUAL: makeConfig("snapshotSource", "MANUAL", "Manual", "neutral", "FilePen"),
+  PRE_CHANGE: makeConfig(
+    "snapshotSource",
+    "PRE_CHANGE",
+    "Pre-Change",
+    "warning",
+    "FileDiff"
+  ),
+  POST_CHANGE: makeConfig(
+    "snapshotSource",
+    "POST_CHANGE",
+    "Post-Change",
+    "info",
+    "ShieldCheck"
+  ),
+  EVENT: makeConfig("snapshotSource", "EVENT", "Event-Driven", "warning", "TriangleAlert"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type SnapshotSourceKey = keyof typeof SNAPSHOT_SOURCE;
@@ -165,21 +206,21 @@ export type SnapshotSourceKey = keyof typeof SNAPSHOT_SOURCE;
 /* ------------------------------------------------------------------ */
 
 export const SEVERITY = {
-  CRITICAL: makeConfig("CRITICAL", "Critical", "danger", "OctagonX"),
-  HIGH: makeConfig("HIGH", "High", "danger-orange", "TriangleAlert"),
-  MEDIUM: makeConfig("MEDIUM", "Medium", "warning", "CircleAlert"),
-  LOW: makeConfig("LOW", "Low", "info", "Info"),
-  INFO: makeConfig("INFO", "Info", "neutral", "CircleMinus"),
+  CRITICAL: makeConfig("severity", "CRITICAL", "Critical", "danger", "OctagonX"),
+  HIGH: makeConfig("severity", "HIGH", "High", "danger-orange", "TriangleAlert"),
+  MEDIUM: makeConfig("severity", "MEDIUM", "Medium", "warning", "CircleAlert"),
+  LOW: makeConfig("severity", "LOW", "Low", "info", "Info"),
+  INFO: makeConfig("severity", "INFO", "Info", "neutral", "CircleMinus"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type SeverityKey = keyof typeof SEVERITY;
 
 /** Incident severities mapped onto the same severity tokens. */
 export const INCIDENT_SEVERITY = {
-  SEV1: makeConfig("SEV1", "SEV1 — Critical", "danger", "OctagonX"),
-  SEV2: makeConfig("SEV2", "SEV2 — High", "danger-orange", "TriangleAlert"),
-  SEV3: makeConfig("SEV3", "SEV3 — Medium", "warning", "CircleAlert"),
-  SEV4: makeConfig("SEV4", "SEV4 — Low", "info", "Info"),
+  SEV1: makeConfig("incident", "SEV1", "SEV1 — Critical", "danger", "OctagonX"),
+  SEV2: makeConfig("incident", "SEV2", "SEV2 — High", "danger-orange", "TriangleAlert"),
+  SEV3: makeConfig("incident", "SEV3", "SEV3 — Medium", "warning", "CircleAlert"),
+  SEV4: makeConfig("incident", "SEV4", "SEV4 — Low", "info", "Info"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type IncidentSeverityKey = keyof typeof INCIDENT_SEVERITY;
@@ -214,7 +255,7 @@ function changeConfig(
   icon: string
 ): ChangeStatusConfig {
   return {
-    ...makeConfig(key, label, CHANGE_FAMILY_TOKEN[family], icon),
+    ...makeConfig("change", key, label, CHANGE_FAMILY_TOKEN[family], icon),
     family,
   };
 }
@@ -260,10 +301,10 @@ export type ChangeStatusKey = keyof typeof CHANGE_STATUS;
 /* ------------------------------------------------------------------ */
 
 export const RISK_LEVEL = {
-  LOW: makeConfig("LOW", "Low Risk", "success", "ShieldCheck"),
-  MEDIUM: makeConfig("MEDIUM", "Medium Risk", "warning", "ShieldAlert"),
-  HIGH: makeConfig("HIGH", "High Risk", "danger-orange", "TriangleAlert"),
-  CRITICAL: makeConfig("CRITICAL", "Critical Risk", "danger", "Siren"),
+  LOW: makeConfig("risk", "LOW", "Low Risk", "success", "ShieldCheck"),
+  MEDIUM: makeConfig("risk", "MEDIUM", "Medium Risk", "warning", "ShieldAlert"),
+  HIGH: makeConfig("risk", "HIGH", "High Risk", "danger-orange", "TriangleAlert"),
+  CRITICAL: makeConfig("risk", "CRITICAL", "Critical Risk", "danger", "Siren"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type RiskLevelKey = keyof typeof RISK_LEVEL;
@@ -274,35 +315,42 @@ export type RiskLevelKey = keyof typeof RISK_LEVEL;
 
 /** Individual backup run outcome. */
 export const BACKUP_STATUS = {
-  QUEUED: makeConfig("QUEUED", "Queued", "neutral", "Clock"),
-  RUNNING: makeConfig("RUNNING", "Running", "info", "LoaderCircle"),
-  SUCCESS: makeConfig("SUCCESS", "Success", "success", "CircleCheck"),
-  FAILED: makeConfig("FAILED", "Failed", "danger", "CircleX"),
-  SKIPPED: makeConfig("SKIPPED", "Skipped", "neutral", "CircleMinus"),
+  QUEUED: makeConfig("backup", "QUEUED", "Queued", "neutral", "Clock"),
+  RUNNING: makeConfig("backup", "RUNNING", "Running", "info", "LoaderCircle"),
+  SUCCESS: makeConfig("backup", "SUCCESS", "Success", "success", "CircleCheck"),
+  FAILED: makeConfig("backup", "FAILED", "Failed", "danger", "CircleX"),
+  SKIPPED: makeConfig("backup", "SKIPPED", "Skipped", "neutral", "CircleMinus"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type BackupStatusKey = keyof typeof BACKUP_STATUS;
 
 /** Per-device backup compliance rollup. */
 export const BACKUP_COMPLIANCE = {
-  COMPLIANT: makeConfig("COMPLIANT", "Compliant", "success", "ShieldCheck"),
-  OVERDUE: makeConfig("OVERDUE", "Overdue", "warning", "Clock"),
-  FAILED: makeConfig("FAILED", "Last Backup Failed", "danger", "CircleX"),
+  COMPLIANT: makeConfig("backupCompliance", "COMPLIANT", "Compliant", "success", "ShieldCheck"),
+  OVERDUE: makeConfig("backupCompliance", "OVERDUE", "Overdue", "warning", "Clock"),
+  FAILED: makeConfig(
+    "backupCompliance",
+    "FAILED",
+    "Last Backup Failed",
+    "danger",
+    "CircleX"
+  ),
   NEVER_BACKED_UP: makeConfig(
+    "backupCompliance",
     "NEVER_BACKED_UP",
     "Never Backed Up",
     "danger",
     "CloudOff"
   ),
-  UNKNOWN: makeConfig("UNKNOWN", "Unknown", "neutral", "CircleHelp"),
+  UNKNOWN: makeConfig("backupCompliance", "UNKNOWN", "Unknown", "neutral", "CircleHelp"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type BackupComplianceKey = keyof typeof BACKUP_COMPLIANCE;
 
 export const DRIFT_STATUS = {
-  OPEN: makeConfig("OPEN", "Open", "warning", "FileDiff"),
-  RESOLVED: makeConfig("RESOLVED", "Resolved", "success", "CircleCheck"),
-  ACCEPTED: makeConfig("ACCEPTED", "Accepted", "info", "Check"),
+  OPEN: makeConfig("drift", "OPEN", "Open", "warning", "FileDiff"),
+  RESOLVED: makeConfig("drift", "RESOLVED", "Resolved", "success", "CircleCheck"),
+  ACCEPTED: makeConfig("drift", "ACCEPTED", "Accepted", "info", "Check"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type DriftStatusKey = keyof typeof DRIFT_STATUS;
@@ -312,12 +360,12 @@ export type DriftStatusKey = keyof typeof DRIFT_STATUS;
 /* ------------------------------------------------------------------ */
 
 export const JOB_STATUS = {
-  QUEUED: makeConfig("QUEUED", "Queued", "neutral", "Clock"),
-  RUNNING: makeConfig("RUNNING", "Running", "info", "LoaderCircle"),
-  SUCCEEDED: makeConfig("SUCCEEDED", "Succeeded", "success", "CircleCheck"),
-  FAILED: makeConfig("FAILED", "Failed", "danger", "CircleX"),
-  DEAD: makeConfig("DEAD", "Dead (Retries Exhausted)", "danger", "Skull"),
-  CANCELLED: makeConfig("CANCELLED", "Cancelled", "neutral", "Ban"),
+  QUEUED: makeConfig("job", "QUEUED", "Queued", "neutral", "Clock"),
+  RUNNING: makeConfig("job", "RUNNING", "Running", "info", "LoaderCircle"),
+  SUCCEEDED: makeConfig("job", "SUCCEEDED", "Succeeded", "success", "CircleCheck"),
+  FAILED: makeConfig("job", "FAILED", "Failed", "danger", "CircleX"),
+  DEAD: makeConfig("job", "DEAD", "Dead (Retries Exhausted)", "danger", "Skull"),
+  CANCELLED: makeConfig("job", "CANCELLED", "Cancelled", "neutral", "Ban"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type JobStatusKey = keyof typeof JOB_STATUS;
@@ -327,20 +375,26 @@ export type JobStatusKey = keyof typeof JOB_STATUS;
 /* ------------------------------------------------------------------ */
 
 export const ALERT_STATUS = {
-  FIRING: makeConfig("FIRING", "Firing", "danger", "BellRing"),
-  ACKNOWLEDGED: makeConfig("ACKNOWLEDGED", "Acknowledged", "warning", "BellDot"),
-  SUPPRESSED: makeConfig("SUPPRESSED", "Suppressed", "neutral", "BellOff"),
-  RESOLVED: makeConfig("RESOLVED", "Resolved", "success", "CircleCheck"),
+  FIRING: makeConfig("alert", "FIRING", "Firing", "danger", "BellRing"),
+  ACKNOWLEDGED: makeConfig("alert", "ACKNOWLEDGED", "Acknowledged", "warning", "BellDot"),
+  SUPPRESSED: makeConfig("alert", "SUPPRESSED", "Suppressed", "neutral", "BellOff"),
+  RESOLVED: makeConfig("alert", "RESOLVED", "Resolved", "success", "CircleCheck"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type AlertStatusKey = keyof typeof ALERT_STATUS;
 
 export const INCIDENT_STATUS = {
-  OPEN: makeConfig("OPEN", "Open", "danger", "Siren"),
-  ACKNOWLEDGED: makeConfig("ACKNOWLEDGED", "Acknowledged", "warning", "Eye"),
-  INVESTIGATING: makeConfig("INVESTIGATING", "Investigating", "info", "Search"),
-  RESOLVED: makeConfig("RESOLVED", "Resolved", "success", "CircleCheck"),
-  CLOSED: makeConfig("CLOSED", "Closed", "neutral", "Archive"),
+  OPEN: makeConfig("incidentStatus", "OPEN", "Open", "danger", "Siren"),
+  ACKNOWLEDGED: makeConfig("incidentStatus", "ACKNOWLEDGED", "Acknowledged", "warning", "Eye"),
+  INVESTIGATING: makeConfig(
+    "incidentStatus",
+    "INVESTIGATING",
+    "Investigating",
+    "info",
+    "Search"
+  ),
+  RESOLVED: makeConfig("incidentStatus", "RESOLVED", "Resolved", "success", "CircleCheck"),
+  CLOSED: makeConfig("incidentStatus", "CLOSED", "Closed", "neutral", "Archive"),
 } as const satisfies Record<string, StatusBadgeConfig>;
 
 export type IncidentStatusKey = keyof typeof INCIDENT_STATUS;
@@ -350,6 +404,7 @@ export type IncidentStatusKey = keyof typeof INCIDENT_STATUS;
 /* ------------------------------------------------------------------ */
 
 export const FALLBACK_STATUS_CONFIG: StatusBadgeConfig = makeConfig(
+  "common",
   "UNKNOWN",
   "Unknown",
   "neutral",

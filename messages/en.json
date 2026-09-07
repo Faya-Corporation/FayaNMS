@@ -516,5 +516,184 @@
   "language": {
     "en": "English",
     "ar": "العربية"
-  }
+  },
+    "status": {
+      "device": {
+        "ONLINE": "Online",
+        "OFFLINE": "Offline",
+        "DEGRADED": "Degraded",
+        "MAINTENANCE": "Maintenance",
+        "UNKNOWN": "Unknown",
+        "UNMANAGED": "Unmanaged"
+      },
+      "interfaceAdmin": {
+        "UP": "Admin Up",
+        "DOWN": "Admin Down",
+        "TESTING": "Testing"
+      },
+      "interfaceOper": {
+        "UP": "Up",
+        "DOWN": "Down",
+        "TESTING": "Testing",
+        "UNKNOWN": "Unknown",
+        "DORMANT": "Dormant",
+        "NOT_PRESENT": "Not Present",
+        "LOWER_LAYER_DOWN": "Lower Layer Down"
+      },
+      "snapshot": {
+        "CURRENT": "Current",
+        "HISTORICAL": "Historical",
+        "BASELINE": "Baseline"
+      },
+      "snapshotSource": {
+        "SCHEDULED": "Scheduled",
+        "MANUAL": "Manual",
+        "PRE_CHANGE": "Pre-Change",
+        "POST_CHANGE": "Post-Change",
+        "EVENT": "Event-Driven"
+      },
+      "severity": {
+        "CRITICAL": "Critical",
+        "HIGH": "High",
+        "MEDIUM": "Medium",
+        "LOW": "Low",
+        "INFO": "Info"
+      },
+      "incident": {
+        "SEV1": "SEV1 — Critical",
+        "SEV2": "SEV2 — High",
+        "SEV3": "SEV3 — Medium",
+        "SEV4": "SEV4 — Low"
+      },
+      "change": {
+        "DRAFT": "Draft",
+        "PENDING_APPROVAL": "Pending Approval",
+        "APPROVED": "Approved",
+        "SCHEDULED": "Scheduled",
+        "IN_PROGRESS": "In Progress",
+        "VALIDATING": "Validating",
+        "COMPLETED": "Completed",
+        "PARTIAL_SUCCESS": "Partial Success",
+        "ROLLING_BACK": "Rolling Back",
+        "ROLLED_BACK": "Rolled Back",
+        "ROLLBACK_FAILED": "Rollback Failed",
+        "FAILED": "Failed",
+        "REJECTED": "Rejected",
+        "CANCELLED": "Cancelled",
+        "EXPIRED": "Expired",
+        "CLOSED": "Closed",
+        "PLANNING": "Planning",
+        "TECHNICAL_REVIEW": "Technical Review",
+        "AWAITING_APPROVAL": "Awaiting Approval",
+        "PRE_CHECK": "Pre-Check",
+        "EXECUTING": "Executing",
+        "SUCCESSFUL": "Successful",
+        "POST_REVIEW": "Post-Review"
+      },
+      "risk": {
+        "LOW": "Low Risk",
+        "MEDIUM": "Medium Risk",
+        "HIGH": "High Risk",
+        "CRITICAL": "Critical Risk"
+      },
+      "backup": {
+        "QUEUED": "Queued",
+        "RUNNING": "Running",
+        "SUCCESS": "Success",
+        "FAILED": "Failed",
+        "SKIPPED": "Skipped"
+      },
+      "backupCompliance": {
+        "COMPLIANT": "Compliant",
+        "OVERDUE": "Overdue",
+        "FAILED": "Last Backup Failed",
+        "NEVER_BACKED_UP": "Never Backed Up",
+        "UNKNOWN": "Unknown"
+      },
+      "drift": {
+        "OPEN": "Open",
+        "RESOLVED": "Resolved",
+        "ACCEPTED": "Accepted"
+      },
+      "job": {
+        "QUEUED": "Queued",
+        "RUNNING": "Running",
+        "SUCCEEDED": "Succeeded",
+        "FAILED": "Failed",
+        "DEAD": "Dead (Retries Exhausted)",
+        "CANCELLED": "Cancelled"
+      },
+      "alert": {
+        "FIRING": "Firing",
+        "ACTIVE": "Active",
+        "ACKNOWLEDGED": "Acknowledged",
+        "SUPPRESSED": "Suppressed",
+        "RESOLVED": "Resolved"
+      },
+      "incidentStatus": {
+        "OPEN": "Open",
+        "NEW": "New",
+        "ASSIGNED": "Assigned",
+        "ACKNOWLEDGED": "Acknowledged",
+        "INVESTIGATING": "Investigating",
+        "MITIGATING": "Mitigating",
+        "MONITORING": "Monitoring",
+        "RESOLVED": "Resolved",
+        "POST_INCIDENT_REVIEW": "Post-Incident Review",
+        "CLOSED": "Closed"
+      },
+      "common": {
+        "UNKNOWN": "Unknown"
+      },
+      "changeStep": {
+        "PENDING": "Pending",
+        "RUNNING": "Running",
+        "PASSED": "Passed",
+        "FAILED": "Failed",
+        "SKIPPED": "Skipped"
+      },
+      "changeStepType": {
+        "CHECK": "Check",
+        "BACKUP": "Backup",
+        "APPLY": "Apply",
+        "VALIDATE": "Validate",
+        "ROLLBACK": "Rollback"
+      },
+      "changeApproval": {
+        "PENDING": "Pending",
+        "APPROVED": "Approved",
+        "REJECTED": "Rejected",
+        "NOT_REQUIRED": "Not Required"
+      },
+      "changeApprovalLevel": {
+        "TECHNICAL": "Technical",
+        "SECURITY": "Security",
+        "MANAGER": "Manager",
+        "CAB": "CAB"
+      },
+      "changeType": {
+        "STANDARD": "Standard",
+        "NORMAL": "Normal",
+        "EMERGENCY": "Emergency"
+      },
+      "changeDeviceResult": {
+        "PENDING": "Pending",
+        "SUCCESS": "Success",
+        "FAILED": "Failed",
+        "SKIPPED": "Skipped"
+      }
+    },
+    "timeRange": {
+      "options": {
+        "15m": "Last 15 minutes",
+        "1h": "Last hour",
+        "6h": "Last 6 hours",
+        "24h": "Last 24 hours",
+        "7d": "Last 7 days",
+        "30d": "Last 30 days",
+        "custom": "Custom range"
+      },
+      "ariaLabel": "Time range",
+      "placeholder": "Time range"
+    }
 }

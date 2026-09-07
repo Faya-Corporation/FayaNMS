@@ -276,7 +276,9 @@ function ActiveIncidentsCard({
                 type="button"
               >
                 <IncidentSeverityBadge className="shrink-0" value={incident.severity} />
-                <span className="font-tech shrink-0 text-muted-foreground ltr-technical">
+                {/* Number hidden <sm: fixed-width shrink-0 children (badge + id +
+                    time) otherwise outgrow the 375px card and spill the page. */}
+                <span className="hidden shrink-0 font-tech text-muted-foreground ltr-technical sm:inline">
                   {incident.number}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm" title={incident.title}>
@@ -330,7 +332,8 @@ function UpcomingChangesCard({
               key={change.id}
             >
               <ChangeRiskBadge className="shrink-0" value={change.riskLevel} />
-              <span className="font-tech shrink-0 text-muted-foreground ltr-technical">
+              {/* Number hidden <sm — same 375px spill guard as incidents row. */}
+              <span className="hidden shrink-0 font-tech text-muted-foreground ltr-technical sm:inline">
                 {change.number}
               </span>
               <span className="min-w-0 flex-1 truncate text-sm" title={change.title}>

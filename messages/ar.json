@@ -516,5 +516,184 @@
   "language": {
     "en": "English",
     "ar": "العربية"
-  }
+  },
+    "status": {
+      "device": {
+        "ONLINE": "متصل",
+        "OFFLINE": "غير متصل",
+        "DEGRADED": "متدهور",
+        "MAINTENANCE": "صيانة",
+        "UNKNOWN": "غير معروف",
+        "UNMANAGED": "غير مُدار"
+      },
+      "interfaceAdmin": {
+        "UP": "مُمكَّن إدارياً",
+        "DOWN": "معطَّل إدارياً",
+        "TESTING": "قيد الاختبار"
+      },
+      "interfaceOper": {
+        "UP": "يعمل",
+        "DOWN": "متوقف",
+        "TESTING": "قيد الاختبار",
+        "UNKNOWN": "غير معروف",
+        "DORMANT": "خامل",
+        "NOT_PRESENT": "غير موجود",
+        "LOWER_LAYER_DOWN": "الطبقة السفلية متوقفة"
+      },
+      "snapshot": {
+        "CURRENT": "حالي",
+        "HISTORICAL": "أرشيفي",
+        "BASELINE": "خط أساس"
+      },
+      "snapshotSource": {
+        "SCHEDULED": "مجدول",
+        "MANUAL": "يدوي",
+        "PRE_CHANGE": "قبل التغيير",
+        "POST_CHANGE": "بعد التغيير",
+        "EVENT": "مدفوع بحدث"
+      },
+      "severity": {
+        "CRITICAL": "حرج",
+        "HIGH": "مرتفع",
+        "MEDIUM": "متوسط",
+        "LOW": "منخفض",
+        "INFO": "معلوماتي"
+      },
+      "incident": {
+        "SEV1": "SEV1 — حرج",
+        "SEV2": "SEV2 — مرتفع",
+        "SEV3": "SEV3 — متوسط",
+        "SEV4": "SEV4 — منخفض"
+      },
+      "change": {
+        "DRAFT": "مسودة",
+        "PENDING_APPROVAL": "بانتظار الموافقة",
+        "APPROVED": "معتمد",
+        "SCHEDULED": "مجدول",
+        "IN_PROGRESS": "قيد التنفيذ",
+        "VALIDATING": "قيد التحقق",
+        "COMPLETED": "مكتمل",
+        "PARTIAL_SUCCESS": "نجاح جزئي",
+        "ROLLING_BACK": "قيد التراجع",
+        "ROLLED_BACK": "تم التراجع",
+        "ROLLBACK_FAILED": "فشل التراجع",
+        "FAILED": "فاشل",
+        "REJECTED": "مرفوض",
+        "CANCELLED": "ملغى",
+        "EXPIRED": "منتهي",
+        "CLOSED": "مغلق",
+        "PLANNING": "قيد التخطيط",
+        "TECHNICAL_REVIEW": "مراجعة فنية",
+        "AWAITING_APPROVAL": "بانتظار الموافقة",
+        "PRE_CHECK": "فحص مسبق",
+        "EXECUTING": "قيد التنفيذ",
+        "SUCCESSFUL": "ناجح",
+        "POST_REVIEW": "مراجعة لاحقة"
+      },
+      "risk": {
+        "LOW": "خطر منخفض",
+        "MEDIUM": "خطر متوسط",
+        "HIGH": "خطر مرتفع",
+        "CRITICAL": "خطر حرج"
+      },
+      "backup": {
+        "QUEUED": "في قائمة الانتظار",
+        "RUNNING": "قيد التشغيل",
+        "SUCCESS": "ناجح",
+        "FAILED": "فاشل",
+        "SKIPPED": "تم التخطي"
+      },
+      "backupCompliance": {
+        "COMPLIANT": "مطابق",
+        "OVERDUE": "متأخر",
+        "FAILED": "فشل آخر نسخة احتياطية",
+        "NEVER_BACKED_UP": "لم تُؤخذ منه نسخة",
+        "UNKNOWN": "غير معروف"
+      },
+      "drift": {
+        "OPEN": "مفتوح",
+        "RESOLVED": "تمت المعالجة",
+        "ACCEPTED": "مقبول"
+      },
+      "job": {
+        "QUEUED": "في قائمة الانتظار",
+        "RUNNING": "قيد التشغيل",
+        "SUCCEEDED": "نجح",
+        "FAILED": "فاشل",
+        "DEAD": "متوقف نهائياً (استُنفدت المحاولات)",
+        "CANCELLED": "ملغى"
+      },
+      "alert": {
+        "FIRING": "نشط",
+        "ACTIVE": "نشط",
+        "ACKNOWLEDGED": "تم الإقرار",
+        "SUPPRESSED": "مكتوم",
+        "RESOLVED": "تمت المعالجة"
+      },
+      "incidentStatus": {
+        "OPEN": "مفتوح",
+        "NEW": "جديد",
+        "ASSIGNED": "مُسند",
+        "ACKNOWLEDGED": "تم الإقرار",
+        "INVESTIGATING": "قيد التحقيق",
+        "MITIGATING": "قيد المعالجة",
+        "MONITORING": "قيد المراقبة",
+        "RESOLVED": "تمت المعالجة",
+        "POST_INCIDENT_REVIEW": "مراجعة ما بعد الحادث",
+        "CLOSED": "مغلق"
+      },
+      "common": {
+        "UNKNOWN": "غير معروف"
+      },
+      "changeStep": {
+        "PENDING": "قيد الانتظار",
+        "RUNNING": "قيد التشغيل",
+        "PASSED": "اجتاز",
+        "FAILED": "فشل",
+        "SKIPPED": "تم التخطي"
+      },
+      "changeStepType": {
+        "CHECK": "فحص",
+        "BACKUP": "نسخ احتياطي",
+        "APPLY": "تطبيق",
+        "VALIDATE": "تحقق",
+        "ROLLBACK": "تراجع"
+      },
+      "changeApproval": {
+        "PENDING": "قيد الانتظار",
+        "APPROVED": "معتمد",
+        "REJECTED": "مرفوض",
+        "NOT_REQUIRED": "غير مطلوب"
+      },
+      "changeApprovalLevel": {
+        "TECHNICAL": "فني",
+        "SECURITY": "أمني",
+        "MANAGER": "مدير",
+        "CAB": "لجنة التغيير"
+      },
+      "changeType": {
+        "STANDARD": "قياسي",
+        "NORMAL": "عادي",
+        "EMERGENCY": "طارئ"
+      },
+      "changeDeviceResult": {
+        "PENDING": "قيد الانتظار",
+        "SUCCESS": "نجاح",
+        "FAILED": "فشل",
+        "SKIPPED": "تم التخطي"
+      }
+    },
+    "timeRange": {
+      "options": {
+        "15m": "آخر 15 دقيقة",
+        "1h": "آخر ساعة",
+        "6h": "آخر 6 ساعات",
+        "24h": "آخر 24 ساعة",
+        "7d": "آخر 7 أيام",
+        "30d": "آخر 30 يوماً",
+        "custom": "نطاق مخصص"
+      },
+      "ariaLabel": "النطاق الزمني",
+      "placeholder": "النطاق الزمني"
+    }
 }

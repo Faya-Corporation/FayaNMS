@@ -176,7 +176,14 @@ export function AppShell() {
 
       {/* Mobile navigation drawer — side flips with the reading direction. */}
       <Sheet onOpenChange={setMobileNavOpen} open={mobileNavOpen}>
-        <SheetContent className="flex flex-col gap-0 p-0" side={isRtl ? "right" : "left"}>
+        {/* No SheetDescription exists by design — Radix's own remedy for the
+            aria-describedby warning (10-b sweep; sheet registers no
+            DescriptionWarning provider, hence the DialogContent warning name). */}
+        <SheetContent
+          aria-describedby={undefined}
+          className="flex flex-col gap-0 p-0"
+          side={isRtl ? "right" : "left"}
+        >
           <SheetHeader className="border-b">
             <SheetTitle className="flex items-center gap-2.5">
               <span
