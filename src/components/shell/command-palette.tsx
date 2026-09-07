@@ -8,6 +8,7 @@ import {
   BellRing,
   CalendarClock,
   CalendarDays,
+  CircleHelp,
   ClipboardCheck,
   CloudUpload,
   Cpu,
@@ -60,6 +61,7 @@ import { useSearch } from "@/hooks/api/use-search";
 import { getViewMeta } from "@/lib/navigation/registry";
 import { useLocalizedViewMeta } from "@/i18n/view-labels";
 import { useNavigationStore, type ViewKey } from "@/stores/navigation";
+import { usePreferencesStore } from "@/stores/preferences";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -120,10 +122,12 @@ export function CommandPalette({
   onOpenJobCenter,
 }: CommandPaletteProps) {
   const tPalette = useTranslations("palette");
+  const tTour = useTranslations("tour");
   const tCommon = useTranslations("common");
   const localizedViewMeta = useLocalizedViewMeta();
 
   const setActiveView = useNavigationStore((state) => state.setActiveView);
+  const startTour = usePreferencesStore((state) => state.startTour);
   const { toast } = useToast();
 
   const [mode, setMode] = useState<PaletteMode>("root");
@@ -314,6 +318,16 @@ export function CommandPalette({
               >
                 <ListTodo aria-hidden="true" className="text-muted-foreground" />
                 <span>{tPalette("openJobCenter")}</span>
+              </CommandItem>
+              <CommandItem
+                onSelect={() => {
+                  onOpenChange(false);
+                  startTour();
+                }}
+                value="start guided tour help walkthrough demo"
+              >
+                <CircleHelp aria-hidden="true" className="text-muted-foreground" />
+                <span>{tTour("startTour")}</span>
               </CommandItem>
             </CommandGroup>
 

@@ -258,15 +258,15 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
 
   "reports.reports": {
     title: "Reports",
-    description: "Generated reports library",
-    phase: "Phase 9 — Hardening & demo readiness (stretch)",
+    description: "Generated report runs — history and downloads",
+    phase: "Phase 9 — Report scheduler (9-a)",
     group: "Reports",
     labelKey: "nav.items.reports.reports",
   },
   "reports.scheduled": {
     title: "Scheduled Reports",
-    description: "Recurring report deliveries",
-    phase: "Phase 9 — Hardening & demo readiness (stretch)",
+    description: "Recurring report schedules — create, edit, run now",
+    phase: "Phase 9 — Report scheduler (9-a)",
     group: "Reports",
     labelKey: "nav.items.reports.scheduled",
   },

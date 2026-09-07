@@ -1020,10 +1020,12 @@ export function BackupsView() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        description="Fleet-wide configuration backup history, policies and retention"
-        title="Backups"
-      />
+      <div data-tour="backups-header">
+        <PageHeader
+          description="Fleet-wide configuration backup history, policies and retention"
+          title="Backups"
+        />
+      </div>
       <Tabs
         onValueChange={setTab}
         value={tab}

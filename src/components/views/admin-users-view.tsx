@@ -123,33 +123,35 @@ export function AdminUsersView() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        breadcrumbs={[{ label: "Administration" }, { label: "Users & Roles" }]}
-        description="Accounts, roles and permissions — auditors and disabled accounts are blocked from every write at the API layer"
-        primaryAction={
-          canWrite ? (
-            <Button onClick={() => setCreateOpen(true)}>
-              <UserPlus aria-hidden="true" className="size-4" />
-              Create user
-            </Button>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex">
-                  <Button disabled>
-                    <UserPlus aria-hidden="true" className="size-4" />
-                    Create user
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                Read-only session — account changes require an administrator
-              </TooltipContent>
-            </Tooltip>
-          )
-        }
-        title="Users & Roles"
-      />
+      <div data-tour="admin-users-header">
+        <PageHeader
+          breadcrumbs={[{ label: "Administration" }, { label: "Users & Roles" }]}
+          description="Accounts, roles and permissions — auditors and disabled accounts are blocked from every write at the API layer"
+          primaryAction={
+            canWrite ? (
+              <Button onClick={() => setCreateOpen(true)}>
+                <UserPlus aria-hidden="true" className="size-4" />
+                Create user
+              </Button>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button disabled>
+                      <UserPlus aria-hidden="true" className="size-4" />
+                      Create user
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Read-only session — account changes require an administrator
+                </TooltipContent>
+              </Tooltip>
+            )
+          }
+          title="Users & Roles"
+        />
+      </div>
 
       {/* KPI row */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

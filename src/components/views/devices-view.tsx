@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   ArrowDown,
@@ -75,7 +75,7 @@ import { cn } from "@/lib/utils";
 import {
   apiRequest,
   buildQueryString,
-  type DeviceRow,
+  type DeviceRow as DeviceRowType,
   type UpdateDevicePayload,
 } from "@/lib/api-client";
 import {
@@ -96,7 +96,7 @@ import { AddDeviceSheet } from "@/components/device/device-form-sheet";
 import { CsvImportDialog } from "@/components/device/csv-import-dialog";
 
 const ALL = "ALL";
-const PAGE_SIZE_OPTIONS = [10, 20, 50];
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const EXPORT_CAP = 500;
 const EXPORT_PAGE_SIZE = 100;
 
@@ -110,7 +110,7 @@ function csvEscape(value: string | number | null | undefined): string {
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-function buildDeviceCsv(rows: DeviceRow[]): string {
+function buildDeviceCsv(rows: DeviceRowType[]): string {
   const header = [
     "hostname",
     "display_name",
@@ -202,6 +202,189 @@ function SortableHead({
     </TableHead>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Memoized device row (Phase 9-b perf pass)                            */
+/* ------------------------------------------------------------------ */
+
+interface DeviceRowProps {
+  device: DeviceRowType;
+  isSelected: boolean;
+  highlighted: boolean;
+  columns: Record<DeviceColumnKey, boolean>;
+  onOpenDetail: (deviceId: string) => void;
+  onSelectRow: (deviceId: string, checked: boolean) => void;
+  onBackup: (deviceId: string) => void;
+  onTestConnection: (deviceId: string) => void;
+  onToggleMaintenance: (device: DeviceRowType) => void;
+  actionsPending: boolean;
+  testPending: boolean;
+}
+
+/** React.memo'd inventory row — skips re-render when the device record,
+ * selection state, column set or callbacks are unchanged (typing in the
+ * search box or toggling filters no longer re-renders every row). */
+const DeviceRow = memo(function DeviceRow({
+  device,
+  isSelected,
+  highlighted,
+  columns,
+  onOpenDetail,
+  onSelectRow,
+  onBackup,
+  onTestConnection,
+  onToggleMaintenance,
+  actionsPending,
+  testPending,
+}: DeviceRowProps) {
+  return (
+    <TableRow data-state={isSelected ? "selected" : undefined} className={cn(highlighted && "bg-primary/5")}>
+      <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
+        <Checkbox
+          aria-label={`Select ${device.hostname}`}
+          checked={isSelected}
+          onCheckedChange={(checked) => onSelectRow(device.id, checked === true)}
+        />
+      </TableCell>
+      <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
+        <button
+          className="flex max-w-[24ch] flex-col items-start leading-tight hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent sm:max-w-none"
+          onClick={() => onOpenDetail(device.id)}
+          title={`Open ${device.hostname}`}
+          type="button"
+        >
+          <span className="font-tech truncate font-medium ltr-technical">
+            {device.hostname}
+          </span>
+          {device.displayName && device.displayName !== device.hostname && (
+            <span className="max-w-[28ch] truncate text-xs text-muted-foreground">
+              {device.displayName}
+            </span>
+          )}
+        </button>
+      </TableCell>
+      {columns.status && (
+        <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
+          <DeviceStatusBadge value={device.status} />
+        </TableCell>
+      )}
+      {columns.mgmtIp && (
+        <TableCell className="h-(--density-row-h) px-(--density-cell-x) font-tech ltr-technical">
+          {device.mgmtIp}
+        </TableCell>
+      )}
+      {columns.vendor && (
+        <TableCell className="h-(--density-row-h) whitespace-nowrap px-(--density-cell-x)">
+          {device.vendor?.name ?? "—"}
+        </TableCell>
+      )}
+      {columns.model && (
+        <TableCell className="hidden h-(--density-row-h) max-w-[18ch] truncate whitespace-nowrap px-(--density-cell-x) text-muted-foreground md:table-cell">
+          {device.model ?? "—"}
+        </TableCell>
+      )}
+      {columns.site && (
+        <TableCell className="hidden h-(--density-row-h) whitespace-nowrap px-(--density-cell-x) lg:table-cell">
+          {device.site?.name ?? "—"}
+        </TableCell>
+      )}
+      {columns.criticality && (
+        <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
+          <StatusBadge
+            config={getStatusConfig(SEVERITY, device.criticality)}
+            withIcon={false}
+          />
+        </TableCell>
+      )}
+      {columns.backup && (
+        <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
+          <span className="flex flex-col gap-0.5 leading-tight">
+            <span className="whitespace-nowrap text-xs tabular-nums">
+              {device.lastBackupAt
+                ? formatDistanceToNow(new Date(device.lastBackupAt), {
+                    addSuffix: true,
+                  })
+                : "never"}
+            </span>
+            <BackupComplianceBadge className="w-fit" value={device.backupCompliance} />
+          </span>
+        </TableCell>
+      )}
+      {columns.lastSeen && (
+        <TableCell className="hidden h-(--density-row-h) whitespace-nowrap px-(--density-cell-x) text-xs text-muted-foreground tabular-nums sm:table-cell">
+          {device.lastSeen
+            ? formatDistanceToNow(new Date(device.lastSeen), {
+                addSuffix: true,
+              })
+            : "—"}
+        </TableCell>
+      )}
+      {columns.health && (
+        <TableCell className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
+          <span className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="h-1.5 w-14 overflow-hidden rounded-full bg-muted"
+            >
+              <span
+                className={cn(
+                  "block h-full rounded-full",
+                  device.healthScore >= 80
+                    ? "bg-success"
+                    : device.healthScore >= 50
+                      ? "bg-warning"
+                      : "bg-danger"
+                )}
+                style={{ width: `${device.healthScore}%` }}
+              />
+            </span>
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {device.healthScore}
+            </span>
+          </span>
+        </TableCell>
+      )}
+      <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button aria-label={`Actions for ${device.hostname}`} size="icon" variant="ghost">
+              <MoreHorizontal aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuLabel className="font-tech truncate ltr-technical">
+              {device.hostname}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onOpenDetail(device.id)}>
+              <Eye aria-hidden="true" />
+              Open detail
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={device.status === "UNMANAGED" || actionsPending}
+              onClick={() => onBackup(device.id)}
+            >
+              <CloudUpload aria-hidden="true" />
+              Backup now
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={testPending} onClick={() => onTestConnection(device.id)}>
+              <PlugZap aria-hidden="true" />
+              Test connection
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={actionsPending}
+              onClick={() => onToggleMaintenance(device)}
+            >
+              <Wrench aria-hidden="true" />
+              {device.status === "MAINTENANCE" ? "Exit maintenance" : "Enter maintenance"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
+  );
+});
 
 /**
  * Device inventory (Phase 2): server-side sort/filter/pagination DataTable
@@ -358,8 +541,12 @@ export function DevicesView() {
     return chips;
   }, [filters, meta.data, setFilter]);
 
-  const openDetail = (deviceId: string) =>
-    setActiveView("network.device-detail", { deviceId });
+  // Row callbacks are kept identity-stable (useCallback) so the memoized
+  // DeviceRow skips re-renders while typing/filtering (Phase 9-b perf pass).
+  const openDetail = useCallback(
+    (deviceId: string) => setActiveView("network.device-detail", { deviceId }),
+    [setActiveView]
+  );
 
   const handleSort = (field: DeviceSortField) => {
     toggleSort(field);
@@ -380,37 +567,53 @@ export function DevicesView() {
     });
   };
 
-  const handleSelectRow = (deviceId: string, checked: boolean) => {
+  const handleSelectRow = useCallback((deviceId: string, checked: boolean) => {
     setSelected((current) => {
       const next = new Set(current);
       if (checked) next.add(deviceId);
       else next.delete(deviceId);
       return next;
     });
-  };
+  }, []);
 
-  const handleBackupNow = (deviceIds: string[]) => {
-    if (deviceIds.length === 0) return;
-    if (deviceIds.length === 1) {
-      createJob.mutate({ type: "CONFIG_BACKUP", deviceId: deviceIds[0] });
-    } else {
-      bulkAction.mutate({ action: "backup_now", deviceIds });
-    }
-  };
+  const handleBackupNow = useCallback(
+    (deviceIds: string[]) => {
+      if (deviceIds.length === 0) return;
+      if (deviceIds.length === 1) {
+        createJob.mutate({ type: "CONFIG_BACKUP", deviceId: deviceIds[0] });
+      } else {
+        bulkAction.mutate({ action: "backup_now", deviceIds });
+      }
+    },
+    [createJob.mutate, bulkAction.mutate]
+  );
 
-  const handleToggleMaintenance = (device: DeviceRow) => {
-    if (device.status === "MAINTENANCE") {
-      const previous = recallMaintenance(device.id);
-      const restore =
-        previous && previous !== "MAINTENANCE"
-          ? (previous as UpdateDevicePayload["status"])
-          : ("ONLINE" as const);
-      updateDevice.mutate({ id: device.id, data: { status: restore } });
-    } else {
-      rememberMaintenance(device.id, device.status);
-      updateDevice.mutate({ id: device.id, data: { status: "MAINTENANCE" } });
-    }
-  };
+  const handleTestConnection = useCallback(
+    (deviceId: string) => testConnection.mutate(deviceId),
+    [testConnection.mutate]
+  );
+
+  const handleBackupDevice = useCallback(
+    (deviceId: string) => handleBackupNow([deviceId]),
+    [handleBackupNow]
+  );
+
+  const handleToggleMaintenance = useCallback(
+    (device: DeviceRowType) => {
+      if (device.status === "MAINTENANCE") {
+        const previous = recallMaintenance(device.id);
+        const restore =
+          previous && previous !== "MAINTENANCE"
+            ? (previous as UpdateDevicePayload["status"])
+            : ("ONLINE" as const);
+        updateDevice.mutate({ id: device.id, data: { status: restore } });
+      } else {
+        rememberMaintenance(device.id, device.status);
+        updateDevice.mutate({ id: device.id, data: { status: "MAINTENANCE" } });
+      }
+    },
+    [recallMaintenance, rememberMaintenance, updateDevice.mutate]
+  );
 
   const handleExportCsv = async () => {
     setExporting(true);
@@ -425,7 +628,7 @@ export function DevicesView() {
         sort: filters.sort,
         dir: filters.dir,
       };
-      const first = await apiRequest<DeviceRow[]>(
+      const first = await apiRequest<DeviceRowType[]>(
         `/api/v1/devices${buildQueryString({ ...baseParams, page: 1, pageSize: EXPORT_PAGE_SIZE })}`
       );
       const allRows = [...first.data];
@@ -436,7 +639,7 @@ export function DevicesView() {
       );
       for (let nextPage = 2; nextPage <= maxPages; nextPage += 1) {
         if (allRows.length >= EXPORT_CAP) break;
-        const next = await apiRequest<DeviceRow[]>(
+        const next = await apiRequest<DeviceRowType[]>(
           `/api/v1/devices${buildQueryString({ ...baseParams, page: nextPage, pageSize: EXPORT_PAGE_SIZE })}`
         );
         allRows.push(...next.data);
@@ -585,7 +788,7 @@ export function DevicesView() {
       </div>
 
       {/* Filter bar */}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2" data-tour="devices-toolbar">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-0 flex-1 sm:max-w-xs">
             <Search
@@ -914,178 +1117,23 @@ export function DevicesView() {
                   <TableHead className="h-(--density-row-h) px-(--density-cell-x) w-10" />
                 </TableRow>
               </TableHeader>
-              <TableBody>
-                {rows.map((device) => {
-                  const isSelected = selected.has(device.id);
-                  return (
-                    <TableRow
-                      data-state={isSelected ? "selected" : undefined}
-                      key={device.id}
-                      className={cn(
-                        device.id === params?.selectedId && "bg-primary/5"
-                      )}
-                    >
-                      <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
-                        <Checkbox
-                          aria-label={`Select ${device.hostname}`}
-                          checked={isSelected}
-                          onCheckedChange={(checked) =>
-                            handleSelectRow(device.id, checked === true)
-                          }
-                        />
-                      </TableCell>
-                      <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
-                        <button
-                          className="flex max-w-[24ch] flex-col items-start leading-tight hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent sm:max-w-none"
-                          onClick={() => openDetail(device.id)}
-                          title={`Open ${device.hostname}`}
-                          type="button"
-                        >
-                          <span className="font-tech truncate font-medium ltr-technical">
-                            {device.hostname}
-                          </span>
-                          {device.displayName &&
-                            device.displayName !== device.hostname && (
-                              <span className="max-w-[28ch] truncate text-xs text-muted-foreground">
-                                {device.displayName}
-                              </span>
-                            )}
-                        </button>
-                      </TableCell>
-                      {columns.status && (
-                        <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
-                          <DeviceStatusBadge value={device.status} />
-                        </TableCell>
-                      )}
-                      {columns.mgmtIp && (
-                        <TableCell className="h-(--density-row-h) px-(--density-cell-x) font-tech ltr-technical">
-                          {device.mgmtIp}
-                        </TableCell>
-                      )}
-                      {columns.vendor && (
-                        <TableCell className="h-(--density-row-h) whitespace-nowrap px-(--density-cell-x)">
-                          {device.vendor?.name ?? "—"}
-                        </TableCell>
-                      )}
-                      {columns.model && (
-                        <TableCell className="hidden h-(--density-row-h) max-w-[18ch] truncate whitespace-nowrap px-(--density-cell-x) text-muted-foreground md:table-cell">
-                          {device.model ?? "—"}
-                        </TableCell>
-                      )}
-                      {columns.site && (
-                        <TableCell className="hidden h-(--density-row-h) whitespace-nowrap px-(--density-cell-x) lg:table-cell">
-                          {device.site?.name ?? "—"}
-                        </TableCell>
-                      )}
-                      {columns.criticality && (
-                        <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
-                          <StatusBadge
-                            config={getStatusConfig(SEVERITY, device.criticality)}
-                            withIcon={false}
-                          />
-                        </TableCell>
-                      )}
-                      {columns.backup && (
-                        <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
-                          <span className="flex flex-col gap-0.5 leading-tight">
-                            <span className="whitespace-nowrap text-xs tabular-nums">
-                              {device.lastBackupAt
-                                ? formatDistanceToNow(new Date(device.lastBackupAt), {
-                                    addSuffix: true,
-                                  })
-                                : "never"}
-                            </span>
-                            <BackupComplianceBadge
-                              className="w-fit"
-                              value={device.backupCompliance}
-                            />
-                          </span>
-                        </TableCell>
-                      )}
-                      {columns.lastSeen && (
-                        <TableCell className="hidden h-(--density-row-h) whitespace-nowrap px-(--density-cell-x) text-xs text-muted-foreground tabular-nums sm:table-cell">
-                          {device.lastSeen
-                            ? formatDistanceToNow(new Date(device.lastSeen), {
-                                addSuffix: true,
-                              })
-                            : "—"}
-                        </TableCell>
-                      )}
-                      {columns.health && (
-                        <TableCell className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
-                          <span className="flex items-center gap-2">
-                            <span
-                              aria-hidden="true"
-                              className="h-1.5 w-14 overflow-hidden rounded-full bg-muted"
-                            >
-                              <span
-                                className={cn(
-                                  "block h-full rounded-full",
-                                  device.healthScore >= 80
-                                    ? "bg-success"
-                                    : device.healthScore >= 50
-                                      ? "bg-warning"
-                                      : "bg-danger"
-                                )}
-                                style={{ width: `${device.healthScore}%` }}
-                              />
-                            </span>
-                            <span className="text-xs tabular-nums text-muted-foreground">
-                              {device.healthScore}
-                            </span>
-                          </span>
-                        </TableCell>
-                      )}
-                      <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              aria-label={`Actions for ${device.hostname}`}
-                              size="icon"
-                              variant="ghost"
-                            >
-                              <MoreHorizontal aria-hidden="true" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuLabel className="font-tech truncate ltr-technical">
-                              {device.hostname}
-                            </DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => openDetail(device.id)}>
-                              <Eye aria-hidden="true" />
-                              Open detail
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={device.status === "UNMANAGED" || bulkPending}
-                              onClick={() => handleBackupNow([device.id])}
-                            >
-                              <CloudUpload aria-hidden="true" />
-                              Backup now
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={testConnection.isPending}
-                              onClick={() => testConnection.mutate(device.id)}
-                            >
-                              <PlugZap aria-hidden="true" />
-                              Test connection
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              disabled={updateDevice.isPending}
-                              onClick={() => handleToggleMaintenance(device)}
-                            >
-                              <Wrench aria-hidden="true" />
-                              {device.status === "MAINTENANCE"
-                                ? "Exit maintenance"
-                                : "Enter maintenance"}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+              <TableBody className="table-virtualized">
+                {rows.map((device) => (
+                  <DeviceRow
+                    actionsPending={bulkPending}
+                    columns={columns}
+                    device={device}
+                    highlighted={device.id === params?.selectedId}
+                    isSelected={selected.has(device.id)}
+                    key={device.id}
+                    onBackup={handleBackupDevice}
+                    onOpenDetail={openDetail}
+                    onSelectRow={handleSelectRow}
+                    onTestConnection={handleTestConnection}
+                    onToggleMaintenance={handleToggleMaintenance}
+                    testPending={testConnection.isPending}
+                  />
+                ))}
               </TableBody>
             </Table>
           </div>

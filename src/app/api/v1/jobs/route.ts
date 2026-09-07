@@ -60,7 +60,7 @@ export async function GET(request: Request) {
 }
 
 const createSchema = z.object({
-  type: z.literal("CONFIG_BACKUP"),
+  type: z.enum(["CONFIG_BACKUP", "REPORT_RUN"]),
   deviceId: z.string().trim().min(1, "deviceId is required"),
 });
 

@@ -80,6 +80,14 @@ export const queryKeys = {
   // (pruning shrinks the series the perf views read).
   metricsRetention: ["metrics", "retention"] as const,
 
+  // ── Reports: schedules + runs history (Task 9-a) ──────────────────────
+  // Nested under the "reports" prefix so schedule/run mutations invalidate
+  // both surfaces at once. Run-now also invalidates "jobs" (Job Center
+  // shows the REPORT_RUN row) and "events" (audit trail) via the hooks.
+  reportSchedules: (params: ListParams = {}) =>
+    ["reports", "schedules", params] as const,
+  reportRuns: (params: ListParams = {}) => ["reports", "runs", params] as const,
+
   // ── Admin: users/roles (Task 7-a) ─────────────────────────────────────
   // Nested under the "admin" prefix so user/role mutations invalidate
   // every admin surface at once. authSession is the permission bootstrap

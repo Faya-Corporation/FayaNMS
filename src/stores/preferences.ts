@@ -25,10 +25,20 @@ interface PreferencesState {
    * the server resolves it (id first, then email local-part).
    */
   actAsUserId: string;
+  /**
+   * Guided tour (Phase 9-b): tourCompleted persists the one-time dismissal
+   * (set when the tour is started, finished or its dashboard hint is
+   * dismissed); tourActive is RUNTIME ONLY (excluded from persistence via
+   * partialize) so a reload mid-tour never traps the overlay.
+   */
+  tourCompleted: boolean;
+  tourActive: boolean;
   setDensity: (density: Density) => void;
   toggleSidebar: () => void;
   setActAsUserId: (userId: string) => void;
   setLocale: (locale: Locale) => void;
+  startTour: () => void;
+  completeTour: () => void;
 }
 
 /**
@@ -43,14 +53,27 @@ export const usePreferencesStore = create<PreferencesState>()(
       sidebarCollapsed: false,
       actAsUserId: "admin",
       locale: "en" satisfies Locale,
+      tourCompleted: false,
+      tourActive: false,
       setDensity: (density) => set({ density }),
       toggleSidebar: () =>
         set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setActAsUserId: (actAsUserId) => set({ actAsUserId }),
       setLocale: (locale) => set({ locale }),
+      startTour: () =>
+        set({ tourActive: true, tourCompleted: true }),
+      completeTour: () =>
+        set({ tourActive: false, tourCompleted: true }),
     }),
     {
       name: "fayanms-prefs",
+      partialize: (state) => ({
+        density: state.density,
+        sidebarCollapsed: state.sidebarCollapsed,
+        actAsUserId: state.actAsUserId,
+        locale: state.locale,
+        tourCompleted: state.tourCompleted,
+      }),
     }
   )
 );

@@ -106,20 +106,22 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        description={
-          mine
-            ? "Changes you requested — demo identity: admin"
-            : "Change requests across the lifecycle"
-        }
-        primaryAction={
-          <Button onClick={() => setWizardOpen(true)}>
-            <Plus aria-hidden="true" />
-            New change
-          </Button>
-        }
-        title={mine ? "My Changes" : "Changes"}
-      />
+      <div data-tour="changes-header">
+        <PageHeader
+          description={
+            mine
+              ? "Changes you requested — demo identity: admin"
+              : "Change requests across the lifecycle"
+          }
+          primaryAction={
+            <Button onClick={() => setWizardOpen(true)}>
+              <Plus aria-hidden="true" />
+              New change
+            </Button>
+          }
+          title={mine ? "My Changes" : "Changes"}
+        />
+      </div>
 
       {/* KPI mini-row */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

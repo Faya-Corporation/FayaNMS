@@ -219,9 +219,13 @@ const NOTIFICATION_CHANNELS = [
   },
 ];
 
+// Task 9-a — demo report schedules. Formats exercise the downloadable
+// renditions (CSV/JSON artifacts live in REPORT_RUN resultJson); the
+// third schedule is intentionally INACTIVE to demo the paused state.
 const REPORT_SCHEDULES = [
-  { id: "rs-monthly-availability", name: "Monthly Availability Report", reportType: "AVAILABILITY", frequency: "MONTHLY", format: "PDF", recipientsJson: JSON.stringify(["manager1@faya.local", "admin@faya.local"]), isActive: true, lastRunAt: ago(14400) },
-  { id: "rs-weekly-backup", name: "Weekly Backup Compliance Export", reportType: "BACKUP_COMPLIANCE", frequency: "WEEKLY", format: "XLSX", recipientsJson: JSON.stringify(["admin@faya.local", "noc1@faya.local"]), isActive: true, lastRunAt: ago(2880) },
+  { id: "rs-weekly-backup", name: "Weekly Backup Compliance Export", reportType: "BACKUP_COMPLIANCE", frequency: "WEEKLY", format: "CSV", recipientsJson: JSON.stringify(["noc@faya.local", "admin@faya.local"]), isActive: true, lastRunAt: ago(2880) },
+  { id: "rs-monthly-availability", name: "Monthly Availability Report", reportType: "AVAILABILITY", frequency: "MONTHLY", format: "JSON", recipientsJson: JSON.stringify(["manager1@faya.local", "admin@faya.local"]), isActive: true, lastRunAt: ago(14400) },
+  { id: "rs-quarterly-incidents", name: "Quarterly Incident Summary", reportType: "INCIDENT_SUMMARY", frequency: "QUARTERLY", format: "CSV", recipientsJson: JSON.stringify(["admin@faya.local"]), isActive: false, lastRunAt: null },
 ];
 
 /* ────────────────────────────── device fleet ────────────────────────────── */

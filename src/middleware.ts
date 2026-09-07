@@ -17,10 +17,11 @@ import { getToken } from "next-auth/jwt";
  *
  * INTERNAL SERVICE ENDPOINTS (deliberate trust-boundary decision): the
  * worker mini-service (:3030) drives the job engine backend-to-backend with
- * no user session — POST /api/v1/worker/*, /api/v1/alerts/evaluate and
+ * no user session — POST /api/v1/worker/*, /api/v1/alerts/evaluate,
+ * /api/v1/reports/execute (Task 9-a evaluate-in-Next report generation) and
  * /api/v1/metrics/retention/prune stay open so scheduled backups, drift
- * checks, alert evaluation and retention pruning keep working. Hardening
- * these with a shared service token is parked for Phase 7-b.
+ * checks, alert evaluation, report runs and retention pruning keep working.
+ * Hardening these with a shared service token is parked for Phase 7-b.
  *
  * Route handlers additionally verify identity server-side via
  * src/lib/auth/session.ts (requireUser/requireRole) — middleware is the
@@ -52,6 +53,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/api/v1/auth/") ||
     pathname.startsWith("/api/v1/worker/") ||
     pathname === "/api/v1/alerts/evaluate" ||
+    pathname === "/api/v1/reports/execute" ||
     pathname === "/api/v1/metrics/retention/prune"
   ) {
     return NextResponse.next();

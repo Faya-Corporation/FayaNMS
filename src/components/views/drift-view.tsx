@@ -132,24 +132,26 @@ export function DriftView() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        description="Running configs compared against approved baselines — triage deviations as accepted or resolved"
-        primaryAction={
-          hasBaselines ? (
-            runButton
-          ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex">{runButton}</span>
-              </TooltipTrigger>
-              <TooltipContent>
-                Approve a baseline first (device → Config → Approve as baseline)
-              </TooltipContent>
-            </Tooltip>
-          )
-        }
-        title="Drift"
-      />
+      <div data-tour="drift-header">
+        <PageHeader
+          description="Running configs compared against approved baselines — triage deviations as accepted or resolved"
+          primaryAction={
+            hasBaselines ? (
+              runButton
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">{runButton}</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Approve a baseline first (device → Config → Approve as baseline)
+                </TooltipContent>
+              </Tooltip>
+            )
+          }
+          title="Drift"
+        />
+      </div>
 
       {/* KPI row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

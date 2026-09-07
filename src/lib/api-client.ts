@@ -1247,6 +1247,22 @@ export interface CreateJobResult {
   };
 }
 
+/** POST /api/v1/jobs/[id]/cancel result (Phase 9-b). */
+export interface CancelJobResult {
+  job: JobRow;
+}
+
+/** POST /api/v1/jobs/[id]/retry result (Phase 9-b) — the fresh QUEUED clone. */
+export interface RetryJobResult {
+  job: JobRow;
+  audit: {
+    id: string;
+    action: string;
+    resourceLabel: string | null;
+    correlationId: string;
+  };
+}
+
 /* ------------------ Backup engine (Task 3-a) ----------------------- */
 
 /**

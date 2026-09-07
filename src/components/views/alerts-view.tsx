@@ -23,6 +23,7 @@ import { EmptyState } from "@/components/domain/empty-state";
 import { ErrorState } from "@/components/domain/error-state";
 import { KpiCard } from "@/components/domain/kpi-card";
 import { PageHeader } from "@/components/domain/page-header";
+import { SavedViewsStrip } from "@/components/domain/saved-views-strip";
 import { SectionCard } from "@/components/domain/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { AlertStreamRow } from "@/lib/api-client";
+import { useAlertsSavedViews } from "@/stores/list-views";
 import { ALERT_STATUS_UI, lookupStatusConfig } from "./status-extras";
 
 const STATUS_FILTERS = ["ALL", "ACTIVE", "ACKNOWLEDGED", "SUPPRESSED", "RESOLVED"] as const;
@@ -60,6 +62,10 @@ export function AlertsView() {
 
   const [assignTarget, setAssignTarget] = useState<AlertStreamRow | null>(null);
   const [suppressTarget, setSuppressTarget] = useState<AlertStreamRow | null>(null);
+
+  // Saved views (Phase 9-b): named filter snapshots persisted to
+  // localStorage via the generic list-views store.
+  const { savedViews, saveView, removeView } = useAlertsSavedViews();
 
   // Notifications cache stays warm so the header badge is instant when
   // the dropdown opens (the center itself lives in app-header).
@@ -123,12 +129,41 @@ export function AlertsView() {
     setPage(1);
   };
 
+  const handleSaveView = (name: string) =>
+    saveView(name, { status, severity, ruleId, siteCode, q, sort })?.name ??
+    null;
+
+  const applySavedView = (id: string) => {
+    const view = savedViews.find((entry) => entry.id === id);
+    if (!view) return;
+    setStatus(view.filters.status as (typeof STATUS_FILTERS)[number]);
+    setSeverity(view.filters.severity as (typeof SEVERITY_FILTERS)[number]);
+    setRuleId(view.filters.ruleId);
+    setSiteCode(view.filters.siteCode);
+    setSearchInput(view.filters.q);
+    setQ(view.filters.q);
+    setSort(view.filters.sort);
+    setPage(1);
+  };
+
+  const activeSavedView = savedViews.find(
+    (view) =>
+      view.filters.status === status &&
+      view.filters.severity === severity &&
+      view.filters.ruleId === ruleId &&
+      view.filters.siteCode === siteCode &&
+      view.filters.q === q &&
+      view.filters.sort === sort
+  );
+
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        description="Threshold engine, dedup and suppression — auto-refreshed stream"
-        title="Alerts"
-      />
+      <div data-tour="alerts-header">
+        <PageHeader
+          description="Threshold engine, dedup and suppression — auto-refreshed stream"
+          title="Alerts"
+        />
+      </div>
 
       <Tabs defaultValue="stream">
         <TabsList aria-label="Alerts sections">
@@ -137,6 +172,16 @@ export function AlertsView() {
         </TabsList>
 
         <TabsContent className="mt-4 flex flex-col gap-4" value="stream">
+          {/* Saved views strip (Phase 9-b) — mirrors devices-view */}
+          <SavedViewsStrip
+            activeId={activeSavedView?.id ?? null}
+            onApply={applySavedView}
+            onRemove={removeView}
+            onSave={handleSaveView}
+            saveDisabled={!hasFilters}
+            views={savedViews}
+          />
+
           {/* KPI row */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   Activity,
@@ -24,6 +24,7 @@ import { EmptyState } from "@/components/domain/empty-state";
 import { ErrorState } from "@/components/domain/error-state";
 import { KpiCard } from "@/components/domain/kpi-card";
 import { PageHeader } from "@/components/domain/page-header";
+import { SavedViewsStrip } from "@/components/domain/saved-views-strip";
 import { SectionCard } from "@/components/domain/section-card";
 import { StatusDot } from "@/components/domain/status-dot";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { AuditEventRow } from "@/lib/api-client";
 import type { StatusToken } from "@/lib/domain/status";
+import { useEventsSavedViews } from "@/stores/list-views";
 
 /**
  * Event stream (Task 5-c): the platform audit-event timeline (AuditEvent
@@ -154,7 +156,11 @@ function JsonPane({
   );
 }
 
-function EventRow({
+/**
+ * Memoized row body (Phase 9-b perf pass) — content-visibility utility on
+ * the row keeps long timelines cheap to paint.
+ */
+const EventRow = memo(function EventRow({
   event,
   expanded,
   onToggle,
@@ -177,7 +183,7 @@ function EventRow({
   };
 
   return (
-    <li className="border-b last:border-0">
+    <li className="table-virtualized border-b last:border-0">
       <button
         aria-expanded={expanded}
         className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-start transition-colors hover:bg-accent/40"
@@ -278,7 +284,7 @@ function EventRow({
       )}
     </li>
   );
-}
+});
 
 /**
  * Events view (ops.events) — audit-event timeline. Correlation-id chips
@@ -292,6 +298,10 @@ export function EventsView() {
   const [correlationInput, setCorrelationInput] = useState("");
   const [correlationId, setCorrelationId] = useState("");
   const [page, setPage] = useState(1);
+
+  // Saved views (Phase 9-b): named filter snapshots persisted to
+  // localStorage via the generic list-views store.
+  const { savedViews, saveView, removeView } = useEventsSavedViews();
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -350,12 +360,51 @@ export function EventsView() {
     timeRange !== "24h" ||
     correlationId !== "";
 
+  const handleSaveView = (name: string) =>
+    saveView(name, {
+      actor,
+      action,
+      entityType,
+      timeRange,
+      correlationId,
+    })?.name ?? null;
+
+  const applySavedView = (id: string) => {
+    const view = savedViews.find((entry) => entry.id === id);
+    if (!view) return;
+    setActor(view.filters.actor);
+    setAction(view.filters.action);
+    setEntityType(view.filters.entityType);
+    setTimeRange(view.filters.timeRange as TimeRangeKey);
+    setCorrelationInput(view.filters.correlationId);
+    setCorrelationId(view.filters.correlationId);
+    setPage(1);
+  };
+
+  const activeSavedView = savedViews.find(
+    (view) =>
+      view.filters.actor === actor &&
+      view.filters.action === action &&
+      view.filters.entityType === entityType &&
+      view.filters.timeRange === timeRange &&
+      view.filters.correlationId === correlationId
+  );
+
+  // Stable identity so memoized rows skip re-renders on parent updates.
+  const handleCorrelationClick = useCallback((value: string) => {
+    setCorrelationInput(value);
+    setCorrelationId(value);
+    setPage(1);
+  }, []);
+
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        description="Platform audit-event timeline — every user action, engine decision and system job, newest first"
-        title="Event Stream"
-      />
+      <div data-tour="events-header">
+        <PageHeader
+          description="Platform audit-event timeline — every user action, engine decision and system job, newest first"
+          title="Event Stream"
+        />
+      </div>
 
       {/* KPI strip */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -386,6 +435,16 @@ export function EventsView() {
           value={facetActions.length > 0 ? facetActions[0].action : "—"}
         />
       </div>
+
+      {/* Saved views strip (Phase 9-b) — mirrors devices-view */}
+      <SavedViewsStrip
+        activeId={activeSavedView?.id ?? null}
+        onApply={applySavedView}
+        onRemove={removeView}
+        onSave={handleSaveView}
+        saveDisabled={!hasFilters}
+        views={savedViews}
+      />
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2">
@@ -550,13 +609,9 @@ export function EventsView() {
           <ul className="max-h-[620px] overflow-y-auto">
             {rows.map((event) => (
               <EventRowContainer
-                key={event.id}
                 event={event}
-                onCorrelationClick={(value) => {
-                  setCorrelationInput(value);
-                  setCorrelationId(value);
-                  setPage(1);
-                }}
+                key={event.id}
+                onCorrelationClick={handleCorrelationClick}
               />
             ))}
           </ul>
@@ -592,10 +647,12 @@ export function EventsView() {
 }
 
 /**
- * Expansion state wrapper — one row expanded at a time is enough for a
- * timeline (keeps the live poll from collapsing multi-open panels silently).
+ * Expansion state wrapper (memoized, Phase 9-b perf pass) — one row
+ * expanded at a time is enough for a timeline (keeps the live poll from
+ * collapsing multi-open panels silently). The toggle callback is stable so
+ * the memo only re-renders when the event record itself changes.
  */
-function EventRowContainer({
+const EventRowContainer = memo(function EventRowContainer({
   event,
   onCorrelationClick,
 }: {
@@ -603,12 +660,16 @@ function EventRowContainer({
   onCorrelationClick: (correlationId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const handleToggle = useCallback(
+    () => setExpanded((value) => !value),
+    []
+  );
   return (
     <EventRow
       event={event}
       expanded={expanded}
       onCorrelationClick={onCorrelationClick}
-      onToggle={() => setExpanded((value) => !value)}
+      onToggle={handleToggle}
     />
   );
-}
+});

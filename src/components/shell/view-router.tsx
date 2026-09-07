@@ -35,6 +35,8 @@ import { PerfDevicesView } from "@/components/views/perf-devices-view";
 import { PerfInterfacesView } from "@/components/views/perf-interfaces-view";
 import { PerfOverviewView } from "@/components/views/perf-overview-view";
 import { PlaceholderView } from "@/components/views/placeholder-view";
+import { ReportsScheduledView } from "@/components/views/reports-scheduled-view";
+import { ReportsView } from "@/components/views/reports-view";
 import { SitesView } from "@/components/views/sites-view";
 import { SnapshotsView } from "@/components/views/snapshots-view";
 
@@ -128,6 +130,10 @@ export function ViewRouter() {
       return <PerfAvailabilityView />;
     case "perf.capacity":
       return <PerfCapacityView />;
+    case "reports.reports":
+      return <ReportsView />;
+    case "reports.scheduled":
+      return <ReportsScheduledView />;
     default: {
       const meta = getViewMeta(activeView);
       return <PlaceholderView meta={meta} viewKey={activeView} />;

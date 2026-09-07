@@ -13,6 +13,7 @@ import { usePermissionsStore } from "@/stores/permissions";
 import { useLocaleInfo } from "@/i18n/locale-provider";
 import { SignInGate } from "@/components/auth/sign-in-gate";
 import { SkipLink } from "@/components/domain/skip-link";
+import { GuidedTour } from "@/components/tour/guided-tour";
 import { AppFooter } from "./app-footer";
 import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
@@ -202,6 +203,9 @@ export function AppShell() {
         open={commandOpen}
       />
       <JobCenterSheet onOpenChange={setJobCenterOpen} open={jobCenterOpen} />
+
+      {/* Guided demo tour (Phase 9-b): spotlight overlay + dashboard hint. */}
+      <GuidedTour />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { formatDistanceToNow, parseISO } from "date-fns";
 import {
   Bell,
   Check,
+  CircleHelp,
   Languages,
   ListTodo,
   LogOut,
@@ -45,6 +46,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/domain/empty-state";
 import { StatusDot } from "@/components/domain/status-dot";
 import { cn } from "@/lib/utils";
@@ -90,12 +96,14 @@ export function AppHeader({
 }: AppHeaderProps) {
   const tHeader = useTranslations("header");
   const tA11y = useTranslations("a11y");
+  const tTour = useTranslations("tour");
   const localizedViewMeta = useLocalizedViewMeta();
 
   const activeView = useNavigationStore((state) => state.activeView);
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   const density = usePreferencesStore((state) => state.density);
   const setDensity = usePreferencesStore((state) => state.setDensity);
+  const startTour = usePreferencesStore((state) => state.startTour);
   const locale = usePreferencesStore((state) => state.locale);
   const setLocale = usePreferencesStore((state) => state.setLocale);
   const { theme, setTheme } = useTheme();
@@ -400,6 +408,21 @@ export function AppHeader({
         >
           <Rows3 aria-hidden="true" />
         </Button>
+
+        {/* Guided tour (Phase 9-b) — starts the demo walkthrough overlay. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              aria-label={tTour("startTour")}
+              onClick={startTour}
+              size="icon"
+              variant="ghost"
+            >
+              <CircleHelp aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{tTour("startTour")}</TooltipContent>
+        </Tooltip>
 
         {/* Language switcher (Task 8-a) — persisted in the preferences store. */}
         <DropdownMenu>

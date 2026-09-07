@@ -50,6 +50,17 @@
  * within the 60 s guard) is a graceful no-op: the job still completes
  * SUCCEEDED with { outcome: "throttled" } so it never dead-letters.
  *
+ * REPORT_RUN branch (Task 9-a) — evaluate-in-Next with IN-NEXT COMPLETION:
+ * POST /api/v1/reports/execute { jobId } generates the report artifact
+ * (src/lib/reports/generate.ts) AND persists the completion server-side —
+ * the endpoint itself flips the job SUCCEEDED with the artifact in
+ * resultJson, stamps ReportSchedule.lastRunAt and writes the
+ * REPORT_GENERATED audit. The worker therefore does NOT post
+ * /worker/complete on the success path (a late post would answer
+ * { updated: false } harmlessly); it only reports progress and logs.
+ * Network/5xx errors propagate to the generic failure path
+ * (requeue/backoff) as usual.
+ *
  * Failure semantics live on the Next.js side: complete(FAILED) either requeues
  * with exponential-ish backoff (30 s * attempts) or dead-letters the job.
  * Any single job failure is contained — the loop never crashes.
@@ -658,6 +669,53 @@ async function runMetricRetentionJob(job: ClaimedJob): Promise<void> {
   }
 }
 
+/* ───────────────────── REPORT_RUN driver (9-a) ─────────────────── */
+
+/** Response shape of POST /api/v1/reports/execute. */
+interface ReportRunResponse {
+  jobId: string;
+  scheduleId: string;
+  scheduleName?: string;
+  reportType: string;
+  format: string;
+  range: string;
+  rows: number;
+  generatedAt: string;
+}
+
+/**
+ * REPORT_RUN execution — generation AND completion happen in the Next.js
+ * API (/api/v1/reports/execute persists SUCCEEDED + resultJson artifact +
+ * schedule lastRunAt + REPORT_GENERATED audit). The worker only drives and
+ * observes, so there is deliberately no /worker/complete post here.
+ */
+async function runReportJob(job: ClaimedJob): Promise<void> {
+  const payload = job.payload ?? {};
+  const scheduleName =
+    typeof payload.scheduleName === "string" ? payload.scheduleName : "schedule";
+
+  await reportProgress(job.id, 10, `Resolving report schedule "${scheduleName}" and data window`);
+
+  const summary = (await nextPost(
+    "/api/v1/reports/execute",
+    { jobId: job.id },
+    60_000
+  )) as ReportRunResponse;
+
+  await reportProgress(
+    job.id,
+    80,
+    `Generated ${summary.reportType} report (${summary.range}) — ${summary.rows} row(s), ${summary.format}`
+  );
+
+  counters.completed += 1;
+  counters.completedByType.REPORT_RUN =
+    (counters.completedByType.REPORT_RUN ?? 0) + 1;
+  await log(
+    `job ${job.id} [${job.correlationId}] SUCCEEDED: report-run schedule="${summary.scheduleName ?? scheduleName}" type=${summary.reportType} range=${summary.range} rows=${summary.rows} format=${summary.format} (completed in-Next by /api/v1/reports/execute)`
+  );
+}
+
 async function executeJob(job: ClaimedJob): Promise<void> {
   try {
     if (job.type === "CONFIG_BACKUP") {
@@ -672,6 +730,8 @@ async function executeJob(job: ClaimedJob): Promise<void> {
       await raceTimeout(runAlertEvaluationJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "METRIC_RETENTION") {
       await raceTimeout(runMetricRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "REPORT_RUN") {
+      await raceTimeout(runReportJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else {
       throw new Error(`Unsupported job type for worker v1: ${job.type}`);
     }
@@ -690,7 +750,7 @@ async function claimTick(): Promise<void> {
     if (free <= 0) return;
     const jobs = (await nextPost(
       "/api/v1/worker/claim",
-      { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION"], limit: Math.min(CLAIM_BATCH, free) },
+      { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION", "REPORT_RUN"], limit: Math.min(CLAIM_BATCH, free) },
       10_000
     )) as ClaimedJob[];
     for (const job of Array.isArray(jobs) ? jobs : []) {

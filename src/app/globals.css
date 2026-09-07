@@ -453,3 +453,20 @@
 [dir="rtl"] :where(:not(.ltr-technical, .font-tech, code, kbd, pre, samp)) {
   letter-spacing: normal;
 }
+
+/* ------------------------------------------------------------------ */
+/* Phase 9-b — DataTable rendering performance (additive block only)   */
+/* ------------------------------------------------------------------ */
+
+/* Large-table paint optimization: skip rendering work for rows that are
+   off-screen while keeping layout stable with an estimated row height
+   (44px ≈ one comfortable-tier row). `content-visibility: auto` lets the
+   engine skip layout/paint of far-away content; `contain-intrinsic-size:
+   auto <length>` remembers the last-rendered size so scrollbars do not
+   jump. Apply to a <tbody> (device inventory page sizes up to 100) or to
+   list row elements (event stream <li>s). Interaction latency and a11y
+   are unaffected — off-screen content stays in the DOM and findable. */
+@utility table-virtualized {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
+}
