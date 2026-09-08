@@ -6,6 +6,7 @@ import {
   ok,
   pageMeta,
   paginationSchema,
+  requestContext,
 } from "../_lib/api";
 import { z } from "zod";
 
@@ -68,7 +69,7 @@ export async function GET(request: Request) {
   };
   const parsed = querySchema.safeParse(raw);
   if (!parsed.success) {
-    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400);
+    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400, requestContext(request));
   }
 
   const {
@@ -199,5 +200,5 @@ export async function GET(request: Request) {
       ),
     },
     linkedOpenIncidents: linked.length,
-  });
+  }, 200, requestContext(request));
 }

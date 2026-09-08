@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { useSites } from "@/hooks/api/use-sites";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import { BackupComplianceBadge } from "@/components/domain/backup-status-badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { ErrorState } from "@/components/domain/error-state";
@@ -78,6 +79,8 @@ function SiteCard({
   site: SiteSummary;
   onViewDevices: () => void;
 }) {
+  // Status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
   const statusEntries = Object.entries(site.statusCounts).filter(
     ([, count]) => count > 0
   );
@@ -118,9 +121,9 @@ function SiteCard({
                 <li className="flex items-center gap-2 text-sm" key={status}>
                   <StatusDot
                     className={config.dotClass}
-                    label={config.label}
+                    label={resolveStatusLabel(config)}
                   />
-                  <span>{config.label}</span>
+                  <span>{resolveStatusLabel(config)}</span>
                   <span className="ms-auto tabular-nums text-muted-foreground">
                     {count}
                   </span>

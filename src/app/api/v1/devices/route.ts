@@ -7,6 +7,7 @@ import {
   ok,
   pageMeta,
   paginationSchema,
+  requestContext,
 } from "../_lib/api";
 import { z } from "zod";
 
@@ -60,7 +61,7 @@ export async function GET(request: Request) {
     dir: url.searchParams.get("dir") ?? undefined,
   });
   if (!parsed.success) {
-    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400);
+    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400, requestContext(request));
   }
 
   const {
@@ -128,7 +129,7 @@ export async function GET(request: Request) {
     }),
   ]);
 
-  return ok(rows, { ...pageMeta(page, pageSize, total), sort, dir });
+  return ok(rows, { ...pageMeta(page, pageSize, total), sort, dir }, 200, requestContext(request));
 }
 
 /* ------------------------------------------------------------------ */
@@ -165,12 +166,12 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400, requestContext(request));
   }
 
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, requestContext(request));
   }
   const data = parsed.data;
 
@@ -179,13 +180,13 @@ export async function POST(request: Request) {
     select: { id: true, key: true, name: true },
   });
   if (!vendor) {
-    return fail("VENDOR_NOT_FOUND", "The selected vendor does not exist", 400);
+    return fail("VENDOR_NOT_FOUND", "The selected vendor does not exist", 400, requestContext(request));
   }
 
   if (data.siteId) {
     const site = await db.site.findUnique({ where: { id: data.siteId }, select: { id: true } });
     if (!site) {
-      return fail("SITE_NOT_FOUND", "The selected site does not exist", 400);
+      return fail("SITE_NOT_FOUND", "The selected site does not exist", 400, requestContext(request));
     }
   }
 
@@ -195,7 +196,7 @@ export async function POST(request: Request) {
       select: { id: true },
     });
     if (!profile) {
-      return fail("CREDENTIAL_PROFILE_NOT_FOUND", "The selected credential profile does not exist", 400);
+      return fail("CREDENTIAL_PROFILE_NOT_FOUND", "The selected credential profile does not exist", 400, requestContext(request));
     }
   }
 
@@ -204,7 +205,7 @@ export async function POST(request: Request) {
     select: { id: true },
   });
   if (existing) {
-    return fail("HOSTNAME_TAKEN", `A device with hostname "${data.hostname}" already exists`, 409);
+    return fail("HOSTNAME_TAKEN", `A device with hostname "${data.hostname}" already exists`, 409, requestContext(request));
   }
 
   const correlationId = newJobCorrelationId();
@@ -264,12 +265,12 @@ export async function POST(request: Request) {
       },
     });
 
-    return ok({ device, audit }, { correlationId }, 201);
+    return ok({ device, audit }, { correlationId }, 201, requestContext(request));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     if (message.includes("Unique constraint")) {
-      return fail("HOSTNAME_TAKEN", `A device with hostname "${data.hostname}" already exists`, 409);
+      return fail("HOSTNAME_TAKEN", `A device with hostname "${data.hostname}" already exists`, 409, requestContext(request));
     }
-    return fail("CREATE_FAILED", "The device could not be created", 500);
+    return fail("CREATE_FAILED", "The device could not be created", 500, requestContext(request));
   }
 }

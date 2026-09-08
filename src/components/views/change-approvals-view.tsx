@@ -13,6 +13,7 @@ import {
 
 import { useApprovals, useActingUser } from "@/hooks/api/use-approvals";
 import { useDecideApproval } from "@/hooks/api/use-approval-mutations";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import { usePreferencesStore } from "@/stores/preferences";
 import { ChangeRiskBadge } from "@/components/domain/change-risk-badge";
 import { EmptyState } from "@/components/domain/empty-state";
@@ -92,6 +93,8 @@ interface DecisionTarget {
 
 export function ChangeApprovalsView() {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
+  // Status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
 
   const actAsUserId = usePreferencesStore((state) => state.actAsUserId);
   const setActAsUserId = usePreferencesStore((state) => state.setActAsUserId);
@@ -394,8 +397,8 @@ export function ChangeApprovalsView() {
                                   aria-hidden="true"
                                   className={`size-1.5 rounded-full ${statusConfig.dotClass}`}
                                 />
-                                {levelConfig.label}
-                                <span className="sr-only">— {statusConfig.label}</span>
+                                {resolveStatusLabel(levelConfig)}
+                                <span className="sr-only">— {resolveStatusLabel(statusConfig)}</span>
                               </Badge>
                             );
                           })}
@@ -417,10 +420,10 @@ export function ChangeApprovalsView() {
                               const buttons = (
                                 <div className="flex items-center gap-1.5">
                                   <span className="hidden font-tech text-[10px] uppercase text-muted-foreground xl:inline">
-                                    {levelConfig.label}
+                                    {resolveStatusLabel(levelConfig)}
                                   </span>
                                   <Button
-                                    aria-label={`Approve ${levelConfig.label} for ${row.change.number}`}
+                                    aria-label={`Approve ${resolveStatusLabel(levelConfig)} for ${row.change.number}`}
                                     disabled={decide.isPending || sodBlocked}
                                     onClick={() => openDecision(row, level, "APPROVED")}
                                     size="sm"
@@ -430,7 +433,7 @@ export function ChangeApprovalsView() {
                                     Approve
                                   </Button>
                                   <Button
-                                    aria-label={`Reject ${levelConfig.label} for ${row.change.number}`}
+                                    aria-label={`Reject ${resolveStatusLabel(levelConfig)} for ${row.change.number}`}
                                     disabled={decide.isPending || sodBlocked}
                                     onClick={() => openDecision(row, level, "REJECTED")}
                                     size="sm"
@@ -482,7 +485,7 @@ export function ChangeApprovalsView() {
                 <DialogTitle>
                   {decision.decision === "APPROVED" ? "Approve" : "Reject"}{" "}
                   <span className="font-tech ltr-technical">{decision.changeNumber}</span> —{" "}
-                  {lookupStatusConfig(CHANGE_APPROVAL_LEVEL_UI, decision.level).label}
+                  {resolveStatusLabel(lookupStatusConfig(CHANGE_APPROVAL_LEVEL_UI, decision.level))}
                 </DialogTitle>
                 <DialogDescription>
                   {decision.decision === "APPROVED"

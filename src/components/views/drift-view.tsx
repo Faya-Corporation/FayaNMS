@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { useDrift, useRunDriftCheck, useTriageDrift } from "@/hooks/api/use-drift";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import { DriftStatusBadge } from "@/components/domain/drift-status-badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { ErrorState } from "@/components/domain/error-state";
@@ -88,6 +89,8 @@ type TriageAction = "ACCEPT" | "RESOLVE";
 
 export function DriftView() {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
+  // Status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
 
   const [status, setStatus] = useState(ALL);
   const [page, setPage] = useState(1);
@@ -209,7 +212,7 @@ export function DriftView() {
                 <SelectItem value={ALL}>All statuses</SelectItem>
                 {Object.values(DRIFT_STATUS).map((config) => (
                   <SelectItem key={config.key} value={config.key}>
-                    {config.label}
+                    {resolveStatusLabel(config)}
                   </SelectItem>
                 ))}
               </SelectContent>

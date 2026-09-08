@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback } from "react";
+
 import { useTranslations } from "next-intl";
 
 import type { StatusBadgeConfig } from "@/lib/domain/status";
@@ -17,18 +19,23 @@ import type { StatusBadgeConfig } from "@/lib/domain/status";
  * relative to that namespace (status.status.*) and always miss. `t.has()`
  * returns false without logging when the key (or the whole namespace) is
  * missing, and the try/catch is a final safety net — a dropped namespace
- * can never throw during render.
+ * can never throw during render. The resolver is memoized with useCallback
+ * (t is stable per locale/messages) so views that call it inside useMemo
+ * (filter chips, chart data) keep their memoization intact.
  */
 export function useStatusLabel() {
   const t = useTranslations();
-  return (config: StatusBadgeConfig): string => {
-    try {
-      if (config.labelKey && t.has(config.labelKey)) {
-        return t(config.labelKey);
+  return useCallback(
+    (config: StatusBadgeConfig): string => {
+      try {
+        if (config.labelKey && t.has(config.labelKey)) {
+          return t(config.labelKey);
+        }
+      } catch {
+        /* missing namespace → fall through to the English label */
       }
-    } catch {
-      /* missing namespace → fall through to the English label */
-    }
-    return config.label;
-  };
+      return config.label;
+    },
+    [t]
+  );
 }

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { useSnapshots } from "@/hooks/api/use-snapshots";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import { EmptyState } from "@/components/domain/empty-state";
 import { ErrorState } from "@/components/domain/error-state";
 import { PageHeader } from "@/components/domain/page-header";
@@ -70,6 +71,8 @@ function formatSize(bytes: number): string {
 
 export function SnapshotsView() {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
+  // Status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
 
   // Filters (server-side)
   const [searchInput, setSearchInput] = useState("");
@@ -184,7 +187,7 @@ export function SnapshotsView() {
               <SelectItem value={ALL}>All statuses</SelectItem>
               {Object.values(SNAPSHOT_STATUS).map((config) => (
                 <SelectItem key={config.key} value={config.key}>
-                  {config.label}
+                  {resolveStatusLabel(config)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -203,7 +206,7 @@ export function SnapshotsView() {
               <SelectItem value={ALL}>All sources</SelectItem>
               {Object.values(SNAPSHOT_SOURCE).map((config) => (
                 <SelectItem key={config.key} value={config.key}>
-                  {config.label}
+                  {resolveStatusLabel(config)}
                 </SelectItem>
               ))}
             </SelectContent>

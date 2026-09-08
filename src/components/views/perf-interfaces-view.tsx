@@ -5,6 +5,7 @@ import { Activity, Search } from "lucide-react";
 
 import { usePerformanceInterfaces } from "@/hooks/api/use-performance";
 import { useMeta } from "@/hooks/api/use-meta";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import { EmptyState } from "@/components/domain/empty-state";
 import { ErrorState } from "@/components/domain/error-state";
 import { PageHeader } from "@/components/domain/page-header";
@@ -49,6 +50,8 @@ function utilBarClass(pct: number): string {
  */
 export function PerfInterfacesView() {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
+  // Status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
 
   const [range, setRange] = useState<PerfRange>("24H");
   const [sort, setSort] = useState<"UTIL" | "PACKET_LOSS">("UTIL");
@@ -130,7 +133,7 @@ export function PerfInterfacesView() {
               key={status}
             >
               <span aria-hidden="true" className={cn("size-2 rounded-full", config?.dotClass)} />
-              {config?.label ?? status}
+              {config ? resolveStatusLabel(config) : status}
               <span className="font-medium tabular-nums text-foreground">{count}</span>
             </span>
           );
@@ -273,6 +276,8 @@ function InterfaceRow({
   row: PerfInterfaceRow;
 }) {
   const operConfig = getStatusConfig(INTERFACE_OPER_STATUS, row.operStatus);
+  // Oper-status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
 
   return (
     <tr className="border-b transition-colors last:border-0 hover:bg-accent/50">
@@ -300,7 +305,7 @@ function InterfaceRow({
             aria-hidden="true"
             className={cn("size-2 rounded-full", operConfig?.dotClass)}
           />
-          {operConfig?.label ?? row.operStatus}
+          {resolveStatusLabel(operConfig)}
         </span>
       </td>
       <td className="hidden px-4 py-2 text-end text-xs text-muted-foreground tabular-nums sm:table-cell">

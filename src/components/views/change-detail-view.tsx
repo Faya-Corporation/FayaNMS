@@ -29,6 +29,7 @@ import {
 } from "@/hooks/api/use-change-mutations";
 import { useActingUser } from "@/hooks/api/use-approvals";
 import { useDecideApproval } from "@/hooks/api/use-approval-mutations";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import { usePreferencesStore } from "@/stores/preferences";
 import {
   getStatusConfig,
@@ -244,6 +245,8 @@ function StepTimeline({ steps }: { steps: ChangeDetailStep[] }) {
 export function ChangeDetailView() {
   const params = useNavigationStore((state) => state.params);
   const setActiveView = useNavigationStore((state) => state.setActiveView);
+  // Status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
   const changeId = params?.changeId ?? null;
 
   const actAsUserId = usePreferencesStore((state) => state.actAsUserId);
@@ -708,7 +711,7 @@ export function ChangeDetailView() {
                   key={level}
                 >
                   <StatusIcon className={levelConfig.iconClass} icon={levelConfig.icon} />
-                  <span className="text-sm font-medium">{levelConfig.label}</span>
+                  <span className="text-sm font-medium">{resolveStatusLabel(levelConfig)}</span>
                   <StatusBadge config={statusConfig} />
                   <span className="ms-auto text-xs text-muted-foreground">
                     {approval?.approverName ?? "unassigned"}
@@ -727,7 +730,7 @@ export function ChangeDetailView() {
                         <TooltipTrigger asChild>
                           <span className="inline-block">
                             <Button
-                              aria-label={`Approve ${levelConfig.label}`}
+                              aria-label={`Approve ${resolveStatusLabel(levelConfig)}`}
                               className="h-8"
                               disabled={
                                 sodBlocked ||
@@ -757,7 +760,7 @@ export function ChangeDetailView() {
                         <TooltipTrigger asChild>
                           <span className="inline-block">
                             <Button
-                              aria-label={`Reject ${levelConfig.label}`}
+                              aria-label={`Reject ${resolveStatusLabel(levelConfig)}`}
                               className="h-8"
                               disabled={
                                 sodBlocked ||
@@ -1006,7 +1009,7 @@ export function ChangeDetailView() {
               <DialogHeader>
                 <DialogTitle>
                   {decision.decision === "APPROVED" ? "Approve" : "Reject"}{" "}
-                  {lookupStatusConfig(CHANGE_APPROVAL_LEVEL_UI, decision.level).label}
+                  {resolveStatusLabel(lookupStatusConfig(CHANGE_APPROVAL_LEVEL_UI, decision.level))}
                 </DialogTitle>
                 <DialogDescription>
                   {decision.decision === "APPROVED"

@@ -7,6 +7,7 @@ import {
   ok,
   pageMeta,
   paginationSchema,
+  requestContext,
 } from "../_lib/api";
 import { z } from "zod";
 
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
     deviceId: url.searchParams.get("deviceId") ?? undefined,
   });
   if (!parsed.success) {
-    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400);
+    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400, requestContext(request));
   }
 
   const { page, pageSize, deviceId } = parsed.data;
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
     }),
   ]);
 
-  return ok(rows, pageMeta(page, pageSize, total));
+  return ok(rows, pageMeta(page, pageSize, total), 200, requestContext(request));
 }
 
 const createSchema = z.object({
@@ -69,12 +70,12 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400, requestContext(request));
   }
 
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, requestContext(request));
   }
 
   const { deviceId } = parsed.data;
@@ -83,13 +84,14 @@ export async function POST(request: Request) {
     select: { id: true, hostname: true, status: true },
   });
   if (!device) {
-    return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
+    return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404, requestContext(request));
   }
   if (device.status === "UNMANAGED") {
     return fail(
       "DEVICE_UNMANAGED",
       "Backup cannot be queued for an unmanaged device",
-      409
+      409,
+      requestContext(request)
     );
   }
 
@@ -122,5 +124,5 @@ export async function POST(request: Request) {
     }),
   ]);
 
-  return ok({ job, audit }, { correlationId }, 201);
+  return ok({ job, audit }, { correlationId }, 201, requestContext(request));
 }

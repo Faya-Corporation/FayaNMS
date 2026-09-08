@@ -17,6 +17,7 @@ import {
   useReportRuns,
   type ReportTypeKey,
 } from "@/hooks/api/use-reports";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import { EmptyState } from "@/components/domain/empty-state";
 import { ErrorState } from "@/components/domain/error-state";
 import { JobStatusBadge } from "@/components/domain/job-status-badge";
@@ -87,6 +88,8 @@ function fmtRelative(iso: string): string {
 export function ReportsView() {
   const t = useTranslations("reports.runs");
   const tRoot = useTranslations("reports");
+  // Status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
 
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [page, setPage] = useState(1);
@@ -159,7 +162,7 @@ export function ReportsView() {
             {STATUS_FILTERS.filter((status) => status !== "ALL").map(
               (status) => (
                 <SelectItem key={status} value={status}>
-                  {getStatusConfig(JOB_STATUS, status).label}
+                  {resolveStatusLabel(getStatusConfig(JOB_STATUS, status))}
                 </SelectItem>
               )
             )}

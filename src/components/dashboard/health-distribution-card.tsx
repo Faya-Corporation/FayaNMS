@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 import { SectionCard } from "@/components/domain/section-card";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import { DEVICE_STATUS, getStatusConfig } from "@/lib/domain/status";
 import type { HealthSlice } from "@/lib/api-client";
 import { WidgetSkeleton } from "./widget-skeleton";
@@ -45,9 +46,11 @@ export function HealthDistributionCard({
 }: HealthDistributionCardProps) {
   const t = useTranslations("dashboard");
   const colors = useTokenColors();
+  // Status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
   const chartData = data.map((slice) => ({
     ...slice,
-    label: getStatusConfig(DEVICE_STATUS, slice.status).label,
+    label: resolveStatusLabel(getStatusConfig(DEVICE_STATUS, slice.status)),
     fill: statusColor(slice.status, colors),
     faded: slice.status === "UNKNOWN" || slice.status === "UNMANAGED",
   }));

@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   Activity,
@@ -27,6 +28,7 @@ import { PageHeader } from "@/components/domain/page-header";
 import { SavedViewsStrip } from "@/components/domain/saved-views-strip";
 import { SectionCard } from "@/components/domain/section-card";
 import { StatusDot } from "@/components/domain/status-dot";
+import { TIME_RANGES, type TimeRangeValue } from "@/components/domain/time-range-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -59,15 +61,26 @@ const ACTION_FAMILIES = [
   "AUTH_",
 ] as const;
 
-const TIME_RANGES = [
-  { value: "1h", label: "Last hour", ms: 3600_000 },
-  { value: "24h", label: "Last 24 hours", ms: 24 * 3600_000 },
-  { value: "7d", label: "Last 7 days", ms: 7 * 24 * 3600_000 },
-  { value: "30d", label: "Last 30 days", ms: 30 * 24 * 3600_000 },
-  { value: "all", label: "All time", ms: null },
-] as const;
+/**
+ * Events-stream time ranges: the events-specific subset of the shared
+ * TIME_RANGES constant (src/components/domain/time-range-select.tsx) plus
+ * the events-only "all" entry. Range labels are NOT duplicated here — they
+ * resolve from the "timeRange.options.<value>" namespace at render time
+ * (same pattern as TimeRangeSelect), falling back to the shared constant's
+ * English labels; only the events-specific millisecond windows live here.
+ */
+const EVENT_RANGES = [
+  { value: "1h", ms: 3600_000 },
+  { value: "24h", ms: 24 * 3600_000 },
+  { value: "7d", ms: 7 * 24 * 3600_000 },
+  { value: "30d", ms: 30 * 24 * 3600_000 },
+  { value: "all", ms: null },
+] as const satisfies readonly {
+  value: TimeRangeValue | "all";
+  ms: number | null;
+}[];
 
-type TimeRangeKey = (typeof TIME_RANGES)[number]["value"];
+type TimeRangeKey = (typeof EVENT_RANGES)[number]["value"];
 
 const FAMILY_TOKEN: Record<(typeof ACTION_FAMILIES)[number], StatusToken> = {
   CHANGE_: "warning",
@@ -291,6 +304,8 @@ const EventRow = memo(function EventRow({
  * apply the correlation filter (the "click to filter" affordance).
  */
 export function EventsView() {
+  const tTimeRange = useTranslations("timeRange");
+
   const [actor, setActor] = useState<string>("ALL");
   const [action, setAction] = useState<string>("ALL");
   const [entityType, setEntityType] = useState<string>("ALL");
@@ -311,13 +326,27 @@ export function EventsView() {
     return () => clearTimeout(timer);
   }, [correlationInput]);
 
-  const range = TIME_RANGES.find((entry) => entry.value === timeRange) ?? TIME_RANGES[1];
+  const range = EVENT_RANGES.find((entry) => entry.value === timeRange) ?? EVENT_RANGES[1];
   // The floor must be STABLE across renders — computing it inline would mint
   // a new query key every render and the live poll would never settle.
   const from = useMemo(
     () => (range.ms ? new Date(Date.now() - range.ms).toISOString() : undefined),
     [range.ms]
   );
+
+  // Localized range label (same pattern as TimeRangeSelect): the
+  // "timeRange.options.<value>" namespace first, then the shared constant's
+  // English label; "all" is events-specific so it carries its own fallback.
+  const rangeLabel = (value: TimeRangeKey): string => {
+    try {
+      const key = `options.${value}`;
+      if (tTimeRange.has(key)) return tTimeRange(key);
+    } catch {
+      /* missing namespace → fall through to the English label */
+    }
+    if (value === "all") return "All time";
+    return TIME_RANGES.find((entry) => entry.value === value)?.label ?? "Time range";
+  };
 
   const params: EventListParams = useMemo(
     () => ({
@@ -546,9 +575,9 @@ export function EventsView() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {TIME_RANGES.map((entry) => (
+            {EVENT_RANGES.map((entry) => (
               <SelectItem key={entry.value} value={entry.value}>
-                {entry.label}
+                {rangeLabel(entry.value)}
               </SelectItem>
             ))}
           </SelectContent>

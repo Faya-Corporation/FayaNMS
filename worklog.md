@@ -175,8 +175,11 @@ Later agents MUST re-read this file, pick the next unchecked task, append result
 - [x] Phase 8 — i18n/RTL, accessibility & polish (8-a, 8-b) → Gate G8
 - [x] Gate G8 verification — PASSED (QA matrix green: 375/1440/1920 × light/dark × EN-LTR/AR-RTL × keyboard × zero console errors)
 - [x] Phase 9 — Hardening & demo readiness (stretch) — COMPLETE (report scheduler end-to-end, job center UX, saved views, guided tour, table perf pass)
+- [x] Phase 10 — Post-roadmap hardening (worker claim-loop resilience + recovery, aria-describedby warning eliminated, status-label i18n completion, 375px root-cause fix) — COMPLETE
+- [x] Phase 11 — Full enhancements sweep (useStatusLabel adoption 33 sites/12 files, events-view TIME_RANGES unification, D4 1k-row benchmark PASS: interactions 152–486ms at 1.2k–1.7k rows, requestContext normalization on depth-1 routes) — COMPLETE (G11 matrix green: EN/AR × light/dark × 375/1440 × zero console errors; dictionary parity 558=558; pristine reseed)
 
 ---
+
 Task ID: 1-b
 Agent: frontend-styling-expert
 Task: Design foundation — token architecture in globals.css, Inter/JetBrains Mono fonts + ThemeProvider wiring, status single-source-of-truth, domain components, preferences store.
@@ -827,3 +830,79 @@ Work Log:
 Stage Summary:
 - Phase 10 (post-roadmap hardening) COMPLETE: worker claim-loop backoff + auto-recovery + process guards + health observability (the twice-documented resilience gap is closed and proven by a live outage test); Radix aria-describedby console warning eliminated app-wide; status-label i18n infrastructure complete (status.ts + status-extras.ts, 120-key status namespace ×2 languages, shared-badge + fallback rendering), AR now covers incident lifecycle, change lifecycle/steps/approvals/types, alert statuses; 375px overflow fixed at the true root cause (dashboard widget rows + header mobile sizing) in both locales.
 - Remaining documented leftovers (incremental, all functional today): raw .label renders outside shared badges (per-view useStatusLabel adoption), events-view private TIME_RANGES, worker "resilience gap" candidate CLOSED this phase; D4 1k-row mock benchmark still not executed (mitigations shipped in 9-b).
+
+---
+Task ID: 11-kickoff
+Agent: Orchestrator (Z.ai Code)
+Task: Phase 11 — Full Enhancements Sweep kickoff (closes all documented leftovers from Phase 9/10 closeouts)
+
+Work Log:
+- State verified: origin/main == local HEAD == be83988 (pushed + ls-remote double-verified). dev :3000 (HTTP 200) and worker :3030 (/health ok, consecutiveClaimFailures 0) healthy.
+- Roadmap status: Phases 1–9 + Gate G8 + Phase 10 (post-roadmap hardening) all COMPLETE. Parked section remains explicitly non-MVP.
+- Remaining documented leftovers (from Task 10-integration+closeout) become Phase 11 scope:
+  (1) raw .label renders outside shared badges → per-view useStatusLabel adoption (triage across ~24 view files, ~60 call sites — only status-family values route through the hook; legit data labels stay);
+  (2) events-view private TIME_RANGES duplicate → unify with exported TIME_RANGES from src/components/domain/time-range-select.tsx;
+  (3) D4 1k-row DataTable mock benchmark never executed → inflate DB temporarily (tool-results/ script), measure via agent-browser, prove 9-b mitigations (server-side pagination 10/page, content-visibility tbody containment, memoized rows), then pristine reseed.
+
+Stage Summary:
+- Phase 11 sharded into parallel tasks: 11-a (i18n completion pass — frontend-styling-expert) and 11-b (D4 benchmark + perf hardening — full-stack-developer). Both must read this worklog first, follow all conventions (no new dependencies, no test code, AR/EN dictionary parity currently 557=557), append their own entries, and NOT commit (orchestrator commits at closeout).
+
+---
+Task ID: 11-a
+Agent: frontend-styling-expert
+Task: Phase 11-a — i18n completion pass: per-view useStatusLabel adoption for raw .label renders + events-view TIME_RANGES unification
+
+Work Log:
+- Read worklog in full focus areas (PART B roadmap, tracker, 9/10-integration+closeout, 11-kickoff) plus the i18n infra files (src/hooks/use-status-label.ts, src/lib/domain/status.ts, src/components/views/status-extras.ts, src/components/domain/time-range-select.tsx) before editing.
+- Triage: grepped `\.label\b` across src/components/views/*.tsx (61 raw call sites in 24 files) and classified each into (a) status-family value rendered as plain text → convert, or (b) non-status/locale-safe label → leave. Full classification below in Stage Summary.
+- Converted 12 files (13 components) to the canonical resolver (import useStatusLabel, `const resolveStatusLabel = useStatusLabel()` once per component, `resolveStatusLabel(config)` at render sites): sites-view (SiteCard DEVICE_STATUS rows ×2), drift-view (DRIFT_STATUS select), reports-view (JOB_STATUS select), snapshots-view (SNAPSHOT_STATUS + SNAPSHOT_SOURCE selects), backups-view (HistoryTab SNAPSHOT_STATUS/SOURCE selects; PolicyFormDialog scope checkbox groups — CRITICALITY_OPTIONS resolved via getStatusConfig(SEVERITY,·) and STATUS_OPTIONS via getStatusConfig(DEVICE_STATUS,·); ScopeChips criticality+status chip values), devices-view (activeFilterChips useMemo values ×3 + DEVICE_STATUS/SEVERITY/BACKUP_COMPLIANCE selects, resolveStatusLabel added to the memo deps), alerts-view (ALERT_STATUS_UI filter chips), change-approvals-view (levelConfig/statusConfig badge text, sr-only text, Approve/Reject aria-labels, decision dialog title), change-detail-view (approval level names + aria-labels + decision dialog title), perf-interfaces-view (PerfInterfacesView oper-status facet chips + InterfaceRow oper cell — hook called inside the row component), discovery-view (CRITICALITIES resolved via SEVERITY), and health-distribution-card (dashboard chart legend + aria-label — explicitly named in the 10-c leftover list).
+- Hardened src/hooks/use-status-label.ts: returned resolver now wrapped in useCallback([t]) (t is stable per locale/messages) so views that resolve inside useMemo keep their Phase 9-b memoization intact; contract and fallback behavior byte-identical.
+- events-view TIME_RANGES unification: deleted the private duplicate (labels "Last hour"… duplicated the shared constant); new EVENT_RANGES carries ONLY the events-specific millisecond windows, typed `as const satisfies readonly { value: TimeRangeValue | "all"; ms: number | null }[]` (events-specific subset of shared values + the events-only "all"), TimeRangeKey derived from it; select labels resolve via a rangeLabel() helper using the exact TimeRangeSelect pattern (t.has("options.<value>") → t → shared TIME_RANGES English label → events-specific "All time" fallback for "all"). Default "24h", ms→from-floor memo, saved-view restore, content-visibility tbody and memoized EventRows all untouched; behavior identical in EN.
+- Dictionary: exactly ONE new key per locale — timeRange.options.all (EN "All time", AR "كل الوقت") so the events "all" option localizes instead of mixing English into the AR select. Added by text insertion, no re-serialization. Parity verified by bun script: EN 558 = AR 558, diff 0 (557 → 558 symmetric).
+- RTL safety: all touched JSX is text-only or existing logical-property markup (ms-auto, ps-8, text-end already in place); no left/right utilities introduced.
+- Constraints honored: no new dependencies, no test files, no changes to prisma schema/seed/API routes/worker/evaluate.ts/shared badge components; not committed; did not run build. Ops note: dev server found DEAD at start of browser verification (curl 000, no next process — third documented OOM death); recovered with the proven invocation `(setsid nohup env NODE_OPTIONS=--max-old-space-size=1280 ./node_modules/.bin/next dev -p 3000 >> dev.log 2>&1 < /dev/null &)` → 200 in ~12 s; worker :3030 stayed healthy throughout.
+
+Stage Summary:
+- VERIFICATION: `bunx tsc --noEmit` → 0 errors under src/ (only pre-existing examples/websocket + skills/* + tool-results/inflate-benchmark.ts infra errors outside src/, the last from the parallel 11-b task); `bun run lint` → exit 0; dictionary parity 558 = 558 (zero diff, single symmetric key added).
+- BROWSER EVIDENCE (agent-browser, admin@faya.local session): AR RTL — dashboard health legend متصل/صيانة/متدهور/غير متصل/غير مُدار (was English before this task); devices status filter متصل/غير متصل/متدهور/صيانة/غير معروف/غير مُدار + applied filter chip "الحالة: متدهور" via converted useMemo chips; sites status rows localized; backups snapshot status حالي/أرشيفي/خط أساس + source مجدول/يدوي/قبل التغيير/بعد التغيير/مدفوع بحدث + Policies tab scope chip "Criticality:حرج" + New-policy dialog scope options منخفض/متوسط/مرتفع/حرج + متصل/متدهور/صيانة; snapshots same status/source selects localized; change-detail approval levels فني/أمني/مدير with aria-labels "Approve فني"/"Reject مدير" (fallback status now غير معروف too); change-approvals badges "مدير — قيد الانتظار"/"فني — قيد الانتظار"; perf-interfaces oper facet "يعمل 100" + row cells يعمل; events time-range options آخر ساعة…آخر 30 يوماً/كل الوقت (new key live); drift filter مفتوح/تمت المعالجة/مقبول; reports job filter في قائمة الانتظار/قيد التشغيل/نجح/فاشل. EN LTR light pass — reports/drift/backups/snapshots/events/devices/change-approvals all byte-identical English to pre-change (resolver falls back to identical labels). 375px: scrollWidth===375 on dashboard/devices/backups in BOTH locales. Session console: zero errors, zero warnings, zero MISSING_MESSAGE, zero page errors.
+- TRIAGE LEDGER (61 sites / 24 files): CONVERTED 33 render sites in 12 files (listed above, all StatusBadgeConfig/status-family values incl. SEVERITY-keyed criticality options). LEFT AS-IS with reasons: incidents-view 119 (renders only the technical "SEV1" token via label.split(" — ")[0] — locale-neutral), incidents-view 214 + changes-view 177 + change-approvals-view 259 + maintenance-view 570 (STATUS_GROUPS/STATUS_CHIPS/STATUS_FILTERS group filter chips — groupings like "Active"/"In Execution"/"Decided", not 1:1 status configs); maintenance-view 125 (WindowStatusBadge is a hand-rolled local config, no status family exists in status.ts/status-extras — would need a new family + keys, out of minimal scope); dashboard-view 427/429 (already t()-localized); admin-system-view 104/122/267 + admin-drivers-view 88 (API data labels); device-detail-view 301 (tab labels) + 270-272 breadcrumbs; backup-compliance-view 66/68 (literal legend words); perf-overview-view 111 + perf-devices-view 94/116 + perf-interfaces-view 120 (PERF_RANGES 1H/24H technical tokens, METRIC_CHIPS/SORT_CHIPS metric+sort names); incident-detail-view 529 (KIND_META timeline kind); change-detail-view 579/580 (literal dl field names); backups-view 516/526/669/813 (site options, cron presets, chip labels) + 791 converted; devices-view 942/943 (literal chip labels "Status"/"Vendor"); credentials-view 399 (CREDENTIAL_TYPE is StatusBadgeConfig but has NO labelKey → hook would no-op; view is dead code per 10-b). HANDOFF: none blocking — remaining English literals are group-filter chips and hand-rolled badges that would need NEW dictionary keys per view (a copy exercise, not an architecture gap); incidents-view 119 + change-approvals STATUS_FILTERS could reuse existing status keys if localization of those chips is ever wanted.
+- DECISIONS: useStatusLabel memoized (only change to shared i18n infra — contract-preserving); criticality option lists resolve through SEVERITY so EN output is unchanged (Low/Medium/High/Critical identical) while AR gains حرج/مرتفع/متوسط/منخفض without new keys; "all" needed the single new key because the shared constant has no such value and a missing key would have shown the wrong fallback ("Time range") — a real behavior regression, hence work item 3 applied minimally.
+
+---
+Task ID: 11-a
+Agent: frontend-styling-expert
+Task: Phase 11 shard A — i18n completion pass (useStatusLabel adoption + events-view TIME_RANGES unification)
+
+Work Log:
+- useStatusLabel() resolver wrapped in useCallback([t]) so views resolving inside useMemo keep Phase 9-b memoization.
+- Converted 33 raw `.label` render sites across 12 files to the localized resolver: sites-view, drift-view, reports-view, snapshots-view, backups-view, devices-view, alerts-view, change-approvals-view, change-detail-view, perf-interfaces-view, discovery-view, dashboard/health-distribution-card.
+- Triage of all 61 raw `.label` sites / 24 files: 33 converted (status-family values); 28 left as-is with classification (group-filter chips, technical SEV tokens, API data labels, tab/legend labels, maintenance WindowStatusBadge needs a new family — documented as future niche, dead-code credentials-view configs).
+- events-view private TIME_RANGES deleted; EVENT_RANGES `as const satisfies readonly {value: TimeRangeValue | "all"; ms: number | null}[]` carries only events-specific ms windows; labels resolve via shared timeRange.options.<value> + English fallback. Default 24h, from-floor memo, saved-view restore, content-visibility + memoized rows untouched.
+- messages/en.json + ar.json: one symmetric key `timeRange.options.all` ("All time" / "كل الوقت") — parity 558 = 558 (diff 0).
+- Verified: tsc 0 errors under src/; lint exit 0; AR RTL browser pass on 11 touched views (localized labels + aria); EN LTR byte-identical; 375px scrollWidth === 375 on dashboard/devices/backups both locales; zero console errors / MISSING_MESSAGE.
+
+Stage Summary:
+- The "raw .label outside shared badges" leftover is CLOSED for all status-family values; dictionary parity 558=558; shared time-range constant is now the single source for range options. Ops note: dev server OOM death #3 recovered with the NODE_OPTIONS=--max-old-space-size=1280 double-detached invocation.
+
+---
+Task ID: 11-b
+Agent: full-stack-developer (partial) + Orchestrator (completion after Task-infra deadline)
+Task: Phase 11 shard B — D4 1k-row DataTable benchmark + requestContext normalization on depth-1 routes
+
+Work Log:
+- (Agent, landed before infra death) tool-results/inflate-benchmark.ts written: tagged, idempotent, batched benchmark inflation (AuditEvent correlationId startsWith "BENCH-", JobExecution "BENCH-", Alert message "[bench]"); executed — DB inflated to auditEvents 1725 / alerts 1213 / jobs 1113 (devices 26).
+- (Agent) Normalized 5 depth-1 routes (alerts, devices, events, jobs, notifications) to the app-wide requestContext pattern: requestContext(request) added as trailing ok()/fail() arg — additive response-meta only (requestId in envelope meta), zero semantic changes; verified against _lib/api.ts signatures (ok(data, meta?, status?, ctx?)).
+- (Orchestrator, post-timeout filesystem check + completion) Full benchmark executed via agent-browser with inflated DB:
+  - Events view (953 events in trailing 24h / 32 pages, 30 rows/page): nav→rows 486ms; page-next 287ms then 250ms (CLI-bracketed); exact correlation filter 331ms (precise in-page eval, debounce included; 30 rows → 1 row); content-visibility computed "auto" on the virtualized container.
+  - Alerts view (1202 alerts / 49 pages, 25 rows/page): nav 985ms (CLI-bracketed, includes drawer nav); page-next 152ms (precise in-page).
+  - Jobs view (1113 jobs): nav 470ms; bounded latest-N list (20 expandable rows) — no unbounded pagination by design.
+  - Devices view: nav 334ms, 10 rows/page, content-visibility "auto".
+  - 375px (AR RTL): alerts/events/jobs scrollWidth === 375 (devices verified by 11-a); content-visibility still "auto" at mobile on events.
+  - Dark mode at 375px: applies cleanly, scrollWidth stays 375.
+  - Console: zero page errors, zero console errors/warnings/MISSING_MESSAGE across the whole inflated-DB session; API meta now carries requestId end-to-end (observed in /api/v1/events response).
+- (Orchestrator) Verdict: D4 PASS — 9-b mitigations proven at 1k+ rows (all interactions ≤486ms wall-clock including CLI overhead; precise in-page interactions 152–331ms). No app-code perf fixes required; no view-level handoffs.
+- (Orchestrator) Pristine reseed executed (exit 0): devices 26 / auditEvents 37 / alerts 13 / jobs 15. Post-reseed: dev 200, worker /health ok, browser loads clean; final EN × light × 1440 independent pass on devices + event stream — zero errors.
+- Final gates: bunx tsc --noEmit 0 errors under src/ (only pre-existing infra-folder noise outside src/); bun run lint exit 0.
+
+Stage Summary:
+- D4 benchmark leftover CLOSED with evidence; requestContext now consistent across all 20 API route files (depth-1 routes included); inflate-benchmark.ts remains in gitignored tool-results/ as a re-runnable instrument. Phase 11 (full enhancements sweep) complete — all three documented leftovers from Phase 9/10 closeouts are closed.

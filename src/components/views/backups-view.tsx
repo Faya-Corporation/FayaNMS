@@ -20,6 +20,7 @@ import {
 
 import { useMeta } from "@/hooks/api/use-meta";
 import { useSnapshots } from "@/hooks/api/use-snapshots";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import {
   useBackupPolicies,
   useCreateBackupPolicy,
@@ -37,6 +38,7 @@ import {
   SNAPSHOT_SOURCE,
   SNAPSHOT_STATUS,
   DEVICE_STATUS,
+  SEVERITY,
   getStatusConfig,
 } from "@/lib/domain/status";
 import { cronHint, isValidCronExpr } from "@/lib/cron";
@@ -128,6 +130,8 @@ function formatSize(sizeBytes: number): string {
 function HistoryTab() {
   const { toast } = useToast();
   const setActiveView = useNavigationStore((state) => state.setActiveView);
+  // Status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
 
   const [searchInput, setSearchInput] = useState("");
   const [q, setQ] = useState("");
@@ -219,7 +223,7 @@ function HistoryTab() {
         <SelectItem value={ALL}>All statuses</SelectItem>
         {Object.values(SNAPSHOT_STATUS).map((config) => (
           <SelectItem key={config.key} value={config.key}>
-            {config.label}
+            {resolveStatusLabel(config)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -241,7 +245,7 @@ function HistoryTab() {
         <SelectItem value={ALL}>All sources</SelectItem>
         {Object.values(SNAPSHOT_SOURCE).map((config) => (
           <SelectItem key={config.key} value={config.key}>
-            {config.label}
+            {resolveStatusLabel(config)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -547,6 +551,17 @@ function PolicyFormDialog({
   const meta = useMeta();
   const createPolicy = useCreateBackupPolicy();
   const updatePolicy = useUpdateBackupPolicy();
+  // Scope option labels resolve in the active locale through the same
+  // status maps the rest of the app uses (SEVERITY / DEVICE_STATUS).
+  const resolveStatusLabel = useStatusLabel();
+  const criticalityOptions = CRITICALITY_OPTIONS.map((option) => ({
+    ...option,
+    label: resolveStatusLabel(getStatusConfig(SEVERITY, option.value)),
+  }));
+  const statusOptions = STATUS_OPTIONS.map((option) => ({
+    ...option,
+    label: resolveStatusLabel(getStatusConfig(DEVICE_STATUS, option.value)),
+  }));
 
   const editing = Boolean(policy);
   const defaultValues: PolicyFormValues = useMemo(
@@ -700,7 +715,7 @@ function PolicyFormDialog({
               onChange={(next) =>
                 form.setValue("criticalities", next, { shouldValidate: true })
               }
-              options={CRITICALITY_OPTIONS}
+              options={criticalityOptions}
               value={criticalities ?? []}
             />
             <CheckboxGroup
@@ -709,7 +724,7 @@ function PolicyFormDialog({
               onChange={(next) =>
                 form.setValue("statuses", next, { shouldValidate: true })
               }
-              options={STATUS_OPTIONS}
+              options={statusOptions}
               value={statuses ?? []}
             />
           </div>
@@ -774,6 +789,9 @@ function PolicyFormDialog({
 
 function ScopeChips({ policy }: { policy: BackupPolicyRow }) {
   const { scope } = policy;
+  // Status/criticality chip values resolve in the active locale through the
+  // same status maps the rest of the app uses (SEVERITY / DEVICE_STATUS).
+  const resolveStatusLabel = useStatusLabel();
   const chips: { label: string; value: string }[] = [];
 
   if (scope.siteCodes.length > 0) {
@@ -787,15 +805,13 @@ function ScopeChips({ policy }: { policy: BackupPolicyRow }) {
   for (const criticality of scope.criticalities) {
     chips.push({
       label: "Criticality",
-      value:
-        CRITICALITY_OPTIONS.find((option) => option.value === criticality)?.label ??
-        criticality,
+      value: resolveStatusLabel(getStatusConfig(SEVERITY, criticality)),
     });
   }
   for (const status of scope.statuses) {
     chips.push({
       label: "Status",
-      value: getStatusConfig(DEVICE_STATUS, status).label,
+      value: resolveStatusLabel(getStatusConfig(DEVICE_STATUS, status)),
     });
   }
 

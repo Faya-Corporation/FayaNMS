@@ -35,6 +35,7 @@ import {
 } from "@/hooks/api/use-devices";
 import { useCreateJob } from "@/hooks/api/use-jobs";
 import { useMeta } from "@/hooks/api/use-meta";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import { BackupComplianceBadge } from "@/components/domain/backup-status-badge";
 import { DeviceStatusBadge } from "@/components/domain/device-status-badge";
 import { EmptyState } from "@/components/domain/empty-state";
@@ -396,6 +397,8 @@ export function DevicesView() {
   const { toast } = useToast();
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   const params = useNavigationStore((state) => state.params);
+  // Status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
 
   const filters = useDeviceViewsStore((state) => state.filters);
   const setFilter = useDeviceViewsStore((state) => state.setFilter);
@@ -489,7 +492,7 @@ export function DevicesView() {
     if (filters.status !== ALL) {
       chips.push({
         label: "Status",
-        value: getStatusConfig(DEVICE_STATUS, filters.status).label,
+        value: resolveStatusLabel(getStatusConfig(DEVICE_STATUS, filters.status)),
         clear: () => {
           setFilter("status", ALL);
           setPage(1);
@@ -521,7 +524,7 @@ export function DevicesView() {
     if (filters.criticality !== ALL) {
       chips.push({
         label: "Criticality",
-        value: getStatusConfig(SEVERITY, filters.criticality).label,
+        value: resolveStatusLabel(getStatusConfig(SEVERITY, filters.criticality)),
         clear: () => {
           setFilter("criticality", ALL);
           setPage(1);
@@ -531,7 +534,7 @@ export function DevicesView() {
     if (filters.backupCompliance !== ALL) {
       chips.push({
         label: "Backup",
-        value: getStatusConfig(BACKUP_COMPLIANCE, filters.backupCompliance).label,
+        value: resolveStatusLabel(getStatusConfig(BACKUP_COMPLIANCE, filters.backupCompliance)),
         clear: () => {
           setFilter("backupCompliance", ALL);
           setPage(1);
@@ -539,7 +542,7 @@ export function DevicesView() {
       });
     }
     return chips;
-  }, [filters, meta.data, setFilter]);
+  }, [filters, meta.data, setFilter, resolveStatusLabel]);
 
   // Row callbacks are kept identity-stable (useCallback) so the memoized
   // DeviceRow skips re-renders while typing/filtering (Phase 9-b perf pass).
@@ -817,7 +820,7 @@ export function DevicesView() {
               <SelectItem value="ALL">All statuses</SelectItem>
               {Object.values(DEVICE_STATUS).map((config) => (
                 <SelectItem key={config.key} value={config.key}>
-                  {config.label}
+                  {resolveStatusLabel(config)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -874,7 +877,7 @@ export function DevicesView() {
               <SelectItem value="ALL">All criticality</SelectItem>
               {["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((key) => (
                 <SelectItem key={key} value={key}>
-                  {getStatusConfig(SEVERITY, key).label}
+                  {resolveStatusLabel(getStatusConfig(SEVERITY, key))}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -893,7 +896,7 @@ export function DevicesView() {
               <SelectItem value="ALL">All backup states</SelectItem>
               {Object.values(BACKUP_COMPLIANCE).map((config) => (
                 <SelectItem key={config.key} value={config.key}>
-                  {config.label}
+                  {resolveStatusLabel(config)}
                 </SelectItem>
               ))}
             </SelectContent>

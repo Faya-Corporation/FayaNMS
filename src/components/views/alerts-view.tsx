@@ -16,6 +16,7 @@ import { useAlerts } from "@/hooks/api/use-alerts";
 import { useAlertRules } from "@/hooks/api/use-alert-rules";
 import { useMeta } from "@/hooks/api/use-meta";
 import { useNotifications } from "@/hooks/api/use-notifications";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import { AssignAlertDialog, SuppressAlertDialog } from "@/components/alerts/alert-action-dialogs";
 import { AlertRulesPanel } from "@/components/alerts/alert-rules-panel";
 import { AlertStreamItem } from "@/components/alerts/alert-stream-item";
@@ -51,6 +52,8 @@ const SEVERITY_FILTERS = ["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] as
  * surface (header center, §74) — never mixed into this stream.
  */
 export function AlertsView() {
+  // Status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
   const [severity, setSeverity] = useState<(typeof SEVERITY_FILTERS)[number]>("ALL");
   const [ruleId, setRuleId] = useState("ALL");
@@ -221,7 +224,7 @@ export function AlertsView() {
               const label =
                 filter === "ALL"
                   ? "All"
-                  : lookupStatusConfig(ALERT_STATUS_UI, filter).label;
+                  : resolveStatusLabel(lookupStatusConfig(ALERT_STATUS_UI, filter));
               const count =
                 filter === "ALL"
                   ? counts

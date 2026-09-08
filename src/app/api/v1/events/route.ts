@@ -5,6 +5,7 @@ import {
   ok,
   pageMeta,
   paginationSchema,
+  requestContext,
 } from "../_lib/api";
 import { z } from "zod";
 
@@ -69,7 +70,7 @@ export async function GET(request: Request) {
     q: url.searchParams.get("q") ?? undefined,
   });
   if (!parsed.success) {
-    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400);
+    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400, requestContext(request));
   }
 
   const {
@@ -230,5 +231,5 @@ export async function GET(request: Request) {
     topActors,
     topActions,
     entityTypes,
-  });
+  }, 200, requestContext(request));
 }

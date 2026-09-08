@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { useMeta } from "@/hooks/api/use-meta";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import {
   useDiscoveryJobs,
   useImportCandidates,
@@ -58,6 +59,7 @@ import type {
   DiscoveryCandidate,
   DiscoveryJobSummary,
 } from "@/lib/api-client";
+import { SEVERITY, getStatusConfig } from "@/lib/domain/status";
 import type { StatusBadgeConfig } from "@/lib/domain/status";
 import { cn } from "@/lib/utils";
 
@@ -117,6 +119,8 @@ function durationLabel(ms: number | null): string {
 
 export function DiscoveryView() {
   const { toast } = useToast();
+  // Status labels resolve in the active locale (falls back to config.label).
+  const resolveStatusLabel = useStatusLabel();
   const jobs = useDiscoveryJobs();
   const meta = useMeta();
   const startScan = useStartScan();
@@ -623,7 +627,7 @@ export function DiscoveryView() {
                   <SelectContent>
                     {CRITICALITIES.map((entry) => (
                       <SelectItem key={entry.value} value={entry.value}>
-                        {entry.label}
+                        {resolveStatusLabel(getStatusConfig(SEVERITY, entry.value))}
                       </SelectItem>
                     ))}
                   </SelectContent>
