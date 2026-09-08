@@ -69,6 +69,7 @@ const JOB_TYPES = [
   "METRIC_RETENTION",
   "REPORT_RUN",
   "FIRMWARE_UPGRADE",
+  "ZTP_PROVISION",
 ] as const;
 
 const CANCELLABLE = new Set(["QUEUED", "RUNNING"]);
@@ -95,6 +96,7 @@ function jobTypeLabel(
     METRIC_RETENTION: "type.METRIC_RETENTION",
     REPORT_RUN: "type.REPORT_RUN",
     FIRMWARE_UPGRADE: "type.FIRMWARE_UPGRADE",
+    ZTP_PROVISION: "type.ZTP_PROVISION",
   };
   const key = map[type];
   return key ? t(key) : type;

@@ -127,6 +127,137 @@ export function buildChangeDraftMessages(input: {
   ];
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Natural-language network query ("Ask the network", Phase 14-a).
+ *
+ * Two LLM stages:
+ *   1. buildQueryPlanMessages   — classify the question into a STRICT-JSON
+ *      query plan {intent, site, vendor, severity, status, hostnameLike, limit}.
+ *      The server (not the model) executes the plan against the database.
+ *   2. buildQueryAnswerMessages — a grounded answer written ONLY from the
+ *      JSON-serialized rows the server returned for the plan.
+ */
+
+export type QueryIntent =
+  | "inventory"
+  | "incidents"
+  | "changes"
+  | "jobs"
+  | "predictive"
+  | "summary";
+
+/** Site codes / vendor keys the plan may reference (grounded server-side). */
+export interface QueryPlanVocab {
+  siteCodes: { code: string; name: string }[];
+  vendorKeys: { key: string; name: string }[];
+}
+
+/**
+ * Stage 1 — the model must return STRICT JSON:
+ * { intent, site, vendor, severity, status, hostnameLike, limit }.
+ * Every reference field must be copied verbatim from the vocabulary lists or
+ * be null; the server re-validates them anyway.
+ */
+export function buildQueryPlanMessages(input: {
+  locale: AiLocale;
+  prompt: string;
+  vocab: QueryPlanVocab;
+}): AiChatMessage[] {
+  const system = [
+    [
+      "You classify a network operator's question into a structured query plan for FayaNMS,",
+      "a network monitoring platform. You do NOT answer the question — you only classify it.",
+    ].join(" "),
+    [
+      "Return a STRICT JSON object with EXACTLY these keys and no others:",
+      '{"intent": "inventory"|"incidents"|"changes"|"jobs"|"predictive"|"summary", "site": string|null, "vendor": string|null, "severity": string|null, "status": string|null, "hostnameLike": string|null, "limit": number|null}',
+      '- "intent": what the question is really about:',
+      '  "inventory" — which devices exist, models, firmware, locations, "which switches/routers…";',
+      '  "incidents" — open incidents, outages, SEV levels, alert escalations;',
+      '  "changes" — change requests and how they went (successful, failed, rolled back…);',
+      '  "jobs" — backup/discovery/other job executions and their outcomes;',
+      '  "predictive" — which devices look risky, degraded, or carry high alert pressure;',
+      '  "summary" — broad fleet-overview questions ("how is the network doing?") or anything ambiguous.',
+      '- "site": a site code copied VERBATIM from the SITES list below, or null.',
+      '- "vendor": a vendor key copied VERBATIM from the VENDORS list below, or null.',
+      '- "severity": "SEV1"|"SEV2"|"SEV3"|"SEV4" for incident wording, or "CRITICAL"|"HIGH"|"MEDIUM"|"LOW"|"INFO" for health/alert wording; null otherwise.',
+      '- "status": an UPPERCASE lifecycle state the question names explicitly (e.g. "FAILED", "OFFLINE", "SUCCEEDED"); null when the question does not name one.',
+      '- "hostnameLike": a hostname fragment the question implies (e.g. "CORE", "FW", "HQ"); null when none.',
+      '- "limit": how many rows would satisfy the question (1–20); null for a sensible default.',
+      "Never invent site codes or vendor keys — use null whenever unsure.",
+      "Return JSON ONLY — no markdown fences, no prose before or after the JSON object.",
+    ].join("\n"),
+  ].join("\n\n");
+
+  const siteList = input.vocab.siteCodes
+    .map((site) => `${site.code} (${site.name})`)
+    .join(", ");
+  const vendorList = input.vocab.vendorKeys
+    .map((vendor) => `${vendor.key} (${vendor.name})`)
+    .join(", ");
+
+  const user = [
+    `SITES (code — name): ${siteList}`,
+    `VENDORS (key — name): ${vendorList}`,
+    "",
+    `OPERATOR QUESTION: ${input.prompt}`,
+    "",
+    "Classify the question into the query-plan JSON.",
+  ].join("\n");
+
+  return [
+    { role: "assistant", content: system },
+    { role: "user", content: user },
+  ];
+}
+
+/**
+ * Stage 2 — grounded answer. The model receives the plan and the
+ * JSON-serialized query results and must answer ONLY from those rows.
+ */
+export function buildQueryAnswerMessages(input: {
+  locale: AiLocale;
+  prompt: string;
+  planJson: string;
+  resultsJson: string;
+}): AiChatMessage[] {
+  const system = [
+    SHARED_GUARDRAILS,
+    [
+      "You answer an operator's question about the FayaNMS network using ONLY the QUERY RESULTS",
+      "provided below — every fact you state must come from those rows; never invent devices,",
+      "models, numbers, statuses, severities or timestamps that are not in them.",
+      "Answer in 2–6 concise sentences, optionally followed by a short bullet list (max 5 items)",
+      "when individual rows deserve enumeration. Cite concrete evidence (hostnames, sites,",
+      "severities, statuses, counts).",
+      "Do not mention the query plan, JSON, or that structured data was given to you — answer",
+      "naturally, as a network operations engineer briefing a colleague.",
+      "If the results are empty or insufficient for the question, say so plainly and suggest",
+      "what the operator could check or ask instead.",
+    ].join(" "),
+    localeInstruction(input.locale),
+  ].join("\n\n");
+
+  const user = [
+    `OPERATOR QUESTION: ${input.prompt}`,
+    "",
+    "QUERY PLAN (how the question was classified — for your reference only):",
+    input.planJson,
+    "",
+    "QUERY RESULTS (the ONLY allowed source of facts):",
+    "<<<RESULTS",
+    input.resultsJson,
+    "RESULTS>>>",
+    "",
+    `Answer locale: ${input.locale === "ar" ? "ar (Arabic)" : "en (English)"}.`,
+  ].join("\n");
+
+  return [
+    { role: "assistant", content: system },
+    { role: "user", content: user },
+  ];
+}
+
 /**
  * RCA draft — the model must return STRICT JSON:
  * { summary, rootCause, contributingFactors[], remediation[], prevention[], confidence }.

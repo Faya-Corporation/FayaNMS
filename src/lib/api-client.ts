@@ -2691,6 +2691,129 @@ export async function requestAiChangeDraft(
 }
 
 /* ------------------------------------------------------------------ */
+/* AI network query (Phase 14-a) — "Ask the network"                   */
+/* ------------------------------------------------------------------ */
+
+export type AskNetworkIntent =
+  | "inventory"
+  | "incidents"
+  | "changes"
+  | "jobs"
+  | "predictive"
+  | "summary";
+
+export interface AskNetworkDeviceRow {
+  id: string;
+  hostname: string;
+  model: string | null;
+  firmware: string | null;
+  status: string;
+  criticality: string;
+  backupCompliance: string;
+  siteCode: string | null;
+  siteName: string | null;
+  vendorKey: string | null;
+}
+
+export interface AskNetworkIncidentRow {
+  id: string;
+  number: string;
+  title: string;
+  severity: string;
+  status: string;
+  siteCode: string | null;
+  createdAt: string;
+  slaDueAt: string | null;
+  linkedChangeNumber: string | null;
+}
+
+export interface AskNetworkChangeRow {
+  id: string;
+  number: string;
+  title: string;
+  type: string;
+  status: string;
+  riskLevel: string;
+  siteCode: string | null;
+  scheduledStart: string | null;
+  createdAt: string;
+}
+
+export interface AskNetworkJobRow {
+  correlationId: string;
+  type: string;
+  status: string;
+  progress: number;
+  createdAt: string;
+  finishedAt: string | null;
+  error: string | null;
+}
+
+/** Approximate alert-pressure ranking (labeled as approximate in the UI). */
+export interface AskNetworkPredictiveRow {
+  hostname: string;
+  status: string;
+  criticality: string;
+  siteCode: string | null;
+  activeAlerts: number;
+  worstSeverity: string | null;
+}
+
+export interface AskNetworkSnapshot {
+  devicesByStatus: Record<string, number>;
+  openIncidentsBySeverity: Record<string, number>;
+  recentChanges: { number: string; title: string; status: string }[];
+  backupJobs24h: {
+    total: number;
+    succeeded: number;
+    successRatePct: number | null;
+  };
+}
+
+export interface AskNetworkFilters {
+  site: string | null;
+  vendor: string | null;
+  severity: string | null;
+  status: string | null;
+  hostnameLike: string | null;
+  limit: number | null;
+}
+
+export interface AskNetworkResult {
+  intent: AskNetworkIntent;
+  appliedFilters: AskNetworkFilters;
+  /** LLM grounded answer — or the deterministic bullet summary on fallback. */
+  summary: string;
+  results: {
+    devices?: AskNetworkDeviceRow[];
+    incidents?: AskNetworkIncidentRow[];
+    changes?: AskNetworkChangeRow[];
+    jobs?: AskNetworkJobRow[];
+    predictive?: AskNetworkPredictiveRow[];
+    snapshot?: AskNetworkSnapshot;
+  };
+  sources: string[];
+  /** true = the LLM answer failed and a deterministic summary is shown. */
+  fallback: boolean;
+  correlationId: string;
+}
+
+export interface AskNetworkPayload {
+  /** 10..500 chars, enforced server-side too. */
+  prompt: string;
+  locale: "en" | "ar";
+}
+
+export async function requestAskNetwork(
+  payload: AskNetworkPayload
+): Promise<AskNetworkResult> {
+  return apiFetch<AskNetworkResult>("/api/v1/ai/query", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Flow analytics (Phase 13-c) — deterministic simulated NetFlow       */
 /* ------------------------------------------------------------------ */
 
@@ -2863,6 +2986,229 @@ export async function requestFirmwareUpgrade(payload: {
   actAsUserId?: string;
 }): Promise<FirmwareUpgradeResult> {
   return apiFetch<FirmwareUpgradeResult>("/api/v1/firmware/upgrade", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Zero-touch provisioning (Phase 14-b)                                */
+/* ------------------------------------------------------------------ */
+
+/** One claim row of the ZTP queue (GET /api/v1/ztp/claims). */
+export interface ZtpClaimRow {
+  id: string;
+  serial: string;
+  hostname: string;
+  vendorKey: string;
+  vendorName: string;
+  model: string;
+  templateId: string;
+  siteId: string | null;
+  siteCode: string | null;
+  siteName: string | null;
+  deviceId: string | null;
+  deviceHostname: string | null;
+  /** Persisted status: pending | provisioning | provisioned | failed. */
+  status: string;
+  /** Persisted status with the running-job overlay applied. */
+  effectiveStatus: string;
+  requestedBy: string | null;
+  /** Actual management address once provisioned (from the Device row). */
+  mgmtIp: string | null;
+  /** Next free address in the site /24 while the claim is unresolved. */
+  projectedMgmtIp: string | null;
+  createdAt: string;
+  updatedAt: string;
+  activeJob: {
+    id: string;
+    correlationId: string;
+    status: string;
+    progress: number;
+    createdAt: string;
+  } | null;
+}
+
+/** Template catalog entry (mirrors ZtpTemplate from src/lib/ztp/templates). */
+export interface ZtpTemplateInfo {
+  id: string;
+  vendorKey: string;
+  name: string;
+  description: string;
+  lines: string[];
+}
+
+export interface ZtpVendorOption {
+  key: string;
+  name: string;
+  hasTemplate: boolean;
+}
+
+export interface ZtpSiteOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
+/** Recent ZTP_* audit row (provisioning history). */
+export interface ZtpHistoryRow {
+  action: string;
+  result: string;
+  actorName: string;
+  resourceLabel: string;
+  correlationId: string | null;
+  createdAt: string;
+}
+
+export interface ZtpPayload {
+  claims: ZtpClaimRow[];
+  templates: ZtpTemplateInfo[];
+  vendors: ZtpVendorOption[];
+  sites: ZtpSiteOption[];
+  counts: {
+    total: number;
+    pending: number;
+    provisioning: number;
+    provisioned: number;
+    failed: number;
+  };
+  history: ZtpHistoryRow[];
+  meta: { computedAt: string };
+}
+
+export async function fetchZtp(): Promise<ZtpPayload> {
+  return apiFetch<ZtpPayload>("/api/v1/ztp/claims");
+}
+
+export interface ZtpClaimCreated {
+  claim: {
+    id: string;
+    serial: string;
+    hostname: string;
+    vendorKey: string;
+    model: string;
+    templateId: string;
+    siteId: string | null;
+    status: string;
+    requestedBy: string | null;
+    createdAt: string;
+  };
+  jobId: string;
+  correlationId: string;
+  projectedMgmtIp: string;
+  type: "ZTP_PROVISION";
+  status: "QUEUED";
+}
+
+export async function requestCreateZtpClaim(payload: {
+  serial: string;
+  hostname: string;
+  vendorKey: string;
+  model: string;
+  templateId: string;
+  siteId?: string;
+  requestedBy?: string;
+}): Promise<ZtpClaimCreated> {
+  return apiFetch<ZtpClaimCreated>("/api/v1/ztp/claims", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* HA/DR topology (Phase 14-c)                                         */
+/* ------------------------------------------------------------------ */
+
+export type HaPairMode = "active-standby" | "active-active";
+export type HaReadinessBand = "healthy" | "degraded" | "at-risk";
+export type HaTestResult = "passed" | "degraded" | "never-tested";
+export type ReplicationTech = "sync-mirror" | "async-snapshot";
+
+/** One pair member with live device state (GET /api/v1/ha). */
+export interface HaPairMember {
+  deviceId: string;
+  hostname: string;
+  status: string;
+  model: string | null;
+  /** BigInt-as-string wire convention (seconds). */
+  uptimeSeconds: string | null;
+}
+
+/** Latest failover state derived from HA_FAILOVER_TEST audit rows. */
+export interface HaFailoverState {
+  activeMember: string;
+  lastTestedAt: string | null;
+  lastResult: HaTestResult;
+  testCount: number;
+  correlationId: string | null;
+}
+
+/** One HA pair row of GET /api/v1/ha. */
+export interface HaPairRow {
+  pairId: string;
+  name: string;
+  mode: HaPairMode;
+  vip: string;
+  siteCode: string;
+  members: HaPairMember[];
+  failover: HaFailoverState;
+}
+
+/** Deterministic DR-readiness composition (see src/lib/ha/topology.ts). */
+export interface HaReadiness {
+  score: number;
+  band: HaReadinessBand;
+  backupSuccessRate: number;
+  openCritical: number;
+  /** 0–1 — share of the primary site's devices currently ONLINE. */
+  memberOnlineRatio: number;
+}
+
+/** One DR mapping row of GET /api/v1/ha. */
+export interface DrSiteRow {
+  primary: string;
+  secondary: string;
+  rpoTargetMinutes: number;
+  rtoTargetMinutes: number;
+  replicationTech: ReplicationTech;
+  readiness: HaReadiness;
+}
+
+export interface HaTopologyPayload {
+  pairs: HaPairRow[];
+  drSites: DrSiteRow[];
+  meta: { generatedAt: string };
+}
+
+export async function fetchHaTopology(): Promise<HaTopologyPayload> {
+  return apiFetch<HaTopologyPayload>("/api/v1/ha");
+}
+
+/** One staged step of the deterministic failover test (POST response). */
+export interface HaFailoverStageResult {
+  stage: string;
+  result: string;
+  at: string;
+}
+
+export interface HaFailoverTestResult {
+  pairId: string;
+  pairName: string;
+  mode: HaPairMode;
+  correlationId: string;
+  result: Exclude<HaTestResult, "never-tested">;
+  durationMs: number;
+  stages: HaFailoverStageResult[];
+  activeMember: string;
+  offlineMembers: string[];
+  vip: string;
+}
+
+export async function requestFailoverTest(payload: {
+  pairId: string;
+  actAsUserId?: string;
+}): Promise<HaFailoverTestResult> {
+  return apiFetch<HaFailoverTestResult>("/api/v1/ha/failover-test", {
     method: "POST",
     body: JSON.stringify(payload),
   });

@@ -11,12 +11,14 @@ import {
   Gauge,
   Router,
   Siren,
+  Sparkles,
   TriangleAlert,
   Wifi,
 } from "lucide-react";
 
 import { useDashboard } from "@/hooks/api/use-dashboard";
 import { usePredictiveHealth } from "@/hooks/api/use-predictive";
+import { AskNetworkDialog } from "@/components/ai/ask-network-dialog";
 import { BackupComplianceBadge } from "@/components/domain/backup-status-badge";
 import { ChangeRiskBadge } from "@/components/domain/change-risk-badge";
 import { DriftStatusBadge } from "@/components/domain/drift-status-badge";
@@ -77,6 +79,8 @@ function relative(iso: string | null): string {
 export function DashboardView() {
   const t = useTranslations("dashboard");
   const [range, setRange] = useState<"24h" | "7d">("24h");
+  // "Ask the network" prompt card + dialog (Phase 14-a).
+  const [askOpen, setAskOpen] = useState(false);
   const dashboard = useDashboard(range);
   const data = dashboard.data;
   const kpis = data?.kpis;
@@ -108,6 +112,9 @@ export function DashboardView() {
         }
         title={t("title")}
       />
+
+      {/* Ask the network (Phase 14-a) — opens the same dialog as the header button. */}
+      <AskNetworkCard onOpen={() => setAskOpen(true)} />
 
       {dashboard.isError ? (
         <ErrorState
@@ -229,7 +236,36 @@ export function DashboardView() {
           <RecentActivityCard activity={data?.recentActivity ?? []} loading={!data} />
         </div>
       )}
+
+      <AskNetworkDialog onOpenChange={setAskOpen} open={askOpen} />
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Ask the network (Phase 14-a)                                        */
+/* ------------------------------------------------------------------ */
+
+/** Compact prompt card that opens the shared "Ask the network" dialog. */
+function AskNetworkCard({ onOpen }: { onOpen: () => void }) {
+  const t = useTranslations("ai.query");
+  return (
+    <section className="flex flex-wrap items-center gap-3 rounded-xl border bg-surface-subtle/60 p-4">
+      <span
+        aria-hidden="true"
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+      >
+        <Sparkles className="size-4" />
+      </span>
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm font-semibold">{t("title")}</span>
+        <span className="text-xs text-muted-foreground">{t("cardHint")}</span>
+      </span>
+      <Button className="ms-auto shrink-0" onClick={onOpen} size="sm" variant="outline">
+        <Sparkles aria-hidden="true" />
+        {t("ask")}
+      </Button>
+    </section>
   );
 }
 

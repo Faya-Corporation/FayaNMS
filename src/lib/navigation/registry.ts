@@ -93,6 +93,13 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
     group: "Network",
     labelKey: "nav.items.network.firmware",
   },
+  "network.ztp": {
+    title: "Zero-Touch Provisioning",
+    description: "ZTP claims — serial onboarding, bootstrap configs and registration",
+    phase: "Phase 14 — Parked-tier pull-forward (14-b)",
+    group: "Network",
+    labelKey: "nav.items.network.ztp",
+  },
 
   "config.backups": {
     title: "Backups",
@@ -225,6 +232,13 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
     phase: "Phase 1 — live slice (full build in Phase 2)",
     group: "Operations",
     labelKey: "nav.items.ops.jobs",
+  },
+  "ops.ha": {
+    title: "HA / DR Topology",
+    description: "High-availability pairs, failover tests and DR readiness",
+    phase: "Phase 14 — Parked-tier pull-forward (14-c)",
+    group: "Operations",
+    labelKey: "nav.items.ops.ha",
   },
 
   "perf.overview": {

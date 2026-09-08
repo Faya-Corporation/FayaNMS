@@ -1399,6 +1399,8 @@ async function wipe() {
   await db.webhookEndpoint.deleteMany();
   await db.notificationChannel.deleteMany();
   await db.collector.deleteMany();
+  // Phase 14-b — zero-touch provisioning claims (plain scalar refs, no FK).
+  await db.ztpClaim.deleteMany();
   await db.notification.deleteMany();
   await db.alert.deleteMany();
   await db.alertRule.deleteMany();
@@ -2241,6 +2243,67 @@ async function seedAudit() {
   await db.auditEvent.createMany({ data: rows });
 }
 
+/* ────────────────────────── zero-touch provisioning ────────────────────────── */
+
+/**
+ * Phase 14-b — three historical ZTP claims telling a realistic story:
+ *   1. provisioned — BR1-Access-SW-01 (real seeded device; the switch was
+ *      on-boarded through ZTP when the Hodeidah branch was built).
+ *   2. failed      — factory-fresh FortiGate 60F that never pulled its
+ *      bootstrap config (DHCP/TFTP timeout on the branch voice VLAN).
+ *   3. pending     — Juniper SRX345 unboxed for the DC edge, claim waiting
+ *      for the device to boot and phone home.
+ * Serials are vendor-authentic formats and unique across devices + claims.
+ */
+async function seedZtpClaims() {
+  await db.ztpClaim.createMany({
+    data: [
+      {
+        id: "ztp-br1-access-sw-01",
+        serial: "FOC2350X0AB", // matches Device.serialNumber of BR1-Access-SW-01
+        hostname: "BR1-Access-SW-01",
+        vendorKey: "cisco",
+        model: "WS-C2960X-48TS-L",
+        templateId: "cisco-ztp",
+        siteId: "site-br1-hod",
+        deviceId: "dev-br1-access-sw-01",
+        status: "provisioned",
+        requestedBy: "engineer1@faya.local",
+        createdAt: ago(60 * 24 * 21),
+        updatedAt: ago(60 * 24 * 21 - 40),
+      },
+      {
+        id: "ztp-br1-fw-02",
+        serial: "FG60F11TV2400912",
+        hostname: "BR1-FW-02",
+        vendorKey: "fortinet",
+        model: "FortiGate 60F",
+        templateId: "fortigate-ztp",
+        siteId: "site-br1-hod",
+        deviceId: null,
+        status: "failed",
+        requestedBy: "noc1@faya.local",
+        createdAt: ago(60 * 26),
+        updatedAt: ago(60 * 25),
+      },
+      {
+        id: "ztp-dc-edge-srx-01",
+        serial: "BQ0124EF0M93",
+        hostname: "DC-EDGE-SRX-01",
+        vendorKey: "juniper",
+        model: "SRX345",
+        templateId: "juniper-ztp",
+        siteId: "site-dc-adn",
+        deviceId: null,
+        status: "pending",
+        requestedBy: "admin@faya.local",
+        createdAt: ago(60 * 3),
+        updatedAt: ago(60 * 3),
+      },
+    ],
+  });
+}
+
 /* ────────────────────────────── summary ────────────────────────────── */
 
 async function printSummary(extra: { samples: number; rollups: number }) {
@@ -2274,6 +2337,7 @@ async function printSummary(extra: { samples: number; rollups: number }) {
     ["AuditEvent", await db.auditEvent.count()],
     ["ReportSchedule", await db.reportSchedule.count()],
     ["Setting", await db.setting.count()],
+    ["ZtpClaim", await db.ztpClaim.count()],
   ];
   const w = Math.max(...counts.map(([n]) => n.length));
   console.log("\n── FayaNMS seed summary ──────────────────");
@@ -2298,6 +2362,7 @@ async function main() {
   await seedMaintenance();
   await seedJobs();
   await seedAudit();
+  await seedZtpClaims();
   await seedNotifications();
   const metrics = await seedMetrics(uplinkByDevice);
   await printSummary(metrics);

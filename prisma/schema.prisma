@@ -771,3 +771,35 @@ model Collector {
 
   @@index([kind])
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Zero-touch provisioning (Phase 14-b)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ZtpClaim {
+  id         String   @id @default(cuid())
+  // Factory/asset serial of the device being claimed — unique across claims.
+  serial     String   @unique
+  hostname   String
+  // vendorKey: Vendor.key of the seeded vendor set (cisco | fortinet | sophos |
+  //            hpe | juniper | palo | generic)
+  vendorKey  String
+  model      String
+  // templateId: id of a ZTP_TEMPLATES entry (src/lib/ztp/templates.ts); must
+  //             match the claim's vendorKey at creation time.
+  templateId String
+  // Plain scalar references (no FK relations, per the phase contract):
+  //   siteId      → Site.id when the claim targets a known site
+  //   deviceId    → Device.id once provisioning succeeds (evaluate-in-Next)
+  siteId     String?
+  deviceId   String?
+  // status: pending | provisioning | provisioned | failed
+  status     String   @default("pending")
+  // requestedBy: email or name of the requester (optional, display-only)
+  requestedBy String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status])
+  @@index([vendorKey])
+}

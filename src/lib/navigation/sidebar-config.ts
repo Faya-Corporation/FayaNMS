@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   BadgeCheck,
   BellRing,
+  Cable,
   CalendarClock,
   CalendarDays,
   CircleGauge,
@@ -74,6 +75,7 @@ export const SIDEBAR_GROUPS: SidebarGroupConfig[] = [
       { view: "network.topology", icon: Waypoints },
       { view: "network.discovery", icon: Radar },
       { view: "network.firmware", icon: HardDriveDownload },
+      { view: "network.ztp", icon: Cable },
     ],
   },
   {
@@ -108,6 +110,7 @@ export const SIDEBAR_GROUPS: SidebarGroupConfig[] = [
       { view: "ops.maintenance", icon: Wrench },
       { view: "ops.events", icon: ScrollText },
       { view: "ops.jobs", icon: ListTodo, badge: "jobs" },
+      { view: "ops.ha", icon: ShieldCheck },
     ],
   },
   {

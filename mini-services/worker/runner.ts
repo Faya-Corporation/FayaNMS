@@ -75,6 +75,17 @@
  * Network/5xx errors propagate to the generic failure path
  * (requeue/backoff) as usual.
  *
+ * ZTP_PROVISION branch (Phase 14-b) — evaluate-in-Next like FIRMWARE_UPGRADE:
+ * the worker walks the four simulated stages (claim validation → template
+ * render → config push → device registration) reporting progress between
+ * them, then POSTs /api/v1/worker/ztp-provision { jobId } — the Next.js
+ * endpoint creates the Device from the claim, flips the claim to
+ * provisioned (or failed), writes the ZTP_PROVISIONED audit and stores the
+ * rendered bootstrap config as the device's first snapshot. The worker then
+ * posts the regular /worker/complete SUCCEEDED with the returned summary.
+ * The job payload is { claimId, serial, hostname, vendorKey, model,
+ * templateId } written by POST /api/v1/ztp/claims at enqueue time.
+ *
  * Failure semantics live on the Next.js side: complete(FAILED) either requeues
  * with exponential-ish backoff (30 s * attempts) or dead-letters the job.
  * Any single job failure is contained — the loop never crashes.
@@ -113,6 +124,18 @@ interface FirmwareUpgradeResponse {
   toVersion: string;
   alreadyAtTarget?: boolean;
   upgradedAt?: string;
+  correlationId: string;
+}
+
+/** Response shape of POST /api/v1/worker/ztp-provision. */
+interface ZtpProvisionResponse {
+  outcome: "provisioned" | "failed";
+  claimId: string;
+  serial: string;
+  hostname: string;
+  deviceId?: string;
+  reason?: string;
+  provisionedAt?: string;
   correlationId: string;
 }
 
@@ -792,6 +815,91 @@ async function runFirmwareUpgradeJob(job: ClaimedJob): Promise<void> {
   );
 }
 
+/* ───────────────────── ZTP_PROVISION driver (Phase 14-b) ───────────────────── */
+
+/**
+ * ZTP_PROVISION execution — simulated staged zero-touch provisioning;
+ * ALL persistence (Device creation, claim status, ZTP_PROVISIONED /
+ * ZTP_PROVISION_FAILED audit, bootstrap snapshot) happens in the Next.js
+ * API via /api/v1/worker/ztp-provision. The job payload is
+ * { claimId, serial, hostname, vendorKey, model, templateId }.
+ */
+async function runZtpProvisionJob(job: ClaimedJob): Promise<void> {
+  const payload = job.payload ?? {};
+  const serial = typeof payload.serial === "string" ? payload.serial : "unknown-serial";
+  const hostname = typeof payload.hostname === "string" ? payload.hostname : "device";
+  const vendorKey = typeof payload.vendorKey === "string" ? payload.vendorKey : "generic";
+  const templateId = typeof payload.templateId === "string" ? payload.templateId : "";
+  const model = typeof payload.model === "string" ? payload.model : "";
+
+  if (!payload.claimId) {
+    throw new Error("Invalid ztp-provision payload: claimId is missing");
+  }
+
+  await reportProgress(
+    job.id,
+    8,
+    `Validating ZTP claim ${serial} (${vendorKey}${model ? ` ${model}` : ""}) against the provisioning policy`
+  );
+  await sleep(randInt(700, 1_400));
+
+  await reportProgress(
+    job.id,
+    28,
+    `Rendering ${templateId || "ZTP"} bootstrap config for ${hostname} — mgmt profile + site variables`
+  );
+  await sleep(randInt(900, 1_700));
+
+  await reportProgress(
+    job.id,
+    55,
+    `Pushing rendered bootstrap config to ${hostname} (${vendorKey}) — commit id 8${randInt(1000000, 9999999)}`
+  );
+  await sleep(randInt(1_100, 2_000));
+
+  await reportProgress(
+    job.id,
+    80,
+    `Registering ${hostname} in the inventory — first contact + management reachability`
+  );
+  await sleep(randInt(700, 1_400));
+
+  // The state mutation (Device create + claim flip + audit + snapshot) happens
+  // in the Next.js API — the worker never opens SQLite. An outcome "failed"
+  // answer is a legitimate terminal result (the endpoint already recorded it);
+  // only a transport/5xx error propagates to the retryable failure path.
+  const result = (await nextPost(
+    "/api/v1/worker/ztp-provision",
+    { jobId: job.id },
+    20_000
+  )) as ZtpProvisionResponse;
+
+  await nextPost(
+    "/api/v1/worker/complete",
+    {
+      jobId: job.id,
+      outcome: "SUCCEEDED",
+      result: {
+        outcome: result.outcome,
+        claimId: result.claimId,
+        serial: result.serial,
+        hostname: result.hostname,
+        deviceId: result.deviceId ?? null,
+        reason: result.reason ?? null,
+        provisionedAt: result.provisionedAt ?? new Date().toISOString(),
+      },
+    },
+    15_000
+  );
+
+  counters.completed += 1;
+  counters.completedByType.ZTP_PROVISION =
+    (counters.completedByType.ZTP_PROVISION ?? 0) + 1;
+  await log(
+    `job ${job.id} [${job.correlationId}] SUCCEEDED: ztp-provision ${result.serial} → ${result.hostname} outcome=${result.outcome}${result.deviceId ? ` deviceId=${result.deviceId}` : ""}${result.reason ? ` reason=${result.reason}` : ""}`
+  );
+}
+
 /* ───────────────────── REPORT_RUN driver (9-a) ─────────────────── */
 
 /** Response shape of POST /api/v1/reports/execute. */
@@ -857,6 +965,8 @@ async function executeJob(job: ClaimedJob): Promise<void> {
       await raceTimeout(runReportJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "FIRMWARE_UPGRADE") {
       await raceTimeout(runFirmwareUpgradeJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "ZTP_PROVISION") {
+      await raceTimeout(runZtpProvisionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else {
       throw new Error(`Unsupported job type for worker v1: ${job.type}`);
     }
@@ -896,7 +1006,7 @@ async function claimTick(): Promise<"ok" | "failed" | "busy"> {
     try {
       jobs = (await nextPost(
         "/api/v1/worker/claim",
-        { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION", "REPORT_RUN", "FIRMWARE_UPGRADE"], limit: Math.min(CLAIM_BATCH, free) },
+        { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION", "REPORT_RUN", "FIRMWARE_UPGRADE", "ZTP_PROVISION"], limit: Math.min(CLAIM_BATCH, free) },
         10_000
       )) as ClaimedJob[];
     } catch (e) {

@@ -365,6 +365,46 @@ export async function POST(request: Request) {
       });
     }
 
+    // ── ZTP_PROVISION (Phase 14-b): the provisioning endpoint persisted the
+    // Device creation + claim flip + audit — store the summary verbatim in
+    // resultJson (Job Center shows the claim → device outcome). ──
+    if (job.type === "ZTP_PROVISION") {
+      const ztpShape = z.object({
+        outcome: z.enum(["provisioned", "failed"]),
+        claimId: z.string().optional(),
+        serial: z.string().optional(),
+        hostname: z.string().optional(),
+        deviceId: z.string().nullable().optional(),
+        reason: z.string().nullable().optional(),
+        provisionedAt: z.string().optional(),
+        alreadyResolved: z.boolean().optional(),
+      });
+      const parsedZtp = ztpShape.safeParse(result);
+      if (!parsedZtp.success) {
+        return fail(
+          "INVALID_RESULT",
+          "SUCCEEDED ZTP_PROVISION completion requires result.outcome (provisioned|failed)",
+          400
+        );
+      }
+      await db.jobExecution.update({
+        where: { id: job.id },
+        data: {
+          status: "SUCCEEDED",
+          progress: 100,
+          finishedAt: now,
+          error: null,
+          resultJson: JSON.stringify(parsedZtp.data),
+        },
+      });
+      return ok({
+        jobId,
+        updated: true,
+        status: "SUCCEEDED",
+        outcome: parsedZtp.data.outcome,
+      });
+    }
+
     // ── CONFIG_BACKUP: validate the snapshot payload (unchanged behavior) ──
     const parsedBackup = backupResultSchema.safeParse(result);
     if (!parsedBackup.success) {

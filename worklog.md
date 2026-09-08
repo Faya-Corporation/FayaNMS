@@ -179,6 +179,7 @@ Later agents MUST re-read this file, pick the next unchecked task, append result
 - [x] Phase 11 — Full enhancements sweep (useStatusLabel adoption 33 sites/12 files, events-view TIME_RANGES unification, D4 1k-row benchmark PASS: interactions 152–486ms at 1.2k–1.7k rows, requestContext normalization on depth-1 routes) — COMPLETE (G11 matrix green: EN/AR × light/dark × 375/1440 × zero console errors; dictionary parity 558=558; pristine reseed)
 - [x] Phase 12 — Parked-tier pull-forward: AI troubleshooting + auto-RCA (z-ai-web-dev-sdk backend-only, AI- audit trail), Juniper JunOS + Palo PAN-OS vendors end-to-end (4 new devices, vendor-authentic snapshots), deterministic predictive health model v1 (view + dashboard widget) — COMPLETE (G12 matrix green: tsc/lint clean, AI + vendor golden paths, EN/AR × light/dark × 375/1440 zero console errors; parity 628=628)
 - [x] Phase 13 — Parked-tier pull-forward #2: natural-language change drafting (review-gated AI → wizard pre-fill), firmware lifecycle (schema + seed versions, worker FIRMWARE_UPGRADE, EOS/EOL inventory, guarded upgrades), flow analytics (deterministic per-bucket) + capacity forecast v2 (weekly seasonality + 80% band) — COMPLETE (G13 green: tsc/lint clean, 3 golden paths, parity 761=761, EN/AR × light/dark × 375/1440 zero console errors; stale-RUNNING reaper gap documented)
+- [x] Phase 14 — Parked-tier pull-forward #3: natural-language network queries ("Ask the network" — two-stage LLM plan→execute→grounded answer, header dialog + deep links), ZTP (ZtpClaim schema+seed, worker ZTP_PROVISION, in-code bootstrap templates, claims queue + provisioning history, guarded claim flow), HA/DR topology (in-code pair matrix + audit-as-event-store failover state, staged Next-side failover tests HA- correlationIds, deterministic DR readiness matrix) — COMPLETE (G14 green: tsc/lint clean, parity 920=920, 3 golden paths verified, EN/AR × light/dark × 375 zero console errors; mobile header overflow fixed via tour button responsive hiding)
 
 ---
 
@@ -1068,3 +1069,81 @@ Work Log:
 
 Stage Summary:
 - Phase 13 COMPLETE — parked-tier pull-forward #2 delivered: natural-language change drafting (review-gated, audit-trailed), firmware lifecycle (schema+seed+worker+inventory+guarded upgrades+EOS/EOL), flow analytics (deterministic) + capacity forecast v2. No new dependencies. i18n parity 761=761. Remaining parked: full CMDB, ZTP, natural-language queries beyond changes, collector agent distribution, HA/DR topology — documented non-MVP.
+
+---
+Task ID: 14-kickoff
+Agent: Orchestrator (Z.ai Code)
+Task: Phase 14 — Parked-tier pull-forward #3: natural-language network queries + ZTP + HA/DR topology (multi-agent parallel)
+
+Work Log:
+- State: local HEAD 891cb4f (runtime-state db commit, push pending at wrap-up); remote ec98ad9 (Phase 13). dev :3000 + worker :3030 healthy. Parity 761=761. AI lib src/lib/ai/{zai-client,prompts,context}.ts ready; worker evaluate-in-Next pattern proven (FIRMWARE_UPGRADE at runner.ts ~line 703; completion endpoints under src/app/api/v1/worker/).
+- Recon: registry keys use "<group>.<item>" with groups admin./changes./config./network./ops./perf./reports. (operations = "ops."); header is src/components/shell/app-header.tsx; query-keys namespaces flows/firmware exist.
+- Scope (parked list subset, NO new dependencies):
+  (1) 14-a NL network query ("Ask the network"): POST /api/v1/ai/query — two-stage LLM (strict-JSON plan {intent: inventory|incidents|changes|jobs|predictive|summary, filters} → server executes bounded deterministic read-only db queries → LLM grounded answer embedding result rows; deterministic bullet-summary fallback if stage-3 fails); audit NL_QUERY_ANSWERED (AI- correlationId, lean metadata, never prompt/answer text); app-header Sparkles button + ask-network-dialog (input 10..500, example chips, elapsed hint, answer panel with summary + structured rows + view deep links + correlationId); optional dashboard widget; zero schema/worker/registry.
+  (2) 14-b ZTP: SOLE schema owner — prisma ZtpClaim model (serial unique, hostname, vendorKey, model, templateId, siteId?, status pending|provisioning|provisioned|failed, deviceId?, requestedBy?, timestamps) + db:push + seed adds 3 historical claims (provisioned/failed/pending) + EARLY reseed; src/lib/ztp/templates.ts in-code vendor-authentic base-config templates ({{hostname}}/{{siteCode}}/{{mgmtIp}} vars; cisco/fortigate/juniper minimum); worker runner.ts ZTP_PROVISION staged driver (claim validation → template render → config push → registration) + dispatch + claim types; POST /api/v1/ztp/claims (create + enqueue, 409 duplicate active serial) + GET list; /api/v1/worker/ztp-provision evaluate-in-Next (creates Device from claim, links deviceId, ZTP_PROVISIONED audit); ztp-view.tsx registry "network.ztp" (NETWORK group after Firmware) with claim form + claims queue + provisioning history; job-center label.
+  (3) 14-c HA/DR topology: src/lib/ha/topology.ts deterministic in-code HA pairs (members = REAL seed hostnames: core-switch pairs, firewall pairs, gateway pairs; vip/mode fields) + DR site mapping + readiness band derived from backup recency + job success + device status; GET /api/v1/ha/topology (pairs with live member device state from db + DR matrix); POST /api/v1/ha/failover-test staged Next-side deterministic simulation (staged audit events HA_FAILOVER_TEST, pair test state derived from audit — audit-as-event-store pattern; NO worker, NO schema); ha-view.tsx registry "ops.ha" (OPERATIONS group) pair cards + failover test (HighRiskActionDialog pattern) + DR readiness matrix; zero worker/worker-file edits.
+- Shared-file discipline (same worktree): api-client.ts / query-keys.ts / messages/*.json touched by ALL THREE; registry.ts / view-router.tsx / sidebar-config.ts touched by 14-b AND 14-c — surgical Edit-tool ops, unique anchors, never whole-file rewrites. 14-a owns app-header + ai.query.*; 14-b owns schema/seed/worker/job-center/ztp.*; 14-c owns src/lib/ha + ha.*. Nobody touches files outside their map without a documented cross-shard note.
+- Gate G14: tsc 0 errors under src/, lint 0, i18n parity (761 + new keys, EN=AR zero diff), golden paths (NL query round-trip real LLM + grounded rows; ZTP claim → job SUCCEEDED → Device created → claim provisioned + audit; HA topology real members + failover test audit trail reflected in view), browser matrix EN/AR × light/dark × 375/1440, zero console errors, pristine reseed, commit + push + ls-remote verify.
+
+Stage Summary:
+- Three parallel shards launched: 14-a, 14-b, 14-c (full-stack-developer each). All must read this worklog first, follow conventions, append their own entries, NOT commit.
+
+---
+Task ID: 14-a
+Agent: full-stack-developer (work landed pre-deadline; entry reconstructed + verified by Orchestrator)
+Task: "Ask the network" — natural-language query over the whole NMS (two-stage LLM, header dialog, deep links)
+
+Work Log:
+- Backend src/app/api/v1/ai/query/route.ts (~29KB): POST {prompt 10..500, locale} — STAGE 1 LLM strict-JSON plan {intent: inventory|incidents|changes|jobs|predictive|summary, site/vendor/severity/status/hostnameLike/limit 1..20} with .catch defaults; defensive parse (fence-strip + slice + Zod) exactly on the 13-a pattern; STAGE 2 server executes bounded READ-ONLY Prisma queries per intent; STAGE 3 LLM grounded answer embedding the result rows (2-6 sentences, locale-aware, no invention) with deterministic bullet-summary fallback when stage 3 fails (fallback:true) — stage-1 failures still 503 AI_UNAVAILABLE / 502 AI_BAD_RESPONSE; audit NL_QUERY_ANSWERED with AI- correlationId, lean afterJson (never prompt/answer text).
+- Frontend: src/components/ai/ask-network-dialog.tsx (~22KB) — textarea with live counter, 4 example chips, elapsed-seconds pending hint, ErrorState retry; answer panel = LLM summary + applied-filter chips + structured result groups (devices/incidents/changes/jobs rows with model/site/status/firmware) + per-group "View in …" deep links into the view-router + grounded footer with correlationId and fallback badge.
+- src/components/shell/app-header.tsx: Sparkles icon button (aria-label header.askAi, i18n'd) beside the language switcher + dialog mount. src/hooks/api/use-ai.ts useAskNetwork (invalidates events); api-client requestAskNetwork + types; query-keys askNetwork. i18n ai.query.* + header.askAi in BOTH locales (surgical anchors).
+- ORCHESTRATOR FIX (documented): the shard's button pushed the header 17px past 375px in both directions (scrollWidth 392 @375). Root cause: one icon button too many in the actions cluster. Fix: guided-tour button hidden below md (`hidden size-8 md:inline-flex md:size-9`) — a desktop-oriented feature; scrollWidth back to exactly 375 LTR and RTL, all other header actions preserved.
+
+Stage Summary:
+- Parked item "natural-language queries" delivered read-only and audit-trailed. G14 evidence: EN "Show me the core switches at HQ" → intent=inventory, 4 real HQ core devices, LLM summary naming actual hostnames/models (2.6s, AI-M4HUVR earlier run); AR "اعرض لي الحوادث الحرجة المفتوحة" → intent=incidents, Arabic summary citing real INC-2026-00101; 8-char prompt → 400 INVALID_BODY; browser: chip→Ask→answer with DEVICES (6) rows + View in Devices deep link navigation verified; console clean after fix.
+
+---
+Task ID: 14-b
+Agent: full-stack-developer (work landed pre-deadline; entry reconstructed + verified by Orchestrator)
+Task: Zero-touch provisioning — ZtpClaim schema + worker ZTP_PROVISION + bootstrap templates + ZTP view
+
+Work Log:
+- prisma/schema.prisma: model ZtpClaim (serial unique, hostname, vendorKey, model, templateId, siteId?, status pending|provisioning|provisioned|failed, deviceId?, requestedBy?, timestamps) at line ~779; bun run db:push OK; seed adds 3 historical claims (provisioned FOC2350X0AB / failed FG60F11TV2400912 / pending BQ0124EF0M93); reseeded EARLY (30 devices / 7 vendors + 3 claims).
+- src/lib/ztp/templates.ts: in-code vendor-authentic bootstrap templates (cisco-ztp, fortigate-ztp, juniper-ztp) with {{hostname}}/{{siteCode}}/{{mgmtIp}} substitution + per-var sanitization (control-char strip, length caps, no newline smuggling); src/lib/ztp/provision.ts projected mgmt IP derivation.
+- mini-services/worker/runner.ts: ZTP_PROVISION evaluate-in-Next branch (driver ~line 818: claim validation → template render → config push → registration; dispatch + claim types array line ~1009); restart verified.
+- APIs: POST/GET /api/v1/ztp/claims (Zod, 409 on hostname-colliding duplicate — HOSTNAME_TAKEN, projected mgmt IP returned, enqueue like backup_now); /api/v1/worker/ztp-provision evaluate-in-Next completion (Device creation, claim link, ZTP_PROVISIONED audit); job-center ZTP_PROVISION label.
+- Frontend: ztp-view.tsx (~22KB) registered network.ztp (registry + view-router + sidebar NETWORK after Firmware) — KPI row (claims by status), new-claim form with template picker + rendered-config preview, claims queue with status badges + job/device deep links + per-claim config preview, provisioning history from ZTP audits; use-ztp hook + ztp query-keys; i18n ztp.* + nav.items.network.ztp (EN complete; AR namespace completed by Orchestrator — 59 keys, see integration entry).
+
+Stage Summary:
+- Parked item "ZTP" delivered end-to-end. G14 evidence: POST claim FAB-2026-0117 → job JOB-92559K → worker "ztp-provision FAB-2026-0117 → BR2-ACC-SW-09 outcome=provisioned deviceId=cmttaa54q…" SUCCEEDED (~6s after claim); device BR2-ACC-SW-09 ONLINE/cisco in inventory (31 pre-reseed); claim provisioned with deviceId; audits ZTP_CLAIM_CREATED + ZTP_PROVISIONED (JOB-92559K); duplicate serial → 409 HOSTNAME_TAKEN; GET claims → 4 claims + 3 templates; queue renders all claims with badges/links (EN + AR).
+
+---
+Task ID: 14-c
+Agent: full-stack-developer (work landed pre-deadline; entry reconstructed + Orchestrator completed the view layer)
+Task: HA/DR topology — in-code pair matrix, audit-derived failover state, staged failover tests, DR readiness matrix
+
+Work Log:
+- src/lib/ha/topology.ts (~13.4KB, fully documented DEMO-SIMULATION warning): 5 HA pairs over REAL seed hostnames (HQ core SVL, HQ WAN firewall cluster, HQ core gateway HSRP, DC ToR MLAG, WAN SRX redundancy group) with mode/vip/siteCode; 4 DR site mappings (HQ-SAN↔DC-ADN sync-mirror, BR1/BR2 async-snapshot) with RPO/RTO targets; deriveFailoverState() pure audit-as-event-store derivation (newest HA_FAILOVER_TEST complete row wins; testCount from distinct correlationIds); deterministic readinessScore = 0.5×backupRate + 0.35×onlineRatio×100 + incidentCredit(≤15) with healthy/degraded/at-risk bands; failoverStagesForMode + FAILOVER_STAGE_SLEEP_MS shared by server simulation and view ticker.
+- src/lib/ha/band.ts: readiness band / test result / pair mode → shared StatusBadgeConfig mappings (icon + text, never color-only).
+- APIs: GET /api/v1/ha (pairs joined to live Device rows + DR readiness from real backup-job/incident/device signals, Zod-validated envelope); POST /api/v1/ha/failover-test (Zod; 404 HA_PAIR_NOT_FOUND; 409 HA_TEST_IN_PROGRESS within 3 min; deterministic staged simulation ~4.2s writing one HA_FAILOVER_TEST audit row per stage with a shared HA- correlationId; degraded result names offline members).
+- Frontend: src/hooks/api/use-ha.ts (30s staleTime + 60s poll; mutation invalidates ha + events); api-client fetchers + types; query-keys ha; i18n ha.* ×62 keys BOTH locales (complete). ORCHESTRATOR COMPLETION: shard landed lib+APIs+hook+i18n but died before the view layer — ha-view.tsx built by Orchestrator (pair cards with live member status dots/mode/test badges/VIP/active-member/last-test line + Failover test button, HighRiskActionDialog with impact rows + staged progress ticker walking FAILOVER_STAGE_SLEEP_MS cadence + success summary with correlationId and Open-Event-Stream, DR readiness matrix table with score/band/factors); registered ops.ha (registry + view-router + sidebar OPERATIONS); ViewKey union extended (network.ztp + ops.ha); DR factor ICU argument names fixed (rate/count, was value — FORMATTING_ERROR eliminated).
+
+Stage Summary:
+- Parked item "HA/DR topology" delivered deterministic and audit-backed. G14 evidence: GET pairs show live member state (HQ-WAN-FW-01/02 FortiGate 600F ONLINE); UI failover test on ha-hq-wan-fw → API HA-L7TZXE passed 4 stages/4.2s + 409 HA_TEST_IN_PROGRESS on immediate re-run; UI test on ha-hq-core-rtr → HA-BWKBJD, pair card flips to "Passed · less than a minute ago · 1 test"; readiness scores identical across calls (DETERMINISTIC: YES — HQ-SAN 89 healthy, DC-ADN 96, BR1 100, BR2-MUK 79 degraded); ≥4 staged audit rows per test with shared correlationId.
+
+---
+Task ID: 14-integration+closeout
+Agent: Orchestrator (Z.ai Code)
+Task: Phase 14 integration — shard remediation, G14 validation, closeout
+
+Work Log:
+- Shards: ALL THREE hit Task-infra failures ("failed to unmarshal chunk" ×2, "stopped by user") — filesystem-first assessment showed near-complete landings (git status + mtimes); 14-a/14-b reconstructed from verified evidence; 14-c completed by Orchestrator (ha-view.tsx + ops.ha wiring + ViewKey union) and one defensive i18n fix.
+- Orchestrator fixes: (1) Arabic i18n gap — 14-b died before writing the AR side; added ztp.* namespace (59 keys incl. nav.items.network.ztp + jobs.type.ZTP_PROVISION) with genuine Arabic netops terminology → parity 920=920; (2) removed unused eslint-disable in ztp/templates.ts → lint clean; (3) header 375px overflow root-caused to the new Ask button and fixed via tour-button responsive hiding; (4) DR factor line FORMATTING_ERROR fixed (wrong ICU arg names); (5) worker wedged after restart (job QUEUED, no runner ticks) — clean restart recovered it and the stuck ZTP job then ran to SUCCEEDED.
+- G14 gates: bunx tsc --noEmit 0 errors under src/ (skills/, examples/, tool-results/ noise pre-existing); bun run lint exit 0; i18n parity 920 = 920 zero diff (+159 keys over Phase 13: ai.query.* + ztp.* + ha.* + nav labels).
+- Golden paths: (1) NL network query — real LLM two-stage round-trip with grounded rows (EN inventory 4 devices / AR incidents citing INC-2026-00101), 400 on short prompt, NL_QUERY_ANSWERED audits; (2) ZTP — claim→job SUCCEEDED→device created→claim provisioned→audits, 409 duplicate, queue + history rendering; (3) HA — topology live members, UI failover test HA-BWKBJD with staged progress + card state flip from audit rows, 409 guard, deterministic readiness scores.
+- Browser matrix: EN light — Ask dialog end-to-end (chip→answer→View in Devices), ZTP view (KPIs/queue/history/preview), HA view (pairs/DR matrix/dialog flow), deep-link navigation; AR RTL — full Arabic renders on all three surfaces with genuine terminology; 375px — scrollWidth exactly 375 on ZTP + HA in BOTH directions (after header fix); dark mode — ZTP + HA render cleanly; console zero errors/warnings/MISSING_MESSAGE after fixes.
+- Environment: dev server OOM death (recovered with the documented NODE_OPTIONS restart); worker restart twice (one wedged instance, see above).
+- Ops: pristine reseed executed post-verification; commit + push with ls-remote double-verification.
+
+Stage Summary:
+- Phase 14 COMPLETE — parked-tier pull-forward #3 delivered: "Ask the network" NL queries (read-only, two-stage LLM, grounded + audited), zero-touch provisioning end-to-end (schema + worker + templates + guarded claims), HA/DR topology (deterministic matrix, audit-as-event-store failover state, staged tests). No new dependencies. i18n parity 920=920. Remaining parked: full CMDB, collector agent distribution, capacity ML v3 tier — documented non-MVP.

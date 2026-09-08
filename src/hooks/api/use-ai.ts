@@ -6,12 +6,15 @@ import {
   requestAiAssist,
   requestAiChangeDraft,
   requestAiRcaDraft,
+  requestAskNetwork,
   type AiAssistPayload,
   type AiAssistResult,
   type AiChangeDraftPayload,
   type AiChangeDraftResult,
   type AiRcaDraftPayload,
   type AiRcaDraftResult,
+  type AskNetworkPayload,
+  type AskNetworkResult,
 } from "@/lib/api-client";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -59,6 +62,23 @@ export function useAiChangeDraft() {
   return useMutation<AiChangeDraftResult, Error, AiChangeDraftPayload>({
     mutationKey: queryKeys.aiChangeDraft(),
     mutationFn: (payload) => requestAiChangeDraft(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["events"] });
+    },
+  });
+}
+
+/**
+ * "Ask the network" natural-language query (Phase 14-a). The backend runs a
+ * two-stage LLM pipeline over a deterministic read-only plan; the mutation
+ * only writes lean AI_* audit rows, so the success path refreshes the
+ * "events" audit stream like the other AI hooks.
+ */
+export function useAskNetwork() {
+  const queryClient = useQueryClient();
+  return useMutation<AskNetworkResult, Error, AskNetworkPayload>({
+    mutationKey: queryKeys.askNetwork(),
+    mutationFn: (payload) => requestAskNetwork(payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["events"] });
     },

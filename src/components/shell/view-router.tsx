@@ -26,6 +26,7 @@ import { DriftView } from "@/components/views/drift-view";
 import { EventsView } from "@/components/views/events-view";
 import { FirmwareView } from "@/components/views/firmware-view";
 import { FlowsView } from "@/components/views/flows-view";
+import { HaView } from "@/components/views/ha-view";
 import { IncidentsView } from "@/components/views/incidents-view";
 import { IncidentDetailView } from "@/components/views/incident-detail-view";
 import { MaintenanceView } from "@/components/views/maintenance-view";
@@ -42,6 +43,7 @@ import { ReportsScheduledView } from "@/components/views/reports-scheduled-view"
 import { ReportsView } from "@/components/views/reports-view";
 import { SitesView } from "@/components/views/sites-view";
 import { SnapshotsView } from "@/components/views/snapshots-view";
+import { ZtpView } from "@/components/views/ztp-view";
 
 /**
  * Client-side view router (ADR-02): maps the active ViewKey from the
@@ -89,6 +91,8 @@ export function ViewRouter() {
       return <DiscoveryView />;
     case "network.firmware":
       return <FirmwareView />;
+    case "network.ztp":
+      return <ZtpView />;
     case "ops.alerts":
       return <AlertsView />;
     case "ops.incidents":
@@ -115,6 +119,8 @@ export function ViewRouter() {
       return <ChangeApprovalsView />;
     case "ops.jobs":
       return <JobsView />;
+    case "ops.ha":
+      return <HaView />;
     case "config.backups":
       return <BackupsView />;
     case "config.snapshots":

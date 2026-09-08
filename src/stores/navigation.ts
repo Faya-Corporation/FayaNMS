@@ -17,6 +17,7 @@ export type ViewKey =
   | "network.topology"
   | "network.discovery"
   | "network.firmware"
+  | "network.ztp"
   // Configurations
   | "config.backups"
   | "config.snapshots"
@@ -38,6 +39,7 @@ export type ViewKey =
   | "ops.maintenance"
   | "ops.events"
   | "ops.jobs"
+  | "ops.ha"
   // Performance
   | "perf.overview"
   | "perf.devices"

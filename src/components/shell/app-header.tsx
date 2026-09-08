@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { useTheme } from "next-themes";
 import { useTranslations } from "next-intl";
 import { signOut, useSession } from "next-auth/react";
@@ -19,6 +19,7 @@ import {
   PanelLeftOpen,
   Rows3,
   Search,
+  Sparkles,
   Sun,
   User,
 } from "lucide-react";
@@ -51,6 +52,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AskNetworkDialog } from "@/components/ai/ask-network-dialog";
 import { EmptyState } from "@/components/domain/empty-state";
 import { StatusDot } from "@/components/domain/status-dot";
 import { cn } from "@/lib/utils";
@@ -140,6 +142,10 @@ export function AppHeader({
   const markRead = useMarkNotificationsRead();
   const notificationItems = notificationsQuery.data?.data ?? [];
   const unreadCount = notificationsQuery.data?.meta.unreadCount ?? 0;
+
+  // "Ask the network" dialog (Phase 14-a) — natural-language query over the
+  // whole NMS, opened from the header Sparkles button.
+  const [askOpen, setAskOpen] = useState(false);
 
   const healthy = criticalAlerts === 0;
   // Localized breadcrumbs mirror breadcrumbFor(): dashboard is a lone crumb,
@@ -416,7 +422,7 @@ export function AppHeader({
           <TooltipTrigger asChild>
             <Button
               aria-label={tTour("startTour")}
-              className="size-8 md:size-9"
+              className="hidden size-8 md:inline-flex md:size-9"
               onClick={startTour}
               size="icon"
               variant="ghost"
@@ -425,6 +431,22 @@ export function AppHeader({
             </Button>
           </TooltipTrigger>
           <TooltipContent>{tTour("startTour")}</TooltipContent>
+        </Tooltip>
+
+        {/* Ask the network (Phase 14-a) — NL query over the whole NMS. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              aria-label={tHeader("askAi")}
+              className="size-8 md:size-9"
+              onClick={() => setAskOpen(true)}
+              size="icon"
+              variant="ghost"
+            >
+              <Sparkles aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{tHeader("askAi")}</TooltipContent>
         </Tooltip>
 
         {/* Language switcher (Task 8-a) — persisted in the preferences store. */}
@@ -517,6 +539,9 @@ export function AppHeader({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Ask the network (Phase 14-a) — portal-rendered dialog. */}
+      <AskNetworkDialog onOpenChange={setAskOpen} open={askOpen} />
     </header>
   );
 }

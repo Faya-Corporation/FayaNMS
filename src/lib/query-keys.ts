@@ -118,6 +118,8 @@ export const queryKeys = {
   aiRcaDraft: (incidentId: string) => ["ai", "rcaDraft", incidentId] as const,
   // Natural-language change drafts (Phase 13-a) — mutations, no record scope.
   aiChangeDraft: () => ["ai", "changeDraft"] as const,
+  // "Ask the network" NL query (Phase 14-a) — mutation, fleet-wide scope.
+  askNetwork: () => ["ai", "askNetwork"] as const,
 
   // ── Predictive health (Phase 12-c) ───────────────────────────────────
   // Read-only risk scores; params carry the optional siteId filter so the
@@ -136,4 +138,17 @@ export const queryKeys = {
   // flags), "jobs" (Job Center shows the FIRMWARE_UPGRADE row) and
   // "devices" (device detail firmware chip) via the hooks.
   firmware: () => ["firmware"] as const,
+
+  // ── Zero-touch provisioning (Phase 14-b) ─────────────────────────────
+  // One read bundles claims + templates + option lists + counts + the ZTP
+  // audit history; the claim mutation invalidates "ztp" (queue/counts),
+  // "jobs" (the ZTP_PROVISION row), "devices" (the provisioned device) and
+  // "events" (ZTP_* audit trail) via the hooks.
+  ztp: () => ["ztp"] as const,
+
+  // ── HA/DR topology (Phase 14-c) ──────────────────────────────────────
+  // Read-only topology (pairs + DR readiness) under the "ha" prefix; the
+  // failover-test mutation invalidates "ha" (failover state lines) and
+  // "events" (the staged HA_FAILOVER_TEST audit rows) via the hooks.
+  ha: () => ["ha"] as const,
 };

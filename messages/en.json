@@ -58,7 +58,8 @@
         "interfaces": { "title": "Interfaces" },
         "topology": { "title": "Topology" },
         "discovery": { "title": "Discovery" },
-        "firmware": { "title": "Firmware" }
+        "firmware": { "title": "Firmware" },
+        "ztp": { "title": "Zero-Touch Provisioning" }
       },
       "config": {
         "backups": { "title": "Backups" },
@@ -82,7 +83,8 @@
         "incident-detail": { "title": "Incident Detail" },
         "maintenance": { "title": "Maintenance Windows" },
         "events": { "title": "Event Stream" },
-        "jobs": { "title": "Job Center" }
+        "jobs": { "title": "Job Center" },
+        "ha": { "title": "HA / DR" }
       },
       "perf": {
         "overview": { "title": "Performance Overview" },
@@ -120,6 +122,7 @@
     "healthOkAria": "System health: operational",
     "healthCriticalAria": "System health: critical alerts active",
     "jobCenter": "Open job center",
+    "askAi": "Ask the network (AI)",
     "notifications": "Notifications",
     "notificationsUnreadAria": "Notifications ({count} unread)",
     "markAllRead": "Mark all read",
@@ -593,6 +596,163 @@
     },
     "matrixNote": "Lifecycle classification uses the documented demo vendor matrix (simulated EOS/EOL data) — not a live vendor feed."
   },
+  "ha": {
+    "title": "HA / DR Topology",
+    "description": "High-availability pairs with live member state and staged failover tests, plus disaster-recovery readiness per protected site.",
+    "errorTitle": "HA/DR topology could not be loaded",
+    "pairs": {
+      "title": "HA pairs",
+      "description": "Redundancy pairs with live member status and the latest failover-test state",
+      "emptyTitle": "No HA pairs",
+      "emptyDescription": "HA pairs are defined in the platform's documented redundancy matrix.",
+      "members": "Members",
+      "vip": "VIP",
+      "activeMember": "Active",
+      "lastTest": "Last test",
+      "testCount": "{count, plural, one {# test} other {# tests}}",
+      "runTest": "Failover test"
+    },
+    "mode": {
+      "activeStandby": "Active / standby",
+      "activeActive": "Active / active"
+    },
+    "lastTest": {
+      "passed": "Passed",
+      "degraded": "Degraded",
+      "never": "Never tested"
+    },
+    "band": {
+      "healthy": "Healthy",
+      "degraded": "Degraded",
+      "at-risk": "At risk"
+    },
+    "test": {
+      "title": "Failover test — {pair}",
+      "description": "Runs a controlled, staged failover simulation: promote the standby, sync state, verify the VIP, then settle. Every stage is written to the audit trail — no real traffic is affected.",
+      "confirmLabel": "Run failover test",
+      "impact": {
+        "pair": "Pair",
+        "mode": "Mode",
+        "vip": "Virtual IP",
+        "members": "Members",
+        "duration": "Expected duration",
+        "durationValue": "~5 seconds (staged simulation)"
+      },
+      "stagesTitle": "Staged progress",
+      "stages": {
+        "promote": "Promote standby",
+        "sync": "Sync state",
+        "verify": "Verify VIP",
+        "promoteBack": "Promote original primary back",
+        "keepPromoted": "Rebalance across members",
+        "complete": "Test complete"
+      },
+      "testPassed": "passed",
+      "testDegraded": "degraded",
+      "testInProgress": "A failover test for this pair ran less than 3 minutes ago — wait before re-running it.",
+      "openEvents": "Open Event Stream",
+      "degradedNote": "Ran degraded — offline member(s): {members}",
+      "toast": {
+        "title": "Failover test {result} — {pair}",
+        "description": "Correlation {correlation} · {duration} · {stages} staged audit rows."
+      },
+      "success": {
+        "title": "Test complete — {correlation}",
+        "description": "{stages} stages finished in {duration}. Active member: {activeMember}."
+      }
+    },
+    "drMatrix": {
+      "title": "DR readiness matrix",
+      "description": "Disaster-recovery mapping per protected site with deterministic readiness scoring",
+      "primary": "Protected site",
+      "secondary": "DR site",
+      "rpo": "RPO target",
+      "rto": "RTO target",
+      "replication": "Replication",
+      "readiness": "Readiness",
+      "replicationTech": {
+        "sync-mirror": "Sync mirror",
+        "async-snapshot": "Async snapshot"
+      },
+      "factorsBackupRate": "Backups {rate}%",
+      "factorsOpenCritical": "{count, plural, one {# open critical incident} other {# open critical incidents}}",
+      "factorsMemberOnline": "{rate}% devices online",
+      "minutes": "{count, plural, one {# minute} other {# minutes}}",
+      "emptyTitle": "No DR mappings",
+      "emptyDescription": "DR mappings are defined in the platform's documented recovery matrix."
+    }
+  },
+  "ztp": {
+    "title": "Zero-Touch Provisioning",
+    "description": "Claim factory-fresh devices by serial — the platform renders the vendor bootstrap config, pushes it and registers the device automatically.",
+    "errorTitle": "ZTP claims could not be loaded",
+    "formNote": "Zero-touch flow: the management address is projected from the site's subnet and the device is registered in the inventory once the bootstrap config is accepted.",
+    "kpi": {
+      "total": "Claims",
+      "totalHint": "Zero-touch provisioning claims",
+      "pending": "Pending",
+      "pendingHint": "Waiting for the device to boot and phone home",
+      "provisioning": "Provisioning",
+      "provisioningHint": "A ZTP job is running right now",
+      "provisioned": "Provisioned",
+      "provisionedHint": "Registered devices in the inventory",
+      "failed": "Failed",
+      "failedHint": "Claims that could not be provisioned"
+    },
+    "form": {
+      "title": "New claim",
+      "description": "Register a factory serial — provisioning runs automatically.",
+      "serial": "Serial",
+      "hostname": "Hostname",
+      "vendor": "Vendor",
+      "model": "Model",
+      "template": "Bootstrap template",
+      "site": "Site",
+      "selectVendor": "Select vendor",
+      "selectTemplate": "Select template",
+      "selectSite": "Select site",
+      "submit": "Create claim",
+      "submitting": "Creating claim…",
+      "preview": "Preview rendered config",
+      "invalidSerial": "Serial must be 4-64 alphanumerics or dashes.",
+      "invalidHostname": "Hostname must be RFC-ish (letters, digits, hyphens/dots; 3-63 chars)."
+    },
+    "queue": {
+      "title": "Claims queue",
+      "description": "Every claim with its live provisioning status and rendered bootstrap config.",
+      "device": "Device",
+      "serial": "Serial / mgmt IP",
+      "site": "Site",
+      "status": "Status",
+      "created": "Claimed",
+      "actions": "Actions",
+      "openDevice": "Device",
+      "openDeviceAria": "Open device detail for {hostname}",
+      "previewAria": "Toggle the rendered bootstrap config for {serial}",
+      "previewLabel": "Rendered from template {template}",
+      "projected": "projected",
+      "jobTitle": "ZTP job {correlation} — open the Job Center",
+      "emptyTitle": "No claims yet",
+      "emptyDescription": "Create a claim to onboard a device without touching it."
+    },
+    "history": {
+      "title": "Provisioning history",
+      "description": "Recent ZTP audit events — claims, successes and failures.",
+      "empty": "No ZTP activity recorded yet."
+    },
+    "toast": {
+      "createdTitle": "Claim created for {hostname}",
+      "createdDescription": "Job {correlation} queued — projected management IP {mgmtIp}.",
+      "failedTitle": "Claim could not be created"
+    },
+    "status": {
+      "pending": "Pending",
+      "provisioning": "Provisioning",
+      "provisioned": "Provisioned",
+      "failed": "Failed",
+      "unknown": "Unknown"
+    }
+  },
   "jobs": {
     "sheetTitle": "Job Center",
     "sheetDescription": "Background job queue — backups, validations and polls.",
@@ -631,7 +791,8 @@
       "ALERT_EVALUATION": "Alert evaluation",
       "METRIC_RETENTION": "Metric retention prune",
       "REPORT_RUN": "Report run",
-      "FIRMWARE_UPGRADE": "Firmware upgrade"
+      "FIRMWARE_UPGRADE": "Firmware upgrade",
+      "ZTP_PROVISION": "Zero-touch provisioning"
     },
     "actions": {
       "retry": "Retry",
@@ -949,6 +1110,44 @@
         },
         "contributingLabel": "Contributing factors:",
         "hint": "The draft is generated from the incident timeline and pre-fills the form below — nothing is saved until you press Save PIR."
+      },
+      "query": {
+        "title": "Ask the network",
+        "intro": "Ask a question in plain language — the AI classifies it, runs a read-only query over FayaNMS and answers strictly from the returned results.",
+        "cardHint": "Natural-language answers about devices, incidents, changes and jobs.",
+        "promptLabel": "Your question",
+        "placeholder": "e.g. Which core switches are running an old firmware?",
+        "examplesLabel": "Examples",
+        "example_firmware": "Which core switches are running an old firmware?",
+        "example_incidents": "Show open critical incidents at HQ",
+        "example_changes": "How did the last changes go?",
+        "example_summary": "Give me a summary of the network",
+        "ask": "Ask",
+        "asking": "Asking…",
+        "elapsed": "{seconds}s elapsed — answering can take up to a minute",
+        "errorTitle": "The question could not be answered",
+        "summaryTitle": "Answer",
+        "resultsTitle": "Query results",
+        "devices": "Devices",
+        "incidents": "Incidents",
+        "changes": "Changes",
+        "jobs": "Jobs",
+        "predictive": "Risk ranking (approximate)",
+        "snapshot": "Fleet snapshot",
+        "viewInDevices": "View in Devices",
+        "viewInIncidents": "View in Incidents",
+        "viewInChanges": "View in Changes",
+        "viewInJobs": "View in Jobs",
+        "viewInPredictive": "View in Predictive Health",
+        "viewInDashboard": "View in Dashboard",
+        "fallbackNote": "The AI summary was unavailable — showing a deterministic summary built from the same results.",
+        "groundedInLabel": "Grounded in",
+        "groundedDevices": "{count} devices",
+        "groundedIncidents": "{count} incidents",
+        "groundedChanges": "{count} changes",
+        "groundedJobs": "{count} jobs",
+        "groundedSnapshot": "fleet snapshot",
+        "filtersLabel": "Filters:"
       },
       "errors": {
         "unavailable": "The AI service is temporarily unavailable. Please try again in a moment.",
