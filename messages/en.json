@@ -88,7 +88,8 @@
         "devices": { "title": "Device Performance" },
         "interfaces": { "title": "Interface Utilization" },
         "availability": { "title": "Availability" },
-        "capacity": { "title": "Capacity" }
+        "capacity": { "title": "Capacity" },
+        "predictive": { "title": "Predictive Health" }
       },
       "reports": {
         "reports": { "title": "Reports" },
@@ -264,6 +265,62 @@
       "legendMemory": "Memory %",
       "aria": "Utilization trend chart. CPU averaged {cpu} percent, peaking at {cpuPeak} percent. Memory averaged {memory} percent, peaking at {memoryPeak} percent.",
       "srOnly": "Line chart of fleet-average CPU and memory utilization over the selected window. CPU averaged {cpu} percent with a peak of {cpuPeak} percent. Memory averaged {memory} percent with a peak of {memoryPeak} percent."
+    }
+  },
+  "predictive": {
+    "title": "Predictive Health",
+    "description": "Deterministic device risk scores from metric trends, alert pressure, backup reliability, drift and interface faults",
+    "updated": "Updated {time}",
+    "errorTitle": "Predictive health could not be loaded",
+    "kpi": {
+      "analyzed": "Devices analyzed",
+      "analyzedHint": "Managed devices scored by model v1 (unmanaged excluded)",
+      "hot": "High + critical",
+      "hotHint": "Devices in the two top risk bands",
+      "avg": "Average score",
+      "avgHint": "Mean risk score across analyzed devices",
+      "worst": "Worst device",
+      "worstHint": "Highest-ranked device by risk score"
+    },
+    "list": {
+      "title": "Ranked device risks",
+      "description": "Sorted by risk score — every factor is capped and shown per device",
+      "siteFilter": "Filter by site",
+      "allSites": "All sites",
+      "openDevice": "Open device detail for",
+      "emptyTitle": "No devices to score",
+      "emptyDescription": "No analyzable devices in this scope yet — devices must be managed before risk can be scored."
+    },
+    "factors": {
+      "cpuTrend": "CPU/Mem trend",
+      "alertPressure": "Alert pressure",
+      "backupReliability": "Backup reliability",
+      "drift": "Drift",
+      "interfaceErrors": "Interface errors"
+    },
+    "band": {
+      "CRITICAL": "Critical",
+      "HIGH": "High",
+      "MODERATE": "Moderate",
+      "LOW": "Low"
+    },
+    "detail": {
+      "cpuTrend": "CPU {cpu}% · memory {mem}% · {rise}%/day (24 h trend)",
+      "alertPressure": "Active alerts: {active} · acknowledged: {ack}",
+      "backupReliability": "Backup failure streak: {streak}",
+      "neverBackedUp": "Never backed up",
+      "policyScheduled": "policy-scheduled",
+      "drift": "Open drifts: {open} · detections (7 d): {recent}",
+      "interfaceErrors": "Down interfaces (admin UP): {down}",
+      "noTelemetry": "No CPU/memory telemetry in the last 24 h"
+    },
+    "formulaNote": "Deterministic model v1 — factor caps: CPU/Mem trend 30 · alert pressure 25 · backup reliability 20 · drift 15 · interface errors 10. Offline devices floor at 80; maintenance ×0.7.",
+    "widget": {
+      "title": "Predictive risks",
+      "description": "Top devices by deterministic risk score",
+      "emptyTitle": "No risks scored",
+      "emptyDescription": "Risk scores appear once devices are managed and monitored.",
+      "errorTitle": "Risk data unavailable"
     }
   },
   "reports": {
@@ -696,5 +753,42 @@
       },
       "ariaLabel": "Time range",
       "placeholder": "Time range"
+    },
+    "ai": {
+      "assistant": {
+        "title": "AI assistant",
+        "intro": "Ask an operations question about this device — the assistant answers strictly from the FayaNMS context the server assembles (device record, recent alerts, audit trail, open incidents, interfaces and metrics).",
+        "suggestionsLabel": "Suggested",
+        "suggest_cpu": "Why is CPU elevated?",
+        "suggest_hardware": "Any signs of hardware failure?",
+        "suggest_check": "What should I check first?",
+        "suggest_alerts": "Summarize the recent alerts",
+        "questionLabel": "Your question",
+        "placeholder": "e.g. Why did the error rate on Gi0/1 increase after the last change?",
+        "send": "Ask",
+        "sending": "Collecting context and analyzing…",
+        "errorTitle": "The assistant could not answer",
+        "answerTitle": "Assistant answer",
+        "contextBasis": "Grounded in {alerts} alerts · {events} audit events · {incidents} open incidents",
+        "disclaimer": "AI output is advisory — verify against live telemetry before acting."
+      },
+      "rca": {
+        "generate": "Generate AI draft",
+        "generating": "Drafting…",
+        "banner": "AI draft — review before saving",
+        "confidenceLabel": "Confidence",
+        "confidence": {
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High"
+        },
+        "contributingLabel": "Contributing factors:",
+        "hint": "The draft is generated from the incident timeline and pre-fills the form below — nothing is saved until you press Save PIR."
+      },
+      "errors": {
+        "unavailable": "The AI service is temporarily unavailable. Please try again in a moment.",
+        "badResponse": "The AI returned an unusable response. Please retry.",
+        "notFound": "The requested record no longer exists."
+      }
     }
 }

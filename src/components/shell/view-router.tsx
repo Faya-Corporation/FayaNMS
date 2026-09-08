@@ -34,6 +34,7 @@ import { PerfCapacityView } from "@/components/views/perf-capacity-view";
 import { PerfDevicesView } from "@/components/views/perf-devices-view";
 import { PerfInterfacesView } from "@/components/views/perf-interfaces-view";
 import { PerfOverviewView } from "@/components/views/perf-overview-view";
+import { PredictiveHealthView } from "@/components/views/predictive-health-view";
 import { PlaceholderView } from "@/components/views/placeholder-view";
 import { ReportsScheduledView } from "@/components/views/reports-scheduled-view";
 import { ReportsView } from "@/components/views/reports-view";
@@ -130,6 +131,8 @@ export function ViewRouter() {
       return <PerfAvailabilityView />;
     case "perf.capacity":
       return <PerfCapacityView />;
+    case "perf.predictive":
+      return <PredictiveHealthView />;
     case "reports.reports":
       return <ReportsView />;
     case "reports.scheduled":

@@ -12,7 +12,11 @@
  *
  * Adapter keys (capability manifests): cisco-ios (covers IOS/IOS-XE and,
  * folded in, NX-OS via a platform branch), fortinet-fortios, sophos-sfos,
- * hpe-aos-cx, generic (also the fallback for unknown vendor codes).
+ * hpe-aos-cx, juniper-junos (SRX security flavor + EX switching branch),
+ * palo-panos, generic (also the fallback for unknown vendor codes).
+ * Phase 12-b: the JunOS body is hierarchical curly-brace (show-configuration
+ * style); the PAN-OS body is `show config running` set-style. Both are
+ * normalized by the same comment/blank-strip contract as every other flavor.
  */
 
 /* ───────────────────────────── contract ───────────────────────────── */
@@ -21,7 +25,7 @@ export interface DeviceTarget {
   deviceId: string;
   hostname: string;
   name?: string;
-  /** vendor code as stored on Device.vendor.key: cisco|fortinet|sophos|hpe|generic */
+  /** vendor code as stored on Device.vendor.key: cisco|fortinet|sophos|hpe|juniper|palo|generic */
   vendor: string;
   model?: string | null;
   platform?: string | null;
@@ -550,6 +554,335 @@ end`);
   return s;
 }
 
+/* ───────────────────────────── juniper Junos OS ───────────────────────────── */
+
+/**
+ * Hierarchical curly-brace Junos OS body (what `show configuration` prints).
+ * SRX models get security zones/policies; EX/QFX models get an
+ * ethernet-switching flavor — mirroring the ciscoBody NX-OS platform branch.
+ */
+function junosBody(t: DeviceTarget): string[] {
+  const fw = t.firmware ?? "21.4R3-S4.9";
+  const mgmt = octets(t.managementIp);
+  const isEx = /EX[0-9]|QFX/i.test(`${t.model ?? ""} ${t.platform ?? ""}`);
+  const s: string[] = [];
+
+  s.push(`version "${fw}";`);
+  s.push(`system {
+    host-name ${t.hostname};
+    domain-name faya.local;
+    time-zone Asia/Aden;
+    name-server {
+        10.20.10.10;
+        10.20.10.11;
+    }
+    services {
+        ssh {
+            protocol-version v2;
+            connection-limit 5 rate-limit 3;
+        }
+        web-management {
+            https {
+                system-generated-certificate;
+            }
+        }
+    }
+    syslog {
+        host 10.20.10.6 {
+            any any;
+        }
+        file messages {
+            any notice;
+            authorization info;
+        }
+    }
+    ntp {
+        server 10.20.10.10 prefer;
+        server 10.20.10.11;
+    }
+}`);
+
+  if (isEx) {
+    // ── EX/QFX switching flavor ──
+    s.push(`interfaces {
+    ge-0/0/1 {
+        description ACCESS-VLAN10;
+        unit 0 {
+            family ethernet-switching {
+                vlan members USERS;
+            }
+        }
+    }
+    ge-0/0/2 {
+        description ACCESS-VLAN20;
+        unit 0 {
+            family ethernet-switching {
+                vlan members VOICE;
+            }
+        }
+    }
+    ge-0/0/47 {
+        description UPLINK-CORE;
+        unit 0 {
+            family ethernet-switching {
+                vlan members [ USERS VOICE MGMT ];
+            }
+        }
+    }
+    me0 {
+        description OOB-MANAGEMENT;
+        unit 0 {
+            family inet {
+                address ${t.managementIp ?? "10.20.255.14"}/24;
+            }
+        }
+    }
+    vlan {
+        unit 99 {
+            family inet {
+                address ${mgmt[0]}.${mgmt[1]}.10.1/24;
+            }
+        }
+    }
+}`);
+    s.push(`vlans {
+    USERS {
+        vlan-id 10;
+    }
+    VOICE {
+        vlan-id 20;
+    }
+    CAMERA {
+        vlan-id 30;
+    }
+    MGMT {
+        vlan-id 99;
+        l3-interface vlan.99;
+    }
+}`);
+    s.push(`routing-options {
+    static {
+        route 0.0.0.0/0 next-hop ${mgmt[0]}.${mgmt[1]}.10.254;
+    }
+}`);
+    s.push(`snmp {
+    community FayaRO {
+        authorization read-only;
+    }
+    location "${t.hostname.startsWith("HQ") ? "HQ-Sanaa-MDF" : "Branch-MDF"}";
+    contact "NOC <noc@faya.local>";
+}`);
+    return s;
+  }
+
+  // ── SRX security-gateway flavor (default Junos branch) ──
+  const wanAddr = `${mgmt[0]}.${mgmt[1]}.254.${mgmt[3]}/30`;
+  const lanAddr = `${mgmt[0]}.${mgmt[1]}.0.1/24`;
+  const dmzAddr = `${mgmt[0]}.${mgmt[1]}.100.1/24`;
+  s.push(`interfaces {
+    ge-0/0/0 {
+        description WAN-UPLINK;
+        unit 0 {
+            family inet {
+                address ${wanAddr};
+            }
+        }
+    }
+    ge-0/0/1 {
+        description LAN-CORE;
+        unit 0 {
+            family inet {
+                address ${lanAddr};
+            }
+        }
+    }
+    ge-0/0/2 {
+        description DMZ-SEGMENT;
+        unit 0 {
+            family inet {
+                address ${dmzAddr};
+            }
+        }
+    }
+    ge-0/0/3 {
+        description RESERVED-SPARE;
+        disable;
+        unit 0 {
+            family inet;
+        }
+    }
+    fxp0 {
+        description OOB-MANAGEMENT;
+        unit 0 {
+            family inet {
+                address ${t.managementIp ?? "10.20.255.12"}/24;
+            }
+        }
+    }
+}`);
+  s.push(`routing-options {
+    static {
+        route 0.0.0.0/0 next-hop ${mgmt[0]}.${mgmt[1]}.254.1;
+    }
+}`);
+  s.push(`policy-options {
+    policy-statement EXPORT-LOCAL {
+        term 10 {
+            from protocol static;
+            then accept;
+        }
+    }
+}`);
+  s.push(`protocols {
+    bgp {
+        group TRANSIT {
+            type external;
+            description TRANSIT-PEER;
+            export EXPORT-LOCAL;
+            peer-as 65010;
+            neighbor ${peerIp(t.hostname)};
+        }
+    }
+}`);
+  s.push(`security {
+    zones {
+        security-zone TRUST {
+            interfaces {
+                ge-0/0/1.0;
+            }
+        }
+        security-zone DMZ {
+            interfaces {
+                ge-0/0/2.0;
+            }
+        }
+        security-zone UNTRUST {
+            host-inbound-traffic {
+                system-services {
+                    ike;
+                    ping;
+                }
+            }
+            interfaces {
+                ge-0/0/0.0;
+            }
+        }
+    }
+    policies {
+        from-zone TRUST to-zone UNTRUST {
+            policy ALLOW-OUTBOUND {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application any;
+                }
+                then {
+                    permit;
+                    log {
+                        session-init;
+                        session-close;
+                    }
+                }
+            }
+        }
+        from-zone DMZ to-zone UNTRUST {
+            policy DMZ-OUTBOUND-HTTPS {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application junos-https;
+                }
+                then {
+                    permit;
+                }
+            }
+        }
+    }
+}`);
+  s.push(`snmp {
+    community FayaRO {
+        authorization read-only;
+    }
+    location "${t.hostname.startsWith("HQ") ? "HQ-Sanaa-MDF" : "Branch-MDF"}";
+    contact "NOC <noc@faya.local>";
+}`);
+  return s;
+}
+
+/* ───────────────────────────── paloalto PAN-OS ───────────────────────────── */
+
+/**
+ * Palo Alto PAN-OS body in `show config running` set-style. MGT-plane
+ * addresses live under deviceconfig system; dataplane under network
+ * interface/zone/virtual-router; policy under rulebase (security + nat).
+ * Small PA-4xx units have no DMZ segment seeded — guarded by model regex.
+ */
+function paloBody(t: DeviceTarget): string[] {
+  const mgmt = octets(t.managementIp);
+  const hasDmz = !/PA-4[0-9]{2}/i.test(t.model ?? "");
+  const s: string[] = [];
+
+  s.push(`set deviceconfig system hostname ${t.hostname}`);
+  s.push(`set deviceconfig system timezone Asia/Aden
+set deviceconfig system domain faya.local
+set deviceconfig system ip-address ${t.managementIp ?? "10.30.255.8"}
+set deviceconfig system netmask 255.255.255.0
+set deviceconfig system default-gateway ${mgmt[0]}.${mgmt[1]}.255.254
+set deviceconfig system dns-setting servers primary 10.20.10.10
+set deviceconfig system dns-setting servers secondary 10.20.10.11
+set deviceconfig system ntp-servers primary-ntp-server ntp-server-address 10.20.10.10
+set deviceconfig system ntp-servers secondary-ntp-server ntp-server-address 10.20.10.11
+set deviceconfig system syslog server FayaNMS-SIEM server 10.20.10.6
+set deviceconfig system syslog server FayaNMS-SIEM facility LOG_LOCAL7
+set deviceconfig system snmp-setting location "${t.hostname.startsWith("DC") ? "DC-Aden-Rack-B2" : "HQ-Sanaa-MDF"}"
+set deviceconfig system snmp-setting contact "NOC <noc@faya.local>"`);
+  s.push(`set shared snmpserver profile FayaNMS version v2c community FayaRO`);
+  s.push(`set network interface ethernet ethernet1/1 link-state auto
+set network interface ethernet ethernet1/1 layer3 ip ${mgmt[0]}.${mgmt[1]}.254.${mgmt[3]}/30
+set network interface ethernet ethernet1/1 comment "WAN-UPLINK"
+set network interface ethernet ethernet1/2 layer3 ip ${mgmt[0]}.${mgmt[1]}.0.1/24
+set network interface ethernet ethernet1/2 comment "LAN-CORE"`);
+  if (hasDmz) {
+    s.push(`set network interface ethernet ethernet1/3 layer3 ip ${mgmt[0]}.${mgmt[1]}.100.1/24
+set network interface ethernet ethernet1/3 comment "DMZ-SEGMENT"`);
+  }
+  s.push(`set network interface ethernet ethernet1/8 comment "HA-LINK"`);
+  s.push(`set network virtual-router default interface [ ethernet1/1 ethernet1/2${hasDmz ? " ethernet1/3" : ""} ]`);
+  s.push(`set network virtual-router default static-route DEFAULT destination 0.0.0.0/0 nexthop ip-address ${mgmt[0]}.${mgmt[1]}.254.1`);
+  s.push(
+    [
+      `set zone UNTRUST network layer3 ethernet1/1`,
+      `set zone TRUST network layer3 ethernet1/2`,
+      ...(hasDmz ? [`set zone DMZ network layer3 ethernet1/3`] : []),
+    ].join("\n")
+  );
+  s.push(`set rulebase security rules LAN-to-WAN from TRUST
+set rulebase security rules LAN-to-WAN to UNTRUST
+set rulebase security rules LAN-to-WAN source any
+set rulebase security rules LAN-to-WAN destination any
+set rulebase security rules LAN-to-WAN source-user any
+set rulebase security rules LAN-to-WAN category any
+set rulebase security rules LAN-to-WAN application any
+set rulebase security rules LAN-to-WAN service any
+set rulebase security rules LAN-to-WAN action allow`);
+  if (hasDmz) {
+    s.push(`set rulebase security rules DMZ-to-WAN-HTTPS from DMZ
+set rulebase security rules DMZ-to-WAN-HTTPS to UNTRUST
+set rulebase security rules DMZ-to-WAN-HTTPS source any
+set rulebase security rules DMZ-to-WAN-HTTPS destination any
+set rulebase security rules DMZ-to-WAN-HTTPS application ssl
+set rulebase security rules DMZ-to-WAN-HTTPS service service-https
+set rulebase security rules DMZ-to-WAN-HTTPS action allow`);
+  }
+  s.push(`set rulebase nat rules OUTBOUND-NAT from TRUST
+set rulebase nat rules OUTBOUND-NAT to UNTRUST
+set rulebase nat rules OUTBOUND-NAT source any
+set rulebase nat rules OUTBOUND-NAT destination any
+set rulebase nat rules OUTBOUND-NAT to-interface ethernet1/1
+set rulebase nat rules OUTBOUND-NAT source-translation dynamic-ip-and-port interface-address interface ethernet1/1`);
+  return s;
+}
+
 /* ───────────────────────────── generic ───────────────────────────── */
 
 function genericBody(t: DeviceTarget): string[] {
@@ -576,6 +909,10 @@ const SFOS_BANNER =
   "Sophos Firewall (SFOS) — restricted management access. FayaNMS lab-sim unit.";
 const AOSCX_BANNER =
   "AOS-CX managed switch — NOC administrative access only. FayaNMS lab-sim unit.";
+const JUNOS_BANNER =
+  "Juniper Networks (Junos OS) — restricted system, authorised access only. FayaNMS lab-sim unit.";
+const PANOS_BANNER =
+  "Palo Alto Networks PAN-OS management console — restricted access. FayaNMS lab-sim unit.";
 const GENERIC_BANNER =
   "Generic managed device console — FayaNMS simulated node.";
 
@@ -617,6 +954,26 @@ export const adapters: DeviceAdapter[] = [
     notes: "HPE AOS-CX simulator (vlan 10/20/30/99, interface lag, 1/1/x ports).",
     connect: (t) => connectBase(t, AOSCX_BANNER),
     fetchConfig: async (t) => finish("AOS-CX running configuration", t, aosCxBody(t)),
+  },
+  {
+    adapter: "juniper-junos",
+    vendor: "juniper",
+    capabilities: ["connect", "backup_config"],
+    configFlavor: "junos",
+    notes:
+      "Juniper Junos OS simulator (hierarchical show-configuration: version/system/interfaces/routing-options/policy-options/protocols/snmp; SRX security zones+policies branch, EX ethernet-switching branch).",
+    connect: (t) => connectBase(t, JUNOS_BANNER),
+    fetchConfig: async (t) => finish("Junos OS running configuration", t, junosBody(t)),
+  },
+  {
+    adapter: "palo-panos",
+    vendor: "palo",
+    capabilities: ["connect", "backup_config"],
+    configFlavor: "panos",
+    notes:
+      "Palo Alto PAN-OS simulator (show config running set-style: deviceconfig system MGT plane, network interface/zone/virtual-router, rulebase security + nat; small PA-4xx units omit the DMZ segment).",
+    connect: (t) => connectBase(t, PANOS_BANNER),
+    fetchConfig: async (t) => finish("PAN-OS running configuration (set style)", t, paloBody(t)),
   },
   {
     adapter: "generic",

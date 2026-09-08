@@ -9,18 +9,21 @@
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
+  /** Optional diagnostics from the server (e.g. AI_BAD_RESPONSE raw text). */
+  readonly detail?: unknown;
 
-  constructor(message: string, code: string, status: number) {
+  constructor(message: string, code: string, status: number, detail?: unknown) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.detail = detail;
   }
 }
 
 interface EnvelopeError {
   success: false;
-  error: { code: string; message: string };
+  error: { code: string; message: string; detail?: unknown };
 }
 
 interface EnvelopeSuccess<T> {
@@ -70,7 +73,12 @@ export async function apiRequest<T>(
   }
 
   if (!envelope.success) {
-    throw new ApiError(envelope.error.message, envelope.error.code, response.status);
+    throw new ApiError(
+      envelope.error.message,
+      envelope.error.code,
+      response.status,
+      envelope.error.detail
+    );
   }
   if (envelope.data === undefined) {
     throw new ApiError(
@@ -2469,5 +2477,150 @@ export async function verifyAuditChain(): Promise<AuditChainVerifyResult> {
 export async function backfillAuditChainApi(): Promise<AuditChainBackfillResult> {
   return apiFetch<AuditChainBackfillResult>("/api/v1/admin/audit-chain/backfill", {
     method: "POST",
+  });
+}
+
+/* ------------------- Predictive health (Phase 12-c) ------------------- */
+
+/** Deterministic device risk factors (formula "v1", see the API route). */
+export interface PredictiveFactors {
+  cpuTrend: {
+    points: number;
+    max: 30;
+    cpu: number | null;
+    memory: number | null;
+    risePerDay: number | null;
+  };
+  alertPressure: {
+    points: number;
+    max: 25;
+    active: number;
+    acknowledged: number;
+    worstSeverity: string | null;
+  };
+  backupReliability: {
+    points: number;
+    max: 20;
+    failureStreak: number;
+    policyScheduled: boolean;
+    neverBackedUp: boolean;
+  };
+  drift: { points: number; max: 15; open: number; recent7d: number };
+  interfaceErrors: { points: number; max: 10; downInterfaces: number };
+}
+
+export type PredictiveBand = "low" | "moderate" | "high" | "critical";
+
+export interface PredictiveDeviceRisk {
+  deviceId: string;
+  hostname: string;
+  vendor: string;
+  site: { id: string; name: string; code: string } | null;
+  status: string;
+  score: number;
+  band: PredictiveBand;
+  topFactor: {
+    factor:
+      | "cpuTrend"
+      | "alertPressure"
+      | "backupReliability"
+      | "drift"
+      | "interfaceErrors";
+    /** English canonical detail (fallback when the detailKey is missing). */
+    detail: string;
+    /** i18n key under the "predictive" namespace. */
+    detailKey: string;
+    /** Numbers only — the view interpolates them into the localized string. */
+    detailParams: Record<string, number>;
+  };
+  factors: PredictiveFactors;
+}
+
+export interface PredictiveHealthPayload {
+  devices: PredictiveDeviceRisk[];
+  meta: {
+    computedAt: string;
+    formula: "v1";
+    deviceCount: number;
+  };
+}
+
+export type PredictiveParams = {
+  siteId?: string;
+};
+
+export async function fetchPredictiveHealth(
+  params: PredictiveParams = {}
+): Promise<PredictiveHealthPayload> {
+  return apiFetch<PredictiveHealthPayload>(
+    `/api/v1/predictive${buildQueryString(params)}`
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* AI operations (Phase 12-a)                                          */
+/* ------------------------------------------------------------------ */
+
+/** Aggregate of what the AI actually considered when answering. */
+export interface AiContextSummary {
+  alertsConsidered: number;
+  eventsConsidered: number;
+  incidentsConsidered: number;
+}
+
+export interface AiAssistPayload {
+  scope: "device" | "incident";
+  id: string;
+  /** 1..500 chars, enforced server-side too. */
+  question: string;
+  locale: "en" | "ar";
+  actAsUserId?: string;
+}
+
+export interface AiAssistResult {
+  /** Markdown-ish answer text rendered by the assistant tab. */
+  answer: string;
+  correlationId: string;
+  contextSummary: AiContextSummary;
+}
+
+export type RcaConfidence = "low" | "medium" | "high";
+
+/** LLM-drafted post-incident review — a suggestion, never auto-saved. */
+export interface RcaDraft {
+  summary: string;
+  rootCause: string;
+  contributingFactors: string[];
+  remediation: string[];
+  prevention: string[];
+  confidence: RcaConfidence;
+}
+
+export interface AiRcaDraftPayload {
+  incidentId: string;
+  locale: "en" | "ar";
+  actAsUserId?: string;
+}
+
+export interface AiRcaDraftResult {
+  draft: RcaDraft;
+  correlationId: string;
+}
+
+export async function requestAiAssist(
+  payload: AiAssistPayload
+): Promise<AiAssistResult> {
+  return apiFetch<AiAssistResult>("/api/v1/ai/assist", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function requestAiRcaDraft(
+  payload: AiRcaDraftPayload
+): Promise<AiRcaDraftResult> {
+  return apiFetch<AiRcaDraftResult>("/api/v1/ai/rca-draft", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }

@@ -17,6 +17,8 @@ const VENDOR_LABELS: Record<string, string> = {
   fortinet: "Fortinet",
   sophos: "Sophos",
   hpe: "HPE",
+  juniper: "Juniper Networks",
+  palo: "Palo Alto Networks",
   generic: "Generic",
 };
 
@@ -29,6 +31,14 @@ const MODEL_FLAVORS: Record<string, string[]> = {
   "fortinet-fortios": ["FortiGate NGFW (FortiOS 7.x)"],
   "sophos-sfos": ["Sophos Firewall (SFOS XGS style)"],
   "hpe-aos-cx": ["AOS-CX switches (6300/6400/8325 style)"],
+  "juniper-junos": [
+    "Juniper SRX series security gateways (SRX345/1500 style)",
+    "Juniper EX/QFX switches (ethernet-switching branch)",
+  ],
+  "palo-panos": [
+    "Palo Alto PA-5xxx chassis (PA-5410 style)",
+    "Palo Alto PA-400 desktop units (PA-440 style)",
+  ],
   generic: ["Unclassified / SNMP-managed nodes (fallback)"],
 };
 

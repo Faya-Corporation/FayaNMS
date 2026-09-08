@@ -255,6 +255,13 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
     group: "Performance",
     labelKey: "nav.items.perf.capacity",
   },
+  "perf.predictive": {
+    title: "Predictive Health",
+    description: "Deterministic device risk scores and factor breakdowns",
+    phase: "Phase 12 — Parked-tier pull-forward (12-c)",
+    group: "Performance",
+    labelKey: "nav.items.perf.predictive",
+  },
 
   "reports.reports": {
     title: "Reports",

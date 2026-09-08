@@ -187,6 +187,35 @@ export async function fail(
   );
 }
 
+/**
+ * fail() variant with an extra `detail` field inside error{} (Phase 12-a).
+ * Used by the AI endpoints to surface diagnostics such as the raw
+ * unparseable LLM output alongside the AI_BAD_RESPONSE code. Callers that
+ * need no detail keep using fail().
+ */
+export async function failWithDetail(
+  code: string,
+  message: string,
+  status = 400,
+  detail?: unknown,
+  ctx?: RequestContext
+): Promise<NextResponse> {
+  const { requestId, limited } = await govern(ctx);
+  if (limited) return rateLimitedResponse(requestId, limited);
+  return NextResponse.json(
+    {
+      success: false as const,
+      error: {
+        code,
+        message,
+        ...(detail !== undefined ? { detail } : {}),
+      },
+      meta: { requestId },
+    },
+    { status, headers: { "X-Request-Id": requestId } }
+  );
+}
+
 export function pageMeta(
   page: number,
   pageSize: number,

@@ -13,11 +13,13 @@ import {
   FileDown,
   GitPullRequest,
   Link2,
+  Loader2,
   MonitorDot,
   Plug,
   Save,
   ShieldAlert,
   Siren,
+  Sparkles,
   Unlink,
   User,
   Wrench,
@@ -27,6 +29,9 @@ import { useIncidentDetail } from "@/hooks/api/use-incident-detail";
 import { useIncidentAction } from "@/hooks/api/use-incident-mutations";
 import { useMeta } from "@/hooks/api/use-meta";
 import { useChanges } from "@/hooks/api/use-changes";
+import { aiErrorKey, useAiRcaDraft } from "@/hooks/api/use-ai";
+import { useTranslations } from "next-intl";
+import { useCurrentLocale } from "@/i18n/locale-provider";
 import { usePreferencesStore } from "@/stores/preferences";
 import { useActingUser } from "@/hooks/api/use-approvals";
 import { EmptyState } from "@/components/domain/empty-state";
@@ -40,6 +45,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { ApiError } from "@/lib/api-client";
 import {
   Dialog,
   DialogContent,
@@ -206,6 +212,55 @@ export function IncidentDetailView() {
   const savePirAction = useIncidentAction("save-pir");
   const linkChangeAction = useIncidentAction("link-change");
   const unlinkChangeAction = useIncidentAction("unlink-change");
+
+  // ── AI RCA draft (Phase 12-a) — pre-fills the PIR form for review; the
+  // draft NEVER auto-saves: the user still submits via the existing flow.
+  const tAi = useTranslations("ai.rca");
+  const tAiRoot = useTranslations("ai");
+  const locale = useCurrentLocale();
+  const rcaDraft = useAiRcaDraft(incidentId ?? "");
+  const [aiDraft, setAiDraft] = useState<{
+    incidentId: string;
+    confidence: "low" | "medium" | "high";
+    correlationId: string;
+  } | null>(null);
+
+  const generateRcaDraft = () => {
+    if (!incidentId || rcaDraft.isPending) return;
+    rcaDraft.mutate(
+      { incidentId, locale, actAsUserId: actAsUserId || undefined },
+      {
+        onSuccess: (result) => {
+          const { draft } = result;
+          const bullets = (items: string[]) =>
+            items.map((item) => `- ${item}`).join("\n");
+          const rootCauseText = [
+            draft.summary,
+            draft.rootCause,
+            draft.contributingFactors.length > 0
+              ? `${tAi("contributingLabel")}\n${bullets(draft.contributingFactors)}`
+              : null,
+          ]
+            .filter((part) => part && part.trim().length > 0)
+            .join("\n\n");
+          setPirRootCause(rootCauseText);
+          setPirCorrective(bullets(draft.remediation));
+          setPirPreventive(bullets(draft.prevention));
+          setAiDraft({
+            incidentId,
+            confidence: draft.confidence,
+            correlationId: result.correlationId,
+          });
+        },
+      }
+    );
+  };
+
+  const draftErrorReason = (() => {
+    if (!rcaDraft.error) return null;
+    const key = aiErrorKey(rcaDraft.error instanceof ApiError ? rcaDraft.error.code : "");
+    return key ? tAiRoot(key) : rcaDraft.error.message;
+  })();
 
   const changes = useChanges({ pageSize: 50, status: "AWAITING_APPROVAL,SCHEDULED,APPROVED,SCHEDULED,EXECUTING,SUCCESSFUL,FAILED,ROLLBACK,CLOSED" });
 
@@ -660,6 +715,45 @@ export function IncidentDetailView() {
               >
                 {showPir ? (
                   <div className="flex flex-col gap-3">
+                    {/* AI draft toolbar (Phase 12-a) — generates a draft and
+                        pre-fills the fields below; nothing saves until the
+                        user presses Save PIR. */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-surface-subtle px-3 py-2.5">
+                      <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                        <Sparkles aria-hidden className="size-3.5 shrink-0" />
+                        {tAi("hint")}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={rcaDraft.isPending}
+                        onClick={generateRcaDraft}
+                      >
+                        {rcaDraft.isPending ? (
+                          <Loader2 aria-hidden className="size-4 animate-spin" />
+                        ) : (
+                          <Sparkles aria-hidden className="size-4" />
+                        )}
+                        {rcaDraft.isPending ? tAi("generating") : tAi("generate")}
+                      </Button>
+                    </div>
+                    {aiDraft && aiDraft.incidentId === detail.id && (
+                      <div
+                        className="flex flex-wrap items-center gap-2 rounded-lg border border-info/30 bg-info-subtle px-3 py-2 text-sm text-info"
+                        role="status"
+                      >
+                        <Sparkles aria-hidden className="size-4 shrink-0" />
+                        <span className="font-medium">{tAi("banner")}</span>
+                        <Badge className="border-info/40 bg-transparent text-info" variant="outline">
+                          {tAi("confidenceLabel")}: {tAi(`confidence.${aiDraft.confidence}`)}
+                        </Badge>
+                      </div>
+                    )}
+                    {rcaDraft.isError && draftErrorReason && (
+                      <p className="rounded-lg border border-danger/30 bg-danger-subtle px-3 py-2 text-sm text-danger" role="alert">
+                        {draftErrorReason}
+                      </p>
+                    )}
                     <div className="space-y-1.5">
                       <Label htmlFor="pir-root-cause">Root cause</Label>
                       <Textarea

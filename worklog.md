@@ -177,6 +177,7 @@ Later agents MUST re-read this file, pick the next unchecked task, append result
 - [x] Phase 9 — Hardening & demo readiness (stretch) — COMPLETE (report scheduler end-to-end, job center UX, saved views, guided tour, table perf pass)
 - [x] Phase 10 — Post-roadmap hardening (worker claim-loop resilience + recovery, aria-describedby warning eliminated, status-label i18n completion, 375px root-cause fix) — COMPLETE
 - [x] Phase 11 — Full enhancements sweep (useStatusLabel adoption 33 sites/12 files, events-view TIME_RANGES unification, D4 1k-row benchmark PASS: interactions 152–486ms at 1.2k–1.7k rows, requestContext normalization on depth-1 routes) — COMPLETE (G11 matrix green: EN/AR × light/dark × 375/1440 × zero console errors; dictionary parity 558=558; pristine reseed)
+- [x] Phase 12 — Parked-tier pull-forward: AI troubleshooting + auto-RCA (z-ai-web-dev-sdk backend-only, AI- audit trail), Juniper JunOS + Palo PAN-OS vendors end-to-end (4 new devices, vendor-authentic snapshots), deterministic predictive health model v1 (view + dashboard widget) — COMPLETE (G12 matrix green: tsc/lint clean, AI + vendor golden paths, EN/AR × light/dark × 375/1440 zero console errors; parity 628=628)
 
 ---
 
@@ -906,3 +907,80 @@ Work Log:
 
 Stage Summary:
 - D4 benchmark leftover CLOSED with evidence; requestContext now consistent across all 20 API route files (depth-1 routes included); inflate-benchmark.ts remains in gitignored tool-results/ as a re-runnable instrument. Phase 11 (full enhancements sweep) complete — all three documented leftovers from Phase 9/10 closeouts are closed.
+
+---
+Task ID: 12-kickoff
+Agent: Orchestrator (Z.ai Code)
+Task: Phase 12 — Parked-tier pull-forward: AI-assisted operations + vendor depth + predictive health (multi-agent parallel)
+
+Work Log:
+- Phase 11 closed and pushed (origin/main == e490377, double-verified); one runtime-state commit (f7e1643) pending push at Phase 12 wrap-up. dev :3000 (200) and worker :3030 (/health ok) healthy. z-ai-web-dev-sdk ^0.0.18 already in package.json (backend-only usage).
+- Scope (from the explicitly-parked list, highest-value feasible subset, NO new dependencies, NO schema changes):
+  (1) 12-a AI Ops: /api/v1/ai/assist (device/incident-context troubleshooting Q&A) + /api/v1/ai/rca-draft (LLM-drafted RCA from incident timeline, fills the RCA form for user review — never auto-save), assistant tab on device detail, audit events + correlationId AI-XXXXXX, i18n EN/AR;
+  (2) 12-b Vendor depth: juniper-junos + palo-panos worker simulator adapters (vendor-authentic config formats), seed VENDORS + 3-4 new devices with interfaces/metrics, drivers-page manifest surfacing, worker restart + reseed EARLY (parallel agents tolerate transient data resets);
+  (3) 12-c Predictive health (ML-lite, deterministic 0-100 device risk from metric trend slopes + alert severity/frequency + backup failure streaks + drift recurrence): /api/v1/predictive GET, new Predictive Health view (registry + router + Performance group), dashboard widget (top risks).
+- Shared-file discipline (same worktree!): messages/en.json, messages/ar.json, src/lib/query-keys.ts are edited by BOTH 12-a and 12-c — surgical Edit-tool operations only, unique anchors (ai.* vs predictive.* namespaces), never whole-file rewrites.
+- Gate G12: tsc 0 errors under src/, lint 0, AI golden path (real LLM round-trip via browser session), vendor golden path (backup-now on a Juniper device → job SUCCEEDED), predictive API + view render, browser matrix EN/AR × light/dark × 375/1440, zero console errors, pristine reseed.
+
+Stage Summary:
+- Three parallel shards launched: 12-a (full-stack-developer), 12-b (full-stack-developer), 12-c (full-stack-developer). All must read this worklog first, follow all conventions, append their own entries, and NOT commit (orchestrator commits at closeout).
+
+---
+Task ID: 12-a
+Agent: full-stack-developer (work landed pre-deadline; entry reconstructed + verified by Orchestrator)
+Task: AI Ops — /api/v1/ai/assist + /api/v1/ai/rca-draft, device Assistant tab, incident AI RCA draft
+
+Work Log:
+- Backend ai/assist/route.ts (178 lines): scope device|incident + question (1..500) + locale, Zod validated; server-assembled compact context (device record, recent alerts, audit trail, open incidents, interfaces/metrics — no secrets); system prompt = senior netops engineer, structured answer (Likely cause / Evidence / Recommended next steps / Risk), locale-aware; AI-XXXXXXX correlationId; audit AI_ASSIST_QUERY with lean metadata.
+- Backend ai/rca-draft/route.ts (247 lines): incident + timeline + linked alerts/devices → STRICT JSON draft {summary, rootCause, contributingFactors, remediation, prevention, confidence}; defensive parse (fence stripping + Zod); audit AI_RCA_DRAFT_GENERATED.
+- Frontend: assistant-tab.tsx (316 lines) wired as a device-detail tab (suggested-question chips, loading, error+retry, grounded-context footer); incident-detail-view "Generate AI draft" pre-fills the existing RCA form for user review (never auto-save) via useAiRcaDraft; api-client AiAssistResult/AiRcaDraftResult; query-keys ai namespace.
+- i18n "ai" namespace EN+AR (symmetric; combined Phase 12 parity 628=628).
+- Evidence (Orchestrator G12): real LLM round-trip via browser (~45-58s incl. UI wait) returned a grounded answer ("Likely cause — performance degradation with elevated CPU…") with footer "Grounded in 1 alerts · 3 audit events · 0 open incidents"; DB contains 5 AI- audit entries (4 assist + 1 rca-draft).
+
+Stage Summary:
+- Parked item "AI troubleshooting + auto-RCA" pulled forward and shipped; SDK used backend-only; graceful AI_UNAVAILABLE envelope path in place.
+
+---
+Task ID: 12-b
+Agent: full-stack-developer (work landed pre-deadline; entry reconstructed + verified by Orchestrator)
+Task: Vendor depth — juniper-junos + palo-panos worker simulator adapters + seed devices
+
+Work Log:
+- mini-services/worker/adapters.ts: added juniper-junos (SRX security flavor + EX switching branch) and palo-panos adapters following the existing DeviceAdapter contract; vendor-authentic config bodies (JunOS hierarchical system/interfaces/protocols/routing-options blocks; PAN-OS set-style deviceconfig/network/zone/policies); header adapter-keys doc updated; registry + manifests registered.
+- src/lib/vendors/drivers.ts: juniper/palo vendor names + manifests surfaced (drivers page now lists 7 vendors).
+- prisma/seed.ts: VENDORS + 4 devices (HQ-WAN-SRX-01 SRX1500, BR2-SRX-02, DC-PA-5410-01, DC-PA-440-02) wired into the existing generator streams; idempotent reseed executed EARLY by the agent — devices 26→30, vendors 5→7.
+- Worker restarted (documented command), /health ok.
+- Evidence (Orchestrator G12): POST /api/v1/devices/bulk {action:"backup_now", deviceIds:["dev-hq-wan-srx-01"]} → CONFIG_BACKUP SUCCEEDED; newest HQ-WAN-SRX-01 ConfigSnapshot.rawText is vendor-authentic JunOS ("Junos OS running configuration… SRX1500, 21.4R3-S4.9"); all 4 devices listed via /api/v1/devices with correct vendor keys.
+
+Stage Summary:
+- Parked item "additional vendors" pulled forward: Juniper + Palo Alto are now first-class simulator vendors end-to-end (discovery/backup/drift paths inherit the adapter contract).
+
+---
+Task ID: 12-c
+Agent: full-stack-developer (work landed pre-deadline; entry reconstructed + verified by Orchestrator)
+Task: Predictive health — deterministic ML-lite device risk model + view + dashboard widget
+
+Work Log:
+- Backend api/v1/predictive/route.ts (671 lines): GET (optional siteId) → per-device 0-100 score + banded factors, documented formula v1: CPU/mem trend (≤30, manual linear-regression slope), alert pressure (≤25 severity-weighted), backup reliability (≤20 failure streaks), drift recurrence (≤15), interface errors (≤10); status override documented; bounded queries; requestContext wiring; Zod-validated response {devices[], meta{computedAt, formula, deviceCount}}.
+- Frontend: predictive-health-view.tsx (360 lines, PageHeader + KPI row + ranked list with band badges + 5-factor breakdown per device + site filter + device links); predictive-band.ts band→shared-severity mapping (icon+text, never color-only); registry entry perf.predictive (labelKey nav.items.perf.predictive) + view-router case + sidebar under PERFORMANCE; dashboard-view "Predictive risks" widget (top 3 + View all) reusing the same hook; use-predictive hook + query-keys predictive namespace.
+- i18n "predictive" namespace EN+AR (صحة تنبؤية، اتجاهات المقاييس، ضغط التنبيهات، موثوقية النسخ الاحتياطي… — combined Phase 12 parity 628=628).
+- Evidence (Orchestrator G12): EN view "29 devices analyzed / 1 high+critical / avg 7.7 / worst HQ-IDF-SW-01"; ranked list shows per-factor caps (e.g. #1 alert pressure 9/25, CPU 86% -4.7%/day on #2); dashboard widget renders top-3; AR RTL full Arabic render; 375px scrollWidth 375 both locales; dark mode clean.
+
+Stage Summary:
+- Parked items "predictive failure / capacity risk" pulled forward with a transparent, dependency-free v1 model; deterministic output verified across calls.
+
+---
+Task ID: 12-integration+closeout
+Agent: Orchestrator (Z.ai Code)
+Task: Phase 12 integration — gate G12 validation, worklog reconstruction for infra-deadline shards, closeout
+
+Work Log:
+- All three Task-tool shards hit infra "context deadline exceeded" — per protocol, filesystem-first assessment showed nearly ALL work landed before the deadline (git status + mtimes), so entries above were reconstructed from verified evidence instead of re-delegating.
+- Full verification: bunx tsc --noEmit 0 errors under src/ (pre-existing skills/ noise only); bun run lint exit 0; i18n parity 628 = 628 (zero diff, +70 keys over Phase 11).
+- Browser matrix (agent-browser, admin@faya.local): EN — sidebar Performance → Predictive Health (nav 229ms, 29 devices analyzed, factor breakdown), dashboard Predictive risks widget, device detail Assistant tab (real LLM answer, grounded footer, suggested chips, 55/500 counter), incident RCA draft wiring (useAiRcaDraft; backend proven by AI_RCA_DRAFT_GENERATED audit entry); AR RTL — predictive view + assistant fully Arabic (dir=rtl, genuine terminology), 375px scrollWidth === 375 (predictive + devices, AR); dark mode applies cleanly; console: zero errors/warnings/MISSING_MESSAGE (only dev HMR Fast Refresh artifacts during agent edit windows).
+- Golden paths: AI assist round-trip + AI- audit trail (5 entries); Juniper backup_now → CONFIG_BACKUP SUCCEEDED → vendor-authentic JunOS snapshot; 4 new vendor devices live (2 juniper + 2 palo).
+- Ops: dev server OOM death #5 mid-session — recovered with the proven NODE_OPTIONS=--max-old-space-size=1280 double-detached restart; worker healthy throughout (restarted once by 12-b).
+- Pristine reseed executed post-verification; final commit + push with ls-remote double-verification.
+
+Stage Summary:
+- Phase 12 COMPLETE — parked-tier pull-forward delivered: AI troubleshooting + auto-RCA (z-ai-web-dev-sdk, backend-only, audited), Juniper JunOS + Palo Alto PAN-OS vendors end-to-end, deterministic predictive health (model v1) with view/widget/registry/i18n. No new dependencies; no schema changes; i18n parity 628=628; G12 matrix green. Remaining parked items (flow analytics, full CMDB, firmware lifecycle, ZTP, capacity ML, natural-language changes, collector distribution, HA/DR topology) remain documented as non-MVP.

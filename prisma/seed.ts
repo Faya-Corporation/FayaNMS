@@ -80,6 +80,11 @@ const VENDORS = [
   { id: "ven-fortinet", key: "fortinet", name: "Fortinet", adapterKey: "fortigate" },
   { id: "ven-sophos", key: "sophos", name: "Sophos", adapterKey: "sophos-xgs" },
   { id: "ven-hpe", key: "hpe", name: "HPE Networking", adapterKey: "hpe-aos-cx" },
+  // Phase 12-b — adapterKey matches the worker adapter manifest keys
+  // (juniper-junos / palo-panos) so test-connection dispatches to the
+  // vendor-authentic simulators.
+  { id: "ven-juniper", key: "juniper", name: "Juniper Networks", adapterKey: "juniper-junos" },
+  { id: "ven-palo", key: "palo", name: "Palo Alto Networks", adapterKey: "palo-panos" },
   { id: "ven-generic", key: "generic", name: "Generic (SNMP)", adapterKey: "generic-snmp" },
 ];
 
@@ -268,6 +273,7 @@ const D: DeviceSpec[] = [
   { id: "dev-hq-access-sw-01", hostname: "HQ-Access-SW-01", vendorId: "ven-hpe", model: "6300M 48G (JL658A)", platform: "AOS-CX", firmware: "10.10.1070", serial: "CN23K7Q04B", role: "ACCESS_SWITCH", siteId: "site-hq-san", mgmtIp: "10.20.255.9", status: "ONLINE", criticality: "MEDIUM", healthScore: 90, uptimeHours: 24 * 6, lastSeenMin: 3, lastBackupMin: 1435, lastConfigChangeMin: 1440, backupCompliance: "COMPLIANT", tags: ["access", "poe", "drift"], notes: "Open drift records vs baseline v3 (VLAN 55 + interface description).", cpuBase: 19, cpuAmp: 10, utilBase: 24 },
   { id: "dev-hq-access-sw-02", hostname: "HQ-Access-SW-02", vendorId: "ven-hpe", model: "6300M 48G (JL658A)", platform: "AOS-CX", firmware: "10.10.1070", serial: "CN23K7Q05B", role: "ACCESS_SWITCH", siteId: "site-hq-san", mgmtIp: "10.20.255.10", status: "ONLINE", criticality: "MEDIUM", healthScore: 97, uptimeHours: 24 * 5, lastSeenMin: 3, lastBackupMin: 322, lastConfigChangeMin: 10200, backupCompliance: "COMPLIANT", tags: ["access", "poe"], cpuBase: 18, cpuAmp: 10, utilBase: 22 },
   { id: "dev-hq-idf-sw-01", hostname: "HQ-IDF-SW-01", vendorId: "ven-cisco", model: "C9200L-48P-4X", platform: "IOS XE", firmware: "17.06.04", serial: "JAE2510A0ID", role: "ACCESS_SWITCH", siteId: "site-hq-san", mgmtIp: "10.20.255.11", status: "OFFLINE", criticality: "LOW", healthScore: 34, uptimeHours: 24 * 214, lastSeenMin: 1560, lastBackupMin: 4 * 1440, lastConfigChangeMin: 20160, backupCompliance: "FAILED", tags: ["access", "idf"], notes: "IDF closet power maintenance — device unreachable; nightly backups failing (INC-2026-00103).", cpuBase: 20, cpuAmp: 10, utilBase: 15 },
+  { id: "dev-hq-wan-srx-01", hostname: "HQ-WAN-SRX-01", vendorId: "ven-juniper", model: "SRX1500", platform: "Junos OS", firmware: "21.4R3-S4.9", serial: "AJ4022AB0KX4", role: "FIREWALL", siteId: "site-hq-san", mgmtIp: "10.20.255.12", status: "ONLINE", criticality: "CRITICAL", healthScore: 94, uptimeHours: 24 * 26, lastSeenMin: 2, lastBackupMin: 325, lastConfigChangeMin: 12500, backupCompliance: "COMPLIANT", tags: ["firewall", "wan", "srx"], notes: "WAN edge security gateway — primary ISP-A path; IPsec concentrator for the branch mesh.", cpuBase: 30, cpuAmp: 14, utilBase: 45 },
   { id: "dev-dc-core-rtr-01", hostname: "DC-Core-RTR-01", vendorId: "ven-cisco", model: "ASR1001-X", platform: "IOS XE", firmware: "17.06.05", serial: "SVC24A70AR1", role: "CORE_ROUTER", siteId: "site-dc-adn", mgmtIp: "10.30.255.1", status: "ONLINE", criticality: "CRITICAL", healthScore: 97, uptimeHours: 24 * 61, lastSeenMin: 2, lastBackupMin: 305, lastConfigChangeMin: 5760, backupCompliance: "COMPLIANT", tags: ["core", "bgp", "dc"], cpuBase: 24, cpuAmp: 13, utilBase: 46 },
   { id: "dev-dc-core-sw-01", hostname: "DC-Core-SW-01", vendorId: "ven-cisco", model: "N9K-C93180YC-EX", platform: "NX-OS", firmware: "9.3(10)", serial: "FDO24180A5N", role: "CORE_SWITCH", siteId: "site-dc-adn", mgmtIp: "10.30.255.2", status: "ONLINE", criticality: "CRITICAL", healthScore: 96, uptimeHours: 24 * 44, lastSeenMin: 2, lastBackupMin: 310, lastConfigChangeMin: 21600, backupCompliance: "COMPLIANT", tags: ["core", "dc", "vxlan"], cpuBase: 26, cpuAmp: 12, utilBase: 52 },
   { id: "dev-dc-fw-01", hostname: "DC-FW-01", vendorId: "ven-fortinet", model: "FortiGate 601E", platform: "FortiOS", firmware: "7.2.7", serial: "FG6E11TXI1900981", role: "FIREWALL", siteId: "site-dc-adn", mgmtIp: "10.30.255.3", status: "ONLINE", criticality: "CRITICAL", healthScore: 90, uptimeHours: 24 * 22, lastSeenMin: 2, lastBackupMin: 320, lastConfigChangeMin: 14400, backupCompliance: "COMPLIANT", tags: ["firewall", "dc"], cpuBase: 49, cpuAmp: 14, utilBase: 47 },
@@ -275,6 +281,8 @@ const D: DeviceSpec[] = [
   { id: "dev-dc-srv-tor-01", hostname: "DC-SRV-TOR-01", vendorId: "ven-hpe", model: "6400 48G (JL724A)", platform: "AOS-CX", firmware: "10.12.0005", serial: "CN24P6Q01T", role: "TOP_OF_RACK", siteId: "site-dc-adn", mgmtIp: "10.30.255.5", status: "ONLINE", criticality: "HIGH", healthScore: 98, uptimeHours: 24 * 39, lastSeenMin: 2, lastBackupMin: 305, lastConfigChangeMin: 28800, backupCompliance: "COMPLIANT", tags: ["tor", "dc"], cpuBase: 20, cpuAmp: 9, utilBase: 38 },
   { id: "dev-dc-srv-tor-02", hostname: "DC-SRV-TOR-02", vendorId: "ven-hpe", model: "6400 48G (JL724A)", platform: "AOS-CX", firmware: "10.12.0005", serial: "CN24P6Q02T", role: "TOP_OF_RACK", siteId: "site-dc-adn", mgmtIp: "10.30.255.6", status: "ONLINE", criticality: "HIGH", healthScore: 97, uptimeHours: 24 * 39, lastSeenMin: 2, lastBackupMin: 307, lastConfigChangeMin: 28800, backupCompliance: "COMPLIANT", tags: ["tor", "dc"], cpuBase: 19, cpuAmp: 9, utilBase: 36 },
   { id: "dev-dc-dmz-fw-01", hostname: "DC-DMZ-FW-01", vendorId: "ven-sophos", model: "XGS 3300", platform: "SFOS", firmware: "19.5 MR1", serial: "SOP19X3300A21", role: "FIREWALL", siteId: "site-dc-adn", mgmtIp: "10.30.255.7", status: "DEGRADED", criticality: "HIGH", healthScore: 61, uptimeHours: 24 * 8, lastSeenMin: 2, lastBackupMin: 300, lastConfigChangeMin: 2880, backupCompliance: "COMPLIANT", tags: ["firewall", "dmz", "ha"], notes: "HA secondary active after fiber maintenance; HA assistant sync degraded (INC-2026-00102).", cpuBase: 84, cpuAmp: 8, utilBase: 58 },
+  { id: "dev-dc-pa-5410-01", hostname: "DC-PA-5410-01", vendorId: "ven-palo", model: "PA-5410", platform: "PAN-OS", firmware: "11.0.4", serial: "014701002301542", role: "FIREWALL", siteId: "site-dc-adn", mgmtIp: "10.30.255.8", status: "ONLINE", criticality: "CRITICAL", healthScore: 95, uptimeHours: 24 * 21, lastSeenMin: 2, lastBackupMin: 312, lastConfigChangeMin: 9800, backupCompliance: "COMPLIANT", tags: ["firewall", "dc", "perimeter"], notes: "Datacenter perimeter firewall — active member of the PA HA pair; Threat Prevention subscription active.", cpuBase: 41, cpuAmp: 14, utilBase: 52 },
+  { id: "dev-dc-pa-440-02", hostname: "DC-PA-440-02", vendorId: "ven-palo", model: "PA-440", platform: "PAN-OS", firmware: "11.0.4", serial: "012901003301198", role: "FIREWALL", siteId: "site-dc-adn", mgmtIp: "10.30.255.9", status: "ONLINE", criticality: "HIGH", healthScore: 89, uptimeHours: 24 * 21, lastSeenMin: 3, lastBackupMin: 315, lastConfigChangeMin: 9800, backupCompliance: "COMPLIANT", tags: ["firewall", "dc", "oob"], notes: "Out-of-band management perimeter for the DC lab segment (PA-440 desktop unit).", cpuBase: 47, cpuAmp: 16, utilBase: 38 },
   { id: "dev-br1-edge-rtr-01", hostname: "BR1-Edge-RTR-01", vendorId: "ven-cisco", model: "ISR4331", platform: "IOS XE", firmware: "17.09.04a", serial: "FGL2433A0B7", role: "BRANCH_ROUTER", siteId: "site-br1-hod", mgmtIp: "10.40.255.1", status: "ONLINE", criticality: "HIGH", healthScore: 91, uptimeHours: 24 * 18, lastSeenMin: 3, lastBackupMin: 330, lastConfigChangeMin: 17280, backupCompliance: "COMPLIANT", tags: ["branch", "sdwan"], cpuBase: 34, cpuAmp: 15, utilBase: 35 },
   { id: "dev-br1-fw-01", hostname: "BR1-FW-01", vendorId: "ven-sophos", model: "XGS 2300", platform: "SFOS", firmware: "19.5 MR1", serial: "SOP19X2300B44", role: "FIREWALL", siteId: "site-br1-hod", mgmtIp: "10.40.255.2", status: "ONLINE", criticality: "HIGH", healthScore: 89, uptimeHours: 24 * 11, lastSeenMin: 3, lastBackupMin: 335, lastConfigChangeMin: 15840, backupCompliance: "COMPLIANT", tags: ["firewall", "branch"], cpuBase: 44, cpuAmp: 14, utilBase: 33 },
   { id: "dev-br1-access-sw-01", hostname: "BR1-Access-SW-01", vendorId: "ven-cisco", model: "WS-C2960X-48TS-L", platform: "IOS", firmware: "15.2(7)E3", serial: "FOC2350X0AB", role: "ACCESS_SWITCH", siteId: "site-br1-hod", mgmtIp: "10.40.255.3", status: "ONLINE", criticality: "MEDIUM", healthScore: 76, uptimeHours: 24 * 5, lastSeenMin: 4, lastBackupMin: 400, lastConfigChangeMin: 390, backupCompliance: "COMPLIANT", tags: ["access", "eol-soon"], notes: "Aging platform — sustained high CPU acknowledged; upgrade re-scheduled after CHG-2026-00410 rollback.", cpuBase: 62, cpuAmp: 18, utilBase: 28 },
@@ -282,6 +290,7 @@ const D: DeviceSpec[] = [
   { id: "dev-br2-edge-rtr-01", hostname: "BR2-Edge-RTR-01", vendorId: "ven-cisco", model: "ISR4331", platform: "IOS XE", firmware: "17.09.04a", serial: "FGL2433A0C9", role: "BRANCH_ROUTER", siteId: "site-br2-muk", mgmtIp: "10.50.255.1", status: "ONLINE", criticality: "HIGH", healthScore: 92, uptimeHours: 24 * 14, lastSeenMin: 3, lastBackupMin: 328, lastConfigChangeMin: 19000, backupCompliance: "COMPLIANT", tags: ["branch", "sdwan"], cpuBase: 33, cpuAmp: 15, utilBase: 37 },
   { id: "dev-br2-fw-01", hostname: "BR2-FW-01", vendorId: "ven-sophos", model: "XGS 2300", platform: "SFOS", firmware: "19.5 MR1", serial: "SOP19X2300C51", role: "FIREWALL", siteId: "site-br2-muk", mgmtIp: "10.50.255.2", status: "MAINTENANCE", criticality: "HIGH", healthScore: 80, uptimeHours: 24 * 3, lastSeenMin: 6, lastBackupMin: 44, lastConfigChangeMin: 20, backupCompliance: "COMPLIANT", tags: ["firewall", "branch", "change-freeze"], notes: "SFOS 19.5 MR2 patch in progress under CHG-2026-00406.", cpuBase: 38, cpuAmp: 10, utilBase: 30 },
   { id: "dev-br2-access-sw-01", hostname: "BR2-Access-SW-01", vendorId: "ven-hpe", model: "6100 48G (JL680A)", platform: "AOS-CX", firmware: "10.10.1070", serial: "CN25F8Q07H", role: "ACCESS_SWITCH", siteId: "site-br2-muk", mgmtIp: "10.50.255.3", status: "MAINTENANCE", criticality: "MEDIUM", healthScore: 80, uptimeHours: 24 * 2, lastSeenMin: 10, lastBackupMin: 100, lastConfigChangeMin: 2000, backupCompliance: "COMPLIANT", tags: ["access", "maintenance"], notes: "Inside active maintenance window MW-2026-011; alert suppression enabled.", cpuBase: 12, cpuAmp: 5, utilBase: 14 },
+  { id: "dev-br2-srx-02", hostname: "BR2-SRX-02", vendorId: "ven-juniper", model: "SRX345", platform: "Junos OS", firmware: "21.4R3-S4.9", serial: "BQ2024CD0M87", role: "FIREWALL", siteId: "site-br2-muk", mgmtIp: "10.50.255.5", status: "ONLINE", criticality: "HIGH", healthScore: 90, uptimeHours: 24 * 19, lastSeenMin: 3, lastBackupMin: 335, lastConfigChangeMin: 14200, backupCompliance: "COMPLIANT", tags: ["firewall", "branch", "srx"], notes: "Branch Mukalla security gateway — IPsec spoke back to HQ-WAN-SRX-01.", cpuBase: 33, cpuAmp: 15, utilBase: 33 },
   { id: "dev-br2-wan-edge-01", hostname: "BR2-WAN-EDGE-01", vendorId: "ven-generic", model: "NetGate 6100", platform: "pfSense", firmware: "23.09", serial: "NG6100X9021", role: "WAN_GATEWAY", siteId: "site-br2-muk", mgmtIp: "10.50.255.4", status: "UNMANAGED", criticality: "LOW", healthScore: 100, uptimeHours: null, lastSeenMin: 2880, lastBackupMin: null, lastConfigChangeMin: null, backupCompliance: "NEVER_BACKED_UP", tags: ["discovered", "pending-import"], notes: "Discovered via SNMP sweep; pending import and credential assignment.", cpuBase: 20, cpuAmp: 8, utilBase: 18 },
 ];
 
@@ -330,6 +339,44 @@ function ifacesFor(d: DeviceSpec): IfaceSpec[] {
     if (big) list.push(up("port3", "DMZ-SEGMENT", 1000, bps(5_000_000, 90_000_000), bps(4_000_000, 80_000_000)));
     list.push(down("port4", "RESERVED", 1000, true));
     if (big) list.push(down("port5", "RESERVED", 1000, true), down("port6", "RESERVED", 1000, true));
+    return list;
+  }
+  if (d.vendorId === "ven-juniper") {
+    // SRX profile — ge-0/0/x dataplane + fxp0 OOB management; larger SRX
+    // chassis get the HA control link (mirrors the config generator's
+    // ge-0/0/x + fxp0 layout).
+    const big = d.model.includes("1500");
+    const list = [
+      up("ge-0/0/0", "WAN-UPLINK", 1000, bps(15_000_000, 350_000_000), bps(10_000_000, 280_000_000)),
+      up("ge-0/0/1", "LAN-TRUNK", 1000, bps(25_000_000, 600_000_000), bps(20_000_000, 500_000_000)),
+    ];
+    if (big) {
+      list.push(up("ge-0/0/2", "DMZ-SEGMENT", 1000, bps(4_000_000, 80_000_000), bps(3_000_000, 70_000_000)));
+      list.push(up("ge-0/0/7", "HA-CONTROL", 1000, bps(1_000_000, 9_000_000), bps(1_000_000, 9_000_000)));
+    } else {
+      list.push(down("ge-0/0/2", "RESERVED", 1000, true));
+    }
+    list.push(
+      down("ge-0/0/3", "RESERVED", 1000, true),
+      up("fxp0", "OOB-MANAGEMENT", 1000, bps(200_000, 4_000_000), bps(200_000, 4_000_000)),
+    );
+    return list;
+  }
+  if (d.vendorId === "ven-palo") {
+    // PAN-OS profile — ethernet1/x dataplane + dedicated MGT port; PA-4xx
+    // desktop units have no DMZ segment wired.
+    const big = d.model.includes("5410");
+    const list = [
+      up("ethernet1/1", "WAN-UPLINK", 1000, bps(20_000_000, 500_000_000), bps(15_000_000, 400_000_000)),
+      up("ethernet1/2", "LAN-CORE", 1000, bps(30_000_000, 800_000_000), bps(25_000_000, 700_000_000)),
+    ];
+    if (big) list.push(up("ethernet1/3", "DMZ-SEGMENT", 1000, bps(5_000_000, 90_000_000), bps(4_000_000, 80_000_000)));
+    else list.push(down("ethernet1/3", "RESERVED", 1000, true));
+    list.push(
+      up("ethernet1/8", "HA-LINK", 1000, bps(2_000_000, 30_000_000), bps(2_000_000, 30_000_000)),
+      up("management", "OOB-MANAGEMENT", 1000, bps(200_000, 4_000_000), bps(200_000, 4_000_000)),
+    );
+    if (big) list.push(down("ethernet1/12", "RESERVED", 1000, true));
     return list;
   }
   if (d.vendorId === "ven-generic") {
@@ -2107,21 +2154,21 @@ async function seedMaintenance() {
 
 async function seedJobs() {
   const jobs = [
-    { id: "job-001", type: "METRIC_POLL", status: "RUNNING", progress: 60, priority: 5, targetType: "SYSTEM", payloadJson: JSON.stringify({ window: "5m", devices: 24 }), startedAt: ago(2), createdAt: ago(2), attempts: 1 },
+    { id: "job-001", type: "METRIC_POLL", status: "RUNNING", progress: 60, priority: 5, targetType: "SYSTEM", payloadJson: JSON.stringify({ window: "5m", devices: 28 }), startedAt: ago(2), createdAt: ago(2), attempts: 1 },
     { id: "job-002", type: "CONFIG_BACKUP", status: "SUCCEEDED", progress: 100, priority: 5, targetType: "DEVICE", targetId: "dev-br2-fw-01", payloadJson: JSON.stringify({ changeNumber: "CHG-2026-00406", phase: "PRE_CHANGE" }), resultJson: JSON.stringify({ sizeBytes: 142190, sha256Ok: true }), startedAt: ago(44), finishedAt: ago(43), createdAt: ago(44), attempts: 1 },
     { id: "job-003", type: "CONFIG_APPLY", status: "RUNNING", progress: 68, priority: 3, targetType: "DEVICE", targetId: "dev-br2-fw-01", payloadJson: JSON.stringify({ changeNumber: "CHG-2026-00406", step: 3, action: "INSTALL_SFOS_19_5_MR2" }), startedAt: ago(20), createdAt: ago(50), attempts: 1 },
     { id: "job-004", type: "DISCOVERY", status: "SUCCEEDED", progress: 100, priority: 5, targetType: "SYSTEM", payloadJson: JSON.stringify({ subnets: ["10.50.0.0/24"], methods: ["SNMP", "CDP"] }), resultJson: JSON.stringify({ candidatesFound: 3, imported: 0 }), startedAt: ago(480), finishedAt: ago(462), createdAt: ago(480), attempts: 1 },
-    { id: "job-005", type: "INVENTORY_POLL", status: "SUCCEEDED", progress: 100, priority: 7, targetType: "SYSTEM", resultJson: JSON.stringify({ devicesPolled: 26, stateChanges: 1 }), startedAt: ago(90), finishedAt: ago(84), createdAt: ago(90), attempts: 1 },
+    { id: "job-005", type: "INVENTORY_POLL", status: "SUCCEEDED", progress: 100, priority: 7, targetType: "SYSTEM", resultJson: JSON.stringify({ devicesPolled: 30, stateChanges: 1 }), startedAt: ago(90), finishedAt: ago(84), createdAt: ago(90), attempts: 1 },
     { id: "job-006", type: "CONFIG_BACKUP", status: "FAILED", progress: 30, priority: 5, targetType: "DEVICE", targetId: "dev-hq-idf-sw-01", error: "SSH connection timed out after 30 s (device state: OFFLINE)", startedAt: ago(615), finishedAt: ago(605), createdAt: ago(615), attempts: 3, maxAttempts: 3 },
     { id: "job-007", type: "CONFIG_BACKUP", status: "SUCCEEDED", progress: 100, priority: 5, targetType: "DEVICE", targetId: "dev-hq-access-sw-01", payloadJson: JSON.stringify({ policy: "Daily Full Fleet 02:00" }), resultJson: JSON.stringify({ snapshotId: "snap-hq-access-sw-01-v5", version: 5 }), startedAt: ago(1445), finishedAt: ago(1440), createdAt: ago(1445), attempts: 1 },
     { id: "job-008", type: "CONFIG_BACKUP", status: "SUCCEEDED", progress: 100, priority: 5, targetType: "DEVICE", targetId: "dev-hq-wlc-01", payloadJson: JSON.stringify({ policy: "Daily Full Fleet 02:00" }), resultJson: JSON.stringify({ note: "succeeded before device entered backup-overdue state" }), startedAt: ago(1460), finishedAt: ago(1454), createdAt: ago(1460), attempts: 1 },
-    { id: "job-009", type: "METRIC_POLL", status: "SUCCEEDED", progress: 100, priority: 7, targetType: "SYSTEM", resultJson: JSON.stringify({ samplesWritten: 96, devicesPolled: 24 }), startedAt: ago(62), finishedAt: ago(58), createdAt: ago(62), attempts: 1 },
+    { id: "job-009", type: "METRIC_POLL", status: "SUCCEEDED", progress: 100, priority: 7, targetType: "SYSTEM", resultJson: JSON.stringify({ samplesWritten: 96, devicesPolled: 28 }), startedAt: ago(62), finishedAt: ago(58), createdAt: ago(62), attempts: 1 },
     { id: "job-010", type: "VALIDATION", status: "QUEUED", progress: 0, priority: 3, targetType: "DEVICE", targetId: "dev-br2-fw-01", payloadJson: JSON.stringify({ changeNumber: "CHG-2026-00406", step: 4 }), scheduledAt: ahead(10), createdAt: ago(50), attempts: 0 },
-    { id: "job-011", type: "REPORT_GENERATION", status: "SUCCEEDED", progress: 100, priority: 8, targetType: "SYSTEM", payloadJson: JSON.stringify({ reportType: "BACKUP_COMPLIANCE" }), resultJson: JSON.stringify({ rows: 26, format: "XLSX" }), startedAt: ago(700), finishedAt: ago(697), createdAt: ago(700), attempts: 1 },
+    { id: "job-011", type: "REPORT_GENERATION", status: "SUCCEEDED", progress: 100, priority: 8, targetType: "SYSTEM", payloadJson: JSON.stringify({ reportType: "BACKUP_COMPLIANCE" }), resultJson: JSON.stringify({ rows: 30, format: "XLSX" }), startedAt: ago(700), finishedAt: ago(697), createdAt: ago(700), attempts: 1 },
     { id: "job-012", type: "CONFIG_BACKUP", status: "QUEUED", progress: 0, priority: 5, targetType: "SYSTEM", payloadJson: JSON.stringify({ policy: "Daily Full Fleet 02:00" }), scheduledAt: ahead(120), createdAt: ago(30), attempts: 0 },
     { id: "job-013", type: "NOTIFICATION", status: "SUCCEEDED", progress: 100, priority: 6, targetType: "SYSTEM", payloadJson: JSON.stringify({ channel: "email", event: "alert.high_cpu", recipients: 3 }), resultJson: JSON.stringify({ delivered: 3 }), startedAt: ago(200), finishedAt: ago(199), createdAt: ago(200), attempts: 1 },
     { id: "job-014", type: "DISCOVERY", status: "RUNNING", progress: 30, priority: 5, targetType: "SYSTEM", payloadJson: JSON.stringify({ subnets: ["10.40.0.0/24", "10.50.0.0/24"] }), startedAt: ago(35), createdAt: ago(35), attempts: 1 },
-    { id: "job-015", type: "INVENTORY_POLL", status: "SUCCEEDED", progress: 100, priority: 7, targetType: "SYSTEM", resultJson: JSON.stringify({ devicesPolled: 26, stateChanges: 0 }), startedAt: ago(1000), finishedAt: ago(994), createdAt: ago(1000), attempts: 1 },
+    { id: "job-015", type: "INVENTORY_POLL", status: "SUCCEEDED", progress: 100, priority: 7, targetType: "SYSTEM", resultJson: JSON.stringify({ devicesPolled: 30, stateChanges: 0 }), startedAt: ago(1000), finishedAt: ago(994), createdAt: ago(1000), attempts: 1 },
   ];
   await db.jobExecution.createMany({
     data: jobs.map((j, i) => ({ ...j, correlationId: jobCorr(i + 1) })),

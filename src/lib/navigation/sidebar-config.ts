@@ -4,6 +4,7 @@ import {
   BellRing,
   CalendarClock,
   CalendarDays,
+  CircleGauge,
   ClipboardCheck,
   Cpu,
   DatabaseBackup,
@@ -115,6 +116,7 @@ export const SIDEBAR_GROUPS: SidebarGroupConfig[] = [
       { view: "perf.interfaces", icon: ActivityIcon },
       { view: "perf.availability", icon: HeartPulse },
       { view: "perf.capacity", icon: TrendingUp },
+      { view: "perf.predictive", icon: CircleGauge },
     ],
   },
   {

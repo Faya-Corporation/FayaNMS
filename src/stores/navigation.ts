@@ -43,6 +43,7 @@ export type ViewKey =
   | "perf.interfaces"
   | "perf.availability"
   | "perf.capacity"
+  | "perf.predictive"
   // Reports
   | "reports.reports"
   | "reports.scheduled"

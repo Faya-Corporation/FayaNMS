@@ -43,6 +43,7 @@ import {
   DeviceAuditTab,
   IncidentsTab,
 } from "@/components/device/device-records-tabs";
+import { AssistantTab } from "@/components/device/assistant-tab";
 
 type DetailTab =
   | "overview"
@@ -53,6 +54,7 @@ type DetailTab =
   | "changes"
   | "incidents"
   | "alerts"
+  | "assistant"
   | "audit";
 
 const TAB_ITEMS: { value: DetailTab; label: string }[] = [
@@ -64,6 +66,7 @@ const TAB_ITEMS: { value: DetailTab; label: string }[] = [
   { value: "changes", label: "Changes" },
   { value: "incidents", label: "Incidents" },
   { value: "alerts", label: "Alerts" },
+  { value: "assistant", label: "Assistant" },
   { value: "audit", label: "Audit" },
 ];
 
@@ -100,8 +103,8 @@ const ROLE_LABELS: Record<string, string> = {
 /**
  * Device detail (Phase 2): header with quick actions + lazy-loaded tabs
  * (overview / health / interfaces / config / backups / changes / incidents /
- * alerts / audit). Radix Tabs unmount inactive panels, so each tab fetches
- * only while it is visible.
+ * alerts / assistant / audit). Radix Tabs unmount inactive panels, so each
+ * tab fetches only while it is visible.
  */
 export function DeviceDetailView() {
   const params = useNavigationStore((state) => state.params);
@@ -345,6 +348,9 @@ export function DeviceDetailView() {
         </TabsContent>
         <TabsContent value="alerts">
           <DeviceAlertsTab deviceId={device.id} />
+        </TabsContent>
+        <TabsContent value="assistant">
+          <AssistantTab deviceId={device.id} />
         </TabsContent>
         <TabsContent value="audit">
           <DeviceAuditTab deviceId={device.id} pageSize={50} />

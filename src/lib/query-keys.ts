@@ -109,4 +109,16 @@ export const queryKeys = {
   drivers: () => ["admin", "drivers"] as const,
   adminSettings: () => ["admin", "settings"] as const,
   auditChain: () => ["admin", "auditChain"] as const,
+
+  // ── AI operations (Phase 12-a) ───────────────────────────────────────
+  // AI assist / RCA drafts are mutations (LLM round-trips); these keys mark
+  // the mutation cache entries under the "ai" tree and let consumers scope
+  // invalidations (AI actions also refresh the "events" audit stream).
+  aiAssist: (scope: string, id: string) => ["ai", "assist", scope, id] as const,
+  aiRcaDraft: (incidentId: string) => ["ai", "rcaDraft", incidentId] as const,
+
+  // ── Predictive health (Phase 12-c) ───────────────────────────────────
+  // Read-only risk scores; params carry the optional siteId filter so the
+  // view and the dashboard widget share one cached payload per site scope.
+  predictive: (params: ListParams = {}) => ["predictive", params] as const,
 };

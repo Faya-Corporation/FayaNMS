@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   DatabaseBackup,
   FileDiff,
+  Gauge,
   Router,
   Siren,
   TriangleAlert,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { useDashboard } from "@/hooks/api/use-dashboard";
+import { usePredictiveHealth } from "@/hooks/api/use-predictive";
 import { BackupComplianceBadge } from "@/components/domain/backup-status-badge";
 import { ChangeRiskBadge } from "@/components/domain/change-risk-badge";
 import { DriftStatusBadge } from "@/components/domain/drift-status-badge";
@@ -42,6 +44,9 @@ import {
   INCIDENT_STATUS_UI,
   lookupStatusConfig,
 } from "@/components/views/status-extras";
+import { RISK_BAND_UI } from "@/components/views/predictive-band";
+import { topFactorText } from "@/components/views/predictive-health-view";
+import type { PredictiveDeviceRisk } from "@/lib/api-client";
 
 function relative(iso: string | null): string {
   if (!iso) return "—";
@@ -209,14 +214,15 @@ export function DashboardView() {
             <UpcomingChangesCard changes={data?.upcomingChanges ?? []} loading={!data} />
           </div>
 
-          {/* Row 4: compliance + drift + capacity */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {/* Row 4: compliance + drift + capacity + predictive */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <BackupComplianceCard
               loading={!data}
               summary={data?.backupCompliance}
             />
             <DriftCard count={kpis?.driftCount} loading={!data} />
             <CapacityRisksCard loading={!data} risks={data?.capacityRisks ?? []} />
+            <PredictiveRisksCard />
           </div>
 
           {/* Row 5: activity */}
@@ -570,6 +576,109 @@ function CapacityRisksCard({
         {t("capacity.srOnly")}
       </span>
     </SectionCard>
+  );
+}
+
+/**
+ * Predictive risks (Phase 12-c): top-3 devices by the deterministic risk
+ * score from /api/v1/predictive. Shares the usePredictiveHealth hook (and
+ * its TanStack cache) with the Predictive Health view; "View all" jumps to
+ * the full ranked list.
+ */
+function PredictiveRisksCard() {
+  const t = useTranslations("predictive");
+  const tCommon = useTranslations("common");
+  const setActiveView = useNavigationStore((state) => state.setActiveView);
+  const predictive = usePredictiveHealth();
+  const risks = (predictive.data?.devices ?? []).slice(0, 3);
+  const isLoading = predictive.isLoading;
+
+  return (
+    <SectionCard
+      description={t("widget.description")}
+      title={t("widget.title")}
+      actions={
+        <Button
+          onClick={() => setActiveView("perf.predictive")}
+          size="sm"
+          variant="ghost"
+        >
+          {tCommon("viewAll")}
+          <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
+        </Button>
+      }
+    >
+      {isLoading ? (
+        <WidgetSkeleton rows={3} />
+      ) : predictive.isError ? (
+        <EmptyState
+          className="border-none bg-transparent py-8"
+          description={predictive.error.message}
+          title={t("widget.errorTitle")}
+        />
+      ) : risks.length === 0 ? (
+        <EmptyState
+          className="border-none bg-transparent py-8"
+          description={t("widget.emptyDescription")}
+          icon={Gauge}
+          title={t("widget.emptyTitle")}
+        />
+      ) : (
+        <ul className="flex flex-col gap-2.5">
+          {risks.map((row) => (
+            <RiskWidgetRow
+              key={row.deviceId}
+              onOpen={() =>
+                setActiveView("network.device-detail", { deviceId: row.deviceId })
+              }
+              row={row}
+            />
+          ))}
+        </ul>
+      )}
+    </SectionCard>
+  );
+}
+
+function RiskWidgetRow({
+  row,
+  onOpen,
+}: {
+  row: PredictiveDeviceRisk;
+  onOpen: () => void;
+}) {
+  const t = useTranslations("predictive");
+  const bandConfig = RISK_BAND_UI[row.band] ?? RISK_BAND_UI.LOW;
+
+  return (
+    <li className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-2 text-sm">
+        <StatusBadge className="shrink-0" config={bandConfig} withIcon={false} />
+        <button
+          aria-label={`${t("list.openDevice")} ${row.hostname}`}
+          className="min-w-0 flex-1 truncate text-start font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
+          onClick={onOpen}
+          type="button"
+        >
+          {row.hostname}
+        </button>
+        <span
+          className={cn(
+            "shrink-0 font-semibold tabular-nums",
+            bandConfig.iconClass
+          )}
+        >
+          {row.score}
+        </span>
+      </div>
+      <p className="truncate ps-1 text-xs text-muted-foreground" title={row.topFactor.detail}>
+        <span className="font-medium text-foreground">
+          {t(`factors.${row.topFactor.factor}`)}
+        </span>
+        {" · "}
+        {topFactorText(t, row)}
+      </p>
+    </li>
   );
 }
 
