@@ -31,6 +31,7 @@ import {
 } from "@/lib/change/risk";
 import type { ChangeTemplate } from "@/lib/change/templates";
 import type {
+  AiChangeDraftPrefill,
   ChangeCreateResult,
   ChangeDetail,
   ChangeStepInput,
@@ -270,6 +271,12 @@ interface ChangeWizardProps {
   template?: ChangeTemplate | null;
   /** Edit an existing DRAFT change (detail view "Edit"). */
   change?: ChangeDetail | null;
+  /**
+   * Prefill from the "Draft with AI" dialog (Phase 13-a) — a user-reviewed
+   * LLM draft. Purely fills the form; the wizard still starts at step 1 and
+   * nothing is created until the user completes the wizard.
+   */
+  aiDraft?: AiChangeDraftPrefill | null;
 }
 
 export function ChangeWizard({
@@ -277,6 +284,7 @@ export function ChangeWizard({
   onOpenChange,
   template = null,
   change = null,
+  aiDraft = null,
 }: ChangeWizardProps) {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   const meta = useMeta();
@@ -326,6 +334,33 @@ export function ChangeWizard({
         submitNow: true,
       };
     }
+    if (aiDraft) {
+      // AI draft prefill (Phase 13-a): plan arrays map onto the wizard's
+      // free-text plan fields; the typed execution steps keep their default
+      // sequence. The suggested window stays free-text (review panel only) —
+      // it is not parsed into the schedule fields. Risk is recomputed live
+      // by the risk engine (the AI riskHint is advisory only).
+      const draft = aiDraft.draft;
+      return {
+        title: draft.title.slice(0, 200),
+        description: draft.description,
+        type: draft.changeType,
+        siteId: "",
+        deviceIds: aiDraft.matchedDevices.map((d) => d.id).slice(0, 20),
+        implementationPlan:
+          draft.implementationPlan.length > 0
+            ? draft.implementationPlan
+                .map((line, index) => `${index + 1}. ${line}`)
+                .join("\n")
+            : "",
+        steps: WIZARD_DEFAULT_STEPS,
+        validationPlan: draft.validationPlan.join("\n"),
+        rollbackPlan: draft.rollbackPlan.join("\n"),
+        scheduledStart: "",
+        scheduledEnd: "",
+        submitNow: true,
+      };
+    }
     return {
       title: "",
       description: "",
@@ -340,7 +375,7 @@ export function ChangeWizard({
       scheduledEnd: "",
       submitNow: true,
     };
-  }, [change, template]);
+  }, [change, template, aiDraft]);
 
   const form = useForm<WizardFormValues>({
     defaultValues,
@@ -396,6 +431,32 @@ export function ChangeWizard({
       editKey && change
         ? Object.fromEntries(
             change.devices.map((d) => [d.deviceId, deviceFromDetail(d)])
+          )
+        : {}
+    );
+  }
+
+  // AI draft prefill: seed the picked-device map so the risk engine and the
+  // selected chips see the matched devices (server-validated ids only).
+  const aiKey = aiDraft?.draft.title ?? null;
+  const [prevAiKey, setPrevAiKey] = useState<string | null>(null);
+  if (prevAiKey !== aiKey) {
+    setPrevAiKey(aiKey);
+    setPickedDevices(
+      aiDraft
+        ? Object.fromEntries(
+            aiDraft.matchedDevices.slice(0, 20).map((d) => [
+              d.id,
+              {
+                id: d.id,
+                hostname: d.hostname,
+                model: d.model,
+                role: d.role,
+                criticality: d.criticality,
+                siteCode: d.siteCode,
+                vendorKey: d.vendorKey,
+              } satisfies WizardDevice,
+            ])
           )
         : {}
     );

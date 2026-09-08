@@ -326,6 +326,45 @@ export async function POST(request: Request) {
       });
     }
 
+    // ── FIRMWARE_UPGRADE (Phase 13-b): the upgrade endpoint persisted the
+    // device.firmware flip + FIRMWARE_UPGRADED audit — store the summary
+    // verbatim in resultJson (Job Center shows before → after). ──
+    if (job.type === "FIRMWARE_UPGRADE") {
+      const upgradeShape = z.object({
+        outcome: z.literal("upgraded"),
+        deviceId: z.string().optional(),
+        hostname: z.string().optional(),
+        fromVersion: z.string().nullable().optional(),
+        toVersion: z.string().optional(),
+        alreadyAtTarget: z.boolean().optional(),
+        upgradedAt: z.string().optional(),
+      });
+      const parsedUpgrade = upgradeShape.safeParse(result);
+      if (!parsedUpgrade.success) {
+        return fail(
+          "INVALID_RESULT",
+          "SUCCEEDED FIRMWARE_UPGRADE completion requires result.outcome = \"upgraded\" and toVersion",
+          400
+        );
+      }
+      await db.jobExecution.update({
+        where: { id: job.id },
+        data: {
+          status: "SUCCEEDED",
+          progress: 100,
+          finishedAt: now,
+          error: null,
+          resultJson: JSON.stringify(parsedUpgrade.data),
+        },
+      });
+      return ok({
+        jobId,
+        updated: true,
+        status: "SUCCEEDED",
+        outcome: "upgraded",
+      });
+    }
+
     // ── CONFIG_BACKUP: validate the snapshot payload (unchanged behavior) ──
     const parsedBackup = backupResultSchema.safeParse(result);
     if (!parsedBackup.success) {

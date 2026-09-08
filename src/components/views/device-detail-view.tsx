@@ -30,6 +30,9 @@ import { StatusBadge } from "@/components/domain/status-badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { getLifecycle } from "@/lib/firmware/lifecycle";
+import { lifecycleBadge } from "@/components/views/firmware-band";
+import { useStatusLabel } from "@/hooks/use-status-label";
 import type { DeviceAuditRow, DeviceDetail, TestConnectionResult } from "@/lib/api-client";
 import { useNavigationStore } from "@/stores/navigation";
 import { AddDeviceSheet } from "@/components/device/device-form-sheet";
@@ -374,6 +377,13 @@ function OverviewSection({
   onGoAudit: () => void;
 }) {
   const audit = useDeviceAudit(device.id, { pageSize: 5 });
+  // Phase 13-b — lifecycle dot next to the firmware value (static matrix).
+  const lifecycle = getLifecycle(device.vendor.key, device.firmware);
+  const lifecycleBadgeConfig = lifecycleBadge(lifecycle?.status ?? null);
+  const resolveStatusLabel = useStatusLabel();
+  const lifecycleTitle = lifecycle
+    ? resolveStatusLabel(lifecycleBadgeConfig)
+    : null;
 
   return (
     <div className="flex flex-col gap-4 pt-2">
@@ -428,7 +438,13 @@ function OverviewSection({
               label="Model"
               value={[device.model, device.platform].filter(Boolean).join(" · ") || "—"}
             />
-            <RecordItem label="Firmware" value={device.firmware ?? "—"} />
+            <RecordItem
+              dotClass={lifecycleBadgeConfig.dotClass}
+              dotTitle={lifecycleTitle}
+              label="Firmware"
+              mono
+              value={device.firmware ?? "—"}
+            />
             <RecordItem label="Serial number" mono value={device.serialNumber ?? "—"} />
             <RecordItem label="Role" value={device.role ? ROLE_LABELS[device.role] ?? device.role : "—"} />
             <RecordItem label="Site" value={device.site ? `${device.site.name} (${device.site.code})` : "—"} />
@@ -522,22 +538,35 @@ function RecordItem({
   label,
   value,
   mono,
+  dotClass,
+  dotTitle,
 }: {
   label: string;
   value: string;
   mono?: boolean;
+  /** Optional lifecycle dot (Phase 13-b) rendered before the value. */
+  dotClass?: string;
+  dotTitle?: string | null;
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5 border-b py-2.5 last:border-b-0 sm:border-b">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd
         className={cn(
-          "min-w-0 truncate text-sm",
+          "flex min-w-0 items-center gap-1.5 text-sm",
           mono && "font-tech ltr-technical"
         )}
-        title={value}
       >
-        {value}
+        {dotClass && (
+          <span
+            aria-hidden="true"
+            className={cn("size-2 shrink-0 rounded-full", dotClass)}
+            title={dotTitle ?? undefined}
+          />
+        )}
+        <span className="min-w-0 truncate" title={value}>
+          {value}
+        </span>
       </dd>
     </div>
   );

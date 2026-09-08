@@ -53,6 +53,17 @@
  * within the 60 s guard) is a graceful no-op: the job still completes
  * SUCCEEDED with { outcome: "throttled" } so it never dead-letters.
  *
+ * FIRMWARE_UPGRADE branch (Phase 13-b) — evaluate-in-Next like DRIFT_CHECK:
+ * the worker walks the four simulated stages (image download → staging →
+ * activation → post-check) reporting progress between them, then POSTs
+ * /api/v1/worker/firmware-upgrade { jobId } — the Next.js endpoint flips
+ * device.firmware to the target version and writes the FIRMWARE_UPGRADED
+ * audit (before/after versions, job correlationId). The worker then posts
+ * the regular /worker/complete SUCCEEDED with the returned summary. An
+ * OFFLINE device (payload.status) or an invalid target format aborts via
+ * the generic failure path (requeue/backoff). Idempotent in-Next: a device
+ * already at the target answers alreadyAtTarget and the job still succeeds.
+ *
  * REPORT_RUN branch (Task 9-a) — evaluate-in-Next with IN-NEXT COMPLETION:
  * POST /api/v1/reports/execute { jobId } generates the report artifact
  * (src/lib/reports/generate.ts) AND persists the completion server-side —
@@ -94,7 +105,17 @@ export interface ClaimedJob {
   [key: string]: unknown;
 }
 
-/** Response shape of POST /api/v1/worker/change-step. */
+/** Response shape of POST /api/v1/worker/firmware-upgrade. */
+interface FirmwareUpgradeResponse {
+  deviceId: string;
+  hostname: string;
+  fromVersion: string | null;
+  toVersion: string;
+  alreadyAtTarget?: boolean;
+  upgradedAt?: string;
+  correlationId: string;
+}
+
 interface ChangeStepResponse {
   done: boolean;
   outcome?: string | null;
@@ -679,6 +700,98 @@ async function runMetricRetentionJob(job: ClaimedJob): Promise<void> {
   }
 }
 
+/* ───────────────── FIRMWARE_UPGRADE driver (Phase 13-b) ─────────────── */
+
+/**
+ * FIRMWARE_UPGRADE execution — simulated staged upgrade; persistence
+ * (device.firmware + FIRMWARE_UPGRADED audit) happens in the Next.js API.
+ * The job payload is { deviceId, targetVersion } enriched at claim time
+ * with the device header (hostname/vendor/fromVersion/status).
+ */
+async function runFirmwareUpgradeJob(job: ClaimedJob): Promise<void> {
+  const payload = job.payload ?? {};
+  const hostname = typeof payload.hostname === "string" ? payload.hostname : "device";
+  const fromVersion = typeof payload.fromVersion === "string" ? payload.fromVersion : "unknown";
+  const targetVersion = typeof payload.targetVersion === "string" ? payload.targetVersion : "";
+  const vendor = typeof payload.vendor === "string" ? payload.vendor : "generic";
+
+  if (!targetVersion) {
+    throw new Error("Invalid firmware-upgrade payload: targetVersion is missing");
+  }
+  if ((typeof payload.status === "string" ? payload.status : "").toUpperCase() === "OFFLINE") {
+    // Realism: cannot stage an image on an unreachable device — the generic
+    // failure path (requeue/backoff) takes over from here.
+    throw new Error(`Device ${hostname} is OFFLINE — firmware upgrade aborted`);
+  }
+
+  await reportProgress(
+    job.id,
+    8,
+    `Resolving ${hostname} (${vendor}) — planned upgrade ${fromVersion} → ${targetVersion}`
+  );
+  await sleep(randInt(600, 1_200));
+
+  await reportProgress(
+    job.id,
+    25,
+    `Downloading ${vendor} image ${targetVersion} to ${hostname} (simulated transfer)`
+  );
+  await sleep(randInt(1_200, 2_000));
+
+  await reportProgress(
+    job.id,
+    50,
+    `Staging image on ${hostname} — checksum verified, space check OK`
+  );
+  await sleep(randInt(1_000, 1_800));
+
+  await reportProgress(
+    job.id,
+    72,
+    `Activating ${targetVersion} on ${hostname} — control plane restarting into the new image`
+  );
+  await sleep(randInt(1_200, 2_000));
+
+  await reportProgress(
+    job.id,
+    90,
+    `Post-check on ${hostname} — confirming running version ${targetVersion} and service health`
+  );
+
+  // The state mutation (device.firmware + FIRMWARE_UPGRADED audit) happens
+  // in the Next.js API — the worker never opens SQLite.
+  const result = (await nextPost(
+    "/api/v1/worker/firmware-upgrade",
+    { jobId: job.id },
+    20_000
+  )) as FirmwareUpgradeResponse;
+
+  await nextPost(
+    "/api/v1/worker/complete",
+    {
+      jobId: job.id,
+      outcome: "SUCCEEDED",
+      result: {
+        outcome: "upgraded",
+        deviceId: result.deviceId,
+        hostname: result.hostname,
+        fromVersion: result.fromVersion,
+        toVersion: result.toVersion,
+        alreadyAtTarget: result.alreadyAtTarget === true,
+        upgradedAt: result.upgradedAt ?? new Date().toISOString(),
+      },
+    },
+    15_000
+  );
+
+  counters.completed += 1;
+  counters.completedByType.FIRMWARE_UPGRADE =
+    (counters.completedByType.FIRMWARE_UPGRADE ?? 0) + 1;
+  await log(
+    `job ${job.id} [${job.correlationId}] SUCCEEDED: firmware-upgrade ${result.hostname} ${result.fromVersion ?? "?"} → ${result.toVersion}${result.alreadyAtTarget ? " (already at target)" : ""}`
+  );
+}
+
 /* ───────────────────── REPORT_RUN driver (9-a) ─────────────────── */
 
 /** Response shape of POST /api/v1/reports/execute. */
@@ -742,6 +855,8 @@ async function executeJob(job: ClaimedJob): Promise<void> {
       await raceTimeout(runMetricRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "REPORT_RUN") {
       await raceTimeout(runReportJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "FIRMWARE_UPGRADE") {
+      await raceTimeout(runFirmwareUpgradeJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else {
       throw new Error(`Unsupported job type for worker v1: ${job.type}`);
     }
@@ -781,7 +896,7 @@ async function claimTick(): Promise<"ok" | "failed" | "busy"> {
     try {
       jobs = (await nextPost(
         "/api/v1/worker/claim",
-        { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION", "REPORT_RUN"], limit: Math.min(CLAIM_BATCH, free) },
+        { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION", "REPORT_RUN", "FIRMWARE_UPGRADE"], limit: Math.min(CLAIM_BATCH, free) },
         10_000
       )) as ClaimedJob[];
     } catch (e) {

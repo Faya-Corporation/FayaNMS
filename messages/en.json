@@ -57,7 +57,8 @@
         "sites": { "title": "Sites" },
         "interfaces": { "title": "Interfaces" },
         "topology": { "title": "Topology" },
-        "discovery": { "title": "Discovery" }
+        "discovery": { "title": "Discovery" },
+        "firmware": { "title": "Firmware" }
       },
       "config": {
         "backups": { "title": "Backups" },
@@ -89,6 +90,7 @@
         "interfaces": { "title": "Interface Utilization" },
         "availability": { "title": "Availability" },
         "capacity": { "title": "Capacity" },
+        "flows": { "title": "Flow Analytics" },
         "predictive": { "title": "Predictive Health" }
       },
       "reports": {
@@ -323,6 +325,73 @@
       "errorTitle": "Risk data unavailable"
     }
   },
+  "flows": {
+    "title": "Flow Analytics",
+    "description": "Deterministic NetFlow-style conversation analytics per device — top talkers, protocol mix and interface totals from stable 15-minute export buckets",
+    "deviceLabel": "Device",
+    "devicePlaceholder": "Select device",
+    "windowLabel": "Flow window",
+    "refresh": "Refresh",
+    "metaLine": "Window through {windowEnd} · {buckets} × {bucketMinutes}-minute buckets · computed {computed}",
+    "errorTitle": "Flow analytics could not be loaded",
+    "noDeviceTitle": "No device selected",
+    "noDeviceDescription": "Pick a device to analyze its flow-level traffic — top talkers, protocol mix and interface throughput appear here.",
+    "kpi": {
+      "throughput": "Total throughput",
+      "throughputHint": "Average across monitored interfaces (in + out)",
+      "flows": "Flows",
+      "flowsHint": "Distinct flow records in the window",
+      "topTalker": "Top talker",
+      "topTalkerHint": "Source IP with the most bytes",
+      "topProtocol": "Top protocol",
+      "topProtocolHint": "of all bytes in the window"
+    },
+    "talkers": {
+      "title": "Top talkers",
+      "description": "Source hosts ranked by bytes — {count} in the window",
+      "rank": "#",
+      "src": "Source",
+      "dst": "Destination",
+      "protocol": "Protocol",
+      "bytes": "Bytes",
+      "packets": "Packets",
+      "flows": "Flows",
+      "share": "Share",
+      "multi": "{count} destinations",
+      "empty": "No flow records for this device and window yet."
+    },
+    "protocols": {
+      "title": "Protocol distribution",
+      "description": "Share of bytes per protocol (canonical port)",
+      "empty": "No protocol data yet."
+    },
+    "interfaces": {
+      "title": "Interface totals",
+      "description": "Average throughput per monitored interface",
+      "in": "In",
+      "out": "Out",
+      "empty": "No interfaces on this device."
+    },
+    "sample": {
+      "title": "Recent flows",
+      "description": "Latest {count} flow records across the window (sample ≤ 50)",
+      "time": "Time",
+      "src": "Source",
+      "dst": "Destination",
+      "proto": "Proto",
+      "bytes": "Bytes",
+      "packets": "Packets",
+      "flags": "TCP flags",
+      "udp": "UDP",
+      "empty": "No sampled flows in this window."
+    }
+  },
+  "capacity": {
+    "methodNote": "Forecast v2 — linear trend + weekly seasonality · shaded band = 80% confidence interval (±1.28σ of model residuals)",
+    "forecastLegend": "Forecast v2 (trend + seasonality)",
+    "bandLegend": "80% confidence band",
+    "seasonalityOff": "weekly seasonality needs ≥ 14 days of history — showing linear trend + band"
+  },
   "reports": {
     "runs": {
       "title": "Reports",
@@ -459,6 +528,71 @@
       "CURRENT_SNAPSHOT": "Current snapshot"
     }
   },
+  "firmware": {
+    "title": "Firmware",
+    "description": "Fleet firmware versions with lifecycle posture (current / aging / end-of-sale / end-of-life) and guarded upgrades.",
+    "errorTitle": "Firmware inventory could not be loaded",
+    "kpi": {
+      "total": "Devices",
+      "totalHint": "Devices with a reported firmware version",
+      "current": "Current",
+      "currentHint": "On the recommended stable line",
+      "aging": "Aging",
+      "agingHint": "Behind the stable line — plan the upgrade",
+      "eos": "End of sale",
+      "eosHint": "Maintenance releases only",
+      "eol": "End of life",
+      "eolHint": "Past end of support — upgrade soon"
+    },
+    "list": {
+      "title": "Firmware inventory",
+      "description": "Ranked worst-first — end-of-life devices at the top",
+      "device": "Device",
+      "firmware": "Firmware",
+      "lifecycle": "Lifecycle",
+      "lastUpgrade": "Last upgrade",
+      "actions": "Actions",
+      "upgrade": "Upgrade",
+      "upgradeQueued": "Upgrade queued",
+      "openDeviceAria": "Open device detail for {hostname}",
+      "emptyTitle": "No devices",
+      "emptyDescription": "Devices appear here once they report a firmware version."
+    },
+    "status": {
+      "current": "Current",
+      "aging": "Aging",
+      "eos": "End of sale",
+      "eol": "End of life",
+      "unknown": "No data"
+    },
+    "upgrade": {
+      "title": "Upgrade firmware on {hostname}",
+      "description": "Queues a tracked firmware-upgrade job. The worker walks the simulated stages (image download → staging → activation → post-check); the device record is only updated after the post-check passes.",
+      "confirmLabel": "Queue firmware upgrade",
+      "targetLabel": "Target version",
+      "targetHint": "Suggested stable for this family: {version}",
+      "targetInvalid": "Does not match the {family} version format",
+      "targetSameAsCurrent": "The device already runs this version — pick a different target.",
+      "impact": {
+        "device": "Device",
+        "vendor": "Vendor / model",
+        "currentVersion": "Current version",
+        "targetVersion": "Target version",
+        "execution": "Execution",
+        "executionValue": "Worker job — simulated staged upgrade"
+      },
+      "openJobCenter": "Open Job Center",
+      "toast": {
+        "title": "Upgrade queued for {hostname}",
+        "description": "Job {correlation} is queued — follow it in the Job Center."
+      },
+      "success": {
+        "title": "Job {correlation} queued",
+        "description": "{hostname}: {from} → {to}. The version flips after the worker's post-check."
+      }
+    },
+    "matrixNote": "Lifecycle classification uses the documented demo vendor matrix (simulated EOS/EOL data) — not a live vendor feed."
+  },
   "jobs": {
     "sheetTitle": "Job Center",
     "sheetDescription": "Background job queue — backups, validations and polls.",
@@ -494,7 +628,10 @@
       "NOTIFICATION": "Notification",
       "CHANGE_EXECUTE": "Change execution",
       "DRIFT_CHECK": "Drift check",
-      "ALERT_EVALUATION": "Alert evaluation"
+      "ALERT_EVALUATION": "Alert evaluation",
+      "METRIC_RETENTION": "Metric retention prune",
+      "REPORT_RUN": "Report run",
+      "FIRMWARE_UPGRADE": "Firmware upgrade"
     },
     "actions": {
       "retry": "Retry",
@@ -771,6 +908,34 @@
         "answerTitle": "Assistant answer",
         "contextBasis": "Grounded in {alerts} alerts · {events} audit events · {incidents} open incidents",
         "disclaimer": "AI output is advisory — verify against live telemetry before acting."
+      },
+      "changeDraft": {
+        "button": "Draft with AI",
+        "title": "Draft a change with AI",
+        "intro": "Describe the change in plain language — the AI structures it into a change-request draft you review before the wizard opens. Nothing is created automatically.",
+        "promptLabel": "Describe the intended change",
+        "placeholder": "e.g. Upgrade the core switch firmware during the Saturday maintenance window…",
+        "examplesLabel": "Examples",
+        "example_firmware": "Upgrade core switch firmware Saturday 02:00-04:00",
+        "example_uplink": "Add a second uplink to branch switch BR2",
+        "example_firewall": "Tighten firewall rules for the DMZ segment",
+        "generate": "Generate draft",
+        "generating": "Generating draft…",
+        "elapsed": "{seconds}s elapsed — drafting can take up to a minute",
+        "errorTitle": "The draft could not be generated",
+        "reviewTitle": "Review the AI draft",
+        "reviewNote": "Review every field before continuing — the wizard opens at step 1 with this draft pre-filled and nothing is submitted until you complete it.",
+        "fieldTitle": "Title",
+        "fieldDescription": "Description",
+        "fieldType": "Change type",
+        "fieldRisk": "Suggested risk",
+        "fieldDevices": "Matched devices",
+        "fieldImplementation": "Implementation plan",
+        "fieldValidation": "Validation plan",
+        "fieldRollback": "Rollback plan",
+        "fieldWindow": "Suggested window",
+        "devicesNone": "No specific devices matched — pick targets in the wizard scope step.",
+        "openInWizard": "Open in wizard"
       },
       "rca": {
         "generate": "Generate AI draft",

@@ -389,15 +389,15 @@ export async function POST(request: Request) {
   // job per 24 h — the worker triggers the evaluate-in-Next prune.
   const metricRetentionEnqueued = await enqueueMetricRetention(now);
 
-  // Reaper: RUNNING CONFIG_BACKUP/DISCOVERY/DRIFT_CHECK/ALERT_EVALUATION jobs whose
-  // startedAt is older than 10 minutes were orphaned (server crash, worker restart mid-flight —
-  // the in-memory runner state is gone) and would otherwise stay RUNNING
-  // forever. Fail them so the Job Center shows the truth; retries happen
-  // through normal re-enqueue (manual backup-now or the next scheduler tick).
+  // Reaper: RUNNING engine jobs whose startedAt is older than 10 minutes
+  // were orphaned (server crash, worker restart mid-flight — the in-memory
+  // runner state is gone) and would otherwise stay RUNNING forever. Fail
+  // them so the Job Center shows the truth; retries happen through normal
+  // re-enqueue (manual backup-now/upgrade or the next scheduler tick).
   const STALE_RUNNING_MS = 10 * 60_000;
   const reaped = await db.jobExecution.updateMany({
     where: {
-      type: { in: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "ALERT_EVALUATION", "METRIC_RETENTION"] },
+      type: { in: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "ALERT_EVALUATION", "METRIC_RETENTION", "FIRMWARE_UPGRADE"] },
       status: "RUNNING",
       startedAt: { lt: new Date(now.getTime() - STALE_RUNNING_MS) },
     },

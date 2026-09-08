@@ -24,6 +24,8 @@ import { DevicesView } from "@/components/views/devices-view";
 import { DiscoveryView } from "@/components/views/discovery-view";
 import { DriftView } from "@/components/views/drift-view";
 import { EventsView } from "@/components/views/events-view";
+import { FirmwareView } from "@/components/views/firmware-view";
+import { FlowsView } from "@/components/views/flows-view";
 import { IncidentsView } from "@/components/views/incidents-view";
 import { IncidentDetailView } from "@/components/views/incident-detail-view";
 import { MaintenanceView } from "@/components/views/maintenance-view";
@@ -85,6 +87,8 @@ export function ViewRouter() {
       return <AdminSystemView />;
     case "network.discovery":
       return <DiscoveryView />;
+    case "network.firmware":
+      return <FirmwareView />;
     case "ops.alerts":
       return <AlertsView />;
     case "ops.incidents":
@@ -131,6 +135,8 @@ export function ViewRouter() {
       return <PerfAvailabilityView />;
     case "perf.capacity":
       return <PerfCapacityView />;
+    case "perf.flows":
+      return <FlowsView />;
     case "perf.predictive":
       return <PredictiveHealthView />;
     case "reports.reports":

@@ -66,6 +66,9 @@ const JOB_TYPES = [
   "CHANGE_EXECUTE",
   "DRIFT_CHECK",
   "ALERT_EVALUATION",
+  "METRIC_RETENTION",
+  "REPORT_RUN",
+  "FIRMWARE_UPGRADE",
 ] as const;
 
 const CANCELLABLE = new Set(["QUEUED", "RUNNING"]);
@@ -89,6 +92,9 @@ function jobTypeLabel(
     CHANGE_EXECUTE: "type.CHANGE_EXECUTE",
     DRIFT_CHECK: "type.DRIFT_CHECK",
     ALERT_EVALUATION: "type.ALERT_EVALUATION",
+    METRIC_RETENTION: "type.METRIC_RETENTION",
+    REPORT_RUN: "type.REPORT_RUN",
+    FIRMWARE_UPGRADE: "type.FIRMWARE_UPGRADE",
   };
   const key = map[type];
   return key ? t(key) : type;

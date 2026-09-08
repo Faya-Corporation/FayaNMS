@@ -86,6 +86,13 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
     group: "Network",
     labelKey: "nav.items.network.discovery",
   },
+  "network.firmware": {
+    title: "Firmware",
+    description: "Fleet firmware lifecycle — versions, EOS/EOL and upgrades",
+    phase: "Phase 13 — Parked-tier pull-forward (13-b)",
+    group: "Network",
+    labelKey: "nav.items.network.firmware",
+  },
 
   "config.backups": {
     title: "Backups",
@@ -254,6 +261,13 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
     phase: "Phase 6 — Performance & Metrics (6-b)",
     group: "Performance",
     labelKey: "nav.items.perf.capacity",
+  },
+  "perf.flows": {
+    title: "Flow Analytics",
+    description: "NetFlow-style conversation analytics — top talkers, protocol mix and interface totals",
+    phase: "Phase 13 — Parked-tier pull-forward (13-c)",
+    group: "Performance",
+    labelKey: "nav.items.perf.flows",
   },
   "perf.predictive": {
     title: "Predictive Health",

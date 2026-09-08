@@ -1,5 +1,6 @@
 import {
   Activity as ActivityIcon,
+  ArrowLeftRight,
   BadgeCheck,
   BellRing,
   CalendarClock,
@@ -13,6 +14,7 @@ import {
   FileText,
   Gauge,
   GitPullRequest,
+  HardDriveDownload,
   HeartPulse,
   History,
   KeyRound,
@@ -71,6 +73,7 @@ export const SIDEBAR_GROUPS: SidebarGroupConfig[] = [
       { view: "network.interfaces", icon: Network },
       { view: "network.topology", icon: Waypoints },
       { view: "network.discovery", icon: Radar },
+      { view: "network.firmware", icon: HardDriveDownload },
     ],
   },
   {
@@ -116,6 +119,7 @@ export const SIDEBAR_GROUPS: SidebarGroupConfig[] = [
       { view: "perf.interfaces", icon: ActivityIcon },
       { view: "perf.availability", icon: HeartPulse },
       { view: "perf.capacity", icon: TrendingUp },
+      { view: "perf.flows", icon: ArrowLeftRight },
       { view: "perf.predictive", icon: CircleGauge },
     ],
   },

@@ -178,6 +178,7 @@ Later agents MUST re-read this file, pick the next unchecked task, append result
 - [x] Phase 10 — Post-roadmap hardening (worker claim-loop resilience + recovery, aria-describedby warning eliminated, status-label i18n completion, 375px root-cause fix) — COMPLETE
 - [x] Phase 11 — Full enhancements sweep (useStatusLabel adoption 33 sites/12 files, events-view TIME_RANGES unification, D4 1k-row benchmark PASS: interactions 152–486ms at 1.2k–1.7k rows, requestContext normalization on depth-1 routes) — COMPLETE (G11 matrix green: EN/AR × light/dark × 375/1440 × zero console errors; dictionary parity 558=558; pristine reseed)
 - [x] Phase 12 — Parked-tier pull-forward: AI troubleshooting + auto-RCA (z-ai-web-dev-sdk backend-only, AI- audit trail), Juniper JunOS + Palo PAN-OS vendors end-to-end (4 new devices, vendor-authentic snapshots), deterministic predictive health model v1 (view + dashboard widget) — COMPLETE (G12 matrix green: tsc/lint clean, AI + vendor golden paths, EN/AR × light/dark × 375/1440 zero console errors; parity 628=628)
+- [x] Phase 13 — Parked-tier pull-forward #2: natural-language change drafting (review-gated AI → wizard pre-fill), firmware lifecycle (schema + seed versions, worker FIRMWARE_UPGRADE, EOS/EOL inventory, guarded upgrades), flow analytics (deterministic per-bucket) + capacity forecast v2 (weekly seasonality + 80% band) — COMPLETE (G13 green: tsc/lint clean, 3 golden paths, parity 761=761, EN/AR × light/dark × 375/1440 zero console errors; stale-RUNNING reaper gap documented)
 
 ---
 
@@ -984,3 +985,86 @@ Work Log:
 
 Stage Summary:
 - Phase 12 COMPLETE — parked-tier pull-forward delivered: AI troubleshooting + auto-RCA (z-ai-web-dev-sdk, backend-only, audited), Juniper JunOS + Palo Alto PAN-OS vendors end-to-end, deterministic predictive health (model v1) with view/widget/registry/i18n. No new dependencies; no schema changes; i18n parity 628=628; G12 matrix green. Remaining parked items (flow analytics, full CMDB, firmware lifecycle, ZTP, capacity ML, natural-language changes, collector distribution, HA/DR topology) remain documented as non-MVP.
+
+---
+Task ID: 13-kickoff
+Agent: Orchestrator (Z.ai Code)
+Task: Phase 13 — Parked-tier pull-forward #2: natural-language changes + firmware lifecycle + flow analytics/capacity v2 (multi-agent parallel)
+
+Work Log:
+- State: local HEAD 2a494e9 (runtime-state db commit, push pending at wrap-up); remote at 6628a0e (Phase 12). dev :3000 + worker :3030 healthy. AI lib from 12-a ready (src/lib/ai/{zai-client,prompts,context}.ts — lazy singleton, 45s timeout, retry, typed AI_UNAVAILABLE/AI_BAD_RESPONSE).
+- Recon: Device has model/serial but NO firmware field → only 13-b touches prisma/schema.prisma + runs db:push + reseeds EARLY. Worker runner has per-type branches (evaluate-in-Next pattern for Next-side logic). Change wizard pre-fill seam = defaultValues useMemo + form.reset (src/components/change/change-wizard.tsx). Capacity forecast lives in perf-capacity-view.tsx. Job type i18n map in job-center.tsx.
+- Scope (parked list subset, NO new dependencies):
+  (1) 13-a NL→change draft: POST /api/v1/ai/change-draft (LLM strict-JSON draft: title/description/type+risk hints/real-device references from server-provided compact device list/implementation+validation+rollback plans/window hint; Zod; audit NL_CHANGE_DRAFT_GENERATED); changes-view "Draft with AI" dialog → review → pre-fills the existing wizard via aiDraft prop; NEVER auto-creates;
+  (2) 13-b Firmware lifecycle: schema Device.firmware String? (13-b ONLY) + seed vendor-authentic versions (30 devices); worker FIRMWARE_UPGRADE branch (staged simulate: image→staging→activation→post-check; evaluate-in-Next completion updates device.firmware); GET /api/v1/firmware inventory (versions + static vendor EOS/EOL matrix + upgrade history); POST /api/v1/firmware/upgrade (guarded); Firmware view (registry NETWORK group) + device-detail firmware chip + job-center label;
+  (3) 13-c Flow analytics + capacity v2: GET /api/v1/flows (deterministic per-bucket pseudo-flows from seeded RNG — top talkers, protocol distribution, per-interface totals, NO schema); Flow Analytics view (PERFORMANCE group); perf-capacity forecast v2 (manual seasonal component + residual confidence band shading + method note).
+- Shared-file discipline (same worktree): registry.ts / view-router.tsx / sidebar-config / query-keys.ts / messages/*.json touched by BOTH 13-b (firmware.* / nav.items.net.firmware) and 13-c (flows.* / capacity.*) — surgical Edit-tool ops, unique anchors, never whole-file rewrites. 13-a owns ai.* namespace + changes UI; 13-b owns schema/worker/seed/job maps; nobody else touches those.
+- Gate G13: tsc 0 errors under src/, lint 0, i18n parity, golden paths (NL draft→wizard pre-fill review; firmware upgrade job SUCCEEDED + device.firmware updated; flows API deterministic across calls), browser matrix EN/AR × light/dark × 375/1440, zero console errors, pristine reseed.
+
+Stage Summary:
+- Three parallel shards launched: 13-a, 13-b, 13-c (full-stack-developer each). All must read this worklog first, follow conventions, append their own entries, NOT commit.
+
+---
+Task ID: 13-a
+Agent: full-stack-developer
+Task: Phase 13 shard A — natural-language → change-request draft via AI (POST /api/v1/ai/change-draft + changes-view "Draft with AI" dialog → review → wizard pre-fill via aiDraft prop)
+
+Work Log:
+- Read worklog (13-kickoff contract + 12-a AI infra) and the three AI layer modules first (src/lib/ai/{zai-client,prompts,context}.ts — singleton, 45s timeout, one retry, AiUnavailableError/AiBadResponseError, role "assistant" system-message convention, terse label:value context blocks); followed their patterns exactly.
+- Backend src/app/api/v1/ai/change-draft/route.ts (~330 lines): POST { prompt (10..600, Zod), locale en|ar, actAsUserId? }; server loads the REAL inventory (all devices: hostname/model/role/criticality/vendor key/site name+code) and embeds a compact one-line-per-device block in the LLM prompt so drafts reference real hostnames; buildChangeDraftMessages added to prompts.ts (STRICT-JSON contract: title ≤120, description 2–4 sentences, changeType STANDARD|NORMAL|EMERGENCY, riskHint low|medium|high|critical, deviceHostnames verbatim-from-list, implementationPlan 3–8, validationPlan 2–5, rollbackPlan 2–4, suggestedWindowHint ≤140 or null); defensive parse = fence stripping + first-{..last-} slice + JSON.parse in try/catch (AiBadResponseError → 502 AI_BAD_RESPONSE with raw truncated in error.detail) + Zod draft schema with per-field .catch defaults; deviceHostnames matched case-insensitively against the inventory (unknown dropped, never invented; deduped; capped at the wizard's 20-device max) and resolved to ids SERVER-SIDE → matchedDevices [{id, hostname, model, role, criticality, siteCode, vendorKey}] (attributes included so the wizard risk engine works on prefill); audit NL_CHANGE_DRAFT_GENERATED with AI-XXXXXX correlationId, lean afterJson (lengths/counts/hints only — never prompt or draft text), FAILURE rows on AI_UNAVAILABLE/AI_BAD_RESPONSE; envelope via _lib/api ok/fail/failWithDetail with requestContext trailing arg + resolveActingUser actor.
+- Frontend: new src/components/change/change-ai-draft-dialog.tsx — textarea (10..600, live counter), 3 example chips (firmware/uplink/firewall), Generate with pending state + elapsed-seconds hint ("drafting can take up to a minute"), ErrorState with retry; on success a review panel INSIDE the dialog (title, description, changeType + riskHint via shared StatusBadge configs, matched devices as hostname badges, implementation/validation/rollback lists, suggested-window card, correlationId, "review before continuing" note) and "Open in wizard".
+- changes-view.tsx: "Draft with AI" outline button added next to "New change" (PageHeader primaryAction row); onUseDraft stores the reviewed prefill, closes the dialog, opens the wizard; wizard close / plain "New change" clears the prefill. Dialog button label i18n'd (ai.changeDraft.button).
+- change-wizard.tsx SURGICAL ONLY (3 seams, no rewrite): (1) optional aiDraft prop; (2) defaultValues useMemo gained an aiDraft branch (after change/template) — title (≤200), description, type=changeType, deviceIds=matched ids (≤20), implementationPlan as "1. …\n2. …" lines, validationPlan/rollbackPlan newline-joined, steps keep WIZARD_DEFAULT_STEPS, schedule NOT parsed from the free-text window hint, submitNow=true; (3) render-time pickedDevices seeding keyed on the draft title so the risk engine + selected chips see matched devices (server-validated ids only). Wizard still starts at step 1; riskHint is advisory-only in the review panel (risk score is engine-computed — no clean mapping, deliberately not force-fit).
+- api-client: AiChangeDraft/AiMatchedDevice/AiChangeDraftPayload/AiChangeDraftResult/AiChangeDraftPrefill + requestAiChangeDraft; query-keys aiChangeDraft; use-ai.ts useAiChangeDraft (invalidates "events" like 12-a hooks). i18n: ai.changeDraft.* ×26 keys in BOTH catalogs (genuine Arabic netops: مسودة بالذكاء الاصطناعي، خطة التنفيذ/التحقق/التراجع، الأجهزة المطابقة، النافذة المقترحة…), surgical anchor edits between ai.assistant and ai.rca.
+- Cross-shard note: one-line defensive fix in 13-c's in-flight fetchFlows (api-client `meta: envelope.meta ?? {}`) to unblock the shared tsc gate — 13-c's code, minimal additive edit.
+- Ops: dev-server OOM deaths (dmesg-confirmed, 4 total this session) — recovered each time with the documented NODE_OPTIONS=--max-old-space-size=1280 double-detached restart; one mid-session transient 401 → re-login; browser checks redone after restarts.
+
+Stage Summary:
+- Verification PASSED: bunx tsc --noEmit 0 errors under src/ (only examples/skills/tool-results noise); bun run lint exit 0; i18n parity 761=761 zero diff (654 at my check mid-flight + 13-c's later keys; combined parity holds).
+- API evidence (curl + session): POST /api/v1/ai/change-draft → 200 in ~4.8s, real LLM draft "Upgrade DC-Core-SW-01 and HQ-Core-SW-01/02 firmware…", changeType NORMAL, riskHint high, 8 implementation/3 validation/2 rollback steps, window hint "Saturday 02:00–04:00 local", matchedDevices = 3 REAL cisco core switches with server ids, correlationId AI-DSZBFZ; short prompt → 400 INVALID_BODY. DB audit rows: NL_CHANGE_DRAFT_GENERATED SUCCESS ×3 (AI-DSZBFZ en, AI-T88MGE en, AI-MT7DAP ar) with lean metadata.
+- Browser golden path (agent-browser, admin@faya.local): EN — changes view → Draft with AI → example chip → Generate (~5s) → review panel with real LLM draft + matched device badges (DC-Core-SW-01/HQ-Core-SW-01/HQ-Core-SW-02) → Open in wizard → wizard at step 1 General with title/description/type=Normal pre-filled; Scope step shows the 3 matched device chips preselected → CANCELLED (changes total stayed 10 — nothing auto-created). AR RTL — dialog, example chips, elapsed hint ("مرّت 1 ثانية…"), review panel and wizard prefill fully Arabic (title "ترقية برنامج المبدّل الأساسي"), Open in wizard verified; 375px: dialog open, document/body scrollWidth === 375 (dialog 343px, no overflow). Console: zero errors/warnings/MISSING_MESSAGE on clean sessions (only next-auth CLIENT_FETCH_ERROR artifacts inside the OOM-death windows, gone after restarts).
+- Constraints honored: no new dependencies, no test code, no prisma/schema/seed/worker/job-center edits, no registry/view-router/sidebar edits, wizard edited surgically, nothing committed. Files: route.ts (new), change-ai-draft-dialog.tsx (new), prompts.ts, api-client.ts, query-keys.ts, use-ai.ts, changes-view.tsx, change-wizard.tsx, messages/en.json, messages/ar.json.
+
+---
+Task ID: 13-b
+Agent: full-stack-developer (work landed pre-deadline; entry reconstructed + verified by Orchestrator)
+Task: Firmware lifecycle — schema + seed versions, worker FIRMWARE_UPGRADE, inventory/upgrade APIs, Firmware view
+
+Work Log:
+- prisma/schema.prisma: Device.firmware String? added (13-b sole schema owner); `bun run db:push` succeeded; seed gives all 30 devices vendor-authentic firmware (cisco 15.2(7)E3 / fortigate 7.2.5 / sophos 19.5 / hpe / juniper 21.4R3-S4.9 / palo 10.2.6); reseed executed EARLY.
+- mini-services/worker/runner.ts: FIRMWARE_UPGRADE evaluate-in-Next branch — driver at line ~703 (stages: image download → staging → activation → post-check, randInt sleeps + reportProgress), dispatch case wired in executeJob (line ~858); claim types array includes FIRMWARE_UPGRADE.
+- Next side: /api/v1/worker/firmware-upgrade evaluate-in-Next endpoint (sets device.firmware = targetVersion, writes FIRMWARE_UPGRADED audit with before/after); GET /api/v1/firmware inventory (30 rows: firmware, lifecycle {status: current|aging|eos|eol, detail}, suggestedTarget, lastUpgradeAt, openUpgradeJob); POST /api/v1/firmware/upgrade (Zod, 409 UPGRADE_IN_PROGRESS guard, enqueue like backup_now); src/lib/firmware/lifecycle.ts static simulated vendor EOS/EOL matrix; job-center FIRMWARE_UPGRADE label + i18n keys (firmware.* namespace).
+- Frontend: firmware-view.tsx + firmware-band.ts registered as network.firmware (registry + view-router + sidebar NETWORK group after Discovery); KPI row (30 devices / current 14 / aging / eos / eol counts) + inventory table with lifecycle badges + guarded Upgrade flow (HighRiskActionDialog pattern with suggested target prefill); device-detail firmware chip; use-firmware hook + query-keys firmware namespace.
+
+Stage Summary:
+- Parked item "firmware lifecycle" delivered end-to-end. Evidence (Orchestrator G13): inventory API returns rich lifecycle data (e.g. BR1-Access-SW-01 = eol with suggestedTarget 15.2(7)E4); upgrade golden path: POST /api/v1/firmware/upgrade → job → FIRMWARE_UPGRADED audit (JOB-VK745U) → device.firmware 15.2(7)E3 → 15.2(7)E4; retry-job SUCCEEDED progress=100 ("firmware-upgrade BR1-Access-SW-01 15.2(7)E3 → 15.2(7)E4" in worker.log). DESIGN GAP NOTED (pre-existing, exposed by today's OOM-killed worker): no stale-RUNNING job reaper — a worker death mid-run orphans the job record; recovered via the jobs/[id]/retry API (worked as designed). Candidate for a future hardening phase.
+
+---
+Task ID: 13-c
+Agent: full-stack-developer (work landed pre-deadline; entry reconstructed + verified by Orchestrator)
+Task: Flow analytics (deterministic simulated NetFlow) + capacity forecast v2 (seasonality + confidence band)
+
+Work Log:
+- src/lib/flows/simulate.ts: seeded-PRNG per-15min-bucket flow generation (stable per deviceId+interface+bucket) — top talkers, protocol distribution (443/53/22/3389/161/445/2049 weighted), per-interface in/out Mbps, recent sample; NO schema, NO worker changes.
+- GET /api/v1/flows?deviceId&window=1h|6h|24h (Zod, envelope + requestContext): verified DETERMINISTIC — two same-bucket calls return identical topTalkers bytes (det:true), 10 talkers / 10 protocols, 24h window OK, invalid window → 400 envelope.
+- flows-view.tsx registered as perf.flows (registry + view-router + sidebar PERFORMANCE group after Capacity): KPI row + Top Talkers table + protocol distribution bars + recent flows + device selector + window select; AR fully localized (محلل التدفقات — أعلى مصادر الحِمل، توزيع البروتوكولات…); use-flows hook + flows query-keys.
+- perf-capacity-view forecast v2: manual linear trend + weekly-seasonality factor + residual σ → shaded 80% band (±1.28σ) around the forecast line, horizon line, legend via t(); header description now uses capacity.methodNote (Orchestrator surgical fix — 13-c had added the key but left the PageHeader description hardcoded; pre-existing Phase 6 hardcodes in KPI descriptions left as-is, consistent with perf-view patterns).
+
+Stage Summary:
+- Parked items "flow analytics" + "capacity ML (algorithmic tier)" delivered dependency-free with deterministic semantics (no flicker under polling). G13 browser evidence: EN + AR flows and capacity views render data; dark mode clean; 375px scrollWidth === 375; console zero errors/warnings (HMR artifacts excluded).
+
+---
+Task ID: 13-integration+closeout
+Agent: Orchestrator (Z.ai Code)
+Task: Phase 13 integration — G13 validation, worklog reconstruction for infra-deadline shards, closeout
+
+Work Log:
+- Shards: 13-a completed normally (full report + own worklog entry); 13-b/13-c hit Task-infra deadlines — filesystem-first assessment showed near-complete landings; entries above reconstructed from verified evidence; one orchestrator fix (capacity methodNote localization) + one-line defensive fix by 13-a in 13-c's in-flight fetchFlows (cross-shard unblock, documented by 13-a).
+- G13 gates: bunx tsc --noEmit 0 errors under src/ (skills/ noise pre-existing); bun run lint exit 0; i18n parity 761 = 761 (zero diff; +133 keys over Phase 12: ai.changeDraft ×26 + firmware.* + flows.* + capacity.* + nav labels).
+- Golden paths: (1) NL→change draft: real LLM round-trip ~4.8s, draft referencing 3 real cisco core switches, wizard pre-filled (title/description/type/devices chips), nothing auto-created (changes total unchanged); 3 NL_CHANGE_DRAFT_GENERATED audit rows (en×2, ar×1). (2) Firmware upgrade: inventory lifecycle data → upgrade → FIRMWARE_UPGRADED audit + device.firmware updated → retry-job SUCCEEDED progress=100. (3) Flows determinism proven (det:true same-bucket).
+- Environment: dev server OOM-killed 7× today (dmesg-confirmed next-server kills) and worker OOM-died twice under the memory pressure — all recovered with the documented patterns; the OOM mid-run death exposed the (pre-existing) no-stale-RUNNING-reaper gap, worked around via jobs/[id]/retry and documented above.
+- Browser matrix: EN + AR (RTL) × light/dark × 375/1440 on changes (AI dialog), firmware, flows, capacity views — zero console errors/warnings/MISSING_MESSAGE (HMR Fast Refresh artifacts excluded).
+- Pristine reseed executed post-verification; commit + push with ls-remote double-verification.
+
+Stage Summary:
+- Phase 13 COMPLETE — parked-tier pull-forward #2 delivered: natural-language change drafting (review-gated, audit-trailed), firmware lifecycle (schema+seed+worker+inventory+guarded upgrades+EOS/EOL), flow analytics (deterministic) + capacity forecast v2. No new dependencies. i18n parity 761=761. Remaining parked: full CMDB, ZTP, natural-language queries beyond changes, collector agent distribution, HA/DR topology — documented non-MVP.

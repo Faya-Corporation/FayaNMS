@@ -137,6 +137,38 @@ export async function POST(request: Request) {
         }
       }
 
+      // FIRMWARE_UPGRADE (Phase 13-b): enrich with the device header so the
+      // staged upgrade can post readable progress and pre-flight the
+      // OFFLINE guard without a second lookup (same pattern as CONFIG_BACKUP).
+      if (job.type === "FIRMWARE_UPGRADE" && deviceId) {
+        const device = await tx.device.findUnique({
+          where: { id: deviceId },
+          select: {
+            id: true,
+            hostname: true,
+            displayName: true,
+            vendor: { select: { key: true } },
+            model: true,
+            firmware: true,
+            mgmtIp: true,
+            status: true,
+          },
+        });
+        if (device) {
+          payload = {
+            ...payload,
+            deviceId: device.id,
+            hostname: device.hostname,
+            name: device.displayName ?? device.hostname,
+            vendor: device.vendor.key,
+            model: device.model,
+            fromVersion: device.firmware,
+            managementIp: device.mgmtIp,
+            status: device.status,
+          };
+        }
+      }
+
       out.push({
         id: job.id,
         type: job.type,

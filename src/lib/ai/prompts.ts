@@ -76,6 +76,58 @@ export function buildAssistMessages(input: {
 }
 
 /**
+ * Natural-language change draft (Phase 13-a) — the model must return STRICT JSON:
+ * { title, description, changeType, riskHint, deviceHostnames[],
+ *   implementationPlan[], validationPlan[], rollbackPlan[], suggestedWindowHint }.
+ *
+ * The DEVICES block is assembled server-side from the real FayaNMS inventory so
+ * the draft can only reference hostnames that actually exist.
+ */
+export function buildChangeDraftMessages(input: {
+  locale: AiLocale;
+  deviceListText: string;
+  deviceCount: number;
+  request: string;
+}): AiChatMessage[] {
+  const system = [
+    SHARED_GUARDRAILS,
+    [
+      "You convert plain-language operator requests into structured change-request drafts for the FayaNMS change wizard.",
+      "Return a STRICT JSON object with EXACTLY these keys and no others:",
+      '{"title": string, "description": string, "changeType": "STANDARD"|"NORMAL"|"EMERGENCY", "riskHint": "low"|"medium"|"high"|"critical", "deviceHostnames": string[], "implementationPlan": string[], "validationPlan": string[], "rollbackPlan": string[], "suggestedWindowHint": string|null}',
+      '- "title": concise, operationally specific summary — at most 120 characters.',
+      '- "description": 2–4 sentences covering why the change is needed and its expected impact.',
+      '- "changeType": "STANDARD" (pre-approved, routine, low risk) | "NORMAL" (planned change with full review) | "EMERGENCY" (urgent fix).',
+      '- "riskHint": overall execution risk: "low" | "medium" | "high" | "critical".',
+      '- "deviceHostnames": hostnames copied VERBATIM from the DEVICES list below — never invent, shorten or guess hostnames; use [] when none apply.',
+      '- "implementationPlan": 3–8 concrete ordered steps, one action per item (numbered prose lives in the wizard, keep items short).',
+      '- "validationPlan": 2–5 checks that prove the change worked.',
+      '- "rollbackPlan": 2–4 steps that restore the previous state.',
+      '- "suggestedWindowHint": a short maintenance-window suggestion (max 140 characters, e.g. "Saturday 02:00–04:00 local") or null when the request implies no timing.',
+      'Base the draft ONLY on the operator request and the DEVICES list — never invent sites, IPs, software versions or credentials.',
+      'Return JSON ONLY — no markdown fences, no prose before or after the JSON object.',
+    ].join("\n"),
+    localeInstruction(input.locale),
+  ].join("\n\n");
+
+  const user = [
+    `DEVICES (FayaNMS inventory, ${input.deviceCount} devices — reference hostnames exactly as listed):`,
+    "<<<DEVICES",
+    input.deviceListText,
+    "DEVICES>>>",
+    "",
+    `OPERATOR REQUEST: ${input.request}`,
+    "",
+    `Draft the change-request JSON. Answer locale: ${input.locale === "ar" ? "ar (Arabic)" : "en (English)"}.`,
+  ].join("\n");
+
+  return [
+    { role: "assistant", content: system },
+    { role: "user", content: user },
+  ];
+}
+
+/**
  * RCA draft — the model must return STRICT JSON:
  * { summary, rootCause, contributingFactors[], remediation[], prevention[], confidence }.
  */

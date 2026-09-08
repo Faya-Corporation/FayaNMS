@@ -4,9 +4,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import {
   requestAiAssist,
+  requestAiChangeDraft,
   requestAiRcaDraft,
   type AiAssistPayload,
   type AiAssistResult,
+  type AiChangeDraftPayload,
+  type AiChangeDraftResult,
   type AiRcaDraftPayload,
   type AiRcaDraftResult,
 } from "@/lib/api-client";
@@ -40,6 +43,22 @@ export function useAiRcaDraft(incidentId: string) {
   return useMutation<AiRcaDraftResult, Error, AiRcaDraftPayload>({
     mutationKey: queryKeys.aiRcaDraft(incidentId),
     mutationFn: (payload) => requestAiRcaDraft(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["events"] });
+    },
+  });
+}
+
+/**
+ * Natural-language → change-request draft (Phase 13-a). The result is only
+ * ever a review suggestion — wiring it into the wizard is a pure client-side
+ * prefill and no Change row is created here.
+ */
+export function useAiChangeDraft() {
+  const queryClient = useQueryClient();
+  return useMutation<AiChangeDraftResult, Error, AiChangeDraftPayload>({
+    mutationKey: queryKeys.aiChangeDraft(),
+    mutationFn: (payload) => requestAiChangeDraft(payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["events"] });
     },

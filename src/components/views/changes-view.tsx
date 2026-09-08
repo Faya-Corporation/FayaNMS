@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { format } from "date-fns";
 import {
   ChevronLeft,
@@ -11,6 +12,7 @@ import {
   ShieldAlert,
   Timer,
   TrendingUp,
+  Wand2,
 } from "lucide-react";
 
 import { useChanges } from "@/hooks/api/use-changes";
@@ -42,6 +44,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useNavigationStore } from "@/stores/navigation";
 import { ChangeWizard } from "@/components/change/change-wizard";
+import { ChangeAiDraftDialog } from "@/components/change/change-ai-draft-dialog";
+import type { AiChangeDraftPrefill } from "@/lib/api-client";
 import { lookupStatusConfig, CHANGE_STATUS_UI, CHANGE_TYPE_UI } from "./status-extras";
 
 interface StatusChip {
@@ -70,6 +74,7 @@ const PAGE_SIZE = 25;
  */
 export function ChangesView({ mine = false }: { mine?: boolean }) {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
+  const tAi = useTranslations("ai.changeDraft");
 
   const [chip, setChip] = useState<string>("ALL");
   const [searchInput, setSearchInput] = useState("");
@@ -77,6 +82,9 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
   const [riskLevel, setRiskLevel] = useState("ALL");
   const [page, setPage] = useState(1);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  /** Reviewed AI draft handed to the wizard (null = plain new change). */
+  const [aiPrefill, setAiPrefill] = useState<AiChangeDraftPrefill | null>(null);
 
   const activeChip = STATUS_CHIPS.find((entry) => entry.key === chip) ?? STATUS_CHIPS[0];
 
@@ -114,10 +122,24 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
               : "Change requests across the lifecycle"
           }
           primaryAction={
-            <Button onClick={() => setWizardOpen(true)}>
-              <Plus aria-hidden="true" />
-              New change
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={() => setAiDialogOpen(true)}
+                variant="outline"
+              >
+                <Wand2 aria-hidden="true" />
+                {tAi("button")}
+              </Button>
+              <Button
+                onClick={() => {
+                  setAiPrefill(null);
+                  setWizardOpen(true);
+                }}
+              >
+                <Plus aria-hidden="true" />
+                New change
+              </Button>
+            </div>
           }
           title={mine ? "My Changes" : "Changes"}
         />
@@ -361,7 +383,23 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
         )}
       </SectionCard>
 
-      <ChangeWizard onOpenChange={setWizardOpen} open={wizardOpen} />
+      <ChangeAiDraftDialog
+        onOpenChange={setAiDialogOpen}
+        onUseDraft={(prefill) => {
+          setAiPrefill(prefill);
+          setAiDialogOpen(false);
+          setWizardOpen(true);
+        }}
+        open={aiDialogOpen}
+      />
+      <ChangeWizard
+        aiDraft={aiPrefill}
+        onOpenChange={(nextOpen) => {
+          setWizardOpen(nextOpen);
+          if (!nextOpen) setAiPrefill(null);
+        }}
+        open={wizardOpen}
+      />
     </div>
   );
 }

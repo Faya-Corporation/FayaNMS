@@ -116,9 +116,24 @@ export const queryKeys = {
   // invalidations (AI actions also refresh the "events" audit stream).
   aiAssist: (scope: string, id: string) => ["ai", "assist", scope, id] as const,
   aiRcaDraft: (incidentId: string) => ["ai", "rcaDraft", incidentId] as const,
+  // Natural-language change drafts (Phase 13-a) — mutations, no record scope.
+  aiChangeDraft: () => ["ai", "changeDraft"] as const,
 
   // ── Predictive health (Phase 12-c) ───────────────────────────────────
   // Read-only risk scores; params carry the optional siteId filter so the
   // view and the dashboard widget share one cached payload per site scope.
   predictive: (params: ListParams = {}) => ["predictive", params] as const,
+
+  // ── Flow analytics (Phase 13-c) ──────────────────────────────────────
+  // Deterministic per-device flow aggregates; the key carries deviceId +
+  // window so every (device, window) combination caches independently.
+  flows: (deviceId: string, window: string) =>
+    ["flows", deviceId, window] as const,
+
+  // ── Firmware lifecycle (Phase 13-b) ──────────────────────────────────
+  // Inventory read (lifecycle rows + counts) under the "firmware" prefix;
+  // the upgrade mutation invalidates "firmware" (rows/counts + open-job
+  // flags), "jobs" (Job Center shows the FIRMWARE_UPGRADE row) and
+  // "devices" (device detail firmware chip) via the hooks.
+  firmware: () => ["firmware"] as const,
 };

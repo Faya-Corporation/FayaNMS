@@ -2624,3 +2624,246 @@ export async function requestAiRcaDraft(
     body: JSON.stringify(payload),
   });
 }
+
+/* ------------------------------------------------------------------ */
+/* AI change drafts (Phase 13-a) — natural-language → change request   */
+/* ------------------------------------------------------------------ */
+
+/** Wizard change types — mirrors ChangeType in src/lib/change/risk.ts. */
+export type AiChangeType = "STANDARD" | "NORMAL" | "EMERGENCY";
+
+export type AiRiskHint = "low" | "medium" | "high" | "critical";
+
+/** LLM-drafted change request — a suggestion, never auto-created. */
+export interface AiChangeDraft {
+  title: string;
+  description: string;
+  changeType: AiChangeType;
+  riskHint: AiRiskHint;
+  implementationPlan: string[];
+  validationPlan: string[];
+  rollbackPlan: string[];
+  suggestedWindowHint: string | null;
+}
+
+/**
+ * Device the server matched from the draft's hostname references (ids are
+ * resolved server-side against the real inventory). Carries the attributes
+ * the change wizard's risk engine needs (criticality/site/vendor/model/role).
+ */
+export interface AiMatchedDevice {
+  id: string;
+  hostname: string;
+  model: string | null;
+  role: string | null;
+  criticality: string;
+  siteCode: string | null;
+  vendorKey: string | null;
+}
+
+export interface AiChangeDraftPayload {
+  /** 10..600 chars, enforced server-side too. */
+  prompt: string;
+  locale: "en" | "ar";
+  actAsUserId?: string;
+}
+
+export interface AiChangeDraftResult {
+  draft: AiChangeDraft;
+  matchedDevices: AiMatchedDevice[];
+  correlationId: string;
+}
+
+/** User-reviewed draft handed from the AI dialog into the change wizard. */
+export interface AiChangeDraftPrefill {
+  draft: AiChangeDraft;
+  matchedDevices: AiMatchedDevice[];
+  correlationId: string;
+}
+
+export async function requestAiChangeDraft(
+  payload: AiChangeDraftPayload
+): Promise<AiChangeDraftResult> {
+  return apiFetch<AiChangeDraftResult>("/api/v1/ai/change-draft", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Flow analytics (Phase 13-c) — deterministic simulated NetFlow       */
+/* ------------------------------------------------------------------ */
+
+export type FlowWindow = "1h" | "6h" | "24h";
+
+export interface FlowTopTalker {
+  rank: number;
+  srcIp: string;
+  /** Dominant destination, or null when the source spread across many. */
+  dstIp: string | null;
+  dstIpCount: number;
+  bytes: number;
+  packets: number;
+  flows: number;
+  topProtocol: string;
+  topPort: number;
+}
+
+export interface FlowProtocolRow {
+  protocol: string;
+  port: number;
+  bytes: number;
+  packets: number;
+  flows: number;
+  /** Share of total bytes, 0–100. */
+  pct: number;
+}
+
+export interface FlowInterfaceTotal {
+  interfaceId: string;
+  name: string;
+  speedMbps: number | null;
+  inMbps: number;
+  outMbps: number;
+  bytes: number;
+  packets: number;
+  flows: number;
+}
+
+export interface FlowSampleRecord {
+  id: string;
+  ts: string;
+  interfaceId: string;
+  interfaceName: string;
+  srcIp: string;
+  srcPort: number;
+  dstIp: string;
+  dstPort: number;
+  protocol: string;
+  bytes: number;
+  packets: number;
+  tcpFlags: string | null;
+  direction: "in" | "out";
+}
+
+export interface FlowsPayload {
+  device: {
+    id: string;
+    hostname: string;
+    mgmtIp: string;
+    status: string;
+    siteCode: string | null;
+    siteName: string | null;
+  };
+  totals: {
+    bytes: number;
+    packets: number;
+    flows: number;
+    avgInMbps: number;
+    avgOutMbps: number;
+  };
+  topTalkers: FlowTopTalker[];
+  protocolDistribution: FlowProtocolRow[];
+  interfaceTotals: FlowInterfaceTotal[];
+  /** Newest first, ≤ 50 records. */
+  sample: FlowSampleRecord[];
+  meta: {
+    window: FlowWindow;
+    bucketMs: number;
+    buckets: number;
+    windowStart: string;
+    windowEnd: string;
+    computedAt: string;
+  };
+}
+
+export interface FlowsResult {
+  data: FlowsPayload;
+  meta: Record<string, unknown>;
+}
+
+/**
+ * GET /api/v1/flows?deviceId=…&window=… — deterministic per-bucket flow
+ * analytics. Numbers are stable within a 15-minute bucket, so a slow
+ * poll never flickers the UI.
+ */
+export async function fetchFlows(
+  deviceId: string,
+  window: FlowWindow
+): Promise<FlowsResult> {
+  const envelope = await apiRequest<FlowsPayload>(
+    `/api/v1/flows?deviceId=${encodeURIComponent(deviceId)}&window=${window}`
+  );
+  return { data: envelope.data, meta: envelope.meta ?? {} };
+}
+
+/* ------------------------------------------------------------------ */
+/* Firmware lifecycle (Phase 13-b)                                     */
+/* ------------------------------------------------------------------ */
+
+export type FirmwareLifecycleStatus = "current" | "aging" | "eos" | "eol";
+
+/** One device row of the firmware inventory (GET /api/v1/firmware). */
+export interface FirmwareDeviceRow {
+  deviceId: string;
+  hostname: string;
+  deviceStatus: string;
+  vendorKey: string;
+  vendorName: string;
+  model: string | null;
+  platform: string | null;
+  firmware: string | null;
+  lifecycle: {
+    status: FirmwareLifecycleStatus;
+    /** English canonical detail (technical fallback — the view localizes). */
+    detail: string;
+    family: string;
+  } | null;
+  /** Matrix-suggested stable version (upgrade dialog pre-fill). */
+  suggestedTarget: string | null;
+  /** finishedAt of the device's newest SUCCEEDED FIRMWARE_UPGRADE job. */
+  lastUpgradeAt: string | null;
+  /** True while a FIRMWARE_UPGRADE job for the device is QUEUED/RUNNING. */
+  openUpgradeJob: boolean;
+}
+
+export interface FirmwareInventoryPayload {
+  devices: FirmwareDeviceRow[];
+  meta: {
+    counts: {
+      total: number;
+      current: number;
+      aging: number;
+      eos: number;
+      eol: number;
+      unknown: number;
+    };
+    computedAt: string;
+  };
+}
+
+export async function fetchFirmwareInventory(): Promise<FirmwareInventoryPayload> {
+  return apiFetch<FirmwareInventoryPayload>("/api/v1/firmware");
+}
+
+export interface FirmwareUpgradeResult {
+  jobId: string;
+  correlationId: string;
+  deviceId: string;
+  hostname: string;
+  fromVersion: string | null;
+  targetVersion: string;
+  type: "FIRMWARE_UPGRADE";
+  status: "QUEUED";
+}
+
+export async function requestFirmwareUpgrade(payload: {
+  deviceId: string;
+  targetVersion: string;
+  actAsUserId?: string;
+}): Promise<FirmwareUpgradeResult> {
+  return apiFetch<FirmwareUpgradeResult>("/api/v1/firmware/upgrade", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

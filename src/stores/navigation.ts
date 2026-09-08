@@ -16,6 +16,7 @@ export type ViewKey =
   | "network.interfaces"
   | "network.topology"
   | "network.discovery"
+  | "network.firmware"
   // Configurations
   | "config.backups"
   | "config.snapshots"
@@ -43,6 +44,7 @@ export type ViewKey =
   | "perf.interfaces"
   | "perf.availability"
   | "perf.capacity"
+  | "perf.flows"
   | "perf.predictive"
   // Reports
   | "reports.reports"
