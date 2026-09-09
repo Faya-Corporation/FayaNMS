@@ -107,8 +107,11 @@ audit-chain fork protection (verified across a 20-way concurrent-writer race: va
 
 Known limitations (not production claims): the device data plane remains a deterministic
 SIMULATOR; SQLite is single-writer and the demo db is no longer committed (rebuild via the
-seed above); the CI workflow currently gates lint + typecheck (the full automated test suite
-of audit Phase 20 is future work); the design-governance QA matrix is only partially
+seed above); the CI workflow gates lint + typecheck + schema + i18n parity + build plus the
+Phase-20 scan definitions (gitleaks secret scan, semgrep SAST, osv-scanner dependency scan,
+syft SBOM, conditional trivy container scan) — shipped ready-to-enable in docs/ci/ci-gate.yml
+pending a workflow-scope push token (the full automated test suite of audit Phase 20 remains
+future work); the design-governance QA matrix is only partially
 executed by design — see §6 there.
 
 ## Repository layout
