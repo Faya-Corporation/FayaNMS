@@ -1,0 +1,36 @@
+# CODEOWNERS — Phase 20-B / audit P20B-006.
+#
+# Security-sensitive paths require review from the platform/security owners.
+# GitHub branch protection (settings → branches → main) must require:
+#   - pull request + 1 approval, CODEOWNERS review for the paths below,
+#   - the "CI gate" required status check, conversation resolution,
+#   - no force push, no deletion. (Settings-side action — not enforceable
+#     from a commit; see docs/ci/README or the release checklist.)
+
+# Authentication, authorization, session + service identity
+/src/lib/auth/            @fayafatehi
+/src/middleware.ts        @fayafatehi
+/src/lib/permissions-client.ts @fayafatehi
+
+# Audit hash chain
+/src/lib/audit/           @fayafatehi
+
+# Configuration cryptography + snapshot writer
+/src/lib/config/          @fayafatehi
+
+# Worker-facing (machine) API surface
+/src/app/api/v1/worker/   @fayafatehi
+
+# Database schema and seed policy
+/prisma/                  @fayafatehi
+
+# Gateway allowlist
+/Caddyfile                @fayafatehi
+
+# CI / scan gates + workflow definitions
+/.github/                 @fayafatehi
+/docs/ci/                 @fayafatehi
+
+# Security documentation (authorization matrix, audits)
+/docs/security/           @fayafatehi
+/docs/audits/             @fayafatehi

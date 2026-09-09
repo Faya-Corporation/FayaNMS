@@ -96,24 +96,42 @@ The worker claims jobs (`CONFIG_BACKUP`, `DISCOVERY`, `DRIFT_CHECK`, `CHANGE_EXE
 - Accessibility: WCAG 2.2 AA is the TARGET (skip link, reduced motion, focus-visible rings, named tables/charts, ≥24px targets implemented — see docs/design-governance.md §5–§6 for the per-criterion status and the honestly-graded browser QA matrix); responsive 375 → 1920 with a no-horizontal-overflow rule.
 - High-risk operations (restore, failover test, rebalance apply, deletions) run through typed-confirm `HighRiskActionDialog` flows.
 
-## Security posture (P19) & honest status
+## Security posture (P19 + P19-C) & honest status
 
-Implemented and verified in Phase 19 (2026-09-09 repository audit remediation — see
-`docs/audits/`): session-authoritative actor model (24 route sites swept, SoD enforced on the
-session principal), permission-gated raw-config downloads, de-auto-approved restores,
-service-JWT job-engine boundary, AES-256-GCM snapshot encryption with zero plaintext rows,
-audit-chain fork protection (verified across a 20-way concurrent-writer race: valid chain,
-562 rows), fail-closed secrets policy, gateway port allowlist.
+Implemented and verified across Phase 19 and the Phase 19-C authorization-completion sprint
+(2026-09-09/10 repository audits — see `docs/audits/` and
+`docs/security/authorization-matrix.md`): session-authoritative actor model (all mutation
+routes swept — synthesized/fallback admin identities removed), **server-authoritative
+permission enforcement on every mutating endpoint** (`requirePermission` /
+`requireApprovalEntitlement` / `requireRole`, matrix in
+`docs/security/authorization-matrix.md`), approval-LEVEL entitlements (TECHNICAL / SECURITY /
+MANAGER / CAB — one principal cannot decide two levels of one change; SECURITY is
+admin-only), `change.execute` + `config.restore` as dedicated permissions, service-JWT job
+engine with **per-route scope enforcement and an issuer allowlist**, AES-256-GCM snapshot
+encryption now **AAD-bound to the row identity** with plaintext-sha256 verification on every
+decrypt, audit-chain **link-walk verifier with FULLY / PARTIALLY / INVALID verdicts**, worker
+HTTP surface (`/simulate/*`, `/capabilities`) behind service-JWT auth, and an automated
+security test suite (`bun test tests/` — role matrix, static authorization-contract
+inventory, service-auth, crypto, audit chain).
+
+**Production readiness statement:** FayaNMS is an advanced, security-hardened
+demo/control-plane prototype. Core identity, mutation-level RBAC authorization, service
+authentication, configuration encryption and audit verification are substantially remediated,
+but production deployment remains blocked pending CI enforcement on a protected `main`
+branch, production persistence infrastructure (PostgreSQL/Redis/KMS) and real vendor-device
+adapter certification.
 
 Known limitations (not production claims): the device data plane remains a deterministic
 SIMULATOR; SQLite is single-writer and the demo db is no longer committed (rebuild via the
-seed above); the CI workflow gates lint + typecheck + schema + i18n parity + build plus the
-Phase-20 scan definitions (gitleaks secret scan, semgrep SAST, osv-scanner dependency scan,
-syft SBOM, conditional trivy container scan) — shipped ready-to-enable in docs/ci/ci-gate.yml
-pending a workflow-scope push token (the full automated test suite of audit Phase 20 remains
-future work); the design-governance QA matrix is substantially executed with recorded
-evidence — including a full 43-view cycle at 1920, a full 43-view WCAG-320px reflow sweep
-and scripted keyboard-only cells — with the remaining cells tracked in §6 there.
+seed above); the CI workflow is ACTIVE under `.github/workflows/ci.yml` (lint + typecheck +
+tests + schema + i18n parity + build + gitleaks/semgrep/osv/SBOM/trivy scans) but branch
+protection and required status checks must still be enabled in GitHub settings (a
+repository-settings action, not a commit); approval-quorum (CAB ≥2 distinct approvers) and
+approval-expiry fingerprints are Phase-21 policy work; service JWTs remain symmetric-secret
+(per-service keys / asymmetric signing = Phase 21); the design-governance QA matrix is
+substantially executed with recorded evidence — including a full 43-view cycle at 1920, a
+full 43-view WCAG-320px reflow sweep and scripted keyboard-only cells — with the remaining
+cells tracked in §6 there.
 
 ## Repository layout
 
@@ -124,7 +142,7 @@ src/lib/            auth, service-auth, audit chain, config crypto/diff/normaliz
 src/hooks/api/      TanStack Query hooks per domain
 mini-services/worker/  Bun job runner (claim loop, drivers, scheduler, service-token signer)
 prisma/             schema.prisma + seed.ts
-scripts/            tracked ops scripts (snapshot encryption migration)
+scripts/            tracked ops scripts (snapshot encryption/AAD migration, role-matrix sync, audit-chain repair)
 messages/           en.json / ar.json dictionaries
 docs/               design-governance.md + audits/ (external review reports)
 ```
