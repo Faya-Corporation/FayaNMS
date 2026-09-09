@@ -142,27 +142,35 @@ Known accepted gaps (reported, out of 8-b ownership):
 
 ---
 
-## 6. QA matrix — Gate G8 (executed by orchestrator)
+## 6. QA matrix — Gate G8 (status: PARTIALLY EXECUTED — audit UX-001 remediation)
 
-Run every cell at Gate G8; a cell passes when the view renders without layout breakage
-(`scrollWidth === viewport` at 375px), matches the token theme, is fully keyboard-operable
-(Tab order logical, focus visible, dialogs trapped), and respects reduced motion.
+The original Gate-G8 claim ("executed") preceded durable per-cell evidence — flagged by the
+2026-09-09 repository audit (UX-001). The matrix below is now HONEST: a cell is marked only
+when browser-verified runs produced recorded evidence; everything else is explicitly not
+executed. A cell passes when the view renders without layout breakage
+(`scrollWidth === viewport` at 375px), matches the token theme, is fully keyboard-operable,
+and respects reduced motion.
+
+Legend: ✅ executed with recorded evidence · ⚠️ executed on a subset of views · — NOT executed yet.
 
 | Width ↓ / Condition → | Light · EN-LTR | Dark · EN-LTR | Light · AR-RTL | Dark · AR-RTL | Keyboard-only | Reduced motion | Zoom 200% |
 |---|---|---|---|---|---|---|---|
-| **375** (mobile) | | | | | | | |
-| **768** (tablet) | | | | | | | |
-| **1440** (laptop) | | | | | | | |
-| **1920** (wallboard/NOC) | | | | | | | |
+| **375** (mobile) | ⚠️ Phase 18: topology/interfaces/builder + overflow assert (scrollWidth=375 exact) | ⚠️ same Phase 18 pass | ⚠️ Phase 18 RTL pass incl. sr-only escape fix (782→375) | ⚠️ same Phase 18 pass | — | — | — |
+| **768** (tablet) | — | — | — | — | — | — | — |
+| **1440** (laptop) | ⚠️ Phase 18 full view set + P19 golden paths (sign-in → dashboard → changes → approvals decide → audit attribution) | ⚠️ Phase 18 pass | ⚠️ Phase 18 pass | ⚠️ Phase 18 pass | ⚠️ structural (radix focus traps in §5) — not scripted | — | — |
+| **1920** (wallboard/NOC) | — | — | — | — | — | — | — |
 
-Per-cell script: load `/` signed in as admin → cycle each top-level view group (dashboard, devices + detail,
-discovery, sites, credentials, backups + compliance, snapshots, baselines, drift, changes + calendar +
-templates + approvals + detail, incidents + detail, NOC, alerts, jobs, maintenance, events, perf ×5,
-admin ×7) → record pass/fail per cell. 375px additionally asserts no horizontal overflow; NOC view asserts
-fullscreen + wallboard density; keyboard-only additionally asserts skip link → main content and ⌘K palette;
-zoom 200% additionally asserts no clipped controls (browser zoom, not OS).
+Evidence pointers: `worklog.md` Phase 18 entries (browser matrix + console zero-error records)
+and Phase 19-a entries (P19 actor-model golden path: approvals decision recorded under the
+authenticated principal, correlationId APR-WDK8QB). Per-cell script (unchanged): load `/`
+signed in as admin → cycle each top-level view group → record pass/fail per cell; 375px
+additionally asserts no horizontal overflow; NOC asserts fullscreen + wallboard density;
+keyboard-only asserts skip link → main content + ⌘K palette; zoom 200% asserts no clipped
+controls.
 
-**Marked: executed at Gate G8 by orchestrator.**
+**Status: IMPLEMENTED / PARTIALLY VERIFIED.** Remaining cells (768/1920 rows, keyboard-only,
+reduced motion, zoom 200%) are tracked for the Phase 24 UX-certification pass recommended by
+the audit; until then this document does not claim full-matrix execution.
 
 ## 7. Change management
 
