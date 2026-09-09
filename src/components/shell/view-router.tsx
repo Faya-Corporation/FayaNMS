@@ -28,10 +28,13 @@ import { EventsView } from "@/components/views/events-view";
 import { FirmwareView } from "@/components/views/firmware-view";
 import { FlowsView } from "@/components/views/flows-view";
 import { HaView } from "@/components/views/ha-view";
+import { InterfacesView } from "@/components/views/interfaces-view";
 import { IncidentsView } from "@/components/views/incidents-view";
 import { IncidentDetailView } from "@/components/views/incident-detail-view";
 import { MaintenanceView } from "@/components/views/maintenance-view";
 import { NocView } from "@/components/views/noc-view";
+import { ReportBuilderView } from "@/components/views/report-builder-view";
+import { TopologyView } from "@/components/views/topology-view";
 import { JobsView } from "@/components/views/jobs-view";
 import { PerfAvailabilityView } from "@/components/views/perf-availability-view";
 import { PerfCapacityView } from "@/components/views/perf-capacity-view";
@@ -60,7 +63,9 @@ import { ZtpView } from "@/components/views/ztp-view";
  * changes.calendar + changes.templates + changes.change-detail (Phase 4-a),
  * changes.approvals (Phase 4-b), ops.jobs, config.backups + config.compliance
  * (Phase 3-a), config.snapshots (Phase 3-b), config.baselines + config.drift
- * (Phase 3-c).
+ * (Phase 3-c), network.interfaces + network.topology + reports.builder
+ * (Phase 18 — the final three; the default branch is now unreachable for
+ * every registered ViewKey and only guards unknown keys).
  */
 export function ViewRouter() {
   const activeView = useNavigationStore((state) => state.activeView);
@@ -88,6 +93,10 @@ export function ViewRouter() {
       return <AdminDriversView />;
     case "admin.system":
       return <AdminSystemView />;
+    case "network.interfaces":
+      return <InterfacesView />;
+    case "network.topology":
+      return <TopologyView />;
     case "network.discovery":
       return <DiscoveryView />;
     case "network.firmware":
@@ -152,6 +161,8 @@ export function ViewRouter() {
       return <ReportsView />;
     case "reports.scheduled":
       return <ReportsScheduledView />;
+    case "reports.builder":
+      return <ReportBuilderView />;
     default: {
       const meta = getViewMeta(activeView);
       return <PlaceholderView meta={meta} viewKey={activeView} />;

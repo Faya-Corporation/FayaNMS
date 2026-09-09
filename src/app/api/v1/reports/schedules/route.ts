@@ -9,10 +9,13 @@ import {
   paginationSchema,
 } from "../../_lib/api";
 import {
+  FREQUENCY_INTERVAL_DAYS,
+  serializeSchedule,
+} from "@/lib/reports/schedule-serializer";
+import {
   REPORT_FORMATS,
   REPORT_FREQUENCIES,
   REPORT_TYPES,
-  expectedRangeFor,
 } from "@/lib/reports/generate";
 import { z } from "zod";
 
@@ -31,16 +34,14 @@ export const dynamic = "force-dynamic";
  * POST — create a schedule (audited REPORT_SCHEDULE_CREATED, correlation
  *        REP-XXXXXX). Recipients are validated email addresses; they are
  *        stored as JSON in ReportSchedule.recipientsJson (schema as-is).
+ *
+ * PATCH/DELETE for a single schedule live on /api/v1/reports/schedules/[id]
+ * (added in Phase 18 — the client hooks always pointed there). The schedule
+ * serializer is shared via src/lib/reports/schedule-serializer.ts so both
+ * surfaces emit identical rows.
  */
 
 const DAY_MS = 86_400_000;
-/** Frequency → indicative interval used for the next-run estimate. */
-const FREQUENCY_INTERVAL_DAYS: Record<string, number> = {
-  DAILY: 1,
-  WEEKLY: 7,
-  MONTHLY: 30,
-  QUARTERLY: 90,
-};
 
 const emailList = z
   .array(z.string().trim().toLowerCase().email("recipients must be valid email addresses").max(160))
@@ -63,45 +64,6 @@ const createSchema = z.object({
   recipients: emailList,
   isActive: z.boolean().default(true),
 });
-
-function serializeSchedule(schedule: {
-  id: string;
-  name: string;
-  reportType: string;
-  frequency: string;
-  format: string;
-  recipientsJson: string;
-  isActive: boolean;
-  lastRunAt: Date | null;
-}) {
-  let recipients: string[] = [];
-  try {
-    const parsed = JSON.parse(schedule.recipientsJson);
-    if (Array.isArray(parsed)) {
-      recipients = parsed.filter((entry): entry is string => typeof entry === "string");
-    }
-  } catch {
-    recipients = [];
-  }
-  const intervalDays = FREQUENCY_INTERVAL_DAYS[schedule.frequency] ?? 7;
-  return {
-    id: schedule.id,
-    name: schedule.name,
-    reportType: schedule.reportType,
-    frequency: schedule.frequency,
-    format: schedule.format,
-    recipients,
-    isActive: schedule.isActive,
-    lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
-    expectedRange: expectedRangeFor(schedule.reportType, schedule.frequency),
-    nextEstimatedRunAt: schedule.isActive
-      ? new Date(
-          (schedule.lastRunAt?.getTime() ?? Date.now()) +
-            intervalDays * DAY_MS
-        ).toISOString()
-      : null,
-  };
-}
 
 export async function GET(request: Request) {
   try {

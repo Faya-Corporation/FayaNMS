@@ -50,65 +50,157 @@
       "administration": "Administration"
     },
     "items": {
-      "dashboard": { "title": "Dashboard" },
+      "dashboard": {
+        "title": "Dashboard"
+      },
       "network": {
-        "devices": { "title": "Devices" },
-        "device-detail": { "title": "Device Detail" },
-        "sites": { "title": "Sites" },
-        "interfaces": { "title": "Interfaces" },
-        "topology": { "title": "Topology" },
-        "discovery": { "title": "Discovery" },
-        "firmware": { "title": "Firmware" },
-        "ztp": { "title": "Zero-Touch Provisioning" }
+        "devices": {
+          "title": "Devices"
+        },
+        "device-detail": {
+          "title": "Device Detail"
+        },
+        "sites": {
+          "title": "Sites"
+        },
+        "interfaces": {
+          "title": "Interfaces"
+        },
+        "topology": {
+          "title": "Topology"
+        },
+        "discovery": {
+          "title": "Discovery"
+        },
+        "firmware": {
+          "title": "Firmware"
+        },
+        "ztp": {
+          "title": "Zero-Touch Provisioning"
+        }
       },
       "config": {
-        "backups": { "title": "Backups" },
-        "snapshots": { "title": "Snapshots" },
-        "baselines": { "title": "Baselines" },
-        "drift": { "title": "Drift" },
-        "compliance": { "title": "Compliance" },
-        "cmdb": { "title": "CMDB" }
+        "backups": {
+          "title": "Backups"
+        },
+        "snapshots": {
+          "title": "Snapshots"
+        },
+        "baselines": {
+          "title": "Baselines"
+        },
+        "drift": {
+          "title": "Drift"
+        },
+        "compliance": {
+          "title": "Compliance"
+        },
+        "cmdb": {
+          "title": "CMDB"
+        }
       },
       "changes": {
-        "all": { "title": "All Changes" },
-        "mine": { "title": "My Changes" },
-        "approvals": { "title": "Approvals" },
-        "calendar": { "title": "Calendar" },
-        "templates": { "title": "Templates" },
-        "change-detail": { "title": "Change Detail" }
+        "all": {
+          "title": "All Changes"
+        },
+        "mine": {
+          "title": "My Changes"
+        },
+        "approvals": {
+          "title": "Approvals"
+        },
+        "calendar": {
+          "title": "Calendar"
+        },
+        "templates": {
+          "title": "Templates"
+        },
+        "change-detail": {
+          "title": "Change Detail"
+        }
       },
       "ops": {
-        "noc": { "title": "NOC View" },
-        "alerts": { "title": "Alerts" },
-        "incidents": { "title": "Incidents" },
-        "incident-detail": { "title": "Incident Detail" },
-        "maintenance": { "title": "Maintenance Windows" },
-        "events": { "title": "Event Stream" },
-        "jobs": { "title": "Job Center" },
-        "ha": { "title": "HA / DR" }
+        "noc": {
+          "title": "NOC View"
+        },
+        "alerts": {
+          "title": "Alerts"
+        },
+        "incidents": {
+          "title": "Incidents"
+        },
+        "incident-detail": {
+          "title": "Incident Detail"
+        },
+        "maintenance": {
+          "title": "Maintenance Windows"
+        },
+        "events": {
+          "title": "Event Stream"
+        },
+        "jobs": {
+          "title": "Job Center"
+        },
+        "ha": {
+          "title": "HA / DR"
+        }
       },
       "perf": {
-        "overview": { "title": "Performance Overview" },
-        "devices": { "title": "Device Performance" },
-        "interfaces": { "title": "Interface Utilization" },
-        "availability": { "title": "Availability" },
-        "capacity": { "title": "Capacity" },
-        "flows": { "title": "Flow Analytics" },
-        "predictive": { "title": "Predictive Health" }
+        "overview": {
+          "title": "Performance Overview"
+        },
+        "devices": {
+          "title": "Device Performance"
+        },
+        "interfaces": {
+          "title": "Interface Utilization"
+        },
+        "availability": {
+          "title": "Availability"
+        },
+        "capacity": {
+          "title": "Capacity"
+        },
+        "flows": {
+          "title": "Flow Analytics"
+        },
+        "predictive": {
+          "title": "Predictive Health"
+        }
       },
       "reports": {
-        "reports": { "title": "Reports" },
-        "scheduled": { "title": "Scheduled Reports" },
-        "builder": { "title": "Report Builder" }
+        "reports": {
+          "title": "Reports"
+        },
+        "scheduled": {
+          "title": "Scheduled Reports"
+        },
+        "builder": {
+          "title": "Report Builder"
+        }
       },
       "admin": {
-        "users": { "title": "Users & Roles" },
-        "credentials": { "title": "Credential Profiles" },
-        "apiClients": { "title": "API Clients" },
-        "collectors": { "title": "Collectors" },
-        "drivers": { "title": "Device Drivers" },
-        "integrations": { "title": "Integrations" },
-        "system": { "title": "System Settings" }
+        "users": {
+          "title": "Users & Roles"
+        },
+        "credentials": {
+          "title": "Credential Profiles"
+        },
+        "apiClients": {
+          "title": "API Clients"
+        },
+        "collectors": {
+          "title": "Collectors"
+        },
+        "drivers": {
+          "title": "Device Drivers"
+        },
+        "integrations": {
+          "title": "Integrations"
+        },
+        "system": {
+          "title": "System Settings"
+        }
       }
     }
   },
@@ -754,7 +846,7 @@
     },
     "create": {
       "title": "New CI",
-      "description": "Register a configuration item — the CI-… identifier is assigned automatically.",
+      "description": "Description",
       "name": "Name",
       "namePlaceholder": "e.g. DC Storage Array 01",
       "ciType": "Type",
@@ -765,7 +857,6 @@
       "siteAny": "No site",
       "device": "Linked device",
       "deviceNone": "No device link",
-      "description": "Description",
       "descriptionPlaceholder": "What this CI represents…",
       "submit": "Create CI",
       "submitting": "Creating CI…",
@@ -774,10 +865,9 @@
     "edit": {
       "open": "Edit",
       "title": "Edit {ci}",
-      "description": "Lifecycle status, criticality and description are versioned on the audit trail.",
+      "description": "Description",
       "status": "Status",
       "criticality": "Criticality",
-      "description": "Description",
       "descriptionPlaceholder": "Purpose, location, notes…",
       "submit": "Save changes",
       "submitting": "Saving…",
@@ -1146,287 +1236,474 @@
     "en": "English",
     "ar": "العربية"
   },
-    "status": {
-      "device": {
-        "ONLINE": "Online",
-        "OFFLINE": "Offline",
-        "DEGRADED": "Degraded",
-        "MAINTENANCE": "Maintenance",
-        "UNKNOWN": "Unknown",
-        "UNMANAGED": "Unmanaged"
-      },
-      "interfaceAdmin": {
-        "UP": "Admin Up",
-        "DOWN": "Admin Down",
-        "TESTING": "Testing"
-      },
-      "interfaceOper": {
-        "UP": "Up",
-        "DOWN": "Down",
-        "TESTING": "Testing",
-        "UNKNOWN": "Unknown",
-        "DORMANT": "Dormant",
-        "NOT_PRESENT": "Not Present",
-        "LOWER_LAYER_DOWN": "Lower Layer Down"
-      },
-      "snapshot": {
-        "CURRENT": "Current",
-        "HISTORICAL": "Historical",
-        "BASELINE": "Baseline"
-      },
-      "snapshotSource": {
-        "SCHEDULED": "Scheduled",
-        "MANUAL": "Manual",
-        "PRE_CHANGE": "Pre-Change",
-        "POST_CHANGE": "Post-Change",
-        "EVENT": "Event-Driven"
-      },
-      "severity": {
-        "CRITICAL": "Critical",
-        "HIGH": "High",
-        "MEDIUM": "Medium",
-        "LOW": "Low",
-        "INFO": "Info"
-      },
-      "incident": {
-        "SEV1": "SEV1 — Critical",
-        "SEV2": "SEV2 — High",
-        "SEV3": "SEV3 — Medium",
-        "SEV4": "SEV4 — Low"
-      },
-      "change": {
-        "DRAFT": "Draft",
-        "PENDING_APPROVAL": "Pending Approval",
-        "APPROVED": "Approved",
-        "SCHEDULED": "Scheduled",
-        "IN_PROGRESS": "In Progress",
-        "VALIDATING": "Validating",
-        "COMPLETED": "Completed",
-        "PARTIAL_SUCCESS": "Partial Success",
-        "ROLLING_BACK": "Rolling Back",
-        "ROLLED_BACK": "Rolled Back",
-        "ROLLBACK_FAILED": "Rollback Failed",
-        "FAILED": "Failed",
-        "REJECTED": "Rejected",
-        "CANCELLED": "Cancelled",
-        "EXPIRED": "Expired",
-        "CLOSED": "Closed",
-        "PLANNING": "Planning",
-        "TECHNICAL_REVIEW": "Technical Review",
-        "AWAITING_APPROVAL": "Awaiting Approval",
-        "PRE_CHECK": "Pre-Check",
-        "EXECUTING": "Executing",
-        "SUCCESSFUL": "Successful",
-        "POST_REVIEW": "Post-Review"
-      },
-      "risk": {
-        "LOW": "Low Risk",
-        "MEDIUM": "Medium Risk",
-        "HIGH": "High Risk",
-        "CRITICAL": "Critical Risk"
-      },
-      "backup": {
-        "QUEUED": "Queued",
-        "RUNNING": "Running",
-        "SUCCESS": "Success",
-        "FAILED": "Failed",
-        "SKIPPED": "Skipped"
-      },
-      "backupCompliance": {
-        "COMPLIANT": "Compliant",
-        "OVERDUE": "Overdue",
-        "FAILED": "Last Backup Failed",
-        "NEVER_BACKED_UP": "Never Backed Up",
-        "UNKNOWN": "Unknown"
-      },
-      "drift": {
-        "OPEN": "Open",
-        "RESOLVED": "Resolved",
-        "ACCEPTED": "Accepted"
-      },
-      "job": {
-        "QUEUED": "Queued",
-        "RUNNING": "Running",
-        "SUCCEEDED": "Succeeded",
-        "FAILED": "Failed",
-        "DEAD": "Dead (Retries Exhausted)",
-        "CANCELLED": "Cancelled"
-      },
-      "alert": {
-        "FIRING": "Firing",
-        "ACTIVE": "Active",
-        "ACKNOWLEDGED": "Acknowledged",
-        "SUPPRESSED": "Suppressed",
-        "RESOLVED": "Resolved"
-      },
-      "incidentStatus": {
-        "OPEN": "Open",
-        "NEW": "New",
-        "ASSIGNED": "Assigned",
-        "ACKNOWLEDGED": "Acknowledged",
-        "INVESTIGATING": "Investigating",
-        "MITIGATING": "Mitigating",
-        "MONITORING": "Monitoring",
-        "RESOLVED": "Resolved",
-        "POST_INCIDENT_REVIEW": "Post-Incident Review",
-        "CLOSED": "Closed"
-      },
-      "common": {
-        "UNKNOWN": "Unknown"
-      },
-      "changeStep": {
-        "PENDING": "Pending",
-        "RUNNING": "Running",
-        "PASSED": "Passed",
-        "FAILED": "Failed",
-        "SKIPPED": "Skipped"
-      },
-      "changeStepType": {
-        "CHECK": "Check",
-        "BACKUP": "Backup",
-        "APPLY": "Apply",
-        "VALIDATE": "Validate",
-        "ROLLBACK": "Rollback"
-      },
-      "changeApproval": {
-        "PENDING": "Pending",
-        "APPROVED": "Approved",
-        "REJECTED": "Rejected",
-        "NOT_REQUIRED": "Not Required"
-      },
-      "changeApprovalLevel": {
-        "TECHNICAL": "Technical",
-        "SECURITY": "Security",
-        "MANAGER": "Manager",
-        "CAB": "CAB"
-      },
-      "changeType": {
-        "STANDARD": "Standard",
-        "NORMAL": "Normal",
-        "EMERGENCY": "Emergency"
-      },
-      "changeDeviceResult": {
-        "PENDING": "Pending",
-        "SUCCESS": "Success",
-        "FAILED": "Failed",
-        "SKIPPED": "Skipped"
-      }
+  "status": {
+    "device": {
+      "ONLINE": "Online",
+      "OFFLINE": "Offline",
+      "DEGRADED": "Degraded",
+      "MAINTENANCE": "Maintenance",
+      "UNKNOWN": "Unknown",
+      "UNMANAGED": "Unmanaged"
     },
-    "timeRange": {
-      "options": {
-        "15m": "Last 15 minutes",
-        "1h": "Last hour",
-        "6h": "Last 6 hours",
-        "24h": "Last 24 hours",
-        "7d": "Last 7 days",
-        "30d": "Last 30 days",
-        "all": "All time",
-        "custom": "Custom range"
-      },
-      "ariaLabel": "Time range",
-      "placeholder": "Time range"
+    "interfaceAdmin": {
+      "UP": "Admin Up",
+      "DOWN": "Admin Down",
+      "TESTING": "Testing"
     },
-    "ai": {
-      "assistant": {
-        "title": "AI assistant",
-        "intro": "Ask an operations question about this device — the assistant answers strictly from the FayaNMS context the server assembles (device record, recent alerts, audit trail, open incidents, interfaces and metrics).",
-        "suggestionsLabel": "Suggested",
-        "suggest_cpu": "Why is CPU elevated?",
-        "suggest_hardware": "Any signs of hardware failure?",
-        "suggest_check": "What should I check first?",
-        "suggest_alerts": "Summarize the recent alerts",
-        "questionLabel": "Your question",
-        "placeholder": "e.g. Why did the error rate on Gi0/1 increase after the last change?",
-        "send": "Ask",
-        "sending": "Collecting context and analyzing…",
-        "errorTitle": "The assistant could not answer",
-        "answerTitle": "Assistant answer",
-        "contextBasis": "Grounded in {alerts} alerts · {events} audit events · {incidents} open incidents",
-        "disclaimer": "AI output is advisory — verify against live telemetry before acting."
-      },
-      "changeDraft": {
-        "button": "Draft with AI",
-        "title": "Draft a change with AI",
-        "intro": "Describe the change in plain language — the AI structures it into a change-request draft you review before the wizard opens. Nothing is created automatically.",
-        "promptLabel": "Describe the intended change",
-        "placeholder": "e.g. Upgrade the core switch firmware during the Saturday maintenance window…",
-        "examplesLabel": "Examples",
-        "example_firmware": "Upgrade core switch firmware Saturday 02:00-04:00",
-        "example_uplink": "Add a second uplink to branch switch BR2",
-        "example_firewall": "Tighten firewall rules for the DMZ segment",
-        "generate": "Generate draft",
-        "generating": "Generating draft…",
-        "elapsed": "{seconds}s elapsed — drafting can take up to a minute",
-        "errorTitle": "The draft could not be generated",
-        "reviewTitle": "Review the AI draft",
-        "reviewNote": "Review every field before continuing — the wizard opens at step 1 with this draft pre-filled and nothing is submitted until you complete it.",
-        "fieldTitle": "Title",
-        "fieldDescription": "Description",
-        "fieldType": "Change type",
-        "fieldRisk": "Suggested risk",
-        "fieldDevices": "Matched devices",
-        "fieldImplementation": "Implementation plan",
-        "fieldValidation": "Validation plan",
-        "fieldRollback": "Rollback plan",
-        "fieldWindow": "Suggested window",
-        "devicesNone": "No specific devices matched — pick targets in the wizard scope step.",
-        "openInWizard": "Open in wizard"
-      },
-      "rca": {
-        "generate": "Generate AI draft",
-        "generating": "Drafting…",
-        "banner": "AI draft — review before saving",
-        "confidenceLabel": "Confidence",
-        "confidence": {
-          "low": "Low",
-          "medium": "Medium",
-          "high": "High"
-        },
-        "contributingLabel": "Contributing factors:",
-        "hint": "The draft is generated from the incident timeline and pre-fills the form below — nothing is saved until you press Save PIR."
-      },
-      "query": {
-        "title": "Ask the network",
-        "intro": "Ask a question in plain language — the AI classifies it, runs a read-only query over FayaNMS and answers strictly from the returned results.",
-        "cardHint": "Natural-language answers about devices, incidents, changes and jobs.",
-        "promptLabel": "Your question",
-        "placeholder": "e.g. Which core switches are running an old firmware?",
-        "examplesLabel": "Examples",
-        "example_firmware": "Which core switches are running an old firmware?",
-        "example_incidents": "Show open critical incidents at HQ",
-        "example_changes": "How did the last changes go?",
-        "example_summary": "Give me a summary of the network",
-        "ask": "Ask",
-        "asking": "Asking…",
-        "elapsed": "{seconds}s elapsed — answering can take up to a minute",
-        "errorTitle": "The question could not be answered",
-        "summaryTitle": "Answer",
-        "resultsTitle": "Query results",
-        "devices": "Devices",
-        "incidents": "Incidents",
-        "changes": "Changes",
-        "jobs": "Jobs",
-        "predictive": "Risk ranking (approximate)",
-        "snapshot": "Fleet snapshot",
-        "viewInDevices": "View in Devices",
-        "viewInIncidents": "View in Incidents",
-        "viewInChanges": "View in Changes",
-        "viewInJobs": "View in Jobs",
-        "viewInPredictive": "View in Predictive Health",
-        "viewInDashboard": "View in Dashboard",
-        "fallbackNote": "The AI summary was unavailable — showing a deterministic summary built from the same results.",
-        "groundedInLabel": "Grounded in",
-        "groundedDevices": "{count} devices",
-        "groundedIncidents": "{count} incidents",
-        "groundedChanges": "{count} changes",
-        "groundedJobs": "{count} jobs",
-        "groundedSnapshot": "fleet snapshot",
-        "filtersLabel": "Filters:"
-      },
-      "errors": {
-        "unavailable": "The AI service is temporarily unavailable. Please try again in a moment.",
-        "badResponse": "The AI returned an unusable response. Please retry.",
-        "notFound": "The requested record no longer exists."
-      }
+    "interfaceOper": {
+      "UP": "Up",
+      "DOWN": "Down",
+      "TESTING": "Testing",
+      "UNKNOWN": "Unknown",
+      "DORMANT": "Dormant",
+      "NOT_PRESENT": "Not Present",
+      "LOWER_LAYER_DOWN": "Lower Layer Down"
+    },
+    "snapshot": {
+      "CURRENT": "Current",
+      "HISTORICAL": "Historical",
+      "BASELINE": "Baseline"
+    },
+    "snapshotSource": {
+      "SCHEDULED": "Scheduled",
+      "MANUAL": "Manual",
+      "PRE_CHANGE": "Pre-Change",
+      "POST_CHANGE": "Post-Change",
+      "EVENT": "Event-Driven"
+    },
+    "severity": {
+      "CRITICAL": "Critical",
+      "HIGH": "High",
+      "MEDIUM": "Medium",
+      "LOW": "Low",
+      "INFO": "Info"
+    },
+    "incident": {
+      "SEV1": "SEV1 — Critical",
+      "SEV2": "SEV2 — High",
+      "SEV3": "SEV3 — Medium",
+      "SEV4": "SEV4 — Low"
+    },
+    "change": {
+      "DRAFT": "Draft",
+      "PENDING_APPROVAL": "Pending Approval",
+      "APPROVED": "Approved",
+      "SCHEDULED": "Scheduled",
+      "IN_PROGRESS": "In Progress",
+      "VALIDATING": "Validating",
+      "COMPLETED": "Completed",
+      "PARTIAL_SUCCESS": "Partial Success",
+      "ROLLING_BACK": "Rolling Back",
+      "ROLLED_BACK": "Rolled Back",
+      "ROLLBACK_FAILED": "Rollback Failed",
+      "FAILED": "Failed",
+      "REJECTED": "Rejected",
+      "CANCELLED": "Cancelled",
+      "EXPIRED": "Expired",
+      "CLOSED": "Closed",
+      "PLANNING": "Planning",
+      "TECHNICAL_REVIEW": "Technical Review",
+      "AWAITING_APPROVAL": "Awaiting Approval",
+      "PRE_CHECK": "Pre-Check",
+      "EXECUTING": "Executing",
+      "SUCCESSFUL": "Successful",
+      "POST_REVIEW": "Post-Review"
+    },
+    "risk": {
+      "LOW": "Low Risk",
+      "MEDIUM": "Medium Risk",
+      "HIGH": "High Risk",
+      "CRITICAL": "Critical Risk"
+    },
+    "backup": {
+      "QUEUED": "Queued",
+      "RUNNING": "Running",
+      "SUCCESS": "Success",
+      "FAILED": "Failed",
+      "SKIPPED": "Skipped"
+    },
+    "backupCompliance": {
+      "COMPLIANT": "Compliant",
+      "OVERDUE": "Overdue",
+      "FAILED": "Last Backup Failed",
+      "NEVER_BACKED_UP": "Never Backed Up",
+      "UNKNOWN": "Unknown"
+    },
+    "drift": {
+      "OPEN": "Open",
+      "RESOLVED": "Resolved",
+      "ACCEPTED": "Accepted"
+    },
+    "job": {
+      "QUEUED": "Queued",
+      "RUNNING": "Running",
+      "SUCCEEDED": "Succeeded",
+      "FAILED": "Failed",
+      "DEAD": "Dead (Retries Exhausted)",
+      "CANCELLED": "Cancelled"
+    },
+    "alert": {
+      "FIRING": "Firing",
+      "ACTIVE": "Active",
+      "ACKNOWLEDGED": "Acknowledged",
+      "SUPPRESSED": "Suppressed",
+      "RESOLVED": "Resolved"
+    },
+    "incidentStatus": {
+      "OPEN": "Open",
+      "NEW": "New",
+      "ASSIGNED": "Assigned",
+      "ACKNOWLEDGED": "Acknowledged",
+      "INVESTIGATING": "Investigating",
+      "MITIGATING": "Mitigating",
+      "MONITORING": "Monitoring",
+      "RESOLVED": "Resolved",
+      "POST_INCIDENT_REVIEW": "Post-Incident Review",
+      "CLOSED": "Closed"
+    },
+    "common": {
+      "UNKNOWN": "Unknown"
+    },
+    "changeStep": {
+      "PENDING": "Pending",
+      "RUNNING": "Running",
+      "PASSED": "Passed",
+      "FAILED": "Failed",
+      "SKIPPED": "Skipped"
+    },
+    "changeStepType": {
+      "CHECK": "Check",
+      "BACKUP": "Backup",
+      "APPLY": "Apply",
+      "VALIDATE": "Validate",
+      "ROLLBACK": "Rollback"
+    },
+    "changeApproval": {
+      "PENDING": "Pending",
+      "APPROVED": "Approved",
+      "REJECTED": "Rejected",
+      "NOT_REQUIRED": "Not Required"
+    },
+    "changeApprovalLevel": {
+      "TECHNICAL": "Technical",
+      "SECURITY": "Security",
+      "MANAGER": "Manager",
+      "CAB": "CAB"
+    },
+    "changeType": {
+      "STANDARD": "Standard",
+      "NORMAL": "Normal",
+      "EMERGENCY": "Emergency"
+    },
+    "changeDeviceResult": {
+      "PENDING": "Pending",
+      "SUCCESS": "Success",
+      "FAILED": "Failed",
+      "SKIPPED": "Skipped"
     }
+  },
+  "timeRange": {
+    "options": {
+      "15m": "Last 15 minutes",
+      "1h": "Last hour",
+      "6h": "Last 6 hours",
+      "24h": "Last 24 hours",
+      "7d": "Last 7 days",
+      "30d": "Last 30 days",
+      "all": "All time",
+      "custom": "Custom range"
+    },
+    "ariaLabel": "Time range",
+    "placeholder": "Time range"
+  },
+  "ai": {
+    "assistant": {
+      "title": "AI assistant",
+      "intro": "Ask an operations question about this device — the assistant answers strictly from the FayaNMS context the server assembles (device record, recent alerts, audit trail, open incidents, interfaces and metrics).",
+      "suggestionsLabel": "Suggested",
+      "suggest_cpu": "Why is CPU elevated?",
+      "suggest_hardware": "Any signs of hardware failure?",
+      "suggest_check": "What should I check first?",
+      "suggest_alerts": "Summarize the recent alerts",
+      "questionLabel": "Your question",
+      "placeholder": "e.g. Why did the error rate on Gi0/1 increase after the last change?",
+      "send": "Ask",
+      "sending": "Collecting context and analyzing…",
+      "errorTitle": "The assistant could not answer",
+      "answerTitle": "Assistant answer",
+      "contextBasis": "Grounded in {alerts} alerts · {events} audit events · {incidents} open incidents",
+      "disclaimer": "AI output is advisory — verify against live telemetry before acting."
+    },
+    "changeDraft": {
+      "button": "Draft with AI",
+      "title": "Draft a change with AI",
+      "intro": "Describe the change in plain language — the AI structures it into a change-request draft you review before the wizard opens. Nothing is created automatically.",
+      "promptLabel": "Describe the intended change",
+      "placeholder": "e.g. Upgrade the core switch firmware during the Saturday maintenance window…",
+      "examplesLabel": "Examples",
+      "example_firmware": "Upgrade core switch firmware Saturday 02:00-04:00",
+      "example_uplink": "Add a second uplink to branch switch BR2",
+      "example_firewall": "Tighten firewall rules for the DMZ segment",
+      "generate": "Generate draft",
+      "generating": "Generating draft…",
+      "elapsed": "{seconds}s elapsed — drafting can take up to a minute",
+      "errorTitle": "The draft could not be generated",
+      "reviewTitle": "Review the AI draft",
+      "reviewNote": "Review every field before continuing — the wizard opens at step 1 with this draft pre-filled and nothing is submitted until you complete it.",
+      "fieldTitle": "Title",
+      "fieldDescription": "Description",
+      "fieldType": "Change type",
+      "fieldRisk": "Suggested risk",
+      "fieldDevices": "Matched devices",
+      "fieldImplementation": "Implementation plan",
+      "fieldValidation": "Validation plan",
+      "fieldRollback": "Rollback plan",
+      "fieldWindow": "Suggested window",
+      "devicesNone": "No specific devices matched — pick targets in the wizard scope step.",
+      "openInWizard": "Open in wizard"
+    },
+    "rca": {
+      "generate": "Generate AI draft",
+      "generating": "Drafting…",
+      "banner": "AI draft — review before saving",
+      "confidenceLabel": "Confidence",
+      "confidence": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      },
+      "contributingLabel": "Contributing factors:",
+      "hint": "The draft is generated from the incident timeline and pre-fills the form below — nothing is saved until you press Save PIR."
+    },
+    "query": {
+      "title": "Ask the network",
+      "intro": "Ask a question in plain language — the AI classifies it, runs a read-only query over FayaNMS and answers strictly from the returned results.",
+      "cardHint": "Natural-language answers about devices, incidents, changes and jobs.",
+      "promptLabel": "Your question",
+      "placeholder": "e.g. Which core switches are running an old firmware?",
+      "examplesLabel": "Examples",
+      "example_firmware": "Which core switches are running an old firmware?",
+      "example_incidents": "Show open critical incidents at HQ",
+      "example_changes": "How did the last changes go?",
+      "example_summary": "Give me a summary of the network",
+      "ask": "Ask",
+      "asking": "Asking…",
+      "elapsed": "{seconds}s elapsed — answering can take up to a minute",
+      "errorTitle": "The question could not be answered",
+      "summaryTitle": "Answer",
+      "resultsTitle": "Query results",
+      "devices": "Devices",
+      "incidents": "Incidents",
+      "changes": "Changes",
+      "jobs": "Jobs",
+      "predictive": "Risk ranking (approximate)",
+      "snapshot": "Fleet snapshot",
+      "viewInDevices": "View in Devices",
+      "viewInIncidents": "View in Incidents",
+      "viewInChanges": "View in Changes",
+      "viewInJobs": "View in Jobs",
+      "viewInPredictive": "View in Predictive Health",
+      "viewInDashboard": "View in Dashboard",
+      "fallbackNote": "The AI summary was unavailable — showing a deterministic summary built from the same results.",
+      "groundedInLabel": "Grounded in",
+      "groundedDevices": "{count} devices",
+      "groundedIncidents": "{count} incidents",
+      "groundedChanges": "{count} changes",
+      "groundedJobs": "{count} jobs",
+      "groundedSnapshot": "fleet snapshot",
+      "filtersLabel": "Filters:"
+    },
+    "errors": {
+      "unavailable": "The AI service is temporarily unavailable. Please try again in a moment.",
+      "badResponse": "The AI returned an unusable response. Please retry.",
+      "notFound": "The requested record no longer exists."
+    }
+  },
+  "netif": {
+    "title": "Interfaces",
+    "description": "Interface inventory across devices — admin and oper state, speed, VLAN, utilization and last flap.",
+    "kpi": {
+      "total": "Total interfaces",
+      "totalHint": "All discovered interfaces across managed devices",
+      "up": "Oper up",
+      "upHint": "Interfaces currently forwarding traffic",
+      "down": "Oper down",
+      "downHint": "Links that are down and not forwarding",
+      "adminDown": "Admin down",
+      "adminDownHint": "Shut down by configuration",
+      "adminDownStatus": "shut by config",
+      "flapping": "Flapped (24 h)",
+      "flappingHint": "Last link flap within the last 24 hours",
+      "flappingStatus": "recent flap"
+    },
+    "filters": {
+      "searchAria": "Search interfaces",
+      "searchPlaceholder": "Name, MAC or description…",
+      "siteAria": "Filter by site",
+      "allSites": "All sites",
+      "operAria": "Filter by oper status",
+      "allOper": "All oper states",
+      "adminAria": "Filter by admin status",
+      "allAdmin": "All admin states"
+    },
+    "table": {
+      "title": "Inventory",
+      "description": "Description",
+      "ariaLabel": "Interface inventory — device, interface, admin and oper status, speed, VLAN, utilization, MAC, description and last flap per row",
+      "device": "Device",
+      "interface": "Interface",
+      "admin": "Admin",
+      "oper": "Oper",
+      "speed": "Speed",
+      "vlan": "VLAN",
+      "utilization": "Utilization",
+      "mac": "MAC",
+      "lastFlap": "Last flap",
+      "openRowAria": "Open {device} — {name}",
+      "openDevice": "Open device detail",
+      "utilSrOnly": "{pct} of link capacity",
+      "emptyTitle": "No interfaces match",
+      "emptyDescription": "No interfaces have been discovered yet — run discovery to populate the inventory.",
+      "emptyFilteredDescription": "No interfaces match the current filters — clear them to see the full inventory."
+    },
+    "error": {
+      "title": "Interfaces could not be loaded"
+    },
+    "pagination": {
+      "summary": "{count} interfaces",
+      "pageOf": "Page {page} of {totalPages}",
+      "prev": "Prev",
+      "next": "Next",
+      "prevAria": "Previous page",
+      "nextAria": "Next page"
+    }
+  },
+  "topo": {
+    "title": "Network Topology",
+    "description": "Site zones with devices, HA pairs, CMDB circuits and simulated uplinks on one deterministic map.",
+    "banner": "Demo data — the links are a documented simulation over the real inventory: nodes are real sites and devices, HA links mirror the documented redundancy matrix, circuit links come from the CMDB, and uplink links are invented anchors. Not a discovered topology — do not use it for outage or capacity planning.",
+    "errorTitle": "Network topology could not be loaded",
+    "kpi": {
+      "sites": "Sites",
+      "sitesHint": "Zones drawn on the map",
+      "devices": "Devices",
+      "devicesHint": "Managed devices in the graph (unmanaged excluded)",
+      "links": "Links",
+      "linksHint": "HA, circuit and uplink edges combined",
+      "simulated": "Simulated links",
+      "simulatedHint": "Documented simulated uplink design"
+    },
+    "map": {
+      "title": "Topology map",
+      "description": "Deterministic SVG map — scroll horizontally on small screens; click a device for details"
+    },
+    "filter": {
+      "all": "All sites"
+    },
+    "filterAria": "Filter the map by site",
+    "legend": {
+      "status": "Device status:",
+      "edges": "Link types:"
+    },
+    "edgeType": {
+      "ha": "HA pair",
+      "circuit": "Circuit",
+      "uplink": "Uplink (simulated)"
+    },
+    "haEdgeLabel": "HA",
+    "unassignedSite": "Unassigned devices",
+    "unassignedHint": "Devices with no site linked",
+    "nodeAria": "Device {hostname} — status {status}, role {role}. Opens device details.",
+    "mapAria": "Topology map: {sites} sites, {devices} devices, {links} links. The link list table below carries the same data.",
+    "role": {
+      "CORE_ROUTER": "Core router",
+      "EDGE_ROUTER": "Edge router",
+      "BRANCH_ROUTER": "Branch router",
+      "FIREWALL": "Firewall",
+      "CORE_SWITCH": "Core switch",
+      "ACCESS_SWITCH": "Access switch",
+      "TOP_OF_RACK": "Top-of-rack switch",
+      "WIRELESS_CONTROLLER": "Wireless controller",
+      "LOAD_BALANCER": "Load balancer",
+      "WAN_GATEWAY": "WAN gateway",
+      "other": "Device"
+    },
+    "links": {
+      "title": "Link list",
+      "description": "Every edge on the map as a table — the accessible representation of the diagram",
+      "emptyTitle": "No links",
+      "emptyDescription": "No links touch the current selection — switch the filter back to all sites."
+    },
+    "empty": {
+      "title": "No devices to map",
+      "description": "No managed devices were found — import or adopt devices to draw the topology."
+    },
+    "table": {
+      "type": "Type",
+      "endpoints": "Endpoints",
+      "label": "Label",
+      "simulated": "Simulated"
+    },
+    "simulatedBadge": "Simulated"
+  },
+  "builder": {
+    "title": "Report Builder",
+    "description": "Compose custom reports from live platform data, preview them instantly, and save the selection as a recurring schedule.",
+    "cardTitle": "Compose report",
+    "cardDescription": "Pick a report type, an analysis frequency and a delivery format, then run a preview against live data.",
+    "typeGroupLabel": "Report type",
+    "typeGroupAria": "Report type selection",
+    "typeHint": {
+      "AVAILABILITY": "Per-device uptime and downtime across the selected window, worst devices first.",
+      "BACKUP_COMPLIANCE": "Latest successful backup per device, banded compliant / overdue / stale.",
+      "CHANGE_SUMMARY": "Change requests over the last 30 days grouped by status and risk level.",
+      "INCIDENT_SUMMARY": "Incidents over the last 30 days by severity with MTTA / MTTR averages.",
+      "CAPACITY": "CPU, memory and utilization trends projected to the 80% threshold."
+    },
+    "rangeHint": "Expected range: {range}",
+    "frequencyLabel": "Frequency",
+    "frequencyAria": "Report frequency",
+    "formatLabel": "Format",
+    "formatAria": "Report format",
+    "formatNote": "PDF/XLSX are delivery-format tags on this demo platform — preview data is identical. Download CSV or JSON for the actual file.",
+    "run": "Run preview",
+    "saveSchedule": "Save as schedule",
+    "emptyTitle": "No preview yet",
+    "emptyDescription": "Choose a report type, frequency and format, then run the preview to see the generated artifact here.",
+    "errorTitle": "Report generation failed",
+    "previewTitle": "Preview",
+    "previewTableAria": "Report preview table",
+    "metaGeneratedAt": "Generated",
+    "metaRange": "Range",
+    "metaRows": "Rows",
+    "metaCorrelation": "Correlation ID",
+    "metaFormat": "Delivery format",
+    "downloadCsv": "Download CSV",
+    "downloadJson": "Download JSON",
+    "dialog": {
+      "title": "Save as schedule",
+      "description": "The schedule reuses the current builder selection and runs on its frequency.",
+      "name": "Schedule name",
+      "namePlaceholder": "e.g. Daily availability digest",
+      "nameInvalid": "A name of 1–120 characters is required.",
+      "recipients": "Recipients",
+      "recipientsPlaceholder": "ops@example.com, net@example.com",
+      "recipientsInvalid": "Enter at least one valid email address.",
+      "recipientsHint": "Comma-separated addresses, up to 20.",
+      "selectionSummary": "Using the current builder selection:",
+      "submit": "Save schedule"
+    },
+    "toast": {
+      "saved": "Schedule saved",
+      "savedDescription": "“{name}” was added to Scheduled Reports.",
+      "saveFailed": "Could not save the schedule",
+      "runFailed": "Could not generate the report"
+    },
+    "success": {
+      "title": "Schedule saved",
+      "body": "“{name}” now appears in the Scheduled Reports list.",
+      "openScheduled": "Open scheduled reports",
+      "close": "Close"
+    }
+  }
 }

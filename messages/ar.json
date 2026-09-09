@@ -50,65 +50,157 @@
       "administration": "الإدارة"
     },
     "items": {
-      "dashboard": { "title": "لوحة القيادة" },
+      "dashboard": {
+        "title": "لوحة القيادة"
+      },
       "network": {
-        "devices": { "title": "الأجهزة" },
-        "device-detail": { "title": "تفاصيل الجهاز" },
-        "sites": { "title": "المواقع" },
-        "interfaces": { "title": "الواجهات" },
-        "topology": { "title": "طوبولوجيا الشبكة" },
-        "discovery": { "title": "الاستكشاف" },
-        "firmware": { "title": "البرامج الثابتة" },
-        "ztp": { "title": "التهيئة الصفرية" }
+        "devices": {
+          "title": "الأجهزة"
+        },
+        "device-detail": {
+          "title": "تفاصيل الجهاز"
+        },
+        "sites": {
+          "title": "المواقع"
+        },
+        "interfaces": {
+          "title": "الواجهات"
+        },
+        "topology": {
+          "title": "طوبولوجيا الشبكة"
+        },
+        "discovery": {
+          "title": "الاستكشاف"
+        },
+        "firmware": {
+          "title": "البرامج الثابتة"
+        },
+        "ztp": {
+          "title": "التهيئة الصفرية"
+        }
       },
       "config": {
-        "backups": { "title": "النسخ الاحتياطي" },
-        "snapshots": { "title": "لقطات التهيئة" },
-        "baselines": { "title": "خطوط الأساس" },
-        "drift": { "title": "انحراف التهيئة" },
-        "compliance": { "title": "الامتثال" },
-        "cmdb": { "title": "قاعدة بيانات التكوين" }
+        "backups": {
+          "title": "النسخ الاحتياطي"
+        },
+        "snapshots": {
+          "title": "لقطات التهيئة"
+        },
+        "baselines": {
+          "title": "خطوط الأساس"
+        },
+        "drift": {
+          "title": "انحراف التهيئة"
+        },
+        "compliance": {
+          "title": "الامتثال"
+        },
+        "cmdb": {
+          "title": "قاعدة بيانات التكوين"
+        }
       },
       "changes": {
-        "all": { "title": "جميع التغييرات" },
-        "mine": { "title": "تغييراتي" },
-        "approvals": { "title": "الموافقات" },
-        "calendar": { "title": "التقويم" },
-        "templates": { "title": "القوالب" },
-        "change-detail": { "title": "تفاصيل التغيير" }
+        "all": {
+          "title": "جميع التغييرات"
+        },
+        "mine": {
+          "title": "تغييراتي"
+        },
+        "approvals": {
+          "title": "الموافقات"
+        },
+        "calendar": {
+          "title": "التقويم"
+        },
+        "templates": {
+          "title": "القوالب"
+        },
+        "change-detail": {
+          "title": "تفاصيل التغيير"
+        }
       },
       "ops": {
-        "noc": { "title": "شاشة مركز العمليات" },
-        "alerts": { "title": "التنبيهات" },
-        "incidents": { "title": "الحوادث" },
-        "incident-detail": { "title": "تفاصيل الحادث" },
-        "maintenance": { "title": "نوافذ الصيانة" },
-        "events": { "title": "سجل الأحداث" },
-        "jobs": { "title": "مركز المهام" },
-        "ha": { "title": "الإتاحة العالية / التعافي" }
+        "noc": {
+          "title": "شاشة مركز العمليات"
+        },
+        "alerts": {
+          "title": "التنبيهات"
+        },
+        "incidents": {
+          "title": "الحوادث"
+        },
+        "incident-detail": {
+          "title": "تفاصيل الحادث"
+        },
+        "maintenance": {
+          "title": "نوافذ الصيانة"
+        },
+        "events": {
+          "title": "سجل الأحداث"
+        },
+        "jobs": {
+          "title": "مركز المهام"
+        },
+        "ha": {
+          "title": "الإتاحة العالية / التعافي"
+        }
       },
       "perf": {
-        "overview": { "title": "نظرة عامة على الأداء" },
-        "devices": { "title": "أداء الأجهزة" },
-        "interfaces": { "title": "استغلال الواجهات" },
-        "availability": { "title": "الإتاحة" },
-        "capacity": { "title": "السعة" },
-        "flows": { "title": "محلل التدفقات" },
-        "predictive": { "title": "الصحة التنبؤية" }
+        "overview": {
+          "title": "نظرة عامة على الأداء"
+        },
+        "devices": {
+          "title": "أداء الأجهزة"
+        },
+        "interfaces": {
+          "title": "استغلال الواجهات"
+        },
+        "availability": {
+          "title": "الإتاحة"
+        },
+        "capacity": {
+          "title": "السعة"
+        },
+        "flows": {
+          "title": "محلل التدفقات"
+        },
+        "predictive": {
+          "title": "الصحة التنبؤية"
+        }
       },
       "reports": {
-        "reports": { "title": "التقارير" },
-        "scheduled": { "title": "التقارير المجدولة" },
-        "builder": { "title": "منشئ التقارير" }
+        "reports": {
+          "title": "التقارير"
+        },
+        "scheduled": {
+          "title": "التقارير المجدولة"
+        },
+        "builder": {
+          "title": "منشئ التقارير"
+        }
       },
       "admin": {
-        "users": { "title": "المستخدمون والأدوار" },
-        "credentials": { "title": "بيانات الاعتماد" },
-        "apiClients": { "title": "عملاء الواجهة البرمجية" },
-        "collectors": { "title": "المجمّعات" },
-        "drivers": { "title": "تعريفات الأجهزة" },
-        "integrations": { "title": "التكاملات" },
-        "system": { "title": "إعدادات النظام" }
+        "users": {
+          "title": "المستخدمون والأدوار"
+        },
+        "credentials": {
+          "title": "بيانات الاعتماد"
+        },
+        "apiClients": {
+          "title": "عملاء الواجهة البرمجية"
+        },
+        "collectors": {
+          "title": "المجمّعات"
+        },
+        "drivers": {
+          "title": "تعريفات الأجهزة"
+        },
+        "integrations": {
+          "title": "التكاملات"
+        },
+        "system": {
+          "title": "إعدادات النظام"
+        }
       }
     }
   },
@@ -754,7 +846,7 @@
     },
     "create": {
       "title": "عنصر تكوين جديد",
-      "description": "سجّل عنصر تكوين — يُخصَّص المعرّف (CI-…) تلقائيًا.",
+      "description": "الوصف",
       "name": "الاسم",
       "namePlaceholder": "مثال: مصفوفة التخزين 01",
       "ciType": "النوع",
@@ -765,7 +857,6 @@
       "siteAny": "بدون موقع",
       "device": "الجهاز المرتبط",
       "deviceNone": "بدون ارتباط بجهاز",
-      "description": "الوصف",
       "descriptionPlaceholder": "ما يمثله هذا العنصر…",
       "submit": "إنشاء العنصر",
       "submitting": "جارٍ إنشاء العنصر…",
@@ -774,10 +865,9 @@
     "edit": {
       "open": "تعديل",
       "title": "تعديل {ci}",
-      "description": "تُسجَّل حالة دورة الحياة والأهمية والوصف في سجل التدقيق.",
+      "description": "الوصف",
       "status": "الحالة",
       "criticality": "الأهمية",
-      "description": "الوصف",
       "descriptionPlaceholder": "الغرض، الموقع، ملاحظات…",
       "submit": "حفظ التغييرات",
       "submitting": "جارٍ الحفظ…",
@@ -1146,287 +1236,474 @@
     "en": "English",
     "ar": "العربية"
   },
-    "status": {
-      "device": {
-        "ONLINE": "متصل",
-        "OFFLINE": "غير متصل",
-        "DEGRADED": "متدهور",
-        "MAINTENANCE": "صيانة",
-        "UNKNOWN": "غير معروف",
-        "UNMANAGED": "غير مُدار"
-      },
-      "interfaceAdmin": {
-        "UP": "مُمكَّن إدارياً",
-        "DOWN": "معطَّل إدارياً",
-        "TESTING": "قيد الاختبار"
-      },
-      "interfaceOper": {
-        "UP": "يعمل",
-        "DOWN": "متوقف",
-        "TESTING": "قيد الاختبار",
-        "UNKNOWN": "غير معروف",
-        "DORMANT": "خامل",
-        "NOT_PRESENT": "غير موجود",
-        "LOWER_LAYER_DOWN": "الطبقة السفلية متوقفة"
-      },
-      "snapshot": {
-        "CURRENT": "حالي",
-        "HISTORICAL": "أرشيفي",
-        "BASELINE": "خط أساس"
-      },
-      "snapshotSource": {
-        "SCHEDULED": "مجدول",
-        "MANUAL": "يدوي",
-        "PRE_CHANGE": "قبل التغيير",
-        "POST_CHANGE": "بعد التغيير",
-        "EVENT": "مدفوع بحدث"
-      },
-      "severity": {
-        "CRITICAL": "حرج",
-        "HIGH": "مرتفع",
-        "MEDIUM": "متوسط",
-        "LOW": "منخفض",
-        "INFO": "معلوماتي"
-      },
-      "incident": {
-        "SEV1": "SEV1 — حرج",
-        "SEV2": "SEV2 — مرتفع",
-        "SEV3": "SEV3 — متوسط",
-        "SEV4": "SEV4 — منخفض"
-      },
-      "change": {
-        "DRAFT": "مسودة",
-        "PENDING_APPROVAL": "بانتظار الموافقة",
-        "APPROVED": "معتمد",
-        "SCHEDULED": "مجدول",
-        "IN_PROGRESS": "قيد التنفيذ",
-        "VALIDATING": "قيد التحقق",
-        "COMPLETED": "مكتمل",
-        "PARTIAL_SUCCESS": "نجاح جزئي",
-        "ROLLING_BACK": "قيد التراجع",
-        "ROLLED_BACK": "تم التراجع",
-        "ROLLBACK_FAILED": "فشل التراجع",
-        "FAILED": "فاشل",
-        "REJECTED": "مرفوض",
-        "CANCELLED": "ملغى",
-        "EXPIRED": "منتهي",
-        "CLOSED": "مغلق",
-        "PLANNING": "قيد التخطيط",
-        "TECHNICAL_REVIEW": "مراجعة فنية",
-        "AWAITING_APPROVAL": "بانتظار الموافقة",
-        "PRE_CHECK": "فحص مسبق",
-        "EXECUTING": "قيد التنفيذ",
-        "SUCCESSFUL": "ناجح",
-        "POST_REVIEW": "مراجعة لاحقة"
-      },
-      "risk": {
-        "LOW": "خطر منخفض",
-        "MEDIUM": "خطر متوسط",
-        "HIGH": "خطر مرتفع",
-        "CRITICAL": "خطر حرج"
-      },
-      "backup": {
-        "QUEUED": "في قائمة الانتظار",
-        "RUNNING": "قيد التشغيل",
-        "SUCCESS": "ناجح",
-        "FAILED": "فاشل",
-        "SKIPPED": "تم التخطي"
-      },
-      "backupCompliance": {
-        "COMPLIANT": "مطابق",
-        "OVERDUE": "متأخر",
-        "FAILED": "فشل آخر نسخة احتياطية",
-        "NEVER_BACKED_UP": "لم تُؤخذ منه نسخة",
-        "UNKNOWN": "غير معروف"
-      },
-      "drift": {
-        "OPEN": "مفتوح",
-        "RESOLVED": "تمت المعالجة",
-        "ACCEPTED": "مقبول"
-      },
-      "job": {
-        "QUEUED": "في قائمة الانتظار",
-        "RUNNING": "قيد التشغيل",
-        "SUCCEEDED": "نجح",
-        "FAILED": "فاشل",
-        "DEAD": "متوقف نهائياً (استُنفدت المحاولات)",
-        "CANCELLED": "ملغى"
-      },
-      "alert": {
-        "FIRING": "نشط",
-        "ACTIVE": "نشط",
-        "ACKNOWLEDGED": "تم الإقرار",
-        "SUPPRESSED": "مكتوم",
-        "RESOLVED": "تمت المعالجة"
-      },
-      "incidentStatus": {
-        "OPEN": "مفتوح",
-        "NEW": "جديد",
-        "ASSIGNED": "مُسند",
-        "ACKNOWLEDGED": "تم الإقرار",
-        "INVESTIGATING": "قيد التحقيق",
-        "MITIGATING": "قيد المعالجة",
-        "MONITORING": "قيد المراقبة",
-        "RESOLVED": "تمت المعالجة",
-        "POST_INCIDENT_REVIEW": "مراجعة ما بعد الحادث",
-        "CLOSED": "مغلق"
-      },
-      "common": {
-        "UNKNOWN": "غير معروف"
-      },
-      "changeStep": {
-        "PENDING": "قيد الانتظار",
-        "RUNNING": "قيد التشغيل",
-        "PASSED": "اجتاز",
-        "FAILED": "فشل",
-        "SKIPPED": "تم التخطي"
-      },
-      "changeStepType": {
-        "CHECK": "فحص",
-        "BACKUP": "نسخ احتياطي",
-        "APPLY": "تطبيق",
-        "VALIDATE": "تحقق",
-        "ROLLBACK": "تراجع"
-      },
-      "changeApproval": {
-        "PENDING": "قيد الانتظار",
-        "APPROVED": "معتمد",
-        "REJECTED": "مرفوض",
-        "NOT_REQUIRED": "غير مطلوب"
-      },
-      "changeApprovalLevel": {
-        "TECHNICAL": "فني",
-        "SECURITY": "أمني",
-        "MANAGER": "مدير",
-        "CAB": "لجنة التغيير"
-      },
-      "changeType": {
-        "STANDARD": "قياسي",
-        "NORMAL": "عادي",
-        "EMERGENCY": "طارئ"
-      },
-      "changeDeviceResult": {
-        "PENDING": "قيد الانتظار",
-        "SUCCESS": "نجاح",
-        "FAILED": "فشل",
-        "SKIPPED": "تم التخطي"
-      }
+  "status": {
+    "device": {
+      "ONLINE": "متصل",
+      "OFFLINE": "غير متصل",
+      "DEGRADED": "متدهور",
+      "MAINTENANCE": "صيانة",
+      "UNKNOWN": "غير معروف",
+      "UNMANAGED": "غير مُدار"
     },
-    "timeRange": {
-      "options": {
-        "15m": "آخر 15 دقيقة",
-        "1h": "آخر ساعة",
-        "6h": "آخر 6 ساعات",
-        "24h": "آخر 24 ساعة",
-        "7d": "آخر 7 أيام",
-        "30d": "آخر 30 يوماً",
-        "all": "كل الوقت",
-        "custom": "نطاق مخصص"
-      },
-      "ariaLabel": "النطاق الزمني",
-      "placeholder": "النطاق الزمني"
+    "interfaceAdmin": {
+      "UP": "مُمكَّن إدارياً",
+      "DOWN": "معطَّل إدارياً",
+      "TESTING": "قيد الاختبار"
     },
-    "ai": {
-      "assistant": {
-        "title": "المساعد الذكي",
-        "intro": "اطرح سؤالاً تشغيلياً عن هذا الجهاز — يجيب المساعد استناداً حصراً إلى السياق الذي يجمعه الخادم من FayaNMS (سجل الجهاز، التنبيهات الأخيرة، سجل التدقيق، الحوادث المفتوحة، الواجهات والمقاييس).",
-        "suggestionsLabel": "أسئلة مقترحة",
-        "suggest_cpu": "لماذا استهلاك المعالج مرتفع؟",
-        "suggest_hardware": "هل توجد مؤشرات على عطل عتادي؟",
-        "suggest_check": "ما الذي ينبغي فحصه أولاً؟",
-        "suggest_alerts": "لخّص التنبيهات الأخيرة",
-        "questionLabel": "سؤالك",
-        "placeholder": "مثال: لماذا ارتفع معدل الأخطاء على Gi0/1 بعد آخر تغيير؟",
-        "send": "اسأل",
-        "sending": "جارٍ جمع السياق والتحليل…",
-        "errorTitle": "لم يتمكن المساعد من الإجابة",
-        "answerTitle": "إجابة المساعد",
-        "contextBasis": "مستندة إلى {alerts} تنبيهاً · {events} حدث تدقيق · {incidents} حادث مفتوح",
-        "disclaimer": "مخرجات الذكاء الاصطناعي استرشادية — تحقّق من القياسات المباشرة قبل اتخاذ أي إجراء."
-      },
-      "changeDraft": {
-        "button": "مسودة بالذكاء الاصطناعي",
-        "title": "إعداد مسودة تغيير بالذكاء الاصطناعي",
-        "intro": "صِف التغيير بلغة طبيعية — يحوّله الذكاء الاصطناعي إلى مسودة طلب تغيير تراجعها قبل فتح المعالج. لا يُنشأ أي تغيير تلقائياً.",
-        "promptLabel": "صِف التغيير المطلوب",
-        "placeholder": "مثال: ترقية برنامج المبدّل الأساسي خلال نافذة الصيانة يوم السبت…",
-        "examplesLabel": "أمثلة",
-        "example_firmware": "ترقية برنامج المبدّل الأساسي السبت 02:00-04:00",
-        "example_uplink": "إضافة وصلة صاعدة ثانية لمبدّل الفرع BR2",
-        "example_firewall": "تشديد قواعد الجدار الناري لقطاع DMZ",
-        "generate": "توليد المسودة",
-        "generating": "جارٍ توليد المسودة…",
-        "elapsed": "مرّت {seconds} ثانية — قد يستغرق التوليد حتى دقيقة",
-        "errorTitle": "تعذّر توليد المسودة",
-        "reviewTitle": "راجع مسودة الذكاء الاصطناعي",
-        "reviewNote": "راجع جميع الحقول قبل المتابعة — يفتح المعالج عند الخطوة 1 مع تعبئة هذه المسودة، ولا يُرسل أي شيء حتى تكمل الخطوات.",
-        "fieldTitle": "العنوان",
-        "fieldDescription": "الوصف",
-        "fieldType": "نوع التغيير",
-        "fieldRisk": "المخاطر المقترحة",
-        "fieldDevices": "الأجهزة المطابقة",
-        "fieldImplementation": "خطة التنفيذ",
-        "fieldValidation": "خطة التحقق",
-        "fieldRollback": "خطة التراجع",
-        "fieldWindow": "النافذة المقترحة",
-        "devicesNone": "لم تُطابق أي أجهزة بعينها — حدّد الأجهزة في خطوة نطاق المعالج.",
-        "openInWizard": "الفتح في المعالج"
-      },
-      "rca": {
-        "generate": "توليد مسودة آلية",
-        "generating": "جارٍ إعداد المسودة…",
-        "banner": "مسودة بالذكاء الاصطناعي — راجِعها قبل الحفظ",
-        "confidenceLabel": "درجة الثقة",
-        "confidence": {
-          "low": "منخفضة",
-          "medium": "متوسطة",
-          "high": "مرتفعة"
-        },
-        "contributingLabel": "العوامل المساهمة:",
-        "hint": "تُعدّ المسودة من الجدول الزمني للحوادث وتُعبّئ النموذج أدناه — لا يُحفظ أي شيء حتى تضغط حفظ المراجعة."
-      },
-      "query": {
-        "title": "اسأل الشبكة",
-        "intro": "اطرح سؤالك بلغة طبيعية — يصنّفه الذكاء الاصطناعي، وينفّذ استعلاماً للقراءة فقط على FayaNMS، ثم يجيب استناداً حصراً إلى النتائج المعادة.",
-        "cardHint": "إجابات بلغة طبيعية عن الأجهزة والحوادث والتغييرات والمهام.",
-        "promptLabel": "سؤالك",
-        "placeholder": "مثال: أي المبدّلات الأساسية تعمل بإصدار برنامج قديم؟",
-        "examplesLabel": "أمثلة",
-        "example_firmware": "أي المبدّلات الأساسية تعمل بإصدار برنامج قديم؟",
-        "example_incidents": "اعرض الحوادث الحرجة المفتوحة في المقر الرئيسي",
-        "example_changes": "كيف سارت آخر التغييرات؟",
-        "example_summary": "أعطني ملخصاً عن حالة الشبكة",
-        "ask": "اسأل",
-        "asking": "جارٍ السؤال…",
-        "elapsed": "مرّت {seconds} ثانية — قد يستغرق الإجابة حتى دقيقة",
-        "errorTitle": "تعذّر الإجابة على السؤال",
-        "summaryTitle": "الإجابة",
-        "resultsTitle": "نتائج الاستعلام",
-        "devices": "الأجهزة",
-        "incidents": "الحوادث",
-        "changes": "التغييرات",
-        "jobs": "المهام",
-        "predictive": "ترتيب المخاطر (تقريبي)",
-        "snapshot": "لمحة عن الشبكة",
-        "viewInDevices": "العرض في الأجهزة",
-        "viewInIncidents": "العرض في الحوادث",
-        "viewInChanges": "العرض في التغييرات",
-        "viewInJobs": "العرض في المهام",
-        "viewInPredictive": "العرض في الصحة التنبؤية",
-        "viewInDashboard": "العرض في لوحة القيادة",
-        "fallbackNote": "ملخص الذكاء الاصطناعي غير متاح — يُعرض ملخص حتمي مبني على النتائج نفسها.",
-        "groundedInLabel": "مستندة إلى",
-        "groundedDevices": "{count} أجهزة",
-        "groundedIncidents": "{count} حوادث",
-        "groundedChanges": "{count} تغييرات",
-        "groundedJobs": "{count} مهام",
-        "groundedSnapshot": "لمحة عن الشبكة",
-        "filtersLabel": "عوامل التصفية:"
-      },
-      "errors": {
-        "unavailable": "خدمة الذكاء الاصطناعي غير متاحة مؤقتاً. حاول مرة أخرى بعد قليل.",
-        "badResponse": "أعاد الذكاء الاصطناعي استجابة غير قابلة للاستخدام. أعد المحاولة.",
-        "notFound": "السجل المطلوب لم يعد موجوداً."
-      }
+    "interfaceOper": {
+      "UP": "يعمل",
+      "DOWN": "متوقف",
+      "TESTING": "قيد الاختبار",
+      "UNKNOWN": "غير معروف",
+      "DORMANT": "خامل",
+      "NOT_PRESENT": "غير موجود",
+      "LOWER_LAYER_DOWN": "الطبقة السفلية متوقفة"
+    },
+    "snapshot": {
+      "CURRENT": "حالي",
+      "HISTORICAL": "أرشيفي",
+      "BASELINE": "خط أساس"
+    },
+    "snapshotSource": {
+      "SCHEDULED": "مجدول",
+      "MANUAL": "يدوي",
+      "PRE_CHANGE": "قبل التغيير",
+      "POST_CHANGE": "بعد التغيير",
+      "EVENT": "مدفوع بحدث"
+    },
+    "severity": {
+      "CRITICAL": "حرج",
+      "HIGH": "مرتفع",
+      "MEDIUM": "متوسط",
+      "LOW": "منخفض",
+      "INFO": "معلوماتي"
+    },
+    "incident": {
+      "SEV1": "SEV1 — حرج",
+      "SEV2": "SEV2 — مرتفع",
+      "SEV3": "SEV3 — متوسط",
+      "SEV4": "SEV4 — منخفض"
+    },
+    "change": {
+      "DRAFT": "مسودة",
+      "PENDING_APPROVAL": "بانتظار الموافقة",
+      "APPROVED": "معتمد",
+      "SCHEDULED": "مجدول",
+      "IN_PROGRESS": "قيد التنفيذ",
+      "VALIDATING": "قيد التحقق",
+      "COMPLETED": "مكتمل",
+      "PARTIAL_SUCCESS": "نجاح جزئي",
+      "ROLLING_BACK": "قيد التراجع",
+      "ROLLED_BACK": "تم التراجع",
+      "ROLLBACK_FAILED": "فشل التراجع",
+      "FAILED": "فاشل",
+      "REJECTED": "مرفوض",
+      "CANCELLED": "ملغى",
+      "EXPIRED": "منتهي",
+      "CLOSED": "مغلق",
+      "PLANNING": "قيد التخطيط",
+      "TECHNICAL_REVIEW": "مراجعة فنية",
+      "AWAITING_APPROVAL": "بانتظار الموافقة",
+      "PRE_CHECK": "فحص مسبق",
+      "EXECUTING": "قيد التنفيذ",
+      "SUCCESSFUL": "ناجح",
+      "POST_REVIEW": "مراجعة لاحقة"
+    },
+    "risk": {
+      "LOW": "خطر منخفض",
+      "MEDIUM": "خطر متوسط",
+      "HIGH": "خطر مرتفع",
+      "CRITICAL": "خطر حرج"
+    },
+    "backup": {
+      "QUEUED": "في قائمة الانتظار",
+      "RUNNING": "قيد التشغيل",
+      "SUCCESS": "ناجح",
+      "FAILED": "فاشل",
+      "SKIPPED": "تم التخطي"
+    },
+    "backupCompliance": {
+      "COMPLIANT": "مطابق",
+      "OVERDUE": "متأخر",
+      "FAILED": "فشل آخر نسخة احتياطية",
+      "NEVER_BACKED_UP": "لم تُؤخذ منه نسخة",
+      "UNKNOWN": "غير معروف"
+    },
+    "drift": {
+      "OPEN": "مفتوح",
+      "RESOLVED": "تمت المعالجة",
+      "ACCEPTED": "مقبول"
+    },
+    "job": {
+      "QUEUED": "في قائمة الانتظار",
+      "RUNNING": "قيد التشغيل",
+      "SUCCEEDED": "نجح",
+      "FAILED": "فاشل",
+      "DEAD": "متوقف نهائياً (استُنفدت المحاولات)",
+      "CANCELLED": "ملغى"
+    },
+    "alert": {
+      "FIRING": "نشط",
+      "ACTIVE": "نشط",
+      "ACKNOWLEDGED": "تم الإقرار",
+      "SUPPRESSED": "مكتوم",
+      "RESOLVED": "تمت المعالجة"
+    },
+    "incidentStatus": {
+      "OPEN": "مفتوح",
+      "NEW": "جديد",
+      "ASSIGNED": "مُسند",
+      "ACKNOWLEDGED": "تم الإقرار",
+      "INVESTIGATING": "قيد التحقيق",
+      "MITIGATING": "قيد المعالجة",
+      "MONITORING": "قيد المراقبة",
+      "RESOLVED": "تمت المعالجة",
+      "POST_INCIDENT_REVIEW": "مراجعة ما بعد الحادث",
+      "CLOSED": "مغلق"
+    },
+    "common": {
+      "UNKNOWN": "غير معروف"
+    },
+    "changeStep": {
+      "PENDING": "قيد الانتظار",
+      "RUNNING": "قيد التشغيل",
+      "PASSED": "اجتاز",
+      "FAILED": "فشل",
+      "SKIPPED": "تم التخطي"
+    },
+    "changeStepType": {
+      "CHECK": "فحص",
+      "BACKUP": "نسخ احتياطي",
+      "APPLY": "تطبيق",
+      "VALIDATE": "تحقق",
+      "ROLLBACK": "تراجع"
+    },
+    "changeApproval": {
+      "PENDING": "قيد الانتظار",
+      "APPROVED": "معتمد",
+      "REJECTED": "مرفوض",
+      "NOT_REQUIRED": "غير مطلوب"
+    },
+    "changeApprovalLevel": {
+      "TECHNICAL": "فني",
+      "SECURITY": "أمني",
+      "MANAGER": "مدير",
+      "CAB": "لجنة التغيير"
+    },
+    "changeType": {
+      "STANDARD": "قياسي",
+      "NORMAL": "عادي",
+      "EMERGENCY": "طارئ"
+    },
+    "changeDeviceResult": {
+      "PENDING": "قيد الانتظار",
+      "SUCCESS": "نجاح",
+      "FAILED": "فشل",
+      "SKIPPED": "تم التخطي"
     }
+  },
+  "timeRange": {
+    "options": {
+      "15m": "آخر 15 دقيقة",
+      "1h": "آخر ساعة",
+      "6h": "آخر 6 ساعات",
+      "24h": "آخر 24 ساعة",
+      "7d": "آخر 7 أيام",
+      "30d": "آخر 30 يوماً",
+      "all": "كل الوقت",
+      "custom": "نطاق مخصص"
+    },
+    "ariaLabel": "النطاق الزمني",
+    "placeholder": "النطاق الزمني"
+  },
+  "ai": {
+    "assistant": {
+      "title": "المساعد الذكي",
+      "intro": "اطرح سؤالاً تشغيلياً عن هذا الجهاز — يجيب المساعد استناداً حصراً إلى السياق الذي يجمعه الخادم من FayaNMS (سجل الجهاز، التنبيهات الأخيرة، سجل التدقيق، الحوادث المفتوحة، الواجهات والمقاييس).",
+      "suggestionsLabel": "أسئلة مقترحة",
+      "suggest_cpu": "لماذا استهلاك المعالج مرتفع؟",
+      "suggest_hardware": "هل توجد مؤشرات على عطل عتادي؟",
+      "suggest_check": "ما الذي ينبغي فحصه أولاً؟",
+      "suggest_alerts": "لخّص التنبيهات الأخيرة",
+      "questionLabel": "سؤالك",
+      "placeholder": "مثال: لماذا ارتفع معدل الأخطاء على Gi0/1 بعد آخر تغيير؟",
+      "send": "اسأل",
+      "sending": "جارٍ جمع السياق والتحليل…",
+      "errorTitle": "لم يتمكن المساعد من الإجابة",
+      "answerTitle": "إجابة المساعد",
+      "contextBasis": "مستندة إلى {alerts} تنبيهاً · {events} حدث تدقيق · {incidents} حادث مفتوح",
+      "disclaimer": "مخرجات الذكاء الاصطناعي استرشادية — تحقّق من القياسات المباشرة قبل اتخاذ أي إجراء."
+    },
+    "changeDraft": {
+      "button": "مسودة بالذكاء الاصطناعي",
+      "title": "إعداد مسودة تغيير بالذكاء الاصطناعي",
+      "intro": "صِف التغيير بلغة طبيعية — يحوّله الذكاء الاصطناعي إلى مسودة طلب تغيير تراجعها قبل فتح المعالج. لا يُنشأ أي تغيير تلقائياً.",
+      "promptLabel": "صِف التغيير المطلوب",
+      "placeholder": "مثال: ترقية برنامج المبدّل الأساسي خلال نافذة الصيانة يوم السبت…",
+      "examplesLabel": "أمثلة",
+      "example_firmware": "ترقية برنامج المبدّل الأساسي السبت 02:00-04:00",
+      "example_uplink": "إضافة وصلة صاعدة ثانية لمبدّل الفرع BR2",
+      "example_firewall": "تشديد قواعد الجدار الناري لقطاع DMZ",
+      "generate": "توليد المسودة",
+      "generating": "جارٍ توليد المسودة…",
+      "elapsed": "مرّت {seconds} ثانية — قد يستغرق التوليد حتى دقيقة",
+      "errorTitle": "تعذّر توليد المسودة",
+      "reviewTitle": "راجع مسودة الذكاء الاصطناعي",
+      "reviewNote": "راجع جميع الحقول قبل المتابعة — يفتح المعالج عند الخطوة 1 مع تعبئة هذه المسودة، ولا يُرسل أي شيء حتى تكمل الخطوات.",
+      "fieldTitle": "العنوان",
+      "fieldDescription": "الوصف",
+      "fieldType": "نوع التغيير",
+      "fieldRisk": "المخاطر المقترحة",
+      "fieldDevices": "الأجهزة المطابقة",
+      "fieldImplementation": "خطة التنفيذ",
+      "fieldValidation": "خطة التحقق",
+      "fieldRollback": "خطة التراجع",
+      "fieldWindow": "النافذة المقترحة",
+      "devicesNone": "لم تُطابق أي أجهزة بعينها — حدّد الأجهزة في خطوة نطاق المعالج.",
+      "openInWizard": "الفتح في المعالج"
+    },
+    "rca": {
+      "generate": "توليد مسودة آلية",
+      "generating": "جارٍ إعداد المسودة…",
+      "banner": "مسودة بالذكاء الاصطناعي — راجِعها قبل الحفظ",
+      "confidenceLabel": "درجة الثقة",
+      "confidence": {
+        "low": "منخفضة",
+        "medium": "متوسطة",
+        "high": "مرتفعة"
+      },
+      "contributingLabel": "العوامل المساهمة:",
+      "hint": "تُعدّ المسودة من الجدول الزمني للحوادث وتُعبّئ النموذج أدناه — لا يُحفظ أي شيء حتى تضغط حفظ المراجعة."
+    },
+    "query": {
+      "title": "اسأل الشبكة",
+      "intro": "اطرح سؤالك بلغة طبيعية — يصنّفه الذكاء الاصطناعي، وينفّذ استعلاماً للقراءة فقط على FayaNMS، ثم يجيب استناداً حصراً إلى النتائج المعادة.",
+      "cardHint": "إجابات بلغة طبيعية عن الأجهزة والحوادث والتغييرات والمهام.",
+      "promptLabel": "سؤالك",
+      "placeholder": "مثال: أي المبدّلات الأساسية تعمل بإصدار برنامج قديم؟",
+      "examplesLabel": "أمثلة",
+      "example_firmware": "أي المبدّلات الأساسية تعمل بإصدار برنامج قديم؟",
+      "example_incidents": "اعرض الحوادث الحرجة المفتوحة في المقر الرئيسي",
+      "example_changes": "كيف سارت آخر التغييرات؟",
+      "example_summary": "أعطني ملخصاً عن حالة الشبكة",
+      "ask": "اسأل",
+      "asking": "جارٍ السؤال…",
+      "elapsed": "مرّت {seconds} ثانية — قد يستغرق الإجابة حتى دقيقة",
+      "errorTitle": "تعذّر الإجابة على السؤال",
+      "summaryTitle": "الإجابة",
+      "resultsTitle": "نتائج الاستعلام",
+      "devices": "الأجهزة",
+      "incidents": "الحوادث",
+      "changes": "التغييرات",
+      "jobs": "المهام",
+      "predictive": "ترتيب المخاطر (تقريبي)",
+      "snapshot": "لمحة عن الشبكة",
+      "viewInDevices": "العرض في الأجهزة",
+      "viewInIncidents": "العرض في الحوادث",
+      "viewInChanges": "العرض في التغييرات",
+      "viewInJobs": "العرض في المهام",
+      "viewInPredictive": "العرض في الصحة التنبؤية",
+      "viewInDashboard": "العرض في لوحة القيادة",
+      "fallbackNote": "ملخص الذكاء الاصطناعي غير متاح — يُعرض ملخص حتمي مبني على النتائج نفسها.",
+      "groundedInLabel": "مستندة إلى",
+      "groundedDevices": "{count} أجهزة",
+      "groundedIncidents": "{count} حوادث",
+      "groundedChanges": "{count} تغييرات",
+      "groundedJobs": "{count} مهام",
+      "groundedSnapshot": "لمحة عن الشبكة",
+      "filtersLabel": "عوامل التصفية:"
+    },
+    "errors": {
+      "unavailable": "خدمة الذكاء الاصطناعي غير متاحة مؤقتاً. حاول مرة أخرى بعد قليل.",
+      "badResponse": "أعاد الذكاء الاصطناعي استجابة غير قابلة للاستخدام. أعد المحاولة.",
+      "notFound": "السجل المطلوب لم يعد موجوداً."
+    }
+  },
+  "netif": {
+    "title": "الواجهات",
+    "description": "جرد الواجهات على كل الأجهزة — حالة الإدارة والتشغيل والسرعة وشبكة VLAN ونسبة الاستخدام وآخر تقلب.",
+    "kpi": {
+      "total": "إجمالي الواجهات",
+      "totalHint": "كل الواجهات المكتشفة على الأجهزة المُدارة",
+      "up": "تعمل تشغيلياً",
+      "upHint": "واجهات تنقل الحركة في الوقت الحالي",
+      "down": "متوقفة تشغيلياً",
+      "downHint": "وصلات متوقفة لا تنقل الحركة",
+      "adminDown": "معطَّلة إدارياً",
+      "adminDownHint": "تم تعطيلها عن طريق الإعداد",
+      "adminDownStatus": "مغلقة بالإعداد",
+      "flapping": "تقلبت (24 ساعة)",
+      "flappingHint": "آخر تقلب للوصلة خلال الـ 24 ساعة الماضية",
+      "flappingStatus": "تقلب حديث"
+    },
+    "filters": {
+      "searchAria": "البحث في الواجهات",
+      "searchPlaceholder": "الاسم أو عنوان MAC أو الوصف…",
+      "siteAria": "تصفية حسب الموقع",
+      "allSites": "كل المواقع",
+      "operAria": "تصفية حسب حالة التشغيل",
+      "allOper": "كل حالات التشغيل",
+      "adminAria": "تصفية حسب حالة الإدارة",
+      "allAdmin": "كل حالات الإدارة"
+    },
+    "table": {
+      "title": "الجرد",
+      "description": "الوصف",
+      "ariaLabel": "جرد الواجهات — الجهاز والواجهة وحالة الإدارة والتشغيل والسرعة وشبكة VLAN والاستخدام وعنوان MAC والوصف وآخر تقلب في كل صف",
+      "device": "الجهاز",
+      "interface": "الواجهة",
+      "admin": "الإدارة",
+      "oper": "التشغيل",
+      "speed": "السرعة",
+      "vlan": "VLAN",
+      "utilization": "الاستخدام",
+      "mac": "MAC",
+      "lastFlap": "آخر تقلب",
+      "openRowAria": "فتح {device} — {name}",
+      "openDevice": "فتح تفاصيل الجهاز",
+      "utilSrOnly": "{pct} من سعة الوصلة",
+      "emptyTitle": "لا توجد واجهات مطابقة",
+      "emptyDescription": "لم يتم اكتشاف أي واجهات بعد — شغّل الاكتشاف لتعبئة الجرد.",
+      "emptyFilteredDescription": "لا توجد واجهات تطابق عوامل التصفية الحالية — امسحها لعرض الجرد الكامل."
+    },
+    "error": {
+      "title": "تعذّر تحميل الواجهات"
+    },
+    "pagination": {
+      "summary": "{count} واجهة",
+      "pageOf": "صفحة {page} من {totalPages}",
+      "prev": "السابق",
+      "next": "التالي",
+      "prevAria": "الصفحة السابقة",
+      "nextAria": "الصفحة التالية"
+    }
+  },
+  "topo": {
+    "title": "خريطة الشبكة",
+    "description": "مناطق المواقع مع الأجهزة وأزواج التوافر العالي ودارات CMDB ووصلات المنبع المحاكاة على خريطة واحدة حتمية.",
+    "banner": "بيانات تجريبية — الوصلات تصميم محاكاة موثّق فوق المخزون الحقيقي: العقد مواقع وأجهزة حقيقية، ووصلات التوافر العالي تعكس مصفوفة التكرار الموثّقة، ووصلات الدارات مصدرها CMDB، ووصلات المنبع مراسي مُبتكرة. ليست طوبولوجيا مكتشفة — لا تستخدمها لتخطيط الانقطاعات أو السعة.",
+    "errorTitle": "تعذّر تحميل خريطة الشبكة",
+    "kpi": {
+      "sites": "المواقع",
+      "sitesHint": "المناطق المرسومة على الخريطة",
+      "devices": "الأجهزة",
+      "devicesHint": "الأجهزة المُدارة في المخطط (غير المُدارة مستثناة)",
+      "links": "الوصلات",
+      "linksHint": "وصلات التوافر العالي والدارات والمنبع مجتمعة",
+      "simulated": "وصلات محاكاة",
+      "simulatedHint": "تصميم وصلات المنبع المحاكى الموثّق"
+    },
+    "map": {
+      "title": "الخريطة الطوبولوجية",
+      "description": "خريطة SVG حتمية — مرّر أفقيًا على الشاشات الصغيرة؛ انقر جهازًا لعرض تفاصيله"
+    },
+    "filter": {
+      "all": "كل المواقع"
+    },
+    "filterAria": "تصفية الخريطة حسب الموقع",
+    "legend": {
+      "status": "حالة الجهاز:",
+      "edges": "أنواع الوصلات:"
+    },
+    "edgeType": {
+      "ha": "زوج توافر عالٍ",
+      "circuit": "دارة",
+      "uplink": "وصلة منبع (محاكاة)"
+    },
+    "haEdgeLabel": "HA",
+    "unassignedSite": "أجهزة دون موقع",
+    "unassignedHint": "أجهزة غير مرتبطة بموقع",
+    "nodeAria": "الجهاز {hostname} — الحالة {status}، الدور {role}. يفتح تفاصيل الجهاز.",
+    "mapAria": "خريطة الطوبولوجيا: {sites} مواقع و{devices} جهاز و{links} وصلات. جدول الوصلات أدناه يعرض البيانات نفسها.",
+    "role": {
+      "CORE_ROUTER": "موجّه أساسي",
+      "EDGE_ROUTER": "موجّه طرفي",
+      "BRANCH_ROUTER": "موجّه فرعي",
+      "FIREWALL": "جدار ناري",
+      "CORE_SWITCH": "مبدّل أساسي",
+      "ACCESS_SWITCH": "مبدّل وصول",
+      "TOP_OF_RACK": "مبدّل أعلى الحامل",
+      "WIRELESS_CONTROLLER": "متحكم لاسلكي",
+      "LOAD_BALANCER": "موزّع أحمال",
+      "WAN_GATEWAY": "بوابة WAN",
+      "other": "جهاز"
+    },
+    "links": {
+      "title": "قائمة الوصلات",
+      "description": "كل وصلة على الخريطة في جدول — التمثيل الميسور للرسم التخطيطي",
+      "emptyTitle": "لا وصلات",
+      "emptyDescription": "لا وصلات تلمس التحديد الحالي — أعد التصفية إلى كل المواقع."
+    },
+    "empty": {
+      "title": "لا أجهزة للرسم",
+      "description": "لم يُعثر على أجهزة مُدارة — استورد أو تبنَّ أجهزة لرسم الطوبولوجيا."
+    },
+    "table": {
+      "type": "النوع",
+      "endpoints": "الطرفتان",
+      "label": "التسمية",
+      "simulated": "محاكاة"
+    },
+    "simulatedBadge": "محاكاة"
+  },
+  "builder": {
+    "title": "منشئ التقارير",
+    "description": "أنشئ تقارير مخصصة من بيانات المنصة الحية، عاينها فورًا، واحفظ اختيارك كجدول زمني متكرر.",
+    "cardTitle": "إنشاء تقرير",
+    "cardDescription": "اختر نوع التقرير وتكرار التحليل وصيغة التسليم، ثم شغّل معاينة على البيانات الحية.",
+    "typeGroupLabel": "نوع التقرير",
+    "typeGroupAria": "اختيار نوع التقرير",
+    "typeHint": {
+      "AVAILABILITY": "نسبة التوفر ومدة التوقف لكل جهاز خلال النافذة المحددة، مع عرض الأجهزة الأسوأ أولًا.",
+      "BACKUP_COMPLIANCE": "أحدث نسخة احتياطية ناجحة لكل جهاز مع التصنيف: ملتزم / متأخر / قديم.",
+      "CHANGE_SUMMARY": "طلبات التغيير خلال آخر ٣٠ يومًا مجمّعة حسب الحالة ومستوى الخطورة.",
+      "INCIDENT_SUMMARY": "الحوادث خلال آخر ٣٠ يومًا حسب الخطورة مع متوسطي الاستجابة والمعالجة.",
+      "CAPACITY": "اتجاهات المعالجة والذاكرة والاستغلال متوقعة حتى عتبة ٨٠٪."
+    },
+    "rangeHint": "النطاق المتوقع: {range}",
+    "frequencyLabel": "التكرار",
+    "frequencyAria": "تكرار التقرير",
+    "formatLabel": "الصيغة",
+    "formatAria": "صيغة التقرير",
+    "formatNote": "PDF و XLSX مجرد وسم لصيغة التسليم في هذه المنصة التجريبية — بيانات المعاينة متطابقة. نزّل CSV أو JSON للحصول على الملف الفعلي.",
+    "run": "تشغيل المعاينة",
+    "saveSchedule": "حفظ كجدول",
+    "emptyTitle": "لا توجد معاينة بعد",
+    "emptyDescription": "اختر نوع التقرير والتكرار والصيغة، ثم شغّل المعاينة لعرض النتائج هنا.",
+    "errorTitle": "فشل إنشاء التقرير",
+    "previewTitle": "معاينة",
+    "previewTableAria": "جدول معاينة التقرير",
+    "metaGeneratedAt": "وقت الإنشاء",
+    "metaRange": "النطاق",
+    "metaRows": "الصفوف",
+    "metaCorrelation": "معرّف الارتباط",
+    "metaFormat": "صيغة التسليم",
+    "downloadCsv": "تنزيل CSV",
+    "downloadJson": "تنزيل JSON",
+    "dialog": {
+      "title": "حفظ كجدول",
+      "description": "سيعيد الجدول استخدام اختيار المنشئ الحالي ويعمل وفق تكراره.",
+      "name": "اسم الجدول",
+      "namePlaceholder": "مثال: ملخص التوفر اليومي",
+      "nameInvalid": "الاسم مطلوب بحيث لا يقل عن حرف واحد ولا يزيد عن ١٢٠ حرفًا.",
+      "recipients": "المستلمون",
+      "recipientsPlaceholder": "ops@example.com, net@example.com",
+      "recipientsInvalid": "أدخل بريدًا إلكترونيًا صحيحًا واحدًا على الأقل.",
+      "recipientsHint": "عناوين مفصولة بفواصل، حتى ٢٠ عنوانًا.",
+      "selectionSummary": "سيُستخدم اختيار المنشئ الحالي:",
+      "submit": "حفظ الجدول"
+    },
+    "toast": {
+      "saved": "تم حفظ الجدول",
+      "savedDescription": "أُضيف «{name}» إلى التقارير المجدولة.",
+      "saveFailed": "تعذر حفظ الجدول",
+      "runFailed": "تعذر إنشاء التقرير"
+    },
+    "success": {
+      "title": "تم حفظ الجدول",
+      "body": "أصبح «{name}» ظاهرًا الآن في قائمة التقارير المجدولة.",
+      "openScheduled": "فتح التقارير المجدولة",
+      "close": "إغلاق"
+    }
+  }
 }

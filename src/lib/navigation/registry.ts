@@ -68,14 +68,14 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
   "network.interfaces": {
     title: "Interfaces",
     description: "Interface inventory across devices",
-    phase: "Phase 2 — Device Inventory",
+    phase: "Phase 18 — Final views closeout",
     group: "Network",
     labelKey: "nav.items.network.interfaces",
   },
   "network.topology": {
     title: "Topology",
     description: "Network topology map",
-    phase: "Phase 2 — Device Inventory",
+    phase: "Phase 18 — Final views closeout",
     group: "Network",
     labelKey: "nav.items.network.topology",
   },
@@ -315,7 +315,7 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
   "reports.builder": {
     title: "Report Builder",
     description: "Compose custom reports",
-    phase: "Phase 9 — Hardening & demo readiness (stretch)",
+    phase: "Phase 18 — Final views closeout",
     group: "Reports",
     labelKey: "nav.items.reports.builder",
   },
