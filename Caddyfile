@@ -1,9 +1,23 @@
-:81 {
-	@transform_port_query {
-		query XTransformPort=*
-	}
+# FayaNMS gateway (P19 / audit SEC-007).
+#
+# The upstream-port-in-query mechanism is REQUIRED by this sandbox platform
+# (mini-services are reached through the single exposed port via
+# ?XTransformPort=<port>). The audit finding — user input selecting an
+# arbitrary localhost upstream — is remediated with a strict ALLOWLIST:
+# only 3000 (web app) and 3030 (network worker) are ever proxied. Any other
+# (or absent) value falls through to the default handle, i.e. the web app —
+# probing internal services on other localhost ports through the public
+# listener is no longer possible.
+#
+# When you add a new mini-service, add its port to the expression below.
+#
+# NOTE: the running gateway process picks this file up on its next
+# (re)start; in this sandbox the platform owns that lifecycle.
 
-	handle @transform_port_query {
+:81 {
+	@port_allowed expression {query.XTransformPort} == "3000" || {query.XTransformPort} == "3030"
+
+	handle @port_allowed {
 		reverse_proxy localhost:{query.XTransformPort} {
 			header_up Host {host}
 			header_up X-Forwarded-For {remote_host}
