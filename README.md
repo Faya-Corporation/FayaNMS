@@ -123,15 +123,16 @@ adapter certification.
 
 Known limitations (not production claims): the device data plane remains a deterministic
 SIMULATOR; SQLite is single-writer and the demo db is no longer committed (rebuild via the
-seed above); the CI workflow is ACTIVE under `.github/workflows/ci.yml` (lint + typecheck +
-tests + schema + i18n parity + build + gitleaks/semgrep/osv/SBOM/trivy scans) but branch
-protection and required status checks must still be enabled in GitHub settings (a
-repository-settings action, not a commit); approval-quorum (CAB ≥2 distinct approvers) and
-approval-expiry fingerprints are Phase-21 policy work; service JWTs remain symmetric-secret
-(per-service keys / asymmetric signing = Phase 21); the design-governance QA matrix is
-substantially executed with recorded evidence — including a full 43-view cycle at 1920, a
-full 43-view WCAG-320px reflow sweep and scripted keyboard-only cells — with the remaining
-cells tracked in §6 there.
+seed above); the CI gate ships ready-to-activate in `docs/ci/ci-gate.yml` (now including the
+Phase 19-C `bun test` security suite) — pushing `.github/workflows/ci.yml` is blocked by the
+current PAT's missing `workflow` scope (the ready commit lives on the local branch
+`local/ci-workflow-activation`), and branch protection + required status checks must be
+enabled in GitHub settings (a repository-settings action, not a commit); approval-quorum
+(CAB ≥2 distinct approvers) and approval-expiry fingerprints are Phase-21 policy work;
+service JWTs remain symmetric-secret (per-service keys / asymmetric signing = Phase 21); the
+design-governance QA matrix is substantially executed with recorded evidence — including a
+full 43-view cycle at 1920, a full 43-view WCAG-320px reflow sweep and scripted keyboard-only
+cells — with the remaining cells tracked in §6 there.
 
 ## Repository layout
 

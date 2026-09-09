@@ -1434,3 +1434,16 @@ Work Log:
 
 Stage Summary:
 - P0 AUTHZ-101A/B/C/D CLOSED (server-authoritative + negative-tested), plus two regressions the re-audit missed (changes/[id] PATCH synthesized actor; resolveAdminActor fallback). SVC-101, GATEWAY-101 mitigated, CRYPTO-101, AUD-101 implemented. 47 bun tests green (role matrix, static authorization-contract inventory with pinned allowlist, service-auth, crypto, chain link-walk). tsc src/ 0 errors, lint 0. Remaining honest gaps: branch protection (GitHub settings), CAB quorum + approval fingerprints (Phase 21), symmetric service secrets (Phase 21), Postgres/real-adapters (Phase 21/22).
+
+---
+Task ID: 19C-d
+Agent: Orchestrator (Z.ai Code)
+Task: Phase 19-C closeout — CI activation attempt, push, remote verification
+
+Work Log:
+- docs/ci/ci-gate.yml upgraded: Phase 19-C bun test security suite added to the gate job (lint → tsc → tests → prisma validate → fresh-db push → i18n parity → build + the Phase-20 scan job); ENABLE note now documents the workflow-scope blocker and the preserved ready-to-push branch.
+- ATTEMPTED .github/workflows/ci.yml push (3 commits incl. a dedicated ci commit): remote rejected — PAT lacks the `workflow` scope (same as P19-10). The ready commit is preserved on local branch `local/ci-workflow-activation`; main was reset to exclude it and re-pushed without it. README/worklog updated to the honest state (gate ready-to-activate, activation = settings/token action).
+- Terminal-output lesson recorded: this channel strips ANSI CSI-like sequences — `[main]` displays as `ain]` — which briefly masqueraded as a file corruption during the ci-gate.yml edit (a byte-level follow-up actually DID corrupt the file; git checkout restored it and the Edit tool re-applied cleanly).
+
+Stage Summary:
+- Phase 19-C COMPLETE on main: authorization matrix server-authoritative + negative-tested, service scopes + issuer allowlist, worker HTTP JWT gate, AAD-bound snapshot encryption, honest chain verifier. Pushed and ls-remote-verified. Remaining gates honestly documented: CI activation (token scope) + branch protection (GitHub settings) + Phase 21/22 infrastructure.

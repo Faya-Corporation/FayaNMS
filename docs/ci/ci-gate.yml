@@ -1,6 +1,8 @@
-# ENABLE: copy this file to .github/workflows/ci.yml (a push token with the
-# `workflow` scope is required — the current repository token lacks it, so
-# the file ships here ready-to-enable instead of live).
+# ENABLE: copy this file to .github/workflows/ci.yml and push with a token
+# carrying the `workflow` scope (the current repository PAT lacks it — P19-10
+# and Phase 19-C both hit the same remote rejection; the ready-to-push commit
+# is preserved on the local branch `local/ci-workflow-activation`). After
+# activation, enable branch protection + required checks in GitHub settings.
 
 name: CI gate
 
@@ -12,9 +14,13 @@ name: CI gate
 #   job `gate`:
 #     1. lint                          (eslint, exit code enforced)
 #     2. typecheck                     (tsc --noEmit — src/ zero-error policy)
-#     3. schema validation             (prisma validate + db push to a fresh DB)
-#     4. i18n parity                   (messages/en.json ≡ messages/ar.json)
-#     5. production build              (next build with ignoreBuildErrors:false)
+#     3. unit/contract/security tests  (bun test tests/ — Phase 19-C
+#                                     AUTHZ-006 suite: role matrix,
+#                                     authorization contract inventory,
+#                                     service auth, crypto, audit chain)
+#     4. schema validation             (prisma validate + db push to a fresh DB)
+#     5. i18n parity                   (messages/en.json ≡ messages/ar.json)
+#     6. production build              (next build with ignoreBuildErrors:false)
 #   job `scan` (audit Phase 20 security gates — definitions, executed in CI):
 #     6. secret scanning               (gitleaks — history + working tree)
 #     7. SAST                          (semgrep p/default, error-severity fails)
@@ -55,6 +61,9 @@ jobs:
 
       - name: Typecheck (tsc --noEmit)
         run: bunx tsc --noEmit
+
+      - name: Tests (role matrix, authorization contract, service auth, crypto, audit chain)
+        run: bun test tests/
 
       - name: Prisma schema validation
         run: bunx prisma validate
