@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { decryptSnapshotTexts } from "@/lib/config/crypto";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import { authenticateServiceRequest } from "@/lib/auth/service-auth";
 import { diffLines, diffStats, type DiffStats } from "@/lib/config/diff";
@@ -139,6 +140,14 @@ export async function POST(request: Request) {
           sha256: true,
           rawText: true,
           normalizedText: true,
+          encKeyId: true,
+          encIv: true,
+          encTag: true,
+          normIv: true,
+          normTag: true,
+          wrappedDek: true,
+          wrapIv: true,
+          wrapTag: true,
         },
       },
     },
@@ -156,6 +165,14 @@ export async function POST(request: Request) {
       sha256: true,
       rawText: true,
       normalizedText: true,
+      encKeyId: true,
+      encIv: true,
+      encTag: true,
+      normIv: true,
+      normTag: true,
+      wrappedDek: true,
+      wrapIv: true,
+      wrapTag: true,
     },
   });
   if (!current) {
@@ -174,12 +191,15 @@ export async function POST(request: Request) {
   }
 
   // Normalized diff (stored normalizedText preferred, computed on the fly
-  // when null — same contract as the 3-b diff endpoint).
+  // when null — same contract as the 3-b diff endpoint). P19 SEC-003: rows
+  // hold ciphertext — decrypt first (legacy rows pass through).
+  const baselineTexts = decryptSnapshotTexts(baseline.snapshot);
+  const currentTexts = decryptSnapshotTexts(current);
   const baselineText =
-    baseline.snapshot.normalizedText ??
-    normalizeConfig(baseline.snapshot.rawText, vendorKey);
+    baselineTexts.normalizedText ??
+    normalizeConfig(baselineTexts.rawText, vendorKey);
   const currentText =
-    current.normalizedText ?? normalizeConfig(current.rawText, vendorKey);
+    currentTexts.normalizedText ?? normalizeConfig(currentTexts.rawText, vendorKey);
 
   const rows = diffLines(baselineText.split("\n"), currentText.split("\n"));
   const stats = diffStats(rows);

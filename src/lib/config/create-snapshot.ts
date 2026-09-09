@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 
 import { normalizeConfig } from "@/lib/config/normalize";
+import { prepareSnapshotColumns, sha256Plaintext } from "@/lib/config/crypto";
 
 /**
  * Shared ConfigSnapshot creation (Task 4-b).
@@ -23,6 +23,12 @@ import { normalizeConfig } from "@/lib/config/normalize";
  * `normalizedText` may be provided by the worker adapters; when omitted it
  * is computed with the vendor-aware normalizer (same output the Phase 3
  * diff engine sees).
+ *
+ * ENCRYPTION (P19 / audit SEC-003): sha256/sizeBytes are computed over the
+ * PLAINTEXT (integrity reference), then both texts are encrypted with the
+ * per-snapshot DEK envelope (src/lib/config/crypto.ts) — the database row
+ * only ever holds base64 ciphertext. FAYANMS_CONFIG_ENC_KEY must be set or
+ * the write throws (fail closed).
  */
 
 /** Transaction client type used by every db.$transaction(async (tx) => …). */
@@ -81,7 +87,7 @@ export async function createSnapshot(
     return { ok: false, reason: "DEVICE_NOT_FOUND" };
   }
 
-  const sha256 = createHash("sha256").update(input.rawText).digest("hex");
+  const sha256 = sha256Plaintext(input.rawText);
   const sizeBytes = Buffer.byteLength(input.rawText, "utf8");
   const normalizedText =
     input.normalizedText ?? normalizeConfig(input.rawText, input.vendorKey ?? device.vendor.key);
@@ -107,8 +113,8 @@ export async function createSnapshot(
       version,
       source: input.source,
       configType: input.configType ?? "RUNNING",
-      rawText: input.rawText,
-      normalizedText,
+      // AES-256-GCM envelope — the DB never sees the plaintext (P19 SEC-003).
+      ...prepareSnapshotColumns(input.rawText, normalizedText),
       sha256,
       sizeBytes,
       userId: input.userId ?? null,

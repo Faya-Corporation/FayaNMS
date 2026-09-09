@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { decryptSnapshotTexts } from "@/lib/config/crypto";
 import { fail, firstIssueMessage, ok } from "../../../../_lib/api";
 import { diffLines, diffStats } from "@/lib/config/diff";
 import { normalizeConfig } from "@/lib/config/normalize";
@@ -73,6 +74,14 @@ async function resolveSnapshot(
       status: true,
       rawText: true,
       normalizedText: true,
+      encKeyId: true,
+      encIv: true,
+      encTag: true,
+      normIv: true,
+      normTag: true,
+      wrappedDek: true,
+      wrapIv: true,
+      wrapTag: true,
     },
   });
 }
@@ -139,12 +148,17 @@ export async function GET(
   const fromUsedStored = mode === "normalized" && fromSnap.normalizedText !== null;
   const toUsedStored = mode === "normalized" && toSnap.normalizedText !== null;
 
+  // P19 SEC-003: snapshot rows hold ciphertext — decrypt (legacy rows with
+  // encKeyId=null pass through as plaintext) before diffing.
+  const fromTexts = decryptSnapshotTexts(fromSnap);
+  const toTexts = decryptSnapshotTexts(toSnap);
+
   const fromText = mode === "raw"
-    ? fromSnap.rawText
-    : (fromSnap.normalizedText ?? normalizeConfig(fromSnap.rawText, vendorKey));
+    ? fromTexts.rawText
+    : (fromTexts.normalizedText ?? normalizeConfig(fromTexts.rawText, vendorKey));
   const toText = mode === "raw"
-    ? toSnap.rawText
-    : (toSnap.normalizedText ?? normalizeConfig(toSnap.rawText, vendorKey));
+    ? toTexts.rawText
+    : (toTexts.normalizedText ?? normalizeConfig(toTexts.rawText, vendorKey));
 
   const rows = diffLines(fromText.split("\n"), toText.split("\n"));
 

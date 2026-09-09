@@ -223,6 +223,21 @@ model ConfigSnapshot {
   normalizedText String?
   sha256         String
   sizeBytes      Int
+  // ── At-rest encryption envelope (P19 / audit SEC-003, AES-256-GCM) ──────
+  // rawText/normalizedText hold BASE64 CIPHERTEXT when encKeyId is set;
+  // encKeyId=null marks legacy plaintext rows (pre-P19 seed data — migrate
+  // with `bun scripts/migrate-encrypt-snapshots.ts`). Per-snapshot random
+  // DEK wrapped with the master key (FAYANMS_CONFIG_ENC_KEY):
+  //   text  = AES-256-GCM(DEK, encIv) [encTag authenticates]
+  //   dek   = AES-256-GCM(MASTER, wrapIv) [wrapTag authenticates]
+  encKeyId       String?
+  encIv          String?
+  encTag         String?
+  normIv         String?
+  normTag        String?
+  wrappedDek     String?
+  wrapIv         String?
+  wrapTag        String?
   userId         String?
   user           User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   changeId       String?

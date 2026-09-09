@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { decryptSnapshotTexts } from "@/lib/config/crypto";
 import { fail, firstIssueMessage, ok, pageMeta, paginationSchema } from "../../../_lib/api";
 import { z } from "zod";
 
@@ -72,6 +73,14 @@ export async function GET(
         sizeBytes: true,
         rawText: true,
         normalizedText: true,
+        encKeyId: true,
+        encIv: true,
+        encTag: true,
+        normIv: true,
+        normTag: true,
+        wrappedDek: true,
+        wrapIv: true,
+        wrapTag: true,
         createdAt: true,
         change: { select: { number: true, title: true } },
         user: { select: { name: true } },
@@ -81,7 +90,11 @@ export async function GET(
   ]);
 
   return ok(
-    rows.map((row) => ({
+    rows.map((row) => {
+      // P19 SEC-003: rows hold AES-256-GCM ciphertext; decrypt for the
+      // privileged viewer payload (legacy encKeyId=null rows pass through).
+      const texts = decryptSnapshotTexts(row);
+      return {
       id: row.id,
       version: row.version,
       source: row.source,
@@ -89,13 +102,14 @@ export async function GET(
       status: row.status,
       sha256: row.sha256,
       sizeBytes: row.sizeBytes,
-      rawText: row.rawText,
-      normalizedText: row.normalizedText,
+      rawText: texts.rawText,
+      normalizedText: texts.normalizedText,
       createdAt: row.createdAt,
       changeNumber: row.change?.number ?? null,
       capturedBy: row.user?.name ?? null,
       correlationId: row.job?.correlationId ?? null,
-    })),
+      };
+    }),
     { ...pageMeta(page, Math.min(pageSize, 50), total), hostname: device.hostname }
   );
 }

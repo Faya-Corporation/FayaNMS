@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { decryptSnapshotTexts } from "@/lib/config/crypto";
 import { db } from "@/lib/db";
 import {
   createSnapshot,
@@ -1074,10 +1075,27 @@ async function executeRollbackStep(
     const preChange = await db.configSnapshot.findFirst({
       where: { changeId: change.id, deviceId: link.deviceId, source: "PRE_CHANGE" },
       orderBy: { version: "desc" },
-      select: { rawText: true, version: true, sha256: true },
+      select: {
+        rawText: true,
+        version: true,
+        sha256: true,
+        encKeyId: true,
+        encIv: true,
+        encTag: true,
+        normIv: true,
+        normTag: true,
+        wrappedDek: true,
+        wrapIv: true,
+        wrapTag: true,
+      },
     });
     if (preChange) {
-      restoreSources.set(link.deviceId, preChange);
+      // P19 SEC-003: decrypt the stored envelope (legacy rows pass through).
+      restoreSources.set(link.deviceId, {
+        rawText: decryptSnapshotTexts(preChange).rawText,
+        version: preChange.version,
+        sha256: preChange.sha256,
+      });
       continue;
     }
     // Fallback: the latest snapshot created before the job started.
@@ -1087,10 +1105,26 @@ async function executeRollbackStep(
         ...(job?.startedAt ? { createdAt: { lt: job.startedAt } } : {}),
       },
       orderBy: { version: "desc" },
-      select: { rawText: true, version: true, sha256: true },
+      select: {
+        rawText: true,
+        version: true,
+        sha256: true,
+        encKeyId: true,
+        encIv: true,
+        encTag: true,
+        normIv: true,
+        normTag: true,
+        wrappedDek: true,
+        wrapIv: true,
+        wrapTag: true,
+      },
     });
     if (fallback) {
-      restoreSources.set(link.deviceId, fallback);
+      restoreSources.set(link.deviceId, {
+        rawText: decryptSnapshotTexts(fallback).rawText,
+        version: fallback.version,
+        sha256: fallback.sha256,
+      });
     } else {
       missing.push(link.device.hostname);
     }

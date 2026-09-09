@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { fail, newCorrelationId } from "../../../../../_lib/api";
+import { decryptSnapshotTexts } from "@/lib/config/crypto";
 import { requirePermission, authErrorToFail } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -88,6 +89,14 @@ export async function GET(
       sha256: true,
       rawText: true,
       status: true,
+      encKeyId: true,
+      encIv: true,
+      encTag: true,
+      normIv: true,
+      normTag: true,
+      wrappedDek: true,
+      wrapIv: true,
+      wrapTag: true,
     },
   });
   if (!snapshot) {
@@ -97,6 +106,11 @@ export async function GET(
       404
     );
   }
+
+  // P19 SEC-003: the stored row holds AES-256-GCM ciphertext — decrypt for
+  // this privileged, permission-checked, audited export (legacy rows with
+  // encKeyId=null pass through as plaintext).
+  const { rawText } = decryptSnapshotTexts(snapshot);
 
   const correlationId = newCorrelationId("DL");
   await db.auditEvent.create({
@@ -120,7 +134,7 @@ export async function GET(
 
   const filename = `${safeFilenamePart(device.hostname)}-v${snapshot.version}.cfg`;
 
-  return new NextResponse(snapshot.rawText, {
+  return new NextResponse(rawText, {
     status: 200,
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
