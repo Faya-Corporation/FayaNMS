@@ -688,6 +688,13 @@ model AuditEvent {
   @@index([actorId])
   @@index([action])
   @@index([correlationId])
+  // P19 / audit AUD-001 — DB-level fork protection: in a linear chain every
+  // row's prevHash is unique (it equals the previous row's hash). The unique
+  // index makes a fork PHYSICALLY IMPOSSIBLE across processes: two writers
+  // that read the same tail cannot both commit; the loser gets P2002 and
+  // re-stamps onto the new tail (retry in src/lib/db.ts). Multiple NULLs are
+  // legal (pre-chain rows) — SQLite UNIQUE treats NULLs as distinct.
+  @@unique([prevHash])
 }
 
 model ReportSchedule {
