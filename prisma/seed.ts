@@ -2467,6 +2467,23 @@ async function printSummary(extra: { samples: number; rollups: number }) {
 }
 
 async function main() {
+  // P19 security gate (audit SEC-004): the demo dataset ships shared
+  // credentials (every seeded user gets the same documented demo password).
+  // Wipe-and-seed must therefore be impossible against a production
+  // environment unless demo mode is explicitly acknowledged.
+  if (
+    process.env.NODE_ENV === "production" &&
+    (process.env.FAYANMS_DEMO_MODE ?? "").trim().toLowerCase() !== "true"
+  ) {
+    console.error(
+      "[seed] REFUSED — prisma/seed.ts installs shared demo credentials and " +
+        "wipes the database. It is blocked when NODE_ENV=production unless " +
+        "FAYANMS_DEMO_MODE=true is explicitly set (the startup security policy " +
+        "then refuses to boot that process)."
+    );
+    process.exit(1);
+  }
+
   console.log("Seeding FayaNMS demo data…");
   await wipe();
   await seedReference();
