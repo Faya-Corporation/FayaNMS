@@ -153,7 +153,7 @@ export function ChangesCalendarView() {
 
       <SectionCard
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {(["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const).map((level) => (
               <ChangeRiskBadge key={level} value={level} />
             ))}

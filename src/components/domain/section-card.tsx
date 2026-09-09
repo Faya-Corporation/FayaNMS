@@ -43,7 +43,12 @@ export function SectionCard({
               </p>
             )}
           </div>
-          {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+          {/* No shrink-0: the actions block must be allowed to shrink to its
+              min-content so flex-wrap headers reflow at narrow widths
+              (G8 matrix 320px reflow check). Icon buttons keep their fixed
+              sizes via their own min-width:auto; wrapping chip legends
+              collapse to their widest chip instead of overflowing. */}
+          {actions && <div className="flex items-center gap-2">{actions}</div>}
         </div>
       )}
       <div className={cn("p-card", contentClassName)}>{children}</div>

@@ -111,8 +111,9 @@ seed above); the CI workflow gates lint + typecheck + schema + i18n parity + bui
 Phase-20 scan definitions (gitleaks secret scan, semgrep SAST, osv-scanner dependency scan,
 syft SBOM, conditional trivy container scan) — shipped ready-to-enable in docs/ci/ci-gate.yml
 pending a workflow-scope push token (the full automated test suite of audit Phase 20 remains
-future work); the design-governance QA matrix is only partially
-executed by design — see §6 there.
+future work); the design-governance QA matrix is substantially executed with recorded
+evidence — including a full 43-view cycle at 1920, a full 43-view WCAG-320px reflow sweep
+and scripted keyboard-only cells — with the remaining cells tracked in §6 there.
 
 ## Repository layout
 

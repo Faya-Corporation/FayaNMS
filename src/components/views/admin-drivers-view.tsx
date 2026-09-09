@@ -71,7 +71,7 @@ export function AdminDriversView() {
             {drivers.map((driver) => (
               <div
                 key={driver.adapter}
-                className="rounded-lg border p-4 transition-colors hover:bg-muted/40"
+                className="min-w-0 rounded-lg border p-4 transition-colors hover:bg-muted/40"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -84,14 +84,18 @@ export function AdminDriversView() {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1">
                   {driver.capabilities.map((cap) => (
-                    <Badge key={cap.key} variant="outline" className="text-[10px]">
+                    <Badge key={cap.key} variant="outline" className="whitespace-normal text-[10px]">
                       {cap.label}
                     </Badge>
                   ))}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1">
                   {driver.modelFlavors.map((flavor) => (
-                    <Badge key={flavor} variant="secondary" className="font-mono text-[10px]">
+                    <Badge
+                      key={flavor}
+                      variant="secondary"
+                      className="whitespace-normal break-all font-mono text-[10px]"
+                    >
                       {flavor}
                     </Badge>
                   ))}

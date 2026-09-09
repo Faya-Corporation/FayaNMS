@@ -470,3 +470,24 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 44px;
 }
+
+/* ------------------------------------------------------------------ */
+/* G8 matrix (2026-09-09) — sr-only ICB-escape containment             */
+/* ------------------------------------------------------------------ */
+
+/* Wide table regions (min-w-[…] tables inside overflow-auto scrollers)
+   contain absolutely-positioned `.sr-only` labels. With no positioned
+   ancestor, an sr-only span's containing block is the INITIAL containing
+   block (html), so its static position (measured across the wide table,
+   e.g. x≈448 inside a 254px scroller) extends documentElement.scrollWidth
+   even though the scroller clips everything else — the Phase 18 RTL
+   escape class, LTR variant. Making every cell a containing block
+   (`position: relative`) pins those labels inside the cell where the
+   scroller clips them. Benign: sticky usage in this codebase is thead-
+   only (position:sticky overrides relative where both would apply), and
+   cell-relative stacking has no z-index conflicts. */
+:where(td, th) {
+  position: relative;
+}
+
+.z-g8-probe { color: red; }

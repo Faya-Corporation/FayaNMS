@@ -161,9 +161,10 @@ export function AppShell() {
           />
 
           <main
-            className="flex-1 px-4 py-5 md:px-6 md:py-6 lg:px-8"
+            className="flex-1 px-4 py-5 outline-none md:px-6 md:py-6 lg:px-8"
             id="main-content"
             ref={mainRef}
+            tabIndex={-1}
           >
             <div className="mx-auto w-full max-w-[1600px]">
               <ViewRouter />

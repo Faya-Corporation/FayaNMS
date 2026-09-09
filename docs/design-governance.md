@@ -142,35 +142,51 @@ Known accepted gaps (reported, out of 8-b ownership):
 
 ---
 
-## 6. QA matrix — Gate G8 (status: PARTIALLY EXECUTED — audit UX-001 remediation)
+## 6. QA matrix — Gate G8 (status: SUBSTANTIALLY EXECUTED — audit UX-001 + Phase 20-016)
 
 The original Gate-G8 claim ("executed") preceded durable per-cell evidence — flagged by the
 2026-09-09 repository audit (UX-001). The matrix below is now HONEST: a cell is marked only
 when browser-verified runs produced recorded evidence; everything else is explicitly not
 executed. A cell passes when the view renders without layout breakage
-(`scrollWidth === viewport` at 375px), matches the token theme, is fully keyboard-operable,
-and respects reduced motion.
+(`scrollWidth === viewport` at the asserted width), matches the token theme, is fully
+keyboard-operable, and respects reduced motion.
 
-Legend: ✅ executed with recorded evidence · ⚠️ executed on a subset of views · — NOT executed yet.
+Legend: ✅ executed with recorded evidence · ⚠️ executed on a subset of views · 🔬 verified
+structurally (implementation reviewed in code; the sandbox browser tooling cannot emulate the
+condition) · — NOT executed yet.
 
 | Width ↓ / Condition → | Light · EN-LTR | Dark · EN-LTR | Light · AR-RTL | Dark · AR-RTL | Keyboard-only | Reduced motion | Zoom 200% |
 |---|---|---|---|---|---|---|---|
-| **375** (mobile) | ⚠️ Phase 18: topology/interfaces/builder + overflow assert (scrollWidth=375 exact) | ⚠️ same Phase 18 pass | ⚠️ Phase 18 RTL pass incl. sr-only escape fix (782→375) | ⚠️ same Phase 18 pass | — | — | — |
-| **768** (tablet) | — | — | — | — | — | — | — |
-| **1440** (laptop) | ⚠️ Phase 18 full view set + P19 golden paths (sign-in → dashboard → changes → approvals decide → audit attribution) | ⚠️ Phase 18 pass | ⚠️ Phase 18 pass | ⚠️ Phase 18 pass | ⚠️ structural (radix focus traps in §5) — not scripted | — | — |
-| **1920** (wallboard/NOC) | — | — | — | — | — | — | — |
+| **320** (WCAG 1.4.10 reflow) | ✅ **full 43-view sweep, sw=320 exact** (G8 pass 2026-09-09) | — | — | — | — | — | — |
+| **375** (mobile) | ⚠️ Phase 18: topology/interfaces/builder + overflow assert (scrollWidth=375 exact); G8-24 pass re-check (calendar, devices) | ⚠️ same Phase 18 pass | ⚠️ Phase 18 RTL pass incl. sr-only escape fix (782→375) | ⚠️ same Phase 18 pass | ✅ skip link → focus lands on `<main>` (after tabIndex fix) + ⌘K palette open/navigate/Esc | 🔬 CSS media block (globals.css) + framer-motion `MotionConfig reducedMotion="user"` mounted at root | ✅ mobile zoom = visual-viewport magnification (layout stays 375, already asserted); the CSS-px equivalent (188px) and the WCAG 320px target are covered by the 320 row |
+| **768** (tablet) | ⚠️ G8-24: 6-view subset (dashboard, devices, backups, changes, perf overview, system settings), sw=768 exact, console clean | ⚠️ G8-24: same subset, `dark` class asserted | ⚠️ G8-24: same subset, dir=rtl + lang=ar asserted | ⚠️ G8-24: same subset | ✅ same scripted pass as 375 | 🔬 same structural verification | ✅ 384px (CSS-px equivalent): 6-view sweep sw=384 exact |
+| **1440** (laptop) | ⚠️ Phase 18 full view set + P19 golden paths (sign-in → dashboard → changes → approvals decide → audit attribution) | ⚠️ Phase 18 pass | ⚠️ Phase 18 pass | ⚠️ Phase 18 pass | ✅ scripted: skip-link focus → main + ⌘K palette (G8-24) | 🔬 same structural verification | ⚠️ 720px baseline (devices) sw=720 exact |
+| **1920** (wallboard/NOC) | ✅ **full 43-view cycle, sw=1920 exact, console clean** (G8 pass 2026-09-09, incl. NOC wallboard) | ⚠️ G8-24: 6-view subset incl. NOC wallboard | ⚠️ G8-24: 6-view subset (RTL) | ⚠️ G8-24: 5-view subset (dark + RTL) | ✅ same scripted pass (G8-24) | 🔬 same structural verification | ✅ 960px: 6-view sweep sw=960 exact |
 
-Evidence pointers: `worklog.md` Phase 18 entries (browser matrix + console zero-error records)
-and Phase 19-a entries (P19 actor-model golden path: approvals decision recorded under the
-authenticated principal, correlationId APR-WDK8QB). Per-cell script (unchanged): load `/`
-signed in as admin → cycle each top-level view group → record pass/fail per cell; 375px
-additionally asserts no horizontal overflow; NOC asserts fullscreen + wallboard density;
-keyboard-only asserts skip link → main content + ⌘K palette; zoom 200% asserts no clipped
-controls.
+Evidence pointers: `worklog.md` Phase 18 entries (browser matrix + console zero-error records),
+Phase 19-a entries (P19 actor-model golden path: approvals decision recorded under the
+authenticated principal, correlationId APR-WDK8QB), and the G8-2026-09-09 pass (worklog 20-a:
+agent-browser transcripts — full 43-view cycle at 1920 light EN, full 43-view reflow sweep at
+320, keyboard-only scripted cells at 375/768/1440/1920, zoom-equivalent sweeps at 384/720/960).
+Per-cell script: load `/` signed in as admin → cycle each top-level view group → record
+pass/fail per cell; narrow widths assert `documentElement.scrollWidth === viewport`;
+NOC asserts wallboard density; keyboard-only asserts skip link → main content + ⌘K palette;
+zoom 200% asserts no clipped controls at the halved CSS-px viewport.
 
-**Status: IMPLEMENTED / PARTIALLY VERIFIED.** Remaining cells (768/1920 rows, keyboard-only,
-reduced motion, zoom 200%) are tracked for the Phase 24 UX-certification pass recommended by
-the audit; until then this document does not claim full-matrix execution.
+**Defects found & fixed by the G8-2026-09-09 pass** (all browser-re-verified):
+skip-link target was not focusable (`<main tabIndex={-1}>` added); header actions row broke
+the 320px reflow target (density + AI buttons now `hidden md:inline-flex`); `.sr-only` labels
+inside wide scroll-region tables escaped the initial containing block
+(`:where(td,th){position:relative}` containment, systemic fix for the Phase 18 escape class);
+SectionCard `actions` wrapper `shrink-0` blocked legend wrapping (removed); Device Drivers
+cards overflowed via nowrap mono badges (`min-w-0` + `whitespace-normal break-all`); Change
+Calendar risk legend lacked `flex-wrap`.
+
+**Status: IMPLEMENTED / SUBSTANTIALLY VERIFIED.** Remaining gaps, tracked for the audit's
+Phase 24 UX-certification pass: full 43-view cycles for the dark/AR rendering cells and the
+768/1440/1920 zoom columns (representative subsets recorded), live-browser reduced-motion
+cells (structurally verified; requires a browser tool with media emulation), and live
+screen-reader passes. This document does not claim full-matrix execution.
 
 ## 7. Change management
 

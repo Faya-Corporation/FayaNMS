@@ -404,12 +404,15 @@ export function AppHeader({
           <ThemeIcon aria-hidden="true" />
         </Button>
 
-        {/* Density toggle */}
+        {/* Density toggle — desktop control: hidden below md so the header
+            actions row can fit the WCAG-1.4.10 320px reflow target (the
+            comfortable default applies on phones; tier switching is a
+            large-viewport concern). */}
         <Button
           aria-label={tHeader("densityAria", {
             tier: tHeader(DENSITY_LABEL_KEY[density]),
           })}
-          className="size-8 md:size-9"
+          className="hidden size-8 md:inline-flex md:size-9"
           onClick={cycleDensity}
           size="icon"
           variant="ghost"
@@ -433,12 +436,14 @@ export function AppHeader({
           <TooltipContent>{tTour("startTour")}</TooltipContent>
         </Tooltip>
 
-        {/* Ask the network (Phase 14-a) — NL query over the whole NMS. */}
+        {/* Ask the network (Phase 14-a) — NL query over the whole NMS.
+            Hidden below md for the 320px reflow target (dashboard exposes
+            the same assistant panel on small screens). */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               aria-label={tHeader("askAi")}
-              className="size-8 md:size-9"
+              className="hidden size-8 md:inline-flex md:size-9"
               onClick={() => setAskOpen(true)}
               size="icon"
               variant="ghost"
