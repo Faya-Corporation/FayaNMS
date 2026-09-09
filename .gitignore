@@ -55,3 +55,15 @@ server.log
 # tool artifacts (orchestrator/agent session outputs)
 tool-results/
 !.env.example
+
+# ── Runtime state (P19-REP: never track live databases, pids, logs) ──
+/db/*.db
+/db/*.db-shm
+/db/*.db-wal
+/db/*.sqlite
+/db/*.sqlite3
+*.pid
+.zscripts/*.pid
+mini-services/**/*.log
+mini-services/**/*.out
+*.out
