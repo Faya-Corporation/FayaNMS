@@ -78,7 +78,7 @@ The worker claims jobs (`CONFIG_BACKUP`, `DISCOVERY`, `DRIFT_CHECK`, `CHANGE_EXE
 ## Conventions
 
 - Every list/detail surface uses the envelope `{ success, data, meta, requestContext }` with Zod-validated inputs and machine-readable error codes.
-- All UI strings live in `messages/en.json` + `messages/ar.json` — kept at exact key parity (1140 = 1140 at time of writing); Arabic is genuine network-ops terminology, not machine translation.
+- All UI strings live in `messages/en.json` + `messages/ar.json` — kept at exact key parity (1285 = 1285 at time of writing); Arabic is genuine network-ops terminology, not machine translation.
 - Accessibility: WCAG 2.2 AA pass (skip link, reduced motion, focus-visible rings, named tables/charts, ≥24px targets); responsive 375 → 1920 with a no-horizontal-overflow rule.
 - High-risk operations (restore, failover test, rebalance apply, deletions) run through typed-confirm `HighRiskActionDialog` flows.
 
