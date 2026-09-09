@@ -66,7 +66,8 @@
         "snapshots": { "title": "Snapshots" },
         "baselines": { "title": "Baselines" },
         "drift": { "title": "Drift" },
-        "compliance": { "title": "Compliance" }
+        "compliance": { "title": "Compliance" },
+        "cmdb": { "title": "CMDB" }
       },
       "changes": {
         "all": { "title": "All Changes" },
@@ -391,9 +392,51 @@
   },
   "capacity": {
     "methodNote": "Forecast v2 — linear trend + weekly seasonality · shaded band = 80% confidence interval (±1.28σ of model residuals)",
+    "forecast": {
+      "title": "Forecast",
+      "selectPrompt": "Select a risk row to inspect its forecast",
+      "pickHint": "Pick a device + metric from the risk table to see its history, the ridge-v3 forecast (with v2 fallback) with an 80% confidence band and the 80% horizon.",
+      "emptyTitle": "No series selected",
+      "chartLabel": "Forecast chart for {hostname} {metric}. Currently {current}, {crossing}.",
+      "noCrossing": "no threshold crossing forecast",
+      "crossing": "crossing the {horizon} percent horizon in {days} days",
+      "chartSummary": "Composed chart: {points} daily history points followed by a {engine} forecast to the {horizon} percent horizon, with a shaded 80 percent confidence band ({band}). Model confidence {confidence} (R² {r2}).",
+      "engineRidge": "ridge-v3 (deterministic ridge regression)",
+      "engineV2": "v2 (linear trend + weekly seasonality)",
+      "confidenceNote": "Forecast v2 — linear trend + weekly seasonality · shaded band = 80% confidence interval (±1.28σ of model residuals) · confidence {confidence} (R² {r2})"
+    },
     "forecastLegend": "Forecast v2 (trend + seasonality)",
     "bandLegend": "80% confidence band",
-    "seasonalityOff": "weekly seasonality needs ≥ 14 days of history — showing linear trend + band"
+    "seasonalityOff": "weekly seasonality needs ≥ 14 days of history — showing linear trend + band",
+    "model": {
+      "title": "Model quality",
+      "selectHint": "Select a risk row to inspect its model quality",
+      "unavailable": "Model quality unavailable",
+      "engine": "Engine",
+      "backtest": "Backtest window",
+      "backtestRange": "{from} – {to}",
+      "trainPoints": "Training points",
+      "validationPoints": "Backtest points",
+      "metricsTitle": "Backtest metrics",
+      "valueHeader": "Value",
+      "mae": "MAE",
+      "rmse": "RMSE",
+      "mape": "MAPE",
+      "r2": "R²",
+      "maeFull": "Mean absolute error",
+      "rmseFull": "Root mean square error",
+      "mapeFull": "Mean absolute percentage error",
+      "r2Full": "Coefficient of determination",
+      "trendPerDay": "Trend per day",
+      "weightsTitle": "Feature weights",
+      "weightsHint": "Standardized ridge coefficients — bar length is normalized to the largest absolute weight; positive bars grow forward of the zero line, negative bars backward.",
+      "weightTrend": "Trend",
+      "weightWeeklySin": "Weekly sin",
+      "weightWeeklyCos": "Weekly cos",
+      "weightWeekend": "Weekend",
+      "skipTooShort": "This series has {points} daily points — ridge-v3 needs at least {required} for a training/backtest split, so no metrics are fabricated.",
+      "engineTag": "ridge-v3 point forecast · v2-derived band"
+    }
   },
   "reports": {
     "runs": {
@@ -595,6 +638,235 @@
       }
     },
     "matrixNote": "Lifecycle classification uses the documented demo vendor matrix (simulated EOS/EOL data) — not a live vendor feed."
+  },
+  "collectors": {
+    "distribution": {
+      "title": "Agent distribution",
+      "description": "Site-resident collector agents with deterministic device assignment and a guarded rebalance plan (documented simulation).",
+      "demoNote": "Simulated agent fleet — assignments are computed deterministically over real devices; applying a plan writes staged audit rows only.",
+      "kpi": {
+        "agents": "Agents",
+        "agentsHint": "Site-resident collectors in the fleet",
+        "devices": "Devices assigned",
+        "devicesHint": "Real devices mapped to agents",
+        "avgLoad": "Average load",
+        "avgLoadHint": "Mean assigned/capacity across agents",
+        "overCapacity": "Over capacity",
+        "overCapacityHint": "Agents above the 85% load line",
+        "uncovered": "Remote-assigned",
+        "uncoveredHint": "Devices polled by a cross-site agent"
+      },
+      "agent": {
+        "assigned": "{assigned} of {capacity} devices",
+        "online": "{count} online",
+        "load": "Load",
+        "score": "Score",
+        "version": "Version",
+        "peer": "Peer",
+        "region": "Region"
+      },
+      "role": {
+        "snmp": "SNMP",
+        "netflow": "NetFlow",
+        "syslog": "Syslog",
+        "config": "Config"
+      },
+      "band": {
+        "normal": "Normal",
+        "elevated": "Elevated",
+        "overCapacity": "Over capacity"
+      },
+      "sites": {
+        "title": "Site coverage",
+        "description": "How much of each site's fleet is polled by local agents",
+        "site": "Site",
+        "devices": "Devices",
+        "online": "Online",
+        "agents": "Agents",
+        "coverage": "Local coverage",
+        "remote": "Remote"
+      },
+      "rebalance": {
+        "button": "Plan rebalance",
+        "buttonBalanced": "Fleet balanced",
+        "dialogTitle": "Apply rebalance plan",
+        "dialogDescription": "Stages a deterministic move set for over-capacity agents. Simulated apply — staged audit rows only, no real collector is redeployed.",
+        "previewLoading": "Computing plan…",
+        "previewError": "Could not compute the rebalance plan",
+        "noMoves": "The fleet is already balanced — no over-capacity agents.",
+        "planId": "Plan",
+        "moves": "{count} move(s)",
+        "impactTitle": "Planned moves",
+        "impactRow": "{hostname}: {from} (load {fromLoad}) → {to} (load {toLoad})",
+        "confirmPhrase": "REBALANCE",
+        "confirmHint": "Type REBALANCE to confirm",
+        "confirmLabel": "Apply plan",
+        "stale": "The plan no longer matches the live assignment — close this dialog and preview again.",
+        "successTitle": "Rebalance applied",
+        "successBody": "{moves} move(s) staged in {seconds}s · correlation {correlationId}",
+        "viewEvents": "Open Event Stream"
+      }
+    }
+  },
+  "cmdb": {
+    "title": "CMDB",
+    "description": "Configuration items over the live inventory — dependency relations, service tiers and deterministic impact analysis.",
+    "errorTitle": "CMDB could not be loaded",
+    "kpi": {
+      "total": "Configuration items",
+      "totalHint": "All CIs registered in the CMDB",
+      "active": "Active",
+      "activeHint": "CIs in active service",
+      "criticalTier": "Critical / tier-1",
+      "criticalTierHint": "Critical CIs and tier-1 service anchors",
+      "relations": "Relations",
+      "relationsHint": "Dependency edges between CIs"
+    },
+    "filters": {
+      "searchLabel": "Search configuration items",
+      "searchPlaceholder": "Search name, CI id…",
+      "type": "Type",
+      "status": "Status",
+      "criticality": "Criticality",
+      "environment": "Environment",
+      "site": "Site",
+      "reset": "Reset",
+      "resetAria": "Clear all filters"
+    },
+    "table": {
+      "title": "CI register",
+      "rowsCount": "{count, plural, one {# configuration item shown} other {# configuration items shown}}",
+      "ciId": "CI ID",
+      "name": "Name",
+      "type": "Type",
+      "criticality": "Criticality",
+      "environment": "Environment",
+      "site": "Site",
+      "device": "Device",
+      "owner": "Owner",
+      "actions": "Actions",
+      "openRelations": "Relations",
+      "openRelationsAria": "Show relations and impact for {ci}",
+      "openDeviceAria": "Open device detail for {hostname}",
+      "emptyTitle": "No configuration items",
+      "emptyDescription": "Create the first CI to start modelling the infrastructure.",
+      "emptyFilteredDescription": "No configuration item matches the current filters."
+    },
+    "create": {
+      "title": "New CI",
+      "description": "Register a configuration item — the CI-… identifier is assigned automatically.",
+      "name": "Name",
+      "namePlaceholder": "e.g. DC Storage Array 01",
+      "ciType": "Type",
+      "criticality": "Criticality",
+      "environment": "Environment",
+      "serviceTier": "Service tier",
+      "site": "Site",
+      "siteAny": "No site",
+      "device": "Linked device",
+      "deviceNone": "No device link",
+      "description": "Description",
+      "descriptionPlaceholder": "What this CI represents…",
+      "submit": "Create CI",
+      "submitting": "Creating CI…",
+      "cancel": "Cancel"
+    },
+    "edit": {
+      "open": "Edit",
+      "title": "Edit {ci}",
+      "description": "Lifecycle status, criticality and description are versioned on the audit trail.",
+      "status": "Status",
+      "criticality": "Criticality",
+      "description": "Description",
+      "descriptionPlaceholder": "Purpose, location, notes…",
+      "submit": "Save changes",
+      "submitting": "Saving…",
+      "cancel": "Cancel"
+    },
+    "relations": {
+      "title": "Relations & impact",
+      "description": "Dependency edges in both directions, with a deterministic impact walk.",
+      "noneSelected": "No CI selected",
+      "noneSelectedDescription": "Select a configuration item from the register to manage its relations and run an impact analysis.",
+      "selectedDescription": "{ci} — {name}",
+      "addTitle": "Add relation",
+      "addTarget": "Target CI",
+      "targetPlaceholder": "Select a CI",
+      "type": "Relation type",
+      "direction": "Direction",
+      "directionOutgoing": "Outgoing (this CI → target)",
+      "directionIncoming": "Incoming (target → this CI)",
+      "add": "Add relation",
+      "adding": "Adding…",
+      "outgoing": "Outgoing — this CI depends on",
+      "incoming": "Incoming — depends on this CI",
+      "emptyOutgoing": "No outgoing relations yet.",
+      "emptyIncoming": "No incoming relations yet.",
+      "removeAria": "Remove the {type} relation with {ci}"
+    },
+    "impact": {
+      "title": "Impact analysis",
+      "description": "Deterministic breadth-first walk of the dependency graph — cycle-safe.",
+      "lookup": "Analyze impact",
+      "clear": "Clear",
+      "hint": "Run the analysis to see which CIs are reachable upstream and downstream of the selected item.",
+      "analyzed": "Analyzed: {ci} — {name}",
+      "depthNote": "max {depth} hops",
+      "upstream": "Upstream — what this CI depends on",
+      "downstream": "Downstream — what is impacted when this CI fails",
+      "hops": "{count, plural, one {# hop} other {# hops}}",
+      "empty": "No CIs reachable in this direction.",
+      "loadFailed": "The impact analysis could not be loaded."
+    },
+    "audits": {
+      "title": "CMDB audit history",
+      "description": "Recent CMDB audit events — created, updated, relations.",
+      "empty": "No CMDB activity recorded yet."
+    },
+    "status": {
+      "active": "Active",
+      "planned": "Planned",
+      "retired": "Retired",
+      "maintenance": "Maintenance"
+    },
+    "criticality": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "critical": "Critical"
+    },
+    "environment": {
+      "production": "Production",
+      "staging": "Staging",
+      "lab": "Lab"
+    },
+    "tier": {
+      "tier-1": "Tier 1 — business critical",
+      "tier-2": "Tier 2 — business support",
+      "tier-3": "Tier 3 — best effort"
+    },
+    "type": {
+      "device": "Device",
+      "interface": "Interface",
+      "service": "Service",
+      "application": "Application",
+      "site": "Site",
+      "circuit": "Circuit"
+    },
+    "relation": {
+      "runs_on": "runs on",
+      "connects_to": "connects to",
+      "part_of": "part of",
+      "depends_on": "depends on",
+      "monitored_by": "monitored by"
+    },
+    "toast": {
+      "createdTitle": "CI {ci} created",
+      "updatedTitle": "CI {ci} updated",
+      "relationCreatedTitle": "Relation {source} → {target} created",
+      "correlation": "Correlation {correlation}",
+      "failedTitle": "The operation could not be completed"
+    }
   },
   "ha": {
     "title": "HA / DR Topology",

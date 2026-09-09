@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   Cpu,
   DatabaseBackup,
+  DatabaseZap,
   FileDiff,
   FilePlus,
   FileText,
@@ -87,6 +88,7 @@ export const SIDEBAR_GROUPS: SidebarGroupConfig[] = [
       { view: "config.baselines", icon: ShieldCheck },
       { view: "config.drift", icon: FileDiff },
       { view: "config.compliance", icon: BadgeCheck },
+      { view: "config.cmdb", icon: DatabaseZap },
     ],
   },
   {

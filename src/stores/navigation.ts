@@ -24,6 +24,7 @@ export type ViewKey =
   | "config.baselines"
   | "config.drift"
   | "config.compliance"
+  | "config.cmdb"
   // Changes
   | "changes.all"
   | "changes.mine"

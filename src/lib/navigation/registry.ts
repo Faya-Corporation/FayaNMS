@@ -136,6 +136,13 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
     group: "Configurations",
     labelKey: "nav.items.config.compliance",
   },
+  "config.cmdb": {
+    title: "CMDB",
+    description: "Configuration items, dependency relations and impact analysis",
+    phase: "Phase 15 — Parked-tier pull-forward (15-a)",
+    group: "Configurations",
+    labelKey: "nav.items.config.cmdb",
+  },
 
   "changes.all": {
     title: "All Changes",

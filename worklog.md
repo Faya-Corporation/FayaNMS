@@ -1147,3 +1147,80 @@ Work Log:
 
 Stage Summary:
 - Phase 14 COMPLETE — parked-tier pull-forward #3 delivered: "Ask the network" NL queries (read-only, two-stage LLM, grounded + audited), zero-touch provisioning end-to-end (schema + worker + templates + guarded claims), HA/DR topology (deterministic matrix, audit-as-event-store failover state, staged tests). No new dependencies. i18n parity 920=920. Remaining parked: full CMDB, collector agent distribution, capacity ML v3 tier — documented non-MVP.
+
+---
+Task ID: 15-kickoff
+Agent: Orchestrator (Z.ai Code)
+Task: Phase 15 — Final parked-tier pull-forward #4: full CMDB + collector agent distribution + capacity ML v3 (multi-agent parallel)
+
+Work Log:
+- State verified: HEAD d8dbcda == remote main (Phase 14 pushed), tree clean; dev :3000 200; worker had died (documented decay pattern) — restarted, :3030/health 200. Parity baseline 920=920 zero diff. Capacity API at src/app/api/v1/performance/capacity/route.ts; audit helper src/lib/audit/chain.ts; messages at messages/{en,ar}.json.
+- Scope (final parked list, NO new dependencies, NO worker-file edits this phase — all Next-side):
+  (1) 15-a FULL CMDB — SOLE schema owner: prisma models CmdbItem (ciId unique like CI-000123, name, ciType device|interface|service|application|site|circuit, status active|planned|retired|maintenance, criticality low|medium|high|critical, environment production|staging|lab, ownerId?, siteId?, deviceId? link to real Device, serviceTier, description, timestamps) + CmdbRelation (sourceId, targetId, relationType runs_on|connects_to|part_of|depends_on|monitored_by, unique pair+type, timestamps) + db:push + EARLY pristine reseed (seed CIs for real devices/sites + 2-3 service CIs composed via relations + a circuit/application CI); APIs /api/v1/cmdb/items (GET list w/ filters + POST create Zod, 409 duplicate ciId/name), /api/v1/cmdb/items/[id] (GET detail w/ relations both directions + PATCH status/owner), /api/v1/cmdb/impact (GET ?itemId= — BFS over relations for upstream/downstream impact with path hops, deterministic); cmdb-view.tsx registered config.cmdb (Configurations group after compliance): KPIs by type/status, CI table w/ criticality badges + device deep links, relations section, create-CI dialog, impact panel; audits CMDB_CI_CREATED / CMDB_CI_UPDATED / CMDB_RELATION_CREATED via src/lib/audit/chain.ts.
+  (2) 15-b COLLECTOR AGENT DISTRIBUTION — zero schema, extends EXISTING admin-collectors view + API: src/lib/collectors/distribution.ts deterministic in-code collector agent fleet (site-resident agents over REAL seed sites: HQ-SAN/DC-ADN/BR1/BR2-MUK etc., each w/ version, role snmp|netflow|syslog|config, capacity, region) + deterministic device→collector assignment (hash-based stable assignment of real devices to agents w/ load balancing score); GET extension on admin collectors endpoint (or /api/v1/admin/collectors/distribution) returns fleet + per-site coverage matrix + per-agent device counts/throughput + load score; POST /api/v1/admin/collectors/rebalance-plan deterministic guarded plan preview (staged audits COLLECTOR_REBALANCE_PLANNED/APPLIED w/ shared correlationId, HighRiskActionDialog pattern); admin-collectors-view.tsx gains distribution section: site coverage matrix, agent cards w/ load bars + versions + heartbeat, rebalance flow; NO registry/nav changes (reuses admin.collectors).
+  (3) 15-c CAPACITY FORECAST V3 (ML tier) — zero schema, additive over v2: src/lib/capacity/regression.ts deterministic ridge regression via fixed-iteration gradient descent (standardized features: intercept/trend/weekly sin-cos/weekend flag; lambda=0.5; seeded init; convergence fixed), train/validation split (last 25% backtest), metrics MAE/RMSE/MAPE/R² deterministic across calls; extend capacity API response additively (model: {engine:'ridge-v3', metrics, featureWeights, trainedPoints, backtestWindow} per signal; forecast from v3 blended w/ v2 band preserved) — backward compatible; perf-capacity-view gains Model quality card (metrics table + per-feature weights + backtest note, t()-localized) + engine badge; zero registry/nav changes (reuses perf.capacity).
+- Shared-file discipline: api-client.ts / query-keys.ts / messages/*.json touched by ALL THREE (surgical Edit ops, unique anchors); 15-a SOLELY owns prisma/schema.prisma + seed + registry/view-router/sidebar (config.cmdb); 15-b owns admin-collectors API + view + src/lib/collectors; 15-c owns capacity lib + capacity API + perf-capacity-view. NOBODY touches app-header.tsx (14-a lesson). NO worker edits.
+- Gate G15: tsc 0 errors under src/, lint 0, i18n parity EN=AR zero diff (920 + new keys), golden paths (CMDB create→relate→impact→audits; distribution matrix from real devices + deterministic scores + guarded rebalance w/ staged audits; v3 metrics byte-identical across calls + UI quality card), browser matrix EN/AR × light/dark × 375/1440, zero console errors, pristine reseed, commit + push + ls-remote verify.
+
+Stage Summary:
+- Three parallel shards launched: 15-a, 15-b, 15-c (full-stack-developer each). All must read this worklog first, follow conventions, append their own entries, NOT commit.
+
+---
+Task ID: 15-a
+Agent: full-stack-developer (work landed pre-deadline; entry reconstructed + verified by Orchestrator)
+Task: Full CMDB — CmdbItem/CmdbRelation schema, CI/relation/impact APIs, cmdb-view at config.cmdb
+
+Work Log:
+- prisma/schema.prisma: models CmdbItem (line ~812: ciId unique CI-000NNN, name unique, ciType device|interface|service|application|site|circuit, status, criticality, environment, serviceTier, description, deviceId→Device link, siteId, ownerId, timestamps; outgoing/incoming CmdbRelation named relations) + CmdbRelation (sourceId/targetId/relationType runs_on|connects_to|part_of|depends_on|monitored_by, @@unique triple); bun run db:push OK.
+- Seed extended (78 cmdb references): CIs for real devices joined to live hostname/status, site CIs, composite service CI "HQ Core Network Service" + circuit/application CIs; 23 items + 35 relations seeded pristine.
+- APIs: /api/v1/cmdb/items (GET filters q/type/status/criticality/environment/site + counts + sites + history; POST auto CI-000NNN + 409 duplicate), /api/v1/cmdb/items/[id] (detail w/ both-direction relations + PATCH), /api/v1/cmdb/relations (GET/POST/DELETE w/ guards), /api/v1/cmdb/impact (deterministic BFS upstream+downstream w/ hop paths via relation types).
+- Frontend: cmdb-view.tsx registered config.cmdb (registry + view-router + sidebar Configurations after compliance) — KPI row (25→26 during probe; 23 post-reseed), CI register w/ criticality/environment badges + device deep links + Relations actions, Relations & impact section, create-CI dialog (type/criticality/environment/tier/site/device pickers), use-cmdb hook + cmdb query-keys + cmdb.* i18n both locales.
+- ORCHESTRATOR FIX (documented): filter bar originally in SectionCard actions slot (shrink-0) forced 866px past 375px (scrollWidth 899 @375 RTL) — moved into card body as a wrapping bordered row; scrollWidth exactly 375 both directions after fix; 1440px layout intact.
+
+Stage Summary:
+- Parked item "full CMDB" delivered: schema + seed + 4 route groups + registered view with create-CI golden path verified in-browser (G15 Browser Probe CI → CI-000026 appeared in table + API; deleted by reseed). Impact BFS verified: HQ Core Network Service ← depends_on hop paths to real core devices.
+
+---
+Task ID: 15-b
+Agent: Orchestrator (Z.ai Code) — shard died pre-landing; built entirely orchestrator-side
+Task: Collector agent distribution — deterministic fleet + device assignment + guarded rebalance
+
+Work Log:
+- src/lib/collectors/distribution.ts (~430 lines, DEMO-SIMULATION documented): 7-agent in-code fleet over REAL seed sites (HQ-SAN ×3 snmp/netflow/config, DC-ADN ×2 snmp/syslog, BR1/BR2 edge, each w/ version/capacity/peerAgentId); FNV-1a deterministic device→agent assignment (site-resident → peer-site → fallback w/ via reason); AgentLoad {assigned, online, load=assigned/capacity, band normal|elevated|over-capacity (0.70/0.85 ladder), score=100×(1−max(0,load−0.6))×(0.7+0.3×onlineRatio)}; planRebalance pure minimal-move plan (over-capacity only, lexicographic-stable victim, same-region peer w/ projected ≤0.85, bounded loop); planFingerprint (FNV over deviceId>toAgentId) for the apply guard; REBALANCE_STAGE_SLEEP_MS=700 shared server/view cadence; CollectorRebalanceMeta audit contract.
+- APIs: GET /api/v1/admin/collectors/distribution (fleet w/ live counts from real devices + site coverage matrix + summary + rebalancePreview{moves,planId}); POST /api/v1/admin/collectors/rebalance-plan two-step guarded flow (dryRun preview no audits; apply verifies planId fingerprint 409 COLLECTOR_PLAN_STALE, writes one COLLECTOR_REBALANCE audit row per move + complete row w/ shared COLL- correlationId; 404 COLLECTOR_NO_MOVES) — ORCHESTRATOR FIX during G15: apply is NON-destructive simulation so a fresh recompute passes staleness forever; added audit-as-event-store 3-min cooldown (409 COLLECTOR_REBALANCE_COOLDOWN, HA-failover-test pattern) — preview stays exempt.
+- Frontend: admin-collectors-view.tsx extended (not rewritten; pre-existing Task 7-b strings untouched) — CollectorDistributionSection: demo-note banner, 5 KpiCards, 7 agent cards (load bar w/ band color+text label+progressbar aria, role/site/version, assigned/online, score, region), site coverage table (max-h-72 scroll), HighRiskActionDialog rebalance flow (planId+moves impact rows incl. per-move before/after loads, REBALANCE typed confirm, staged success w/ correlationId + Open-Event-Stream deep link via ops.events); hooks useCollectorDistribution (30s stale/60s poll) + usePreviewRebalancePlan + useApplyRebalancePlan (invalidates admin+events) in use-admin.ts; api-client types/fetchers + query-keys collectorDistribution surgical.
+- i18n: collectors.distribution.* ×55 keys BOTH locales (genuine Arabic: توزيع وكلاء الجمع، موازنة التحميل، خطة إعادة التوزيع، تغطية المواقع) → parity exact.
+
+Stage Summary:
+- Parked item "collector agent distribution" delivered zero-schema deterministic + guarded. G15 evidence: distribution byte-identical across calls (det YES); temp 4-device BR2 over-capacity experiment → preview planId b6d2937f w/ 3 moves (1.13→0.75 elevated, minimal-stop), wrong planId 409 STALE, real apply 200 COLL-X4R479 staged 3×move+complete (~2.1s), re-apply 409 COOLDOWN w/ wait countdown, preview during cooldown OK; temp devices removed + pristine reseed (7 agents / 30 devices / 0 over-capacity / avg 0.42). Browser: EN+AR, light+dark, 375+1440 all clean; balanced-state UI disables the button w/ "Fleet balanced"/"الأسطول متوازن".
+
+---
+Task ID: 15-c
+Agent: full-stack-developer (work landed pre-deadline; entry reconstructed + Orchestrator completed localization)
+Task: Capacity forecast v3 — deterministic ridge regression (ML tier), additive API model block, Model quality card
+
+Work Log:
+- src/lib/capacity/regression.ts (405 lines): ridgeRegression via standardized features [intercept, trend, weekly sin, weekly cos, weekend], lambda 0.5, fixed-iteration batch gradient descent, zero randomness; train/validation split (last 25% backtest); metrics MAE/RMSE/MAPE/R² pure; forecast w/ v2-derived σ band preserved; featureWeights de-standardized; CapacityModelReport type shared.
+- API /api/v1/performance/capacity: per-risk additive model block {engine:"ridge-v3", metrics, featureWeights, trendPerDay, backtestWindow, trainedAt} + modelSkipReason {code TOO_SHORT, points, required} under CAPACITY_MODEL_MIN_POINTS — v2 fields untouched (backward compatible); publishes the exact rounded series so the client-side refit is byte-identical.
+- Frontend perf-capacity-view.tsx: Model quality card (engine badge, backtest metrics table MAE/RMSE/MAPE/R² w/ units, train/backtest point counts, backtest window, per-feature weight bars, TOO_SHORT empty state); chart engine tag "ridge-v3 point forecast · v2-derived band"; blended point forecast w/ v2 fallback.
+- ORCHESTRATOR COMPLETION (documented): shard left EN hardcodes in its own additions — localized via capacity.forecast.* ×11 keys both locales (title/selectPrompt/pickHint/emptyTitle/chartLabel/noCrossing/crossing/chartSummary/engineRidge/engineV2/confidenceNote); chart aria-label + summary + footer confidence line now t()-composed (removed mixed "· confidence LOW" string); parity preserved.
+
+Stage Summary:
+- Parked item "capacity ML (v3 tier)" delivered deterministic + honest: G15 evidence — model metrics byte-identical across same-bucket calls (15/15 risks w/ model), UI Model quality card renders real numbers (sample: MAE 0.7%, RMSE 1.3%, MAPE 1.87%, R² −0.1890 honest negative on short backtest, confidence LOW surfaced), AR جودة النموذج renders, zero MISSING_MESSAGE.
+
+---
+Task ID: 15-integration+closeout
+Agent: Orchestrator (Z.ai Code)
+Task: Phase 15 integration — shard remediation, G15 validation, closeout
+
+Work Log:
+- Shards: all three Task calls hit infra deadlines again; filesystem-first assessment: 15-a near-complete, 15-c near-complete, 15-b nothing — built orchestrator-side per the 14-c precedent; 15-a/15-c entries reconstructed from verified evidence.
+- Environment: brutal OOM day — dev server OOM-killed 3× (dmesg next-server kills ~2.3GB RSS) + one Turbopack fs-cache corruption panic (inner_of_uppers_lost_follower) recovered via rm -rf .next restart w/ NODE_OPTIONS=1280; worker died twice, both restarted (:3030/health 200).
+- Orchestrator fixes: (1) 15-b built from scratch (lib + 2 APIs + view section + hooks + i18n 55×2 keys) incl. the cooldown guard gap found by golden-path testing; (2) 15-a 375px overflow root-caused to filter bar in shrink-0 actions slot → moved to card body; (3) 15-c EN hardcodes localized (capacity.forecast.* ×11×2); (4) KpiCard hint→description prop fix.
+- G15 gates: bunx tsc --noEmit 0 errors under src/ (examples/skills/tool-results noise pre-existing); bun run lint exit 0; i18n parity 1138 = 1138 zero diff (+218 over Phase 14's 920: cmdb.* + collectors.distribution.* + capacity.model.* + capacity.forecast.*).
+- Golden paths: (1) CMDB — list/detail 200, create → CI-000025/26 w/ CI- correlationIds, duplicate 409, impact BFS hop paths on real service CI; browser dialog create verified end-to-end; (2) Distribution — determinism byte-identical, full guarded flow (preview→stale 409→apply staged COLL- audits→cooldown 409→no-moves), site coverage from real devices; (3) Capacity v3 — metrics deterministic, honest backtest surfaced, v2 backward compat.
+- Browser matrix: EN/AR RTL × light/dark × 375/1440 on cmdb + collectors + capacity — scrollWidth exactly 375 on all three in BOTH directions (post-fix), dark 1440 screenshots clean, console zero errors/warnings/MISSING_MESSAGE after fixes (stale pre-wipe console noise excluded by fresh reload).
+- Ops: pristine reseed executed post-verification (23 CIs / 35 relations / 30 devices / 3 ZTP claims); commit + push with ls-remote double-verification.
+
+Stage Summary:
+- Phase 15 COMPLETE — final parked-tier pull-forward #4: full CMDB (schema+impact graph+guarded writes), collector agent distribution (deterministic assignment + guarded non-destructive rebalance w/ audit cooldown), capacity ridge-v3 (deterministic ML w/ honest backtest). No new dependencies; zero worker-file edits. i18n parity 1138=1138. PARKED LIST NOW EMPTY — all items from the original park either delivered (Phases 12–15) or explicitly rejected as non-MVP with rationale in the Phase 13 closeout (HA/DR delivered 14, ZTP delivered 14, NL queries delivered 14; CMDB + collectors + ML delivered 15).

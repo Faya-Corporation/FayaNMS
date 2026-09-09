@@ -1,9 +1,27 @@
 "use client";
 
 import { formatDistanceToNow, parseISO } from "date-fns";
-import { Cpu, HeartPulse, RefreshCcw, Server, Zap } from "lucide-react";
+import {
+  Cpu,
+  Gauge,
+  HeartPulse,
+  Network,
+  RefreshCcw,
+  Server,
+  TriangleAlert,
+  Zap,
+} from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useState } from "react";
 
-import { useCollectors } from "@/hooks/api/use-admin";
+import {
+  useApplyRebalancePlan,
+  useCollectorDistribution,
+  useCollectors,
+  usePreviewRebalancePlan,
+} from "@/hooks/api/use-admin";
+import { useNavigationStore } from "@/stores/navigation";
+import { HighRiskActionDialog } from "@/components/domain/high-risk-action-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -160,6 +178,331 @@ export function AdminCollectorsView() {
           </Table>
         )}
       </SectionCard>
+
+      <CollectorDistributionSection />
     </div>
+  );
+}
+
+/* ───────────────── Collector agent distribution (Phase 15-b) ───────────────── */
+
+/**
+ * Site-resident agent fleet with deterministic device assignment over real
+ * devices + guarded rebalance (preview → typed-confirm → staged audits).
+ * The fleet itself is a DOCUMENTED SIMULATION — the demo note is rendered
+ * above the section so the simulation is never mistaken for live state.
+ */
+
+const LOAD_BAR_CLASSES: Record<string, string> = {
+  normal: "bg-success",
+  elevated: "bg-warning",
+  "over-capacity": "bg-danger",
+};
+
+const BAND_BADGE_CLASSES: Record<string, string> = {
+  normal: "bg-success-subtle text-success border-success/25",
+  elevated: "bg-warning-subtle text-warning border-warning/25",
+  "over-capacity": "bg-danger-subtle text-danger border-danger/25",
+};
+
+const BAND_KEYS: Record<string, string> = {
+  normal: "normal",
+  elevated: "elevated",
+  "over-capacity": "overCapacity",
+};
+
+interface RebalanceDialogState {
+  open: boolean;
+  planId: string | null;
+  moves: { deviceId: string; hostname: string; fromAgentId: string; fromLoad: number; toAgentId: string; toLoad: number }[];
+}
+
+function CollectorDistributionSection() {
+  const t = useTranslations("collectors.distribution");
+  const distributionQuery = useCollectorDistribution();
+  const previewMutation = usePreviewRebalancePlan();
+  const applyMutation = useApplyRebalancePlan();
+  const setActiveView = useNavigationStore((state) => state.setActiveView);
+  const [dialog, setDialog] = useState<RebalanceDialogState>({
+    open: false,
+    planId: null,
+    moves: [],
+  });
+
+  const fleet = distributionQuery.data?.fleet ?? [];
+  const sites = distributionQuery.data?.sites ?? [];
+  const summary = distributionQuery.data?.summary;
+  const overCapacity = summary?.overCapacityAgents ?? 0;
+
+  const openRebalanceDialog = async () => {
+    try {
+      const preview = await previewMutation.mutateAsync();
+      setDialog({ open: true, planId: preview.planId, moves: preview.moves });
+    } catch {
+      // The preview error toast fires from the mutation; keep the dialog closed.
+    }
+  };
+
+  return (
+    <SectionCard
+      title={t("title")}
+      description={t("description")}
+      actions={
+        <Button
+          size="sm"
+          variant={overCapacity > 0 ? "default" : "outline"}
+          disabled={overCapacity === 0 || distributionQuery.isFetching}
+          onClick={() => void openRebalanceDialog()}
+        >
+          {overCapacity > 0 ? (
+            t("rebalance.button")
+          ) : (
+            t("rebalance.buttonBalanced")
+          )}
+        </Button>
+      }
+    >
+      {distributionQuery.isLoading ? (
+        <div className="space-y-2 p-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-14 animate-pulse rounded bg-muted" />
+          ))}
+        </div>
+      ) : distributionQuery.isError ? (
+        <ErrorState
+          title={t("title")}
+          reason={t("previewError")}
+          onRetry={() => void distributionQuery.refetch()}
+        />
+      ) : (
+        <div className="space-y-6 p-4">
+          <p className="rounded-md border border-warning/25 bg-warning-subtle px-3 py-2 text-xs text-warning">
+            {t("demoNote")}
+          </p>
+
+          {/* Fleet KPIs */}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <KpiCard label={t("kpi.agents")} value={String(summary?.agents ?? "—")} icon={Server} description={t("kpi.agentsHint")} />
+            <KpiCard label={t("kpi.devices")} value={String(summary?.devicesAssigned ?? "—")} icon={Network} description={t("kpi.devicesHint")} />
+            <KpiCard
+              label={t("kpi.avgLoad")}
+              value={summary ? `${Math.round(summary.avgLoad * 100)}%` : "—"}
+              icon={Gauge}
+              description={t("kpi.avgLoadHint")}
+            />
+            <KpiCard
+              label={t("kpi.overCapacity")}
+              value={String(overCapacity)}
+              icon={TriangleAlert}
+              description={t("kpi.overCapacityHint")}
+            />
+            <KpiCard
+              label={t("kpi.uncovered")}
+              value={String(summary?.uncoveredDevices ?? "—")}
+              icon={Cpu}
+              description={t("kpi.uncoveredHint")}
+            />
+          </div>
+
+          {/* Agent cards */}
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {fleet.map((agent) => (
+              <div
+                key={agent.agentId}
+                className="rounded-lg border bg-card p-4"
+                data-testid={`agent-card-${agent.agentId}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{agent.name}</p>
+                    <p className="font-tech ltr-technical text-xs text-muted-foreground">
+                      {agent.siteCode} · {t(`role.${agent.role}`)} · v{agent.version}
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={BAND_BADGE_CLASSES[agent.band]}
+                  >
+                    {t(`band.${BAND_KEYS[agent.band]}`)}
+                  </Badge>
+                </div>
+
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {t("agent.assigned", {
+                        assigned: agent.assignedCount,
+                        capacity: agent.capacity,
+                      })}
+                      {" · "}
+                      {t("agent.online", { count: agent.onlineCount })}
+                    </span>
+                    <span className="font-mono">{Math.round(agent.load * 100)}%</span>
+                  </div>
+                  <div
+                    className="h-2 overflow-hidden rounded-full bg-muted"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(agent.load * 100)}
+                    aria-label={t("agent.load")}
+                  >
+                    <div
+                      className={`h-full rounded-full ${LOAD_BAR_CLASSES[agent.band]}`}
+                      style={{ width: `${Math.min(100, agent.load * 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {t("agent.score")}: <span className="font-mono">{agent.score}</span>
+                    </span>
+                    <span>
+                      {t("agent.region")}: {agent.region}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Site coverage matrix */}
+          <div>
+            <p className="mb-2 text-sm font-medium">{t("sites.title")}</p>
+            <p className="mb-3 text-xs text-muted-foreground">{t("sites.description")}</p>
+            <div className="max-h-72 overflow-y-auto rounded-md border">
+              <Table
+                aria-label={`${t("sites.title")} — ${t("sites.description")}`}
+              >
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("sites.site")}</TableHead>
+                    <TableHead>{t("sites.devices")}</TableHead>
+                    <TableHead>{t("sites.online")}</TableHead>
+                    <TableHead>{t("sites.agents")}</TableHead>
+                    <TableHead>{t("sites.coverage")}</TableHead>
+                    <TableHead className="text-right">{t("sites.remote")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sites.map((site) => (
+                    <TableRow key={site.siteCode}>
+                      <TableCell className="font-tech ltr-technical text-xs">
+                        {site.siteCode}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{site.devices}</TableCell>
+                      <TableCell className="font-mono text-xs">{site.online}</TableCell>
+                      <TableCell className="font-mono text-xs">{site.agentCount}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-20 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className={
+                                site.coveragePct >= 80
+                                  ? "h-full rounded-full bg-success"
+                                  : site.coveragePct >= 50
+                                    ? "h-full rounded-full bg-warning"
+                                    : "h-full rounded-full bg-danger"
+                              }
+                              style={{ width: `${site.coveragePct}%` }}
+                            />
+                          </div>
+                          <span className="font-mono text-xs">{site.coveragePct}%</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {site.remoteAssigned}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <HighRiskActionDialog
+        open={dialog.open}
+        onOpenChange={(open) =>
+          setDialog((state) => ({ ...state, open }))
+        }
+        title={t("rebalance.dialogTitle")}
+        description={t("rebalance.dialogDescription")}
+        impact={[
+          ...(dialog.planId
+            ? [
+                {
+                  label: t("rebalance.planId"),
+                  value: (
+                    <span className="font-tech ltr-technical">{dialog.planId}</span>
+                  ),
+                },
+                {
+                  label: t("rebalance.moves", { count: dialog.moves.length }),
+                  value: (
+                    <span className="font-tech ltr-technical">
+                      {dialog.moves.length}
+                    </span>
+                  ),
+                },
+              ]
+            : []),
+          {
+            label: t("rebalance.impactTitle"),
+            value: (
+              <span className="block space-y-1 text-start">
+                {dialog.moves.map((move) => (
+                  <span key={move.deviceId} className="block font-tech ltr-technical text-xs">
+                    {t("rebalance.impactRow", {
+                      hostname: move.hostname,
+                      from: move.fromAgentId,
+                      fromLoad: move.fromLoad,
+                      to: move.toAgentId,
+                      toLoad: move.toLoad,
+                    })}
+                  </span>
+                ))}
+              </span>
+            ),
+          },
+        ]}
+        confirmPhrase={t("rebalance.confirmPhrase")}
+        confirmHint={t("rebalance.confirmHint")}
+        confirmLabel={t("rebalance.confirmLabel")}
+        onConfirm={async () => {
+          if (!dialog.planId) throw new Error(t("rebalance.previewError"));
+          try {
+            const result = await applyMutation.mutateAsync(dialog.planId);
+            return (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">{t("rebalance.successTitle")}</p>
+                <p className="text-sm text-muted-foreground">
+                  {t("rebalance.successBody", {
+                    moves: result.moved,
+                    seconds: Math.max(1, Math.round(result.durationMs / 1000)),
+                    correlationId: result.correlationId,
+                  })}
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setActiveView("ops.events")}
+                >
+                  {t("rebalance.viewEvents")}
+                </Button>
+              </div>
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error && /STALE/.test(error.message)
+                ? t("rebalance.stale")
+                : error instanceof Error
+                  ? error.message
+                  : t("rebalance.previewError");
+            throw new Error(message);
+          }
+        }}
+      />
+    </SectionCard>
   );
 }

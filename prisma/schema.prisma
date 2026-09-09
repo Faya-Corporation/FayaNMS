@@ -148,6 +148,7 @@ model Device {
   metrics     MetricSample[]
   rollups     MetricRollup[]
   maintenance MaintenanceWindow[]
+  cmdbItems   CmdbItem[]
 
   @@index([siteId])
   @@index([vendorId])
@@ -802,4 +803,70 @@ model ZtpClaim {
 
   @@index([status])
   @@index([vendorKey])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CMDB — configuration items & dependencies (Phase 15-a)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CmdbItem {
+  id          String  @id @default(cuid())
+  // Human-facing CI identifier, unique — format CI-000NNN (auto-assigned by
+  // the create API as the next free number; the seed pins stable values).
+  ciId        String  @unique
+  name        String  @unique
+  // ciType: device | interface | service | application | site | circuit
+  ciType      String
+  // status: active | planned | retired | maintenance
+  status      String  @default("active")
+  // criticality: low | medium | high | critical
+  criticality String  @default("medium")
+  // environment: production | staging | lab
+  environment String  @default("production")
+  // serviceTier: tier-1 | tier-2 | tier-3
+  serviceTier String  @default("tier-2")
+  description String?
+  // Optional link to a real inventory Device — one CI per device (DB-level
+  // unique). SetNull per schema rule 4: deleting a device keeps the CI
+  // record (procurement history) but drops the link.
+  deviceId    String? @unique
+  device      Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  // Plain scalar reference matching Site.code (HQ-SAN | DC-ADN | BR1-HOD |
+  // BR2-MUK) — display-friendly site linkage, same convention as the DR
+  // matrix (src/lib/ha/topology.ts) which keys sites by code.
+  siteId      String?
+  // ownerId: User.id of the accountable owner (display-only scalar; resolved
+  // against User at read time, no FK — owners may leave the org).
+  ownerId     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Dependency graph edges in both directions (see CmdbRelation).
+  outgoingRelations CmdbRelation[] @relation("CmdbSource")
+  incomingRelations CmdbRelation[] @relation("CmdbTarget")
+
+  @@index([ciType, status])
+  @@index([siteId])
+  @@index([criticality])
+}
+
+model CmdbRelation {
+  id        String   @id @default(cuid())
+  // Directed edge source → target. Semantics per relationType (documented in
+  // the impact route): "A runs_on B" = A is hosted on B, "A depends_on B" =
+  // A requires B to function, "A part_of B" = A is a component of B,
+  // "A connects_to B" = physical/logical link, "A monitored_by B" = B
+  // watches A's health.
+  sourceId  String
+  source    CmdbItem @relation("CmdbSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  targetId  String
+  target    CmdbItem @relation("CmdbTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  // relationType: runs_on | connects_to | part_of | depends_on | monitored_by
+  relationType String
+  createdAt DateTime @default(now())
+
+  @@unique([sourceId, targetId, relationType])
+  @@index([sourceId])
+  @@index([targetId])
+  @@index([relationType])
 }

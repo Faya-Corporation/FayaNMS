@@ -13,6 +13,7 @@ import { AlertsView } from "@/components/views/alerts-view";
 import { BackupComplianceView } from "@/components/views/backup-compliance-view";
 import { BackupsView } from "@/components/views/backups-view";
 import { BaselinesView } from "@/components/views/baselines-view";
+import { CmdbView } from "@/components/views/cmdb-view";
 import { ChangeDetailView } from "@/components/views/change-detail-view";
 import { ChangeApprovalsView } from "@/components/views/change-approvals-view";
 import { ChangesCalendarView } from "@/components/views/changes-calendar-view";
@@ -131,6 +132,8 @@ export function ViewRouter() {
       return <BaselinesView />;
     case "config.drift":
       return <DriftView />;
+    case "config.cmdb":
+      return <CmdbView />;
     case "perf.overview":
       return <PerfOverviewView />;
     case "perf.devices":

@@ -106,6 +106,7 @@ export const queryKeys = {
   notificationChannels: (params: ListParams = {}) =>
     ["admin", "notificationChannels", params] as const,
   collectors: () => ["admin", "collectors"] as const,
+  collectorDistribution: () => ["admin", "collectorDistribution"] as const,
   drivers: () => ["admin", "drivers"] as const,
   adminSettings: () => ["admin", "settings"] as const,
   auditChain: () => ["admin", "auditChain"] as const,
@@ -151,4 +152,16 @@ export const queryKeys = {
   // failover-test mutation invalidates "ha" (failover state lines) and
   // "events" (the staged HA_FAILOVER_TEST audit rows) via the hooks.
   ha: () => ["ha"] as const,
+
+  // ── CMDB (Phase 15-a) ─────────────────────────────────────────────────
+  // One read bundles the CI list + global KPI counts + site options + the
+  // CMDB audit history under the "cmdb" tree; per-CI detail (relations in
+  // both directions + per-CI audits) nests under ["cmdb", id, "detail"] and
+  // the impact BFS result under ["cmdb", id, "impact"], so mutating any CI
+  // or relation invalidates list, details and impact caches together with
+  // one invalidateQueries({ queryKey: ["cmdb"] }) — plus "events" (the
+  // CMDB_* audit trail) via the hooks.
+  cmdb: (params: ListParams = {}) => ["cmdb", params] as const,
+  cmdbItemDetail: (id: string) => ["cmdb", id, "detail"] as const,
+  cmdbImpact: (id: string) => ["cmdb", id, "impact"] as const,
 };

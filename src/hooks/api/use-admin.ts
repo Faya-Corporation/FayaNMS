@@ -11,12 +11,15 @@ import {
   createWebhook,
   deleteNotificationChannel,
   deleteWebhook,
+  applyRebalancePlan,
   fetchAdminSettings,
   fetchApiClients,
+  fetchCollectorDistribution,
   fetchCollectors,
   fetchDrivers,
   fetchNotificationChannels,
   fetchWebhooks,
+  previewRebalancePlan,
   rotateApiClient,
   testNotificationChannel,
   testWebhook,
@@ -30,8 +33,11 @@ import {
   type ApiClientRotateResult,
   type ChannelCreatePayload,
   type ChannelTestResult,
+  type CollectorDistributionResult,
   type CollectorsResult,
   type DriversResult,
+  type RebalanceApplyResult,
+  type RebalancePreviewResult,
   type SettingsResult,
   type SettingsUpdateResult,
   type WebhookCreatePayload,
@@ -334,5 +340,48 @@ export function useBackfillAuditChain() {
     },
     onError: (e: Error) =>
       toast({ title: "Backfill failed", description: e.message, variant: "destructive" }),
+  });
+}
+
+/* ───────────────── Collector agent distribution (Phase 15-b) ───────────────── */
+
+export function useCollectorDistribution() {
+  return useQuery({
+    queryKey: queryKeys.collectorDistribution(),
+    queryFn: (): Promise<CollectorDistributionResult> =>
+      fetchCollectorDistribution(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}
+
+/** Step 1 of the guarded flow — plan preview (no audits written). */
+export function usePreviewRebalancePlan() {
+  return useMutation({
+    mutationFn: (): Promise<RebalancePreviewResult> => previewRebalancePlan(),
+  });
+}
+
+/** Step 2 — apply a fresh planId (staged COLLECTOR_REBALANCE audits). */
+export function useApplyRebalancePlan() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (planId: string): Promise<RebalanceApplyResult> =>
+      applyRebalancePlan(planId),
+    onSuccess: (result) => {
+      void qc.invalidateQueries({ queryKey: ["admin"] });
+      void qc.invalidateQueries({ queryKey: queryKeys.events() });
+      toast({
+        title: "Rebalance applied",
+        description: `${result.moved} move(s) staged · ${result.correlationId}`,
+      });
+    },
+    onError: (e: Error) =>
+      toast({
+        title: "Rebalance failed",
+        description: e.message,
+        variant: "destructive",
+      }),
   });
 }

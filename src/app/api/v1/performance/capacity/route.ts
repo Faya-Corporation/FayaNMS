@@ -1,6 +1,11 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import {
+  backtestCapacityModel,
+  CAPACITY_MODEL_MIN_POINTS,
+  type CapacityModelReport,
+} from "@/lib/capacity/regression";
+import {
   confidenceFromR2,
   fetchRollups,
   linearRegressionDaily,
@@ -39,6 +44,16 @@ export const dynamic = "force-dynamic";
  * just the top-15 rows): atRisk30d / atRisk90d = series crossing the
  * horizon within 30/90 days, noRisk = the rest (flat, already above, or
  * crossing beyond 90 days).
+ *
+ * Phase 15-c (additive, backward compatible): every risk row also carries
+ * a `model` block from the deterministic ridge-v3 engine
+ * (src/lib/capacity/regression.ts) — engine tag, backtest metrics
+ * (MAE/RMSE/MAPE/R²), standardized feature weights, the de-standardized
+ * trend per day and the backtest window. Series shorter than
+ * CAPACITY_MODEL_MIN_POINTS points get `model: null` plus a structured
+ * `modelSkipReason` — metrics are never fabricated. The training input is
+ * the PUBLISHED (rounded) series, so the client reproduces byte-identical
+ * results from `series` alone; v2 fields keep their exact meaning.
  */
 
 const querySchema = z.object({
@@ -121,6 +136,14 @@ export async function GET(request: Request) {
     r2: number;
     confidence: "LOW" | "MEDIUM" | "HIGH";
     series: Array<{ ts: string; value: number }>;
+    /** ridge-v3 model quality — null when the series is too short. */
+    model: (CapacityModelReport & { trainedAt: string }) | null;
+    /** Why `model` is null (structured so the UI can localize it). */
+    modelSkipReason: {
+      code: "TOO_SHORT";
+      points: number;
+      required: number;
+    } | null;
     sortKey: number;
   }
 
@@ -147,6 +170,11 @@ export async function GET(request: Request) {
     // Risk-pool gate (frozen contract): meaningful current load OR growth.
     if (current < MIN_CURRENT_PCT && slopePerDay <= 0) return;
 
+    // Publish the exact series the models consume (rounded, chronological)
+    // so the client-side ridge-v3 refit is byte-identical to the server's.
+    const published = chronological.map((p) => ({ ts: p.ts, value: round1(p.value) }));
+    const modelReport = backtestCapacityModel(published);
+
     pool.push({
       deviceId: device.id,
       hostname: device.hostname,
@@ -157,7 +185,17 @@ export async function GET(request: Request) {
       daysToThreshold: daysToThreshold === null ? null : Math.round(daysToThreshold * 10) / 10,
       r2: Math.round(regression.r2 * 1000) / 1000,
       confidence: confidenceFromR2(regression.r2),
-      series: chronological.map((p) => ({ ts: new Date(p.ts).toISOString(), value: round1(p.value) })),
+      series: published.map((p) => ({ ts: new Date(p.ts).toISOString(), value: p.value })),
+      model: modelReport
+        ? { ...modelReport, trainedAt: new Date().toISOString() }
+        : null,
+      modelSkipReason: modelReport
+        ? null
+        : {
+            code: "TOO_SHORT",
+            points: published.length,
+            required: CAPACITY_MODEL_MIN_POINTS,
+          },
       sortKey: daysToThreshold === null ? Number.POSITIVE_INFINITY : daysToThreshold,
     });
   };

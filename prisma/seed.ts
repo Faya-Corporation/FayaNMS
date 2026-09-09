@@ -1401,6 +1401,10 @@ async function wipe() {
   await db.collector.deleteMany();
   // Phase 14-b — zero-touch provisioning claims (plain scalar refs, no FK).
   await db.ztpClaim.deleteMany();
+  // Phase 15-a — CMDB (relations are owned edges → Cascade; delete them
+  // before the items, and both before devices whose ids CmdbItem references).
+  await db.cmdbRelation.deleteMany();
+  await db.cmdbItem.deleteMany();
   await db.notification.deleteMany();
   await db.alert.deleteMany();
   await db.alertRule.deleteMany();
@@ -1513,6 +1517,106 @@ async function seedDevices() {
     await db.deviceInterface.createMany({ data: ifaceRows.slice(i, i + 500) });
   }
   return uplinkByDevice;
+}
+
+/* ────────────────────────────── CMDB (Phase 15-a) ────────────────────────────── */
+
+/**
+ * Phase 15-a — configuration items over the real seed inventory:
+ *   • device CIs for a representative cross-site set of REAL devices
+ *     (deviceId FK link — the switch CI links the inventory device);
+ *   • one CI per real site code (HQ-SAN / DC-ADN / BR1-HOD / BR2-MUK);
+ *   • three composite service CIs and one WAN circuit CI;
+ *   • CmdbRelation edges of every documented type (part_of, depends_on,
+ *     runs_on, connects_to, monitored_by) wiring services → members and
+ *     devices → sites.
+ * ciIds are pinned CI-000001…CI-000023 so re-seeds keep stable identifiers
+ * (the create API continues numbering after the highest seeded value).
+ */
+async function seedCmdb() {
+  await db.cmdbItem.createMany({
+    data: [
+      // ── Device CIs (representative real devices, one per deviceId) ──
+      { id: "cmdb-hq-core-rtr-01", ciId: "CI-000001", name: "HQ Core Router 01", ciType: "device", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", deviceId: "dev-hq-core-rtr-01", siteId: "HQ-SAN", ownerId: "usr-admin", description: "Primary HQ core router — BGP RR client, HSRP active peer.", createdAt: ago(60 * 24 * 120) },
+      { id: "cmdb-hq-core-rtr-02", ciId: "CI-000002", name: "HQ Core Router 02", ciType: "device", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", deviceId: "dev-hq-core-rtr-02", siteId: "HQ-SAN", ownerId: "usr-admin", description: "Secondary HQ core router — HSRP standby peer.", createdAt: ago(60 * 24 * 120) },
+      { id: "cmdb-hq-core-sw-01", ciId: "CI-000003", name: "HQ Core Switch 01", ciType: "device", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", deviceId: "dev-hq-core-sw-01", siteId: "HQ-SAN", ownerId: "usr-engineer1", description: "HQ core switching member 1 (C9500 SVL).", createdAt: ago(60 * 24 * 118) },
+      { id: "cmdb-hq-core-sw-02", ciId: "CI-000004", name: "HQ Core Switch 02", ciType: "device", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", deviceId: "dev-hq-core-sw-02", siteId: "HQ-SAN", ownerId: "usr-engineer1", description: "HQ core switching member 2 (C9500 SVL).", createdAt: ago(60 * 24 * 118) },
+      { id: "cmdb-hq-wan-fw-01", ciId: "CI-000005", name: "HQ WAN Firewall 01", ciType: "device", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", deviceId: "dev-hq-wan-fw-01", siteId: "HQ-SAN", ownerId: "usr-noc1", description: "HQ perimeter firewall pair member A (FortiGate 600F HA).", createdAt: ago(60 * 24 * 116) },
+      { id: "cmdb-hq-wan-fw-02", ciId: "CI-000006", name: "HQ WAN Firewall 02", ciType: "device", status: "active", criticality: "high", environment: "production", serviceTier: "tier-1", deviceId: "dev-hq-wan-fw-02", siteId: "HQ-SAN", ownerId: "usr-noc1", description: "HQ perimeter firewall pair member B (FortiGate 600F HA).", createdAt: ago(60 * 24 * 116) },
+      { id: "cmdb-hq-wan-srx-01", ciId: "CI-000007", name: "HQ WAN Security Gateway", ciType: "device", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", deviceId: "dev-hq-wan-srx-01", siteId: "HQ-SAN", ownerId: "usr-engineer1", description: "SRX1500 WAN edge — ISP-A handoff and branch IPsec concentrator.", createdAt: ago(60 * 24 * 110) },
+      { id: "cmdb-hq-edge-rtr-01", ciId: "CI-000008", name: "HQ Edge Router 01", ciType: "device", status: "active", criticality: "high", environment: "production", serviceTier: "tier-2", deviceId: "dev-hq-edge-rtr-01", siteId: "HQ-SAN", ownerId: "usr-engineer1", description: "SD-WAN edge router — dual ISP overlay.", createdAt: ago(60 * 24 * 104) },
+      { id: "cmdb-dc-core-rtr-01", ciId: "CI-000009", name: "DC Core Router 01", ciType: "device", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", deviceId: "dev-dc-core-rtr-01", siteId: "DC-ADN", ownerId: "usr-admin", description: "Aden datacenter core router — MPLS PE and WAN handoff.", createdAt: ago(60 * 24 * 112) },
+      { id: "cmdb-dc-core-sw-01", ciId: "CI-000010", name: "DC Core Switch 01", ciType: "device", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", deviceId: "dev-dc-core-sw-01", siteId: "DC-ADN", ownerId: "usr-engineer1", description: "Nexus leaf/spine switch — VXLAN EVPN fabric.", createdAt: ago(60 * 24 * 108) },
+      { id: "cmdb-dc-pa-5410-01", ciId: "CI-000011", name: "DC Perimeter Firewall", ciType: "device", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", deviceId: "dev-dc-pa-5410-01", siteId: "DC-ADN", ownerId: "usr-noc1", description: "PA-5410 HA active member — DC perimeter threat prevention.", createdAt: ago(60 * 24 * 96) },
+      { id: "cmdb-dc-srv-tor-01", ciId: "CI-000012", name: "DC Server ToR 01", ciType: "device", status: "active", criticality: "high", environment: "production", serviceTier: "tier-2", deviceId: "dev-dc-srv-tor-01", siteId: "DC-ADN", ownerId: "usr-engineer1", description: "Top-of-rack switch for the server row (MLAG pair member).", createdAt: ago(60 * 24 * 90) },
+      { id: "cmdb-br1-edge-rtr-01", ciId: "CI-000013", name: "BR1 Edge Router 01", ciType: "device", status: "active", criticality: "high", environment: "production", serviceTier: "tier-2", deviceId: "dev-br1-edge-rtr-01", siteId: "BR1-HOD", ownerId: "usr-engineer1", description: "Hodeidah branch SD-WAN edge.", createdAt: ago(60 * 24 * 84) },
+      { id: "cmdb-br2-edge-rtr-01", ciId: "CI-000014", name: "BR2 Edge Router 01", ciType: "device", status: "active", criticality: "high", environment: "production", serviceTier: "tier-2", deviceId: "dev-br2-edge-rtr-01", siteId: "BR2-MUK", ownerId: "usr-engineer1", description: "Mukalla branch SD-WAN edge.", createdAt: ago(60 * 24 * 78) },
+      { id: "cmdb-br2-wan-edge-01", ciId: "CI-000015", name: "BR2 WAN Edge Gateway", ciType: "device", status: "planned", criticality: "low", environment: "staging", serviceTier: "tier-3", deviceId: "dev-br2-wan-edge-01", siteId: "BR2-MUK", ownerId: "usr-noc1", description: "Discovered NetGate 6100 pending import — CI registered ahead of adoption.", createdAt: ago(60 * 24 * 2) },
+      // ── Site CIs (one per real site code) ──
+      { id: "cmdb-site-hq-san", ciId: "CI-000016", name: "HQ Campus — Sanaa", ciType: "site", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", siteId: "HQ-SAN", ownerId: "usr-admin", description: "Headquarters campus — 10.20.0.0/16, DR-protected by DC-ADN sync mirror.", createdAt: ago(60 * 24 * 200) },
+      { id: "cmdb-site-dc-adn", ciId: "CI-000017", name: "Data Center — Aden", ciType: "site", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", siteId: "DC-ADN", ownerId: "usr-admin", description: "Primary datacenter — 10.30.0.0/16, hosts the core network service.", createdAt: ago(60 * 24 * 200) },
+      { id: "cmdb-site-br1-hod", ciId: "CI-000018", name: "Branch — Hodeidah", ciType: "site", status: "active", criticality: "high", environment: "production", serviceTier: "tier-2", siteId: "BR1-HOD", ownerId: "usr-noc1", description: "Hodeidah branch office — 10.40.0.0/16, SD-WAN spoke.", createdAt: ago(60 * 24 * 190) },
+      { id: "cmdb-site-br2-muk", ciId: "CI-000019", name: "Branch — Mukalla", ciType: "site", status: "active", criticality: "high", environment: "production", serviceTier: "tier-2", siteId: "BR2-MUK", ownerId: "usr-noc1", description: "Mukalla branch office — 10.50.0.0/16, SD-WAN spoke.", createdAt: ago(60 * 24 * 190) },
+      // ── Composite service CIs ──
+      { id: "cmdb-svc-hq-core", ciId: "CI-000020", name: "HQ Core Network Service", ciType: "service", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", siteId: "HQ-SAN", ownerId: "usr-admin", description: "Composite service — HQ campus L2/L3 core (routing, switching, perimeter).", createdAt: ago(60 * 24 * 150) },
+      { id: "cmdb-svc-wan-transit", ciId: "CI-000021", name: "WAN Transit — HQ↔DC", ciType: "service", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", siteId: "DC-ADN", ownerId: "usr-admin", description: "Composite service — inter-site WAN transit over ISP-A with ISP-B backup.", createdAt: ago(60 * 24 * 150) },
+      { id: "cmdb-svc-branch-sdwan", ciId: "CI-000022", name: "Branch SD-WAN Service", ciType: "service", status: "active", criticality: "high", environment: "production", serviceTier: "tier-2", siteId: "HQ-SAN", ownerId: "usr-engineer1", description: "Composite service — branch overlay connectivity through the HQ WAN edge.", createdAt: ago(60 * 24 * 130) },
+      // ── Circuit CI ──
+      { id: "cmdb-circuit-isp-a-hq", ciId: "CI-000023", name: "ISP-A WAN Circuit — HQ", ciType: "circuit", status: "active", criticality: "critical", environment: "production", serviceTier: "tier-1", siteId: "HQ-SAN", ownerId: "usr-noc1", description: "Primary 10 Gbps upstream circuit (provider ref YEM-ISP-A-88431), HQ handoff at SRX1500.", createdAt: ago(60 * 24 * 160) },
+    ],
+  });
+
+  // Dependency edges — every documented relationType is exercised.
+  //   part_of       device CI → its site CI
+  //   depends_on    service CI → member CIs
+  //   runs_on       service CI → the site CI it is anchored at
+  //   connects_to   circuit CI ↔ the endpoint device CIs
+  //   monitored_by  watched CI → the service CI that watches it
+  await db.cmdbRelation.createMany({
+    data: [
+      // devices part_of their sites
+      { sourceId: "cmdb-hq-core-rtr-01", targetId: "cmdb-site-hq-san", relationType: "part_of" },
+      { sourceId: "cmdb-hq-core-rtr-02", targetId: "cmdb-site-hq-san", relationType: "part_of" },
+      { sourceId: "cmdb-hq-core-sw-01", targetId: "cmdb-site-hq-san", relationType: "part_of" },
+      { sourceId: "cmdb-hq-core-sw-02", targetId: "cmdb-site-hq-san", relationType: "part_of" },
+      { sourceId: "cmdb-hq-wan-fw-01", targetId: "cmdb-site-hq-san", relationType: "part_of" },
+      { sourceId: "cmdb-hq-wan-fw-02", targetId: "cmdb-site-hq-san", relationType: "part_of" },
+      { sourceId: "cmdb-hq-wan-srx-01", targetId: "cmdb-site-hq-san", relationType: "part_of" },
+      { sourceId: "cmdb-hq-edge-rtr-01", targetId: "cmdb-site-hq-san", relationType: "part_of" },
+      { sourceId: "cmdb-dc-core-rtr-01", targetId: "cmdb-site-dc-adn", relationType: "part_of" },
+      { sourceId: "cmdb-dc-core-sw-01", targetId: "cmdb-site-dc-adn", relationType: "part_of" },
+      { sourceId: "cmdb-dc-pa-5410-01", targetId: "cmdb-site-dc-adn", relationType: "part_of" },
+      { sourceId: "cmdb-dc-srv-tor-01", targetId: "cmdb-site-dc-adn", relationType: "part_of" },
+      { sourceId: "cmdb-br1-edge-rtr-01", targetId: "cmdb-site-br1-hod", relationType: "part_of" },
+      { sourceId: "cmdb-br2-edge-rtr-01", targetId: "cmdb-site-br2-muk", relationType: "part_of" },
+      { sourceId: "cmdb-br2-wan-edge-01", targetId: "cmdb-site-br2-muk", relationType: "part_of" },
+      // HQ Core Network Service depends on the HQ core members
+      { sourceId: "cmdb-svc-hq-core", targetId: "cmdb-hq-core-rtr-01", relationType: "depends_on" },
+      { sourceId: "cmdb-svc-hq-core", targetId: "cmdb-hq-core-rtr-02", relationType: "depends_on" },
+      { sourceId: "cmdb-svc-hq-core", targetId: "cmdb-hq-core-sw-01", relationType: "depends_on" },
+      { sourceId: "cmdb-svc-hq-core", targetId: "cmdb-hq-core-sw-02", relationType: "depends_on" },
+      { sourceId: "cmdb-svc-hq-core", targetId: "cmdb-hq-wan-fw-01", relationType: "depends_on" },
+      { sourceId: "cmdb-svc-hq-core", targetId: "cmdb-hq-wan-fw-02", relationType: "depends_on" },
+      { sourceId: "cmdb-svc-hq-core", targetId: "cmdb-site-hq-san", relationType: "runs_on" },
+      // WAN Transit depends on the WAN edge, DC core and the circuit
+      { sourceId: "cmdb-svc-wan-transit", targetId: "cmdb-hq-wan-srx-01", relationType: "depends_on" },
+      { sourceId: "cmdb-svc-wan-transit", targetId: "cmdb-dc-core-rtr-01", relationType: "depends_on" },
+      { sourceId: "cmdb-svc-wan-transit", targetId: "cmdb-circuit-isp-a-hq", relationType: "depends_on" },
+      { sourceId: "cmdb-svc-wan-transit", targetId: "cmdb-site-dc-adn", relationType: "runs_on" },
+      // Branch SD-WAN Service depends on branch edges + HQ WAN gateway
+      { sourceId: "cmdb-svc-branch-sdwan", targetId: "cmdb-br1-edge-rtr-01", relationType: "depends_on" },
+      { sourceId: "cmdb-svc-branch-sdwan", targetId: "cmdb-br2-edge-rtr-01", relationType: "depends_on" },
+      { sourceId: "cmdb-svc-branch-sdwan", targetId: "cmdb-hq-wan-srx-01", relationType: "depends_on" },
+      { sourceId: "cmdb-svc-branch-sdwan", targetId: "cmdb-site-hq-san", relationType: "runs_on" },
+      // circuit endpoints
+      { sourceId: "cmdb-circuit-isp-a-hq", targetId: "cmdb-hq-wan-srx-01", relationType: "connects_to" },
+      { sourceId: "cmdb-circuit-isp-a-hq", targetId: "cmdb-dc-core-rtr-01", relationType: "connects_to" },
+      // monitoring coverage
+      { sourceId: "cmdb-circuit-isp-a-hq", targetId: "cmdb-svc-wan-transit", relationType: "monitored_by" },
+      { sourceId: "cmdb-br1-edge-rtr-01", targetId: "cmdb-svc-branch-sdwan", relationType: "monitored_by" },
+      { sourceId: "cmdb-br2-edge-rtr-01", targetId: "cmdb-svc-branch-sdwan", relationType: "monitored_by" },
+    ],
+  });
 }
 
 async function seedSnapshots() {
@@ -2234,6 +2338,16 @@ async function seedAudit() {
 
   add({ actorId: "usr-noc1", actorName: "Yousef Ghalib", action: "ALERT_ACKNOWLEDGED", resourceType: "Alert", resourceId: "alert-09", resourceLabel: "CPU 96% — BR1-Access-SW-01", result: "SUCCESS", ip: "10.20.10.31", userAgent: UA, afterJson: JSON.stringify({ status: "ACKNOWLEDGED" }), createdAt: ago(100) });
 
+  // Phase 15-a — CMDB audit history (resourceId = CmdbItem cuid is generated
+  // at insert time, so these rows key on the stable CI-… label instead and
+  // the CMDB endpoints match per-CI history via resourceLabel contains ciId).
+  add({ actorId: "usr-admin", actorName: "Amal Al-Sabri", action: "CMDB_CI_CREATED", resourceType: "CmdbItem", resourceLabel: "CI-000016 — HQ Campus — Sanaa", result: "SUCCESS", ip: "10.20.10.31", userAgent: UA, afterJson: JSON.stringify({ ciId: "CI-000016", ciType: "site", criticality: "critical", environment: "production", serviceTier: "tier-1", siteId: "HQ-SAN" }), createdAt: ago(60 * 24 * 200) });
+  add({ actorId: "usr-admin", actorName: "Amal Al-Sabri", action: "CMDB_CI_CREATED", resourceType: "CmdbItem", resourceLabel: "CI-000017 — Data Center — Aden", result: "SUCCESS", ip: "10.20.10.31", userAgent: UA, afterJson: JSON.stringify({ ciId: "CI-000017", ciType: "site", criticality: "critical", environment: "production", serviceTier: "tier-1", siteId: "DC-ADN" }), createdAt: ago(60 * 24 * 200) });
+  add({ actorId: "usr-admin", actorName: "Amal Al-Sabri", action: "CMDB_CI_CREATED", resourceType: "CmdbItem", resourceLabel: "CI-000020 — HQ Core Network Service", result: "SUCCESS", ip: "10.20.10.31", userAgent: UA, afterJson: JSON.stringify({ ciId: "CI-000020", ciType: "service", criticality: "critical", environment: "production", serviceTier: "tier-1", siteId: "HQ-SAN" }), createdAt: ago(60 * 24 * 150) });
+  add({ actorId: "usr-engineer1", actorName: "Mariam Al-Hakimi", action: "CMDB_RELATION_CREATED", resourceType: "CmdbRelation", resourceLabel: "CI-000020 → CI-000001 (depends_on)", result: "SUCCESS", ip: "10.20.10.42", userAgent: UA, afterJson: JSON.stringify({ source: "CI-000020", target: "CI-000001", relationType: "depends_on" }), createdAt: ago(60 * 24 * 149) });
+  add({ actorId: "usr-engineer1", actorName: "Mariam Al-Hakimi", action: "CMDB_RELATION_CREATED", resourceType: "CmdbRelation", resourceLabel: "CI-000021 → CI-000023 (depends_on)", result: "SUCCESS", ip: "10.20.10.42", userAgent: UA, afterJson: JSON.stringify({ source: "CI-000021", target: "CI-000023", relationType: "depends_on" }), createdAt: ago(60 * 24 * 149) });
+  add({ actorId: "usr-noc1", actorName: "Yousef Ghalib", action: "CMDB_CI_UPDATED", resourceType: "CmdbItem", resourceLabel: "CI-000015 — BR2 WAN Edge Gateway", result: "SUCCESS", ip: "10.20.10.31", userAgent: UA, beforeJson: JSON.stringify({ status: "planned" }), afterJson: JSON.stringify({ status: "planned", description: "Discovered NetGate 6100 pending import — CI registered ahead of adoption." }), createdAt: ago(60 * 24 * 2) });
+
   add({ actorId: "usr-admin", actorName: "Amal Al-Sabri", action: "USER_LOGIN", resourceType: "Session", resourceId: "usr-admin", resourceLabel: "admin@faya.local", result: "SUCCESS", ip: "10.20.10.31", userAgent: UA, createdAt: ago(45) });
   add({ actorId: "usr-noc1", actorName: "Yousef Ghalib", action: "USER_LOGIN", resourceType: "Session", resourceId: "usr-noc1", resourceLabel: "noc1@faya.local", result: "SUCCESS", ip: "10.20.10.31", userAgent: UA, createdAt: ago(120) });
   add({ actorId: "usr-engineer1", actorName: "Mariam Al-Hakimi", action: "USER_LOGIN", resourceType: "Session", resourceId: "usr-engineer1", resourceLabel: "engineer1@faya.local", result: "SUCCESS", ip: "10.20.10.42", userAgent: UA, createdAt: ago(90) });
@@ -2338,6 +2452,8 @@ async function printSummary(extra: { samples: number; rollups: number }) {
     ["ReportSchedule", await db.reportSchedule.count()],
     ["Setting", await db.setting.count()],
     ["ZtpClaim", await db.ztpClaim.count()],
+    ["CmdbItem", await db.cmdbItem.count()],
+    ["CmdbRelation", await db.cmdbRelation.count()],
   ];
   const w = Math.max(...counts.map(([n]) => n.length));
   console.log("\n── FayaNMS seed summary ──────────────────");
@@ -2355,6 +2471,7 @@ async function main() {
   await wipe();
   await seedReference();
   const uplinkByDevice = await seedDevices();
+  await seedCmdb(); // Phase 15-a — CMDB items + relations, EARLY (before anything that might reference counts)
   await seedChanges(); // snapshots reference change IDs (PRE/POST_CHANGE)
   await seedSnapshots();
   await seedBaselinesAndDrift();

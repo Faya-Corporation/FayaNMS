@@ -1874,6 +1874,48 @@ export interface CapacityForecastPoint {
   value: number;
 }
 
+/** ridge-v3 backtest quality metrics (Phase 15-c, additive over v2). */
+export interface CapacityModelMetrics {
+  mae: number;
+  rmse: number;
+  /** Mean absolute percentage error, in percent. */
+  mape: number;
+  r2: number;
+  trainPoints: number;
+  validationPoints: number;
+}
+
+/** Standardized-space ridge weights (comparable magnitudes, order-stable). */
+export interface CapacityModelFeatureWeights {
+  trend: number;
+  weeklySin: number;
+  weeklyCos: number;
+  weekend: number;
+}
+
+/**
+ * Deterministic ridge-v3 model quality for one forecast signal (Phase
+ * 15-c). `featureWeights` are standardized-space coefficients; `trendPerDay`
+ * is the de-standardized trend effect in metric units/day (comparable to
+ * the v2 `slopePerDay`). Pure computation — identical series in, identical
+ * numbers out (no flicker under polling).
+ */
+export interface CapacityModel {
+  engine: "ridge-v3";
+  metrics: CapacityModelMetrics;
+  featureWeights: CapacityModelFeatureWeights;
+  trendPerDay: number;
+  backtestWindow: { from: string; to: string };
+  trainedAt: string;
+}
+
+/** Structured reason the model block is absent (localized by the UI). */
+export interface CapacityModelSkipReason {
+  code: "TOO_SHORT";
+  points: number;
+  required: number;
+}
+
 export interface CapacityRiskRow {
   deviceId: string;
   hostname: string;
@@ -1888,6 +1930,10 @@ export interface CapacityRiskRow {
   confidence: "LOW" | "MEDIUM" | "HIGH";
   /** 1D-rollup history backing the forecast. */
   series: CapacityForecastPoint[];
+  /** ridge-v3 model quality — null when the series is too short. */
+  model: CapacityModel | null;
+  /** Why `model` is null; null when a model exists. */
+  modelSkipReason: CapacityModelSkipReason | null;
 }
 
 export interface CapacitySummary {
@@ -2296,6 +2342,79 @@ export interface CollectorsResult {
   workerReachable: boolean;
 }
 
+/* ── Collector agent distribution (Phase 15-b) ────────────────────────── */
+
+export interface CollectorAgentRow {
+  agentId: string;
+  name: string;
+  siteCode: string;
+  region: string;
+  role: "snmp" | "netflow" | "syslog" | "config";
+  version: string;
+  capacity: number;
+  peerAgentId: string;
+  assignedCount: number;
+  onlineCount: number;
+  load: number;
+  band: "normal" | "elevated" | "over-capacity";
+  score: number;
+}
+
+export interface CollectorSiteCoverage {
+  siteCode: string;
+  devices: number;
+  online: number;
+  agents: string[];
+  agentCount: number;
+  coveredLocally: number;
+  remoteAssigned: number;
+  coveragePct: number;
+}
+
+export interface RebalanceMoveRow {
+  deviceId: string;
+  hostname: string;
+  fromAgentId: string;
+  fromLoad: number;
+  toAgentId: string;
+  toLoad: number;
+  reason: "over-capacity";
+}
+
+export interface CollectorDistributionResult {
+  fleet: CollectorAgentRow[];
+  sites: CollectorSiteCoverage[];
+  summary: {
+    agents: number;
+    devicesAssigned: number;
+    avgLoad: number;
+    maxLoadAgent: { agentId: string; name: string; load: number };
+    overCapacityAgents: number;
+    uncoveredDevices: number;
+  };
+  rebalancePreview: {
+    moves: RebalanceMoveRow[];
+    planId: string;
+  };
+}
+
+export interface RebalancePreviewResult {
+  dryRun: true;
+  planId: string;
+  moves: RebalanceMoveRow[];
+  beforeAfter: { moved: number; note: string };
+}
+
+export interface RebalanceApplyResult {
+  dryRun: false;
+  planId: string;
+  correlationId: string;
+  moved: number;
+  durationMs: number;
+  stages: { stage: string; hostname: string | null; at: string }[];
+  note: string;
+}
+
 export interface DriverCapabilityEntry {
   key: string;
   label: string;
@@ -2451,6 +2570,28 @@ export async function testNotificationChannel(
 
 export async function fetchCollectors(): Promise<CollectorsResult> {
   return apiFetch<CollectorsResult>("/api/v1/admin/collectors");
+}
+
+export async function fetchCollectorDistribution(): Promise<CollectorDistributionResult> {
+  return apiFetch<CollectorDistributionResult>(
+    "/api/v1/admin/collectors/distribution"
+  );
+}
+
+export async function previewRebalancePlan(): Promise<RebalancePreviewResult> {
+  return apiFetch<RebalancePreviewResult>(
+    "/api/v1/admin/collectors/rebalance-plan",
+    { method: "POST", body: JSON.stringify({ dryRun: true }) }
+  );
+}
+
+export async function applyRebalancePlan(
+  planId: string
+): Promise<RebalanceApplyResult> {
+  return apiFetch<RebalanceApplyResult>(
+    "/api/v1/admin/collectors/rebalance-plan",
+    { method: "POST", body: JSON.stringify({ dryRun: false, planId }) }
+  );
 }
 
 export async function fetchDrivers(): Promise<DriversResult> {
@@ -3212,4 +3353,284 @@ export async function requestFailoverTest(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* CMDB — configuration items & relations (Phase 15-a)                 */
+/* ------------------------------------------------------------------ */
+
+export type CmdbCiType =
+  | "device"
+  | "interface"
+  | "service"
+  | "application"
+  | "site"
+  | "circuit";
+export type CmdbItemStatus = "active" | "planned" | "retired" | "maintenance";
+export type CmdbCriticality = "low" | "medium" | "high" | "critical";
+export type CmdbEnvironment = "production" | "staging" | "lab";
+export type CmdbServiceTier = "tier-1" | "tier-2" | "tier-3";
+export type CmdbRelationType =
+  | "runs_on"
+  | "connects_to"
+  | "part_of"
+  | "depends_on"
+  | "monitored_by";
+
+/** One CI row of GET /api/v1/cmdb/items. */
+export interface CmdbItemRow {
+  id: string;
+  ciId: string;
+  name: string;
+  ciType: CmdbCiType;
+  status: CmdbItemStatus;
+  criticality: CmdbCriticality;
+  environment: CmdbEnvironment;
+  serviceTier: CmdbServiceTier;
+  description: string | null;
+  /** Site CODE (HQ-SAN / DC-ADN / …), not the Site cuid. */
+  siteId: string | null;
+  deviceId: string | null;
+  deviceHostname: string | null;
+  deviceStatus: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Global KPI counts — unfiltered, stable across table filtering. */
+export interface CmdbCounts {
+  total: number;
+  active: number;
+  /** CIs with criticality=critical OR serviceTier=tier-1. */
+  criticalTier: number;
+  relations: number;
+}
+
+export interface CmdbSiteOption {
+  code: string;
+  name: string;
+}
+
+/** One CMDB_* audit row (list-level history). */
+export interface CmdbAuditRow {
+  action: string;
+  result: string;
+  actorName: string;
+  resourceLabel: string | null;
+  correlationId: string | null;
+  createdAt: string;
+}
+
+export interface CmdbPayload {
+  items: CmdbItemRow[];
+  counts: CmdbCounts;
+  sites: CmdbSiteOption[];
+  history: CmdbAuditRow[];
+  meta: { computedAt: string };
+}
+
+export async function fetchCmdb(params: {
+  ciType?: string;
+  status?: string;
+  criticality?: string;
+  environment?: string;
+  siteId?: string;
+  q?: string;
+  limit?: number;
+} = {}): Promise<CmdbPayload> {
+  return apiFetch<CmdbPayload>(
+    `/api/v1/cmdb/items${buildQueryString(params)}`
+  );
+}
+
+/** Counterpart summary joined into relation lists. */
+export interface CmdbItemSummary {
+  id: string;
+  ciId: string;
+  name: string;
+  ciType: CmdbCiType;
+  status: CmdbItemStatus;
+  criticality: CmdbCriticality;
+  environment: CmdbEnvironment;
+  serviceTier: CmdbServiceTier;
+}
+
+/** One relation edge (either direction) of the item detail payload. */
+export interface CmdbRelationRow {
+  id: string;
+  relationType: CmdbRelationType;
+  counterpart: CmdbItemSummary;
+  createdAt: string;
+}
+
+/** Per-CI audit row (detail payload — includes the after payload JSON). */
+export interface CmdbItemAuditRow extends CmdbAuditRow {
+  afterJson: string | null;
+}
+
+export interface CmdbItemDetailPayload {
+  item: {
+    id: string;
+    ciId: string;
+    name: string;
+    ciType: CmdbCiType;
+    status: CmdbItemStatus;
+    criticality: CmdbCriticality;
+    environment: CmdbEnvironment;
+    serviceTier: CmdbServiceTier;
+    description: string | null;
+    siteId: string | null;
+    deviceId: string | null;
+    device: {
+      id: string;
+      hostname: string;
+      status: string;
+      model: string | null;
+    } | null;
+    ownerId: string | null;
+    ownerName: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  /** Edges leaving the CI (this CI → counterpart). */
+  outgoing: CmdbRelationRow[];
+  /** Edges arriving at the CI (counterpart → this CI). */
+  incoming: CmdbRelationRow[];
+  audits: CmdbItemAuditRow[];
+}
+
+export async function fetchCmdbItemDetail(id: string): Promise<CmdbItemDetailPayload> {
+  return apiFetch<CmdbItemDetailPayload>(`/api/v1/cmdb/items/${encodeURIComponent(id)}`);
+}
+
+export interface CmdbItemCreated {
+  item: {
+    id: string;
+    ciId: string;
+    name: string;
+    ciType: CmdbCiType;
+    status: CmdbItemStatus;
+    criticality: CmdbCriticality;
+    environment: CmdbEnvironment;
+    serviceTier: CmdbServiceTier;
+    siteId: string | null;
+    deviceId: string | null;
+  };
+  correlationId: string;
+}
+
+export async function requestCreateCmdbItem(payload: {
+  name: string;
+  ciType: CmdbCiType;
+  status?: CmdbItemStatus;
+  criticality?: CmdbCriticality;
+  environment?: CmdbEnvironment;
+  serviceTier?: CmdbServiceTier;
+  description?: string;
+  deviceId?: string;
+  siteId?: string;
+  ownerId?: string;
+}): Promise<CmdbItemCreated> {
+  return apiFetch<CmdbItemCreated>("/api/v1/cmdb/items", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface CmdbItemUpdated {
+  item: {
+    id: string;
+    ciId: string;
+    name: string;
+    ciType: CmdbCiType;
+    status: CmdbItemStatus;
+    criticality: CmdbCriticality;
+    environment: CmdbEnvironment;
+    serviceTier: CmdbServiceTier;
+    siteId: string | null;
+    deviceId: string | null;
+    ownerId: string | null;
+    description: string | null;
+  };
+  correlationId: string;
+}
+
+export async function requestUpdateCmdbItem(payload: {
+  id: string;
+  status?: CmdbItemStatus;
+  criticality?: CmdbCriticality;
+  ownerId?: string | null;
+  description?: string | null;
+}): Promise<CmdbItemUpdated> {
+  const { id, ...body } = payload;
+  return apiFetch<CmdbItemUpdated>(
+    `/api/v1/cmdb/items/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(body) }
+  );
+}
+
+export interface CmdbRelationCreated {
+  relation: {
+    id: string;
+    relationType: CmdbRelationType;
+    source: { id: string; ciId: string; name: string };
+    target: { id: string; ciId: string; name: string };
+  };
+  correlationId: string;
+}
+
+export async function requestCreateCmdbRelation(payload: {
+  sourceId: string;
+  targetId: string;
+  relationType: CmdbRelationType;
+}): Promise<CmdbRelationCreated> {
+  return apiFetch<CmdbRelationCreated>("/api/v1/cmdb/relations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function requestDeleteCmdbRelation(id: string): Promise<{ removed: string; correlationId: string }> {
+  return apiFetch<{ removed: string; correlationId: string }>(
+    `/api/v1/cmdb/relations?id=${encodeURIComponent(id)}`,
+    { method: "DELETE" }
+  );
+}
+
+/** One impacted CI of the deterministic BFS (both directions share it). */
+export interface CmdbImpactNode {
+  id: string;
+  ciId: string;
+  name: string;
+  ciType: CmdbCiType;
+  status: CmdbItemStatus;
+  criticality: CmdbCriticality;
+  /** 1-based hop distance (min hops, cycle-safe BFS, max depth 4). */
+  hop: number;
+  /** ciIds from the analyzed CI to this node, inclusive on both ends. */
+  path: string[];
+  /** Relation types traversed along `path`. */
+  via: string[];
+}
+
+export interface CmdbImpactResult {
+  item: {
+    id: string;
+    ciId: string;
+    name: string;
+    ciType: CmdbCiType;
+    status: CmdbItemStatus;
+    criticality: CmdbCriticality;
+  };
+  upstream: CmdbImpactNode[];
+  downstream: CmdbImpactNode[];
+  meta: { maxDepth: number; generatedAt: string };
+}
+
+export async function fetchCmdbImpact(itemId: string): Promise<CmdbImpactResult> {
+  return apiFetch<CmdbImpactResult>(
+    `/api/v1/cmdb/impact?itemId=${encodeURIComponent(itemId)}`
+  );
 }
