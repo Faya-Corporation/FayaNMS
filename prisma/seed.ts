@@ -139,6 +139,7 @@ const ROLES = [
     permissionsJson: JSON.stringify([
       "device.read", "device.write",
       "config.read", "config.write", "config.backup", "config.baseline",
+      "config.download",
       "change.read", "change.create",
       "alert.read", "maintenance.read",
       "job.read", "job.run", "metrics.read",
