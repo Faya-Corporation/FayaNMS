@@ -1331,3 +1331,18 @@ Work Log:
 
 Stage Summary:
 - Phase 18 COMPLETE — the LAST three placeholder views are real features: network.interfaces (inventory API + KPIs + filters + drill-down), network.topology (deterministic honest graph: HA pairs + CMDB circuits + documented simulated uplinks, pure-SVG accessible map + edge table), reports.builder (on-demand REPORT_BUILT generation + save-as-schedule + downloads). Plus: the Phase 9 missing [id] route bug (edit/delete 404) found by the golden path and fixed with audited PATCH/DELETE, and an RTL-only 375px sr-only escape fix. No schema changes, no new dependencies, zero worker-file edits. i18n parity 1285=1285 (+145). Every registered ViewKey now renders a real view — PlaceholderView is unreachable by navigation. Roadmap 0–15 + hardening 16 + release-readiness 17 + final-views 18 all COMPLETE; no known gaps remain.
+
+---
+Task ID: 19-a
+Agent: Orchestrator (Z.ai Code)
+Task: Phase 19 kickoff — audit verification (Stage V) + P19-1 repo hygiene + P19-3 secrets policy + P19-2 build flags + P19-4 actor-model overhaul
+
+Work Log:
+- Stage V: verified all audit findings against disk (actor.ts actAsUserId+admin fallback; middleware exemptions; plaintext rawText; .env.example fixed secret; faya123 seed; download hardcoded "Admin" actor; restore autoApprove+seeded manager; process-global audit chain; ignoreBuildErrors; gateway port-in-query proxy; README AES claim) — ALL CONFIRMED. Blast radius discovery: actAs usage spans 27 files (audit listed 4), including 5 no-arg call sites defaulting to seeded admin.
+- P19-1 (commit 5db363c): untracked db/custom.db{-shm,-wal}, .zscripts/dev.pid, worker.out; strict .gitignore; history-exposure assessment = demo-only data, no rotation/rewrite needed.
+- P19-3 (commit 93359ed): .env.example blanked + FAYANMS_{SERVICE_SECRET,SERVICE_SECRETS,CONFIG_ENC_KEY,CONFIG_ENC_KEY_ID,DEMO_MODE} documented; src/lib/startup/security-policy.ts + src/instrumentation.ts (production boot refuses on missing/weak/known-bad NEXTAUTH_SECRET, non-64-hex service/enc keys, DEMO_MODE=true; dev warns); seed refuses wipe in production without FAYANMS_DEMO_MODE=true; dev .env rotated to fresh secrets; NEXTAUTH_SECRET now actually set in dev for the first time.
+- P19-2 (commit d5d9970): next.config.ts ignoreBuildErrors:false + reactStrictMode:true; browser-verified sign-in/dashboard/changes render clean under Strict Mode (10 rows CHG-2026-00403 etc., zero console/page errors).
+- P19-4 (commit ac0a873): actor overhaul — actor.ts session-authoritative (User|null); 24 route sites swept tsc-first; changes create demoActor() to session; "me" filter session-derived; actAsUserId removed from ALL Zod DTOs + CHANGE_EXECUTE payload; 401 UNAUTHENTICATED guards; frontend Act-as selector/useActingUser/preferences.actAsUserId/api-client fields removed (3 views rewritten); SoD pre-checks use session principal; requirePermission() engine (permissionsJson, "*" + "*.suffix" wildcards) + new config.download permission (seed + live db engineer role) on download route with session-actor audit + CONFIG_DOWNLOAD_DENIED rows + no-store; restore route autoApprove removed entirely (always AWAITING_APPROVAL, session requester).
+
+Stage Summary:
+- Four P19 stages committed and pushed (5db363c, 93359ed, d5d9970, ac0a873). SEC-001/005/006 closed, SEC-004 closed, QA-002 closed, DATA-001/REPO-001 closed. Audit attribution now provably session-derived (browser golden path: CHANGE_APPROVED actorId=usr-admin, APR-WDK8QB; KPIs 3 to 2 / 0 to 1). Remaining: P19-5 service auth, P19-6 config encryption, P19-7 audit-chain fork protection, P19-8 gateway allowlist, P19-9 docs honesty, P19-10 CI, final loop.
