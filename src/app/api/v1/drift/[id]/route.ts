@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,18 @@ export async function PATCH(
     return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
 
+  // Phase 19-C (audit AUTHZ-001 sweep): drift triage requires the
+  // "config.baseline" permission and the audit row is attributed to the
+  // session principal (the seeded-admin fallback actor is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "config.baseline");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
@@ -69,13 +82,6 @@ export async function PATCH(
     );
   }
 
-  // Approver for the audit trail: the seeded admin account (ADR-04).
-  const admin = await db.user.findFirst({
-    where: { role: "admin", isActive: true },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, name: true },
-  });
-
   const correlationId = newCorrelationId("DFT");
   const now = new Date();
   const nextStatus = action === "ACCEPT" ? "ACCEPTED" : "RESOLVED";
@@ -89,8 +95,8 @@ export async function PATCH(
 
       await tx.auditEvent.create({
         data: {
-          actorId: admin?.id ?? null,
-          actorName: admin?.name ?? "Admin",
+          actorId: actor.id,
+          actorName: actor.name ?? "Unknown user",
           action: action === "ACCEPT" ? "DRIFT_ACCEPTED" : "DRIFT_RESOLVED",
           resourceType: "DriftRecord",
           resourceId: id,

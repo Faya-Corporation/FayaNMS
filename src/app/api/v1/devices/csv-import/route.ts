@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +62,18 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const { rows, siteIdFallback } = parsed.data;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): CSV import creates devices — it
+  // requires the "device.write" permission and the audit rows are
+  // attributed to the session principal (hardcoded "Admin" removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "device.write");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
 
   if (siteIdFallback) {
     const site = await db.site.findUnique({
@@ -199,7 +212,8 @@ export async function POST(request: Request) {
 
         await tx.auditEvent.create({
           data: {
-            actorName: "Admin",
+            actorId: actor.id,
+            actorName: actor.name ?? "Unknown user",
             action: "DEVICE_CREATED",
             resourceType: "Device",
             resourceId: device.id,

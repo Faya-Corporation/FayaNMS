@@ -5,7 +5,7 @@ import {
   newCorrelationId,
   ok,
 } from "../../../_lib/api";
-import { resolveActingUser } from "../../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,8 @@ export const dynamic = "force-dynamic";
  * POST /api/v1/alerts/[id]/assign — set the assigned owner (Task 5-a).
  * Body: { assignedToId } — assignedToId is a User id (the
  * assignee must exist and be active). Works from any open status; audits
- * ALERT_ASSIGNED.
+ * ALERT_ASSIGNED. Requires the "alert.assign" permission (Phase 19-C,
+ * audit AUTHZ-001 sweep — was authentication-only via resolveActingUser).
  */
 const assignSchema = z.object({
   assignedToId: z.string().trim().min(1).max(64),
@@ -25,6 +26,17 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): assigning requires the
+  // "alert.assign" permission; the actor is the session principal.
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "alert.assign");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
 
   let body: unknown;
   try {
@@ -71,11 +83,6 @@ export async function POST(
     );
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
-
   const updated = await db.alert.update({
     where: { id },
     data: { assignedToId: assignee.id },
@@ -85,8 +92,8 @@ export async function POST(
   const correlationId = newCorrelationId("ALR");
   await db.auditEvent.create({
     data: {
-      actorId: actor?.id ?? null,
-      actorName: actor?.name ?? "unknown",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "ALERT_ASSIGNED",
       resourceType: "Alert",
       resourceId: id,

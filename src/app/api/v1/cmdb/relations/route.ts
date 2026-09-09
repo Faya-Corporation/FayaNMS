@@ -7,7 +7,7 @@ import {
   ok,
   requestContext,
 } from "../../_lib/api";
-import { resolveActingUser } from "../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
   CMDB_ITEM_SUMMARY_SELECT,
   cmdbRelationTypeSchema,
@@ -121,6 +121,18 @@ export async function POST(request: Request) {
   }
   const { sourceId, targetId, relationType } = parsed.data;
 
+  // Phase 19-C (audit AUTHZ-001 sweep): creating relations requires the
+  // "cmdb.write" permission; the actor is the session principal
+  // (resolveActingUser replaced by requirePermission, "Admin" removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "cmdb.write");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const [source, target] = await Promise.all([
     resolveCmdbItem(sourceId),
     resolveCmdbItem(targetId),
@@ -155,11 +167,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
-  const actorName = actor?.name ?? "Admin";
+  const actorName = actor.name ?? "Unknown user";
   const correlationId = newCorrelationId("REL");
   const resourceLabel = `${source.ciId} → ${target.ciId} (${relationType})`;
 
@@ -175,7 +183,7 @@ export async function POST(request: Request) {
       });
       await tx.auditEvent.create({
         data: {
-          actorId: actor?.id,
+          actorId: actor.id,
           actorName,
           action: "CMDB_RELATION_CREATED",
           resourceType: "CmdbRelation",
@@ -232,6 +240,18 @@ export async function DELETE(request: Request) {
     return fail("INVALID_QUERY", "id: relation id is required", 400, ctx);
   }
 
+  // Phase 19-C (audit AUTHZ-001 sweep): removing relations requires the
+  // "cmdb.write" permission; the actor is the session principal
+  // (resolveActingUser replaced by requirePermission, "Admin" removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "cmdb.write");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const relation = await db.cmdbRelation.findUnique({
     where: { id },
     include: {
@@ -243,18 +263,14 @@ export async function DELETE(request: Request) {
     return fail("CMDB_NOT_FOUND", `No relation matches "${id}"`, 404, ctx);
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
-  const actorName = actor?.name ?? "Admin";
+  const actorName = actor.name ?? "Unknown user";
   const correlationId = newCorrelationId("REL");
 
   await db.$transaction(async (tx) => {
     await tx.cmdbRelation.delete({ where: { id: relation.id } });
     await tx.auditEvent.create({
       data: {
-        actorId: actor?.id,
+        actorId: actor.id,
         actorName,
         action: "CMDB_RELATION_REMOVED",
         resourceType: "CmdbRelation",

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -179,6 +180,18 @@ export async function POST(request: Request) {
   }
   const { deviceId, snapshotId, note } = parsed.data;
 
+  // Phase 19-C (audit AUTHZ-001 sweep): baseline approval requires the
+  // "config.baseline" permission; approver attribution comes from the
+  // session principal (the seeded-admin fallback actor is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "config.baseline");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const device = await db.device.findUnique({
     where: { id: deviceId },
     select: { id: true, hostname: true },
@@ -214,13 +227,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Approver: the seeded admin account (demo session — ADR-04).
-  const admin = await db.user.findFirst({
-    where: { role: "admin", isActive: true },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, name: true },
-  });
-
   const correlationId = newCorrelationId("BL");
 
   const result = await db.$transaction(
@@ -241,15 +247,15 @@ export async function POST(request: Request) {
         data: {
           deviceId,
           snapshotId,
-          approvedById: admin?.id ?? null,
+          approvedById: actor.id,
           note: note ?? null,
         },
       });
 
       await tx.auditEvent.create({
         data: {
-          actorId: admin?.id ?? null,
-          actorName: admin?.name ?? "Admin",
+          actorId: actor.id,
+          actorName: actor.name ?? "Unknown user",
           action: "BASELINE_APPROVED",
           resourceType: "ConfigBaseline",
           resourceId: baseline.id,

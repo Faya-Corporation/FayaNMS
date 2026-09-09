@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../_lib/api";
-import { resolveActingUser } from "../../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
   INCIDENT_TRANSITIONS,
   isTransitionAllowed,
@@ -37,10 +37,13 @@ export const dynamic = "force-dynamic";
  *   link-change        { changeId } — validates the change exists, links it.
  *   unlink-change      clears the change link (409 when none is linked).
  *
- * Every action resolves the acting user from the session principal (_lib/actor — never a seeded default; P19
- * fallback), writes a USER IncidentEvent with actor attribution and an
- * audit row (INCIDENT_<ACTION>), all in one short interactive transaction.
- * 409 INVALID_STATE on illegal transitions; 404 INCIDENT_NOT_FOUND.
+ * Every action resolves the acting user from the session principal (never a
+ * seeded default; P19 fallback), writes a USER IncidentEvent with actor
+ * attribution and an audit row (INCIDENT_<ACTION>), all in one short
+ * interactive transaction. Authorization (Phase 19-C, audit AUTHZ-001
+ * sweep): every action requires "incident.write" EXCEPT "close", which
+ * requires "incident.close". 409 INVALID_STATE on illegal transitions;
+ * 404 INCIDENT_NOT_FOUND.
  */
 
 const ID_MAX = 64;
@@ -114,6 +117,19 @@ export async function POST(
     return fail("INVALID_ID", "Invalid incident id", 400);
   }
 
+  // Phase 19-C (audit AUTHZ-001 sweep): lifecycle actions require
+  // "incident.write"; closing an incident is its own permission
+  // ("incident.close"). The actor is the session principal.
+  const permission = action === "close" ? "incident.close" : "incident.write";
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, permission);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   let body: unknown = {};
   try {
     body = await request.json();
@@ -131,10 +147,6 @@ export async function POST(
     return fail("UNKNOWN_ACTION", `Unknown incident action "${action}"`, 404);
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
   const correlationId = newCorrelationId("INC");
 
   // save-pir / link-change need their required fields up front.
@@ -186,8 +198,8 @@ export async function POST(
         });
         if (!incidentRow) return { notFound: true as const };
 
-        const actorId = actor?.id ?? null;
-        const actorName = actor?.name ?? "Admin";
+        const actorId = actor.id;
+        const actorName = actor.name ?? "Unknown user";
         const note = input.note ?? input.resolutionNote;
 
         // ── save-pir ────────────────────────────────────────────────────

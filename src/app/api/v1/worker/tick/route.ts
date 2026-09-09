@@ -291,7 +291,7 @@ async function pruneRetention(
 
 export async function POST(request: Request) {
   // P19 SEC-002 — machine principal only (service JWT; see service-auth.ts).
-  const service = authenticateServiceRequest(request);
+  const service = authenticateServiceRequest(request, "jobs");
   if (!service.ok) {
     return fail(service.code, service.message, 401);
   }

@@ -1,7 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok, requestContext } from "../../../_lib/api";
-import { resolveActingUser } from "../../../_lib/actor";
-import { authErrorToFail } from "@/lib/auth/session";
+import { authErrorToFail, requireRole } from "@/lib/auth/session";
 import { z } from "zod";
 import {
   assignDevices,
@@ -66,6 +65,19 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
   }
   const { dryRun, planId } = parsed.data;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): collector rebalancing is admin
+  // administration — requireRole("admin") replaces resolveActingUser
+  // (which was authentication-only and fell back to a hardcoded "Admin").
+  // Applies before the plan computation so even previews are admin-gated.
+  let actor: Awaited<ReturnType<typeof requireRole>>;
+  try {
+    actor = await requireRole(request, "admin");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
 
   const rows = await loadAssignments();
   const assignments = assignDevices(rows);
@@ -138,11 +150,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
-  const actorName = actor?.name ?? "Admin";
+  const actorName = actor.name ?? actor.email;
   const correlationId = newCorrelationId("COLL");
   const startedAt = Date.now();
   const stageLog: { stage: string; hostname: string | null; at: string }[] = [];
@@ -163,7 +171,7 @@ export async function POST(request: Request) {
     };
     await db.auditEvent.create({
       data: {
-        actorId: actor?.id,
+        actorId: actor.id,
         actorName,
         action: "COLLECTOR_REBALANCE",
         resourceType: "CollectorAgent",
@@ -186,7 +194,7 @@ export async function POST(request: Request) {
   };
   await db.auditEvent.create({
     data: {
-      actorId: actor?.id,
+      actorId: actor.id,
       actorName,
       action: "COLLECTOR_REBALANCE",
       resourceType: "CollectorAgent",

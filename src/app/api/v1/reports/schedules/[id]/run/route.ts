@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { requireUser, authErrorToFail } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../../_lib/api";
 import {
   REPORT_FORMATS,
@@ -41,12 +41,14 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  let actor: Awaited<ReturnType<typeof requireUser>>;
+  // Phase 19-C (audit AUTHZ-001 sweep): run-now requires the
+  // "report.schedule" permission (was authentication-only via requireUser).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    actor = await requireUser(request);
+    actor = await requirePermission(request, "report.schedule");
   } catch (error) {
-    const envelope = authErrorToFail(error);
-    if (envelope) return envelope;
+    const authFail = authErrorToFail(error);
+    if (authFail) return authFail;
     throw error;
   }
 

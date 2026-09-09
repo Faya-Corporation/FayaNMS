@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { AuthError } from "@/lib/auth/session";
 
@@ -33,6 +33,35 @@ import { AuthError } from "@/lib/auth/session";
 
 export const SERVICE_AUDIENCE = "fayanms:internal";
 const CLOCK_SKEW_S = 30;
+
+/**
+ * Issuer allowlist (Phase 19-C / audit SVC-101 §11.3): a shared symmetric
+ * secret alone would let any holder mint tokens with arbitrary iss/sub/
+ * scopes. Verification therefore rejects issuers outside this list.
+ * Override with FAYANMS_SERVICE_ISSUERS (comma list) when additional
+ * machine identities are introduced; each issuer must still present a
+ * valid signature under a configured secret.
+ */
+export function getServiceIssuers(): string[] {
+  const raw = process.env.FAYANMS_SERVICE_ISSUERS?.trim();
+  const configured = raw
+    ? raw.split(",").map((value) => value.trim()).filter(Boolean)
+    : [];
+  return configured.length > 0 ? configured : ["fayanms:worker"];
+}
+
+/**
+ * Per-route scope requirements (Phase 19-C / audit SVC-101 §11.2): scopes
+ * in the token are authorization, not metadata. Every service route maps
+ * to exactly one required scope:
+ *   worker/* (job engine) → "jobs"
+ *   alerts/evaluate       → "alerts"
+ *   reports/execute       → "reports"
+ *   metrics/retention/prune → "metrics"
+ *   ("simulate" authorizes Next→worker simulator calls — enforced by the
+ *   worker mini-service's own HTTP layer.)
+ */
+export type ServiceScope = "jobs" | "simulate" | "alerts" | "reports" | "metrics";
 
 export interface ServicePrincipal {
   readonly kind: "service";
@@ -123,11 +152,13 @@ function verifyServiceJwt(
 }
 
 /**
- * Authenticate a machine caller. Returns a discriminated result with a
- * precise error code for the 401 envelope (never throws).
+ * Authenticate a machine caller AND enforce the route's required scope
+ * (Phase 19-C / audit SVC-101). Returns a discriminated result with a
+ * precise error code for the 401/403 envelope (never throws).
  */
 export function authenticateServiceRequest(
-  req: Request
+  req: Request,
+  requiredScope?: ServiceScope
 ): ServiceAuthResult {
   const header = req.headers.get("authorization") ?? "";
   const match = /^Bearer\s+(.+)$/i.exec(header);
@@ -155,15 +186,69 @@ export function authenticateServiceRequest(
   if (sub.length === 0 || iss.length === 0) {
     return { ok: false, code: "SERVICE_TOKEN_MALFORMED", message: "Service token must carry iss and sub." };
   }
+  if (!getServiceIssuers().includes(iss)) {
+    return {
+      ok: false,
+      code: "SERVICE_ISSUER_INVALID",
+      message: `Service token issuer "${iss}" is not in the allowlist.`,
+    };
+  }
   const scopes = Array.isArray(payload.scopes)
     ? payload.scopes.filter((s): s is string => typeof s === "string")
     : [];
+  if (requiredScope && !scopes.includes(requiredScope)) {
+    return {
+      ok: false,
+      code: "SERVICE_SCOPE_INSUFFICIENT",
+      message: `Service token lacks the "${requiredScope}" scope required by this endpoint.`,
+    };
+  }
   return {
     ok: true,
     principal: { kind: "service", id: sub, issuer: iss, scopes },
   };
 }
 
+/**
+ * Mint a short-lived HS256 service JWT (Phase 19-C): the Next.js server
+ * uses this to authenticate its OWN outbound calls to the worker's HTTP
+ * surface (/simulate/*, /capabilities) — the mirror image of the worker
+ * signing tokens for the Next.js job-engine routes. SERVER-ONLY: reads
+ * FAYANMS_SERVICE_SECRET from the process environment.
+ */
+export function mintServiceToken(options: {
+  issuer?: string;
+  subject?: string;
+  scopes: ServiceScope[];
+  ttlSeconds?: number;
+}): string {
+  const secret = process.env.FAYANMS_SERVICE_SECRET?.trim();
+  if (!secret) {
+    throw new Error(
+      "FAYANMS_SERVICE_SECRET is not configured — cannot mint a service token."
+    );
+  }
+  const nowS = Math.floor(Date.now() / 1000);
+  const ttl = options.ttlSeconds ?? 300;
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString(
+    "base64url"
+  );
+  const payload = Buffer.from(
+    JSON.stringify({
+      iss: options.issuer ?? "fayanms:control",
+      sub: options.subject ?? "control-plane",
+      aud: SERVICE_AUDIENCE,
+      iat: nowS,
+      exp: nowS + ttl,
+      jti: randomUUID(),
+      scopes: options.scopes,
+    })
+  ).toString("base64url");
+  const signature = createHmac("sha256", secret)
+    .update(`${header}.${payload}`)
+    .digest("base64url");
+  return `${header}.${payload}.${signature}`;
+}
 /**
  * All-in-one guard for internal endpoints that may be driven by EITHER the
  * machine principal (service JWT) OR an authorized human session (e.g. the
@@ -173,11 +258,12 @@ export function authenticateServiceRequest(
  */
 export async function requireServiceOrPermission(
   req: Request,
-  permission: string
+  permission: string,
+  requiredScope?: ServiceScope
 ): Promise<ServicePrincipal | Awaited<ReturnType<typeof import("@/lib/auth/session").requirePermission>>> {
   const { requirePermission } = await import("@/lib/auth/session");
   if (/^Bearer\s+/i.test(req.headers.get("authorization") ?? "")) {
-    const result = authenticateServiceRequest(req);
+    const result = authenticateServiceRequest(req, requiredScope);
     if (result.ok) return result.principal;
     throw new AuthError(result.code, result.message, 401);
   }

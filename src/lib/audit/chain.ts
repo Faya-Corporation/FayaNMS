@@ -244,54 +244,215 @@ export interface ChainBreak {
   reason: "unhashed" | "prev-hash-mismatch" | "hash-mismatch";
 }
 
+/**
+ * Verification verdicts (Phase 19-C / audit AUD-101 §14.4): a finite scan
+ * must NEVER return an unqualified success — the caller has to know whether
+ * the WHOLE chain was proven or only a prefix of it.
+ *   FULLY_VERIFIED     — every audit row is hashed, the link walk covers
+ *                        all of them, every hash recomputes.
+ *   PARTIALLY_VERIFIED — the walked prefix is intact, but the table holds
+ *                        unhashed (backfill-pending) rows or the scan cap
+ *                        truncated the walk.
+ *   INVALID            — a break, a hash mismatch, a missing/duplicated
+ *                        genesis or a dangling link was found.
+ */
+export type ChainVerdict = "FULLY_VERIFIED" | "PARTIALLY_VERIFIED" | "INVALID";
+
 export interface ChainVerifyResult {
+  /** verdict !== "INVALID" — kept for backward-compatible callers/UI. */
   valid: boolean;
+  verdict: ChainVerdict;
+  /** Rows proven by the link walk (chain order). */
   checked: number;
+  /** Hashed rows in the scanned window. */
+  totalHashed: number;
+  /** Rows still awaiting the backfill (excluded from the link graph). */
+  unhashed: number;
+  /** True when the scan cap truncated the walk (verdict ≤ PARTIALLY). */
+  truncated: boolean;
+  /** Human-readable anomalies beyond the first hard break. */
+  issues: string[];
   brokenAt?: ChainBreak;
 }
 
 /**
- * Walk the whole chain in canonical order (createdAt ASC, id ASC),
- * recomputing every hash. Stops at the first break.
+ * Walk the chain by its LINKS, not by (createdAt, id) sort order (audit
+ * AUD-101 §14.2): under concurrent writers the timestamp order can disagree
+ * with link order, so the verifier starts at the genesis row (the single
+ * hashed row with prevHash = null) and follows prevHash → hash until the
+ * tail, recomputing every hash. Any of the following is INVALID:
+ *   - zero or multiple genesis rows among hashed rows;
+ *   - a recomputed hash that disagrees with the stored hash;
+ *   - a prevHash that references an unknown/out-of-window hash;
+ *   - hashed rows unreachable from genesis (a planted parallel chain).
+ * Unhashed rows (pre-backfill legacy) are REPORTED, not followed — they
+ * degrade the verdict to PARTIALLY_VERIFIED once the linked prefix is
+ * intact. A scan-cap truncation also caps the verdict at PARTIALLY.
  */
 export async function verifyAuditChain(
   client: PrismaClient,
   maxRows = 5_000
 ): Promise<ChainVerifyResult> {
+  const issues: string[] = [];
+
+  const [totalCount, unhashedCount] = await Promise.all([
+    client.auditEvent.count(),
+    client.auditEvent.count({ where: { hash: null } }),
+  ]);
+
   const rows = await client.auditEvent.findMany({
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: maxRows,
     select: CHAIN_SELECT,
   });
-
-  for (let index = 0; index < rows.length; index += 1) {
-    const row = rows[index];
-    if (!row.hash) {
-      return {
-        valid: false,
-        checked: index + 1,
-        brokenAt: { id: row.id, index, reason: "unhashed" },
-      };
-    }
-    const expectedPrev = index === 0 ? null : rows[index - 1].hash;
-    if ((row.prevHash ?? null) !== expectedPrev) {
-      return {
-        valid: false,
-        checked: index + 1,
-        brokenAt: { id: row.id, index, reason: "prev-hash-mismatch" },
-      };
-    }
-    const recomputed = computeAuditHash(rowFields(row, row.prevHash ?? null));
-    if (recomputed !== row.hash) {
-      return {
-        valid: false,
-        checked: index + 1,
-        brokenAt: { id: row.id, index, reason: "hash-mismatch" },
-      };
-    }
+  const truncated = totalCount > rows.length;
+  if (truncated) {
+    issues.push(
+      `Scan cap reached: ${rows.length} of ${totalCount} rows examined — verdict capped at PARTIALLY_VERIFIED.`
+    );
   }
 
-  return { valid: true, checked: rows.length };
+  const hashed = rows.filter((row) => row.hash);
+  const unhashed = rows.length - hashed.length;
+
+  if (hashed.length === 0) {
+    return {
+      valid: unhashed === 0,
+      verdict: unhashed === 0 ? "FULLY_VERIFIED" : "PARTIALLY_VERIFIED",
+      checked: 0,
+      totalHashed: 0,
+      unhashed: unhashedCount,
+      truncated,
+      issues: unhashed === 0 ? [] : ["No hashed rows yet — chain awaits backfill."],
+    };
+  }
+
+  // Link graph over hashed rows only. @@unique([prevHash]) makes the map
+  // 1:1 in a healthy table — a duplicate key means a DB-level fork slipped
+  // past the constraint (e.g. pre-constraint data) and is INVALID.
+  const byPrevHash = new Map<string, (typeof hashed)[number]>();
+  for (const row of hashed) {
+    if (!row.prevHash) continue; // genesis candidates handled above
+    if (byPrevHash.has(row.prevHash)) {
+      issues.push(
+        `Fork: multiple hashed rows chain onto the same prevHash (row ${row.id}).`
+      );
+      return {
+        valid: false,
+        verdict: "INVALID",
+        checked: 0,
+        totalHashed: hashed.length,
+        unhashed: unhashedCount,
+        truncated,
+        issues,
+      };
+    }
+    byPrevHash.set(row.prevHash, row);
+  }
+
+  const genesis = hashed.filter((row) => !row.prevHash);
+  if (genesis.length === 0) {
+    return {
+      valid: false,
+      verdict: "INVALID",
+      checked: 0,
+      totalHashed: hashed.length,
+      unhashed: unhashedCount,
+      truncated,
+      issues: ["No genesis row (every hashed row carries a prevHash)."],
+    };
+  }
+  if (genesis.length > 1) {
+    issues.push(
+      `${genesis.length} genesis rows found — SQLite permits multiple NULL prevHash values; a parallel chain may have been planted.`
+    );
+    return {
+      valid: false,
+      verdict: "INVALID",
+      checked: 0,
+      totalHashed: hashed.length,
+      unhashed: unhashedCount,
+      truncated,
+      issues,
+    };
+  }
+
+  // Walk links from genesis; detect loops via visited set.
+  const visited = new Set<string>();
+  let cursor: (typeof hashed)[number] | undefined = genesis[0];
+  let index = 0;
+  while (cursor) {
+    if (visited.has(cursor.id)) {
+      issues.push(`Loop detected at row ${cursor.id}.`);
+      return {
+        valid: false,
+        verdict: "INVALID",
+        checked: visited.size,
+        totalHashed: hashed.length,
+        unhashed: unhashedCount,
+        truncated,
+        issues,
+        brokenAt: { id: cursor.id, index, reason: "prev-hash-mismatch" },
+      };
+    }
+    visited.add(cursor.id);
+
+    const recomputed = computeAuditHash(rowFields(cursor, cursor.prevHash ?? null));
+    if (recomputed !== cursor.hash) {
+      return {
+        valid: false,
+        verdict: "INVALID",
+        checked: index + 1,
+        totalHashed: hashed.length,
+        unhashed: unhashedCount,
+        truncated,
+        issues,
+        brokenAt: { id: cursor.id, index, reason: "hash-mismatch" },
+      };
+    }
+
+    const nextPrev = cursor.hash as string;
+    const next = byPrevHash.get(nextPrev);
+    if (!next) {
+      // Tail reached. Intact only when it accounts for every hashed row.
+      if (visited.size < hashed.length) {
+        issues.push(
+          `Chain tail reached after ${visited.size} rows but ${hashed.length - visited.size} hashed rows are unreachable from genesis (planned parallel chain or dangling links).`
+        );
+        return {
+          valid: false,
+          verdict: "INVALID",
+          checked: visited.size,
+          totalHashed: hashed.length,
+          unhashed: unhashedCount,
+          truncated,
+          issues,
+          brokenAt: { id: cursor.id, index, reason: "prev-hash-mismatch" },
+        };
+      }
+      break;
+    }
+    cursor = next;
+    index += 1;
+  }
+
+  const fullyIntact =
+    visited.size === hashed.length && unhashed === 0 && !truncated;
+  if (unhashed > 0) {
+    issues.push(
+      `${unhashed} row(s) still await the audit-chain backfill (unhashed) — verdict capped at PARTIALLY_VERIFIED.`
+    );
+  }
+
+  return {
+    valid: true,
+    verdict: fullyIntact ? "FULLY_VERIFIED" : "PARTIALLY_VERIFIED",
+    checked: visited.size,
+    totalHashed: hashed.length,
+    unhashed: unhashedCount,
+    truncated,
+    issues,
+  };
 }
 
 /* ───────────────────────── backfill ───────────────────────── */

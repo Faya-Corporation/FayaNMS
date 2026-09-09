@@ -7,7 +7,7 @@ import {
   ok,
   requestContext,
 } from "../../_lib/api";
-import { resolveActingUser } from "../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
   cmdbCiTypeSchema,
   cmdbCriticalitySchema,
@@ -218,6 +218,19 @@ export async function POST(request: Request) {
   }
   const data = parsed.data;
 
+  // Phase 19-C (audit AUTHZ-001 sweep): creating configuration items
+  // requires the "cmdb.write" permission; the actor is the session
+  // principal (resolveActingUser replaced by requirePermission, and the
+  // "Admin" actorName fallback removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "cmdb.write");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   // ── Domain validation (device ↔ site ↔ uniqueness) ──
   if (data.deviceId) {
     const device = await db.device.findUnique({
@@ -265,11 +278,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
-  const actorName = actor?.name ?? "Admin";
+  const actorName = actor.name ?? "Unknown user";
   const correlationId = newCorrelationId("CI");
 
   // Auto-assigned CI-000NNN with a single retry on a unique-id race.
@@ -294,7 +303,7 @@ export async function POST(request: Request) {
         });
         await tx.auditEvent.create({
           data: {
-            actorId: actor?.id,
+            actorId: actor.id,
             actorName,
             action: "CMDB_CI_CREATED",
             resourceType: "CmdbItem",

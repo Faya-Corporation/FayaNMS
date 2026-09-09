@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireUser, authErrorToFail } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { fail, newCorrelationId } from "../../../../_lib/api";
 import { artifactToCsv } from "@/lib/reports/generate";
 
@@ -15,9 +15,11 @@ export const dynamic = "force-dynamic";
  * there is nothing to download until the artifact exists.
  *
  * Audited like every other export surface (REPORT_DOWNLOAD, DL-style
- * correlation id, actor from the session). The response is a plain byte
- * attachment (Content-Disposition), so it behaves identically in LTR and
- * RTL contexts.
+ * correlation id, actor from the session). Authorization (Phase 19-C,
+ * audit AUTHZ-001 sweep): requires the "report.read" permission — the
+ * viewer/auditor roles hold "*.read" and still pass. The response is a
+ * plain byte attachment (Content-Disposition), so it behaves identically
+ * in LTR and RTL contexts.
  */
 
 const ID_MAX = 64;
@@ -30,12 +32,15 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  let actor: Awaited<ReturnType<typeof requireUser>>;
+  // Phase 19-C (audit AUTHZ-001 sweep): downloads require the "report.read"
+  // permission (was authentication-only via requireUser) — read-only, so
+  // "*.read" wildcard holders (viewer/auditor) still pass.
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    actor = await requireUser(request);
+    actor = await requirePermission(request, "report.read");
   } catch (error) {
-    const envelope = authErrorToFail(error);
-    if (envelope) return envelope;
+    const authFail = authErrorToFail(error);
+    if (authFail) return authFail;
     throw error;
   }
 

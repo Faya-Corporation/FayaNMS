@@ -9,6 +9,7 @@ import {
   paginationSchema,
   requestContext,
 } from "../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -78,6 +79,18 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, requestContext(request));
   }
 
+  // Phase 19-C (audit AUTHZ-001 sweep): queueing jobs requires the
+  // "job.run" permission and the audit row is attributed to the session
+  // principal (the legacy hardcoded actorName "Admin" is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "job.run");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const { deviceId } = parsed.data;
   const device = await db.device.findUnique({
     where: { id: deviceId },
@@ -113,7 +126,8 @@ export async function POST(request: Request) {
     }),
     db.auditEvent.create({
       data: {
-        actorName: "Admin",
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
         action: "CONFIG_BACKUP_QUEUED",
         resourceType: "DEVICE",
         resourceId: device.id,

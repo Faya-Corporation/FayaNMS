@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, newCorrelationId, ok } from "../../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,18 @@ export async function DELETE(
     return fail("INVALID_ID", "Invalid baseline id", 400);
   }
 
+  // Phase 19-C (audit AUTHZ-001 sweep): baseline revocation requires the
+  // "config.baseline" permission and the audit row is attributed to the
+  // session principal (the seeded-admin fallback actor is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(_request, "config.baseline");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const baseline = await db.configBaseline.findUnique({
     where: { id },
     select: {
@@ -42,13 +55,6 @@ export async function DELETE(
   if (!baseline) {
     return fail("BASELINE_NOT_FOUND", "The baseline does not exist", 404);
   }
-
-  // Approver for the audit trail: the seeded admin account (ADR-04).
-  const admin = await db.user.findFirst({
-    where: { role: "admin", isActive: true },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, name: true },
-  });
 
   const correlationId = newCorrelationId("BL");
 
@@ -72,8 +78,8 @@ export async function DELETE(
 
       await tx.auditEvent.create({
         data: {
-          actorId: admin?.id ?? null,
-          actorName: admin?.name ?? "Admin",
+          actorId: actor.id,
+          actorName: actor.name ?? "Unknown user",
           action: "BASELINE_REVOKED",
           resourceType: "ConfigBaseline",
           resourceId: id,

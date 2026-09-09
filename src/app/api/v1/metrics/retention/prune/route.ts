@@ -47,7 +47,7 @@ export async function POST(request: Request) {
   // JWT; the admin UI's "Prune now" drives it with a session holding the
   // "metrics.prune" permission (admin via "*"). Anonymous calls: 401.
   try {
-    await requireServiceOrPermission(request, "metrics.prune");
+    await requireServiceOrPermission(request, "metrics.prune", "metrics");
   } catch (error) {
     const authFail = authErrorToFail(error);
     if (!authFail) throw error;

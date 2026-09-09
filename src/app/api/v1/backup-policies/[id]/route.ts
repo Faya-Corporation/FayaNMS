@@ -7,6 +7,7 @@ import {
 } from "../../_lib/api";
 import { parsePolicyScope, scopeDeviceWhere } from "../../_lib/scope";
 import { isValidCronExpr } from "@/lib/cron";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -117,6 +118,19 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): editing backup policies requires
+  // the "config.backup" permission; the audit row is attributed to the
+  // session principal (the legacy hardcoded actorName "Admin" is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "config.backup");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const policy = await findPolicyOr404(id);
   if (!policy) {
     return fail("POLICY_NOT_FOUND", "The requested backup policy does not exist", 404);
@@ -200,7 +214,8 @@ export async function PATCH(
   const correlationId = newCorrelationId("POL");
   const audit = await db.auditEvent.create({
     data: {
-      actorName: "Admin",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "BACKUP_POLICY_UPDATED",
       resourceType: "BackupPolicy",
       resourceId: updated.id,
@@ -220,6 +235,19 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): deleting backup policies requires
+  // the "config.backup" permission; the audit row is attributed to the
+  // session principal (the legacy hardcoded actorName "Admin" is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(_request, "config.backup");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const policy = await findPolicyOr404(id);
   if (!policy) {
     return fail("POLICY_NOT_FOUND", "The requested backup policy does not exist", 404);
@@ -230,7 +258,8 @@ export async function DELETE(
   const correlationId = newCorrelationId("POL");
   const audit = await db.auditEvent.create({
     data: {
-      actorName: "Admin",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "BACKUP_POLICY_DELETED",
       resourceType: "BackupPolicy",
       resourceId: policy.id,

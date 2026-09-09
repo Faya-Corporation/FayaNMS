@@ -11,7 +11,7 @@ import {
   requestContext,
 } from "../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
-import { authErrorToFail } from "@/lib/auth/session";
+import { authErrorToFail, requireRole } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -113,7 +113,17 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { actor } = await resolveAdminActor(request);
+    // Phase 19-C (audit AUTHZ-001 sweep): API client management is
+    // admin-only — requireRole("admin") replaces the resolveAdminActor
+    // call, whose UNAUTHENTICATED fallback let anonymous callers through.
+    let actor: Awaited<ReturnType<typeof requireRole>>;
+    try {
+      actor = await requireRole(request, "admin");
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
 
     let body: unknown;
     try {
@@ -146,7 +156,7 @@ export async function POST(request: Request) {
     await db.auditEvent.create({
       data: {
         actorId: actor.id,
-        actorName: actor.name,
+        actorName: actor.name ?? actor.email,
         action: "API_CLIENT_CREATED",
         resourceType: "ApiClient",
         resourceId: row.id,

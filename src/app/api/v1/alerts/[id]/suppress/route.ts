@@ -5,7 +5,7 @@ import {
   newCorrelationId,
   ok,
 } from "../../../_lib/api";
-import { resolveActingUser } from "../../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +24,17 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): suppressing requires the
+  // "alert.suppress" permission; the actor is the session principal.
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "alert.suppress");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
 
   let body: unknown = {};
   try {
@@ -58,10 +69,6 @@ export async function POST(
     );
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
   const reason = parsed.data.reason?.trim() || "Manually suppressed";
 
   const updated = await db.alert.update({
@@ -72,8 +79,8 @@ export async function POST(
   const correlationId = newCorrelationId("ALR");
   await db.auditEvent.create({
     data: {
-      actorId: actor?.id ?? null,
-      actorName: actor?.name ?? "unknown",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "ALERT_SUPPRESSED",
       resourceType: "Alert",
       resourceId: id,

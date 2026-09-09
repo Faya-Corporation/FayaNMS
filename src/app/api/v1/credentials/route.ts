@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +72,18 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
 
+  // Phase 19-C (audit AUTHZ-001 sweep): credential profiles are sensitive
+  // administration — creating them requires "admin.credential"; the audit
+  // row is attributed to the session principal (hardcoded "admin" removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "admin.credential");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
@@ -104,7 +117,8 @@ export async function POST(request: Request) {
     });
     await tx.auditEvent.create({
       data: {
-        actorName: "admin",
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
         action: "CREDENTIAL_CREATED",
         resourceType: "CredentialProfile",
         resourceId: created.id,

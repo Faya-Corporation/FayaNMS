@@ -20,6 +20,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 // Task 7-a: the storable scrypt hash format lives in ONE place (the app's
 // auth helper) — the seed reuses it so seeded users can actually sign in.
 import { hashPassword } from "../src/lib/auth/password";
+import { ROLE_MATRIX } from "../src/lib/auth/role-matrix";
 
 const db = new PrismaClient();
 
@@ -117,52 +118,17 @@ const USERS = [
  * endpoint serves to the UI. admin keeps the "*" superuser wildcard;
  * auditor is read-only by design (*.read + audit export) and the middleware
  * additionally blocks every non-GET for that role.
+ *
+ * Phase 19-C (audit AUTHZ-101): the matrix moved to src/lib/auth/role-matrix.ts
+ * — the single source of truth also consumed by scripts/sync-role-permissions.ts
+ * (live-DB sync without a reseed) and the policy regression tests.
  */
-const ROLES = [
-  { id: "role-admin", name: "admin", description: "Full platform administration", permissionsJson: JSON.stringify(["*"]) },
-  {
-    id: "role-operator",
-    name: "operator",
-    description: "NOC operator — run operational actions, ack alerts",
-    permissionsJson: JSON.stringify([
-      "device.read", "config.read", "config.backup",
-      "alert.read", "alert.ack", "alert.suppress",
-      "incident.read", "incident.write",
-      "change.read", "maintenance.read", "maintenance.write",
-      "job.read", "job.run", "metrics.read",
-    ]),
-  },
-  {
-    id: "role-engineer",
-    name: "engineer",
-    description: "Network engineer — device + config authoring",
-    permissionsJson: JSON.stringify([
-      "device.read", "device.write",
-      "config.read", "config.write", "config.backup", "config.baseline",
-      "config.download",
-      "change.read", "change.create",
-      "alert.read", "maintenance.read",
-      "job.read", "job.run", "metrics.read",
-    ]),
-  },
-  {
-    id: "role-manager",
-    name: "manager",
-    description: "Service manager — approvals and reporting",
-    permissionsJson: JSON.stringify([
-      "device.read", "config.read",
-      "change.read", "change.approve",
-      "incident.read", "alert.read", "metrics.read", "report.read",
-    ]),
-  },
-  {
-    id: "role-auditor",
-    name: "auditor",
-    description: "Read-only + audit export (secrets masked)",
-    permissionsJson: JSON.stringify(["*.read", "audit.export"]),
-  },
-  { id: "role-viewer", name: "viewer", description: "Read-only dashboard access", permissionsJson: JSON.stringify(["*.read"]) },
-];
+const ROLES = ROLE_MATRIX.map((role) => ({
+  id: role.id,
+  name: role.name,
+  description: role.description,
+  permissionsJson: JSON.stringify(role.permissions),
+}));
 
 const CREDENTIALS = [
   { id: "cred-ssh-pass", name: "Network Admin — SSH password", type: "SSH_PASSWORD", username: "netadmin", secretRef: "vault://ssh/network-admin", port: 22, notes: "Primary CLI account; rotated quarterly." },

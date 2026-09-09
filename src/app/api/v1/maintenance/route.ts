@@ -7,7 +7,7 @@ import {
   pageMeta,
   paginationSchema,
 } from "../_lib/api";
-import { resolveActingUser } from "../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -214,6 +214,18 @@ export async function POST(request: Request) {
   }
   const data = parsed.data;
 
+  // Phase 19-C (audit AUTHZ-001 sweep): creating maintenance windows
+  // requires the "maintenance.write" permission; the actor is the session
+  // principal (resolveActingUser replaced by requirePermission).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "maintenance.write");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   // Referenced records must exist (window rows are joined in the UI).
   if (data.siteId) {
     const site = await db.site.findUnique({ where: { id: data.siteId }, select: { id: true } });
@@ -226,11 +238,6 @@ export async function POST(request: Request) {
   if (data.changeId) {
     const change = await db.changeRequest.findUnique({ where: { id: data.changeId }, select: { id: true } });
     if (!change) return fail("CHANGE_INVALID", "The selected change does not exist", 400);
-  }
-
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
   }
 
   const overlap = await findOverlap({
@@ -267,8 +274,8 @@ export async function POST(request: Request) {
 
   await db.auditEvent.create({
     data: {
-      actorId: actor?.id ?? null,
-      actorName: actor?.name ?? "unknown",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "MAINTENANCE_WINDOW_CREATED",
       resourceType: "MaintenanceWindow",
       resourceId: window.id,

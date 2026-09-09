@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { requireUser, authErrorToFail } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
   fail,
   firstIssueMessage,
@@ -26,8 +26,8 @@ export const maxDuration = 60;
  * signed-in operator from the builder selection — read-only over live data,
  * no job is queued and nothing is persisted except the audit row:
  *
- *   1. Auth exactly like the schedules POST (requireUser → 401 envelope on
- *      a missing/invalid session).
+ *   1. Auth exactly like the schedules POST (requirePermission → 401/403
+ *      envelope on a missing session or a role without "report.create").
  *   2. Zod body: { reportType, frequency, format } → 400 INVALID_BODY.
  *   3. generateReport(...) — the same generator the worker path uses, so a
  *      builder preview always reconciles with the scheduled runs history.
@@ -52,12 +52,15 @@ const runSchema = z
   .strip();
 
 export async function POST(request: Request) {
-  let actor: Awaited<ReturnType<typeof requireUser>>;
+  // Phase 19-C (audit AUTHZ-001 sweep): on-demand report generation
+  // requires the "report.create" permission (was authentication-only via
+  // requireUser).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    actor = await requireUser(request);
+    actor = await requirePermission(request, "report.create");
   } catch (error) {
-    const envelope = authErrorToFail(error);
-    if (envelope) return envelope;
+    const authFail = authErrorToFail(error);
+    if (authFail) return authFail;
     throw error;
   }
 

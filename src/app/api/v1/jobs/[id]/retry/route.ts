@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { requireUser, authErrorToFail } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { fail, newJobCorrelationId, ok, requestContext } from "../../../_lib/api";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
  * - 404 JOB_NOT_FOUND — unknown id
  * - 201               — { job, audit } for the newly queued clone.
  *
- * Standard _lib envelope; session enforced (middleware + requireUser).
+ * Standard _lib envelope; session enforced (middleware + requirePermission).
  */
 
 export async function POST(
@@ -26,13 +26,15 @@ export async function POST(
 ) {
   const { id } = await params;
 
-  let user;
+  // Phase 19-C (audit AUTHZ-001 sweep): retrying a job requires the
+  // "job.run" permission (was authentication-only via requireUser).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    user = await requireUser(request);
+    actor = await requirePermission(request, "job.run");
   } catch (error) {
-    const envelope = authErrorToFail(error);
-    if (envelope) return envelope;
-    throw error;
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
 
   const source = await db.jobExecution.findUnique({ where: { id } });
@@ -79,8 +81,8 @@ export async function POST(
     }),
     db.auditEvent.create({
       data: {
-        actorId: user.id,
-        actorName: user.name ?? user.email,
+        actorId: actor.id,
+        actorName: actor.name ?? actor.email,
         action: "JOB_RETRIED",
         resourceType: source.targetType ?? "SYSTEM",
         resourceId: source.targetId ?? source.id,

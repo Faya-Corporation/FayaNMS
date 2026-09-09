@@ -3,6 +3,14 @@ import type { User } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { fail } from "@/app/api/v1/_lib/api";
+import {
+  APPROVAL_LEVEL_PERMISSIONS,
+  APPROVE_GATE_PERMISSION,
+  isWildcardHolder,
+  mayApproveLevel,
+  roleHasPermission,
+  type ApprovalLevel,
+} from "@/lib/auth/permissions";
 
 /**
  * Server-side session helpers (Task 7-a).
@@ -115,9 +123,24 @@ export async function requireRole(
 }
 
 /**
+ * Load the authoritative permission array for a role name from the DB.
+ * Returns [] for unknown roles / unparsable JSON (fail closed).
+ */
+export async function loadRolePermissions(roleName: string): Promise<string[]> {
+  const role = await db.role.findUnique({ where: { name: roleName } });
+  try {
+    return role?.permissionsJson
+      ? (JSON.parse(role.permissionsJson) as string[])
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Permission check against the role's seeded permissionsJson matrix
- * (P19 / audit SEC-005 + AUTH-001 — the permission arrays become
- * authoritative for the sensitive paths that call this helper).
+ * (P19 / audit SEC-005 + AUTH-001; Phase 19-C / audit AUTHZ-101 makes this
+ * THE authoritative mutation gate — every mutating route calls it).
  *
  * Pattern semantics (matches the seeded matrix):
  *   "*"         — wildcard: every permission (admin)
@@ -131,21 +154,8 @@ export async function requirePermission(
   permission: string
 ): Promise<User> {
   const user = await requireUser(req);
-  const role = await db.role.findUnique({ where: { name: user.role } });
-  let permissions: string[] = [];
-  try {
-    permissions = role?.permissionsJson
-      ? (JSON.parse(role.permissionsJson) as string[])
-      : [];
-  } catch {
-    permissions = [];
-  }
-  const holds = permissions.some((pattern) => {
-    if (pattern === "*") return true;
-    if (pattern.startsWith("*.")) return permission.endsWith(pattern.slice(1));
-    return pattern === permission;
-  });
-  if (!holds) {
+  const permissions = await loadRolePermissions(user.role);
+  if (!roleHasPermission(permissions, permission)) {
     throw new AuthError(
       "RBAC_FORBIDDEN",
       `This action requires the "${permission}" permission, which the "${user.role}" role does not hold.`,
@@ -153,4 +163,47 @@ export async function requirePermission(
     );
   }
   return user;
+}
+
+/**
+ * Approval entitlement (Phase 19-C / audit AUTHZ-101A): the caller must
+ * hold the coarse "change.approve" gate AND the level-specific permission
+ * (change.approve.technical|security|manager|cab) to decide that level.
+ *
+ * Throws:
+ *   401 UNAUTHENTICATED / ACCOUNT_DISABLED — via requireUser
+ *   403 RBAC_FORBIDDEN — coarse gate missing, or the role is not entitled
+ *   to this level (message names the level so the UI can explain)
+ */
+export async function requireApprovalEntitlement(
+  req: Request,
+  level: ApprovalLevel
+): Promise<User> {
+  const user = await requireUser(req);
+  const permissions = await loadRolePermissions(user.role);
+  if (!roleHasPermission(permissions, APPROVE_GATE_PERMISSION)) {
+    throw new AuthError(
+      "RBAC_FORBIDDEN",
+      `This action requires the "${APPROVE_GATE_PERMISSION}" permission, which the "${user.role}" role does not hold.`,
+      403
+    );
+  }
+  if (!mayApproveLevel(permissions, level)) {
+    throw new AuthError(
+      "RBAC_FORBIDDEN",
+      `The "${user.role}" role is not entitled to decide ${level} approvals (requires "${APPROVAL_LEVEL_PERMISSIONS[level]}" ).`,
+      403
+    );
+  }
+  return user;
+}
+
+/** Admin wildcard check for the multi-level SoD guard (approvals route). */
+export async function actorIsWildcard(userId: string): Promise<boolean> {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  if (!user) return false;
+  return isWildcardHolder(await loadRolePermissions(user.role));
 }

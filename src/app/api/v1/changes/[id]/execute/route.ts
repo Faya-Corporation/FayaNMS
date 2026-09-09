@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../../_lib/api";
-import { resolveActingUser } from "../../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,11 @@ export const dynamic = "force-dynamic";
  *   404 CHANGE_NOT_FOUND / 400 ACTOR_NOT_FOUND;
  *   409 INVALID_STATE — only APPROVED | SCHEDULED changes can be executed;
  *   409 APPROVALS_PENDING — every approval row must be APPROVED (or
- *     NOT_REQUIRED) before the engine may run.
+ *     NOT_REQUIRED) before the engine may run;
+ *   403 RBAC_FORBIDDEN — Phase 19-C (audit AUTHZ-101B): queueing an
+ *     execution requires the "change.execute" permission (engineer; admin
+ *     via wildcard). Once real adapters land this is the direct
+ *     production network-control gate.
  *
  * Creates a QUEUED JobExecution (type CHANGE_EXECUTE, targetType CHANGE,
  * targetId = change.id, payloadJson { failAt, triggerUserId })
@@ -52,6 +56,18 @@ export async function POST(
   }
   const { failAt } = parsed.data;
 
+  // Phase 19-C (audit AUTHZ-101B): executions are permission-gated FIRST —
+  // change.execute (engineer; admin wildcard) — before any resource lookup
+  // so unauthorized callers learn nothing about change existence.
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "change.execute");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const change = await db.changeRequest.findUnique({
     where: { id },
     select: {
@@ -71,15 +87,6 @@ export async function POST(
       "INVALID_STATE",
       `Only APPROVED or SCHEDULED changes can be executed — this change is ${change.status}`,
       409
-    );
-  }
-
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail(
-      "UNAUTHENTICATED",
-      "Sign in required — executions are attributed to the authenticated session principal (P19 SEC-001).",
-      401
     );
   }
 

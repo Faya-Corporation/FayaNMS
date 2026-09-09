@@ -80,8 +80,9 @@ export async function GET(request: Request) {
       description: role?.description ?? null,
     },
     permissions,
-    // UI write gate (Task 7-a): auditors are read-only, disabled accounts
-    // can never write.
-    canWrite: user.role !== "auditor" && user.isActive,
+    // UI write gate (Task 7-a; Phase 19-C): read-only roles (auditor,
+    // viewer) and disabled accounts can never write — the server-side
+    // permission gates remain the hard backstop.
+    canWrite: !["auditor", "viewer"].includes(user.role) && user.isActive,
   });
 }

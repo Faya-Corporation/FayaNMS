@@ -9,7 +9,7 @@ import {
   requestContext,
 } from "../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
-import { authErrorToFail } from "@/lib/auth/session";
+import { authErrorToFail, requireRole } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +94,17 @@ const updateSchema = z.object({
 
 export async function PATCH(request: Request) {
   try {
-    const { actor } = await resolveAdminActor(request);
+    // Phase 19-C (audit AUTHZ-001 sweep): admin-only gate (requireRole
+    // replaces resolveAdminActor, whose UNAUTHENTICATED fallback let
+    // anonymous callers through).
+    let actor: Awaited<ReturnType<typeof requireRole>>;
+    try {
+      actor = await requireRole(request, "admin");
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
     const body = await request.json().catch(() => null);
     const parsed = updateSchema.safeParse(body);
     if (!parsed.success) {
@@ -154,7 +164,7 @@ export async function PATCH(request: Request) {
     await db.auditEvent.create({
       data: {
         actorId: actor.id,
-        actorName: actor.name,
+        actorName: actor.name ?? actor.email,
         action: "SETTINGS_UPDATED",
         resourceType: "Setting",
         resourceLabel: prepared.map((p) => p.key).join(", ").slice(0, 120),

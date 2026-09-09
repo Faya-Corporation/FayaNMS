@@ -9,6 +9,7 @@ import {
   paginationSchema,
   requestContext,
 } from "../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -175,6 +176,18 @@ export async function POST(request: Request) {
   }
   const data = parsed.data;
 
+  // Phase 19-C (audit AUTHZ-001 sweep): creating a device requires the
+  // "device.write" permission and the audit row is attributed to the
+  // session principal (the legacy hardcoded actorName "Admin" is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "device.write");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const vendor = await db.vendor.findUnique({
     where: { id: data.vendorId },
     select: { id: true, key: true, name: true },
@@ -246,7 +259,8 @@ export async function POST(request: Request) {
 
     const audit = await db.auditEvent.create({
       data: {
-        actorName: "Admin",
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
         action: "DEVICE_CREATED",
         resourceType: "Device",
         resourceId: device.id,

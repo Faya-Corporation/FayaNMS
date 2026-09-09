@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { requireUser, authErrorToFail } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { fail, ok, requestContext } from "../../../_lib/api";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
  * - 200                     — status → CANCELLED + finishedAt, audited
  *                             JOB_CANCELLED (session actor + correlationId).
  *
- * Standard _lib envelope; session enforced (middleware + requireUser).
+ * Standard _lib envelope; session enforced (middleware + requirePermission).
  */
 
 const CANCELLABLE_STATUSES = new Set(["QUEUED", "RUNNING"]);
@@ -28,13 +28,15 @@ export async function POST(
 ) {
   const { id } = await params;
 
-  let user;
+  // Phase 19-C (audit AUTHZ-001 sweep): cancelling a job requires the
+  // "job.run" permission (was authentication-only via requireUser).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    user = await requireUser(request);
+    actor = await requirePermission(request, "job.run");
   } catch (error) {
-    const envelope = authErrorToFail(error);
-    if (envelope) return envelope;
-    throw error;
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
 
   const job = await db.jobExecution.findUnique({ where: { id } });
@@ -56,12 +58,12 @@ export async function POST(
   }
 
   const finishedAt = new Date();
-  const actorName = user.name ?? user.email;
+  const actorName = actor.name ?? actor.email;
 
   const [, updated] = await db.$transaction([
     db.auditEvent.create({
       data: {
-        actorId: user.id,
+        actorId: actor.id,
         actorName,
         action: "JOB_CANCELLED",
         resourceType: job.targetType ?? "SYSTEM",

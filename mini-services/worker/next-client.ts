@@ -46,11 +46,11 @@ async function postJson(
   const headers: Record<string, string> = {
     "content-type": "application/json",
   };
-  // P19 SEC-002: calls to the Next.js job engine carry the machine-principal
-  // service JWT. Self-calls (simulate/*) stay unauthenticated loopback.
-  if (opts.serviceAuth) {
-    headers.authorization = serviceAuthHeader();
-  }
+  // Phase 19-C (audit GATEWAY-101/SVC-101): EVERY POST carries the machine
+  // principal's service JWT — including loopback self-calls, because the
+  // /simulate/* surface now requires a Bearer token with the "simulate"
+  // scope even from the worker itself (self-identity iss "fayanms:worker").
+  headers.authorization = serviceAuthHeader();
   const res = await fetch(base + path, {
     method: "POST",
     headers,

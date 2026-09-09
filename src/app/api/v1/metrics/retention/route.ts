@@ -7,6 +7,7 @@ import {
   parseStoredRetention,
   readRetentionSetting,
 } from "@/lib/performance/retention";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +61,19 @@ export async function PUT(request: Request) {
     return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
 
+  // Phase 19-C (audit AUTHZ-001 sweep): changing the metric retention
+  // policy requires the "admin.system" permission (system administration);
+  // the audit row is attributed to the session principal (the legacy
+  // hardcoded actorName "Admin" is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "admin.system");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const parsed = putSchema.safeParse(body);
   if (!parsed.success) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
@@ -80,7 +94,8 @@ export async function PUT(request: Request) {
 
   await db.auditEvent.create({
     data: {
-      actorName: "Admin",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "SETTINGS_UPDATED",
       resourceType: "Setting",
       resourceId: METRICS_RETENTION_KEY,

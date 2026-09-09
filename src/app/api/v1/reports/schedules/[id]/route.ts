@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { requireUser, authErrorToFail } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
   fail,
   firstIssueMessage,
@@ -32,9 +32,11 @@ export const dynamic = "force-dynamic";
  *         history artifacts live on their JobExecution rows and survive).
  *         Audited REPORT_SCHEDULE_DELETED with a before snapshot.
  *
- * Both: requireUser (same as the list/create route), 404 SCHEDULE_NOT_FOUND
- * on an unknown id, REP-XXXXXX correlation ids, { schedule|deleted, audit }
- * response shapes exactly as the existing hooks type them.
+ * Both: requirePermission("report.schedule") (same auth posture as the
+ * list/create route — Phase 19-C audit AUTHZ-001 sweep), 404
+ * SCHEDULE_NOT_FOUND on an unknown id, REP-XXXXXX correlation ids,
+ * { schedule|deleted, audit } response shapes exactly as the existing
+ * hooks type them.
  */
 
 const ID_MAX = 64;
@@ -61,10 +63,13 @@ const patchSchema = z
   })
   .strict();
 
-/** Require a session; map auth errors to the standard envelope. */
+/** Require the "report.schedule" permission; map auth errors to the envelope. */
 async function auth(request: Request) {
   try {
-    return { actor: await requireUser(request), envelope: null };
+    return {
+      actor: await requirePermission(request, "report.schedule"),
+      envelope: null,
+    };
   } catch (error) {
     const envelope = authErrorToFail(error);
     if (envelope) return { actor: null, envelope };

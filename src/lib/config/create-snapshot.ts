@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { normalizeConfig } from "@/lib/config/normalize";
-import { prepareSnapshotColumns, sha256Plaintext } from "@/lib/config/crypto";
+import { prepareSnapshotColumns, sha256Plaintext, snapshotAad } from "@/lib/config/crypto";
 
 /**
  * Shared ConfigSnapshot creation (Task 4-b).
@@ -114,7 +114,19 @@ export async function createSnapshot(
       source: input.source,
       configType: input.configType ?? "RUNNING",
       // AES-256-GCM envelope — the DB never sees the plaintext (P19 SEC-003).
-      ...prepareSnapshotColumns(input.rawText, normalizedText),
+      // Phase 19-C (audit CRYPTO-101): the whole envelope is AAD-bound to
+      // the row identity (device/version/configType/source) so a ciphertext
+      // transplanted between rows fails GCM authentication.
+      ...prepareSnapshotColumns(
+        input.rawText,
+        normalizedText,
+        snapshotAad({
+          deviceId: input.deviceId,
+          version,
+          configType: input.configType ?? "RUNNING",
+          source: input.source,
+        })
+      ),
       sha256,
       sizeBytes,
       userId: input.userId ?? null,

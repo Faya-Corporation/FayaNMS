@@ -9,7 +9,7 @@ import {
   requestContext,
 } from "../../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
-import { authErrorToFail } from "@/lib/auth/session";
+import { authErrorToFail, requireRole } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +78,18 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { actor } = await resolveAdminActor(request);
+
+    // Phase 19-C (audit AUTHZ-001 sweep): admin-only gate (requireRole
+    // replaces resolveAdminActor, whose UNAUTHENTICATED fallback let
+    // anonymous callers through).
+    let actor: Awaited<ReturnType<typeof requireRole>>;
+    try {
+      actor = await requireRole(request, "admin");
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
 
     let body: unknown;
     try {
@@ -122,7 +133,7 @@ export async function PATCH(
     await db.auditEvent.create({
       data: {
         actorId: actor.id,
-        actorName: actor.name,
+        actorName: actor.name ?? actor.email,
         action: revoking ? "API_CLIENT_REVOKED" : "API_CLIENT_UPDATED",
         resourceType: "ApiClient",
         resourceId: id,
@@ -153,7 +164,18 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const { actor } = await resolveAdminActor(request);
+
+    // Phase 19-C (audit AUTHZ-001 sweep): admin-only gate (requireRole
+    // replaces resolveAdminActor, whose UNAUTHENTICATED fallback let
+    // anonymous callers through).
+    let actor: Awaited<ReturnType<typeof requireRole>>;
+    try {
+      actor = await requireRole(request, "admin");
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
 
     const existing = await db.apiClient.findUnique({ where: { id } });
     if (!existing) {
@@ -170,7 +192,7 @@ export async function DELETE(
     await db.auditEvent.create({
       data: {
         actorId: actor.id,
-        actorName: actor.name,
+        actorName: actor.name ?? actor.email,
         action: "API_CLIENT_DELETED",
         resourceType: "ApiClient",
         resourceId: id,

@@ -11,7 +11,7 @@ import {
   requestContext,
 } from "../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
-import { authErrorToFail } from "@/lib/auth/session";
+import { authErrorToFail, requireRole } from "@/lib/auth/session";
 import {
   WEBHOOK_EVENT_CATALOG,
   webhookView,
@@ -72,7 +72,17 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { actor } = await resolveAdminActor(request);
+    // Phase 19-C (audit AUTHZ-001 sweep): admin-only gate (requireRole
+    // replaces resolveAdminActor, whose UNAUTHENTICATED fallback let
+    // anonymous callers through).
+    let actor: Awaited<ReturnType<typeof requireRole>>;
+    try {
+      actor = await requireRole(request, "admin");
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
     const body = await request.json().catch(() => null);
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
@@ -94,7 +104,7 @@ export async function POST(request: Request) {
     await db.auditEvent.create({
       data: {
         actorId: actor.id,
-        actorName: actor.name,
+        actorName: actor.name ?? actor.email,
         action: "WEBHOOK_CREATED",
         resourceType: "WebhookEndpoint",
         resourceId: row.id,

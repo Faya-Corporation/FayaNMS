@@ -17,6 +17,8 @@ import { useDecideApproval } from "@/hooks/api/use-approval-mutations";
 import { useStatusLabel } from "@/hooks/use-status-label";
 import { usePreferencesStore } from "@/stores/preferences";
 import { usePermissionsStore } from "@/stores/permissions";
+import { useCanApproveLevel } from "@/lib/permissions-client";
+import type { ApprovalLevel } from "@/lib/auth/permissions";
 import { ChangeRiskBadge } from "@/components/domain/change-risk-badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { ErrorState } from "@/components/domain/error-state";
@@ -150,6 +152,22 @@ export function ChangeApprovalsView() {
         row.change.requesterId === sessionUserId &&
         SOD_GATED_RISK_LEVELS.includes(row.change.riskLevel)
     );
+
+  // Phase 19-C (audit AUTHZ-101A): per-level entitlement mirror — hooks at
+  // component top (rules of hooks); the server's requireApprovalEntitlement
+  // remains the hard gate.
+  const canTechnical = useCanApproveLevel("TECHNICAL");
+  const canSecurity = useCanApproveLevel("SECURITY");
+  const canManager = useCanApproveLevel("MANAGER");
+  const canCab = useCanApproveLevel("CAB");
+  const LEVEL_ENTITLED: Record<ApprovalLevel, boolean> = {
+    TECHNICAL: canTechnical,
+    SECURITY: canSecurity,
+    MANAGER: canManager,
+    CAB: canCab,
+  };
+  const isLevelEntitled = (level: string): boolean =>
+    LEVEL_ENTITLED[level as ApprovalLevel] ?? false;
 
   const openDecision = (
     row: (typeof changeRows)[number],
@@ -393,6 +411,12 @@ export function ChangeApprovalsView() {
                                 CHANGE_APPROVAL_LEVEL_UI,
                                 level
                               );
+                              // Phase 19-C: disabled unless the signed-in role
+                              // is entitled for this level AND not SoD-blocked
+                              // (server-side requireApprovalEntitlement is the
+                              // hard gate).
+                              const levelAllowed =
+                                !sodBlocked && isLevelEntitled(level);
                               const buttons = (
                                 <div className="flex items-center gap-1.5">
                                   <span className="hidden font-tech text-[10px] uppercase text-muted-foreground xl:inline">
@@ -400,7 +424,7 @@ export function ChangeApprovalsView() {
                                   </span>
                                   <Button
                                     aria-label={`Approve ${resolveStatusLabel(levelConfig)} for ${row.change.number}`}
-                                    disabled={decide.isPending || sodBlocked}
+                                    disabled={decide.isPending || !levelAllowed}
                                     onClick={() => openDecision(row, level, "APPROVED")}
                                     size="sm"
                                     type="button"
@@ -410,7 +434,7 @@ export function ChangeApprovalsView() {
                                   </Button>
                                   <Button
                                     aria-label={`Reject ${resolveStatusLabel(levelConfig)} for ${row.change.number}`}
-                                    disabled={decide.isPending || sodBlocked}
+                                    disabled={decide.isPending || !levelAllowed}
                                     onClick={() => openDecision(row, level, "REJECTED")}
                                     size="sm"
                                     type="button"
@@ -421,7 +445,9 @@ export function ChangeApprovalsView() {
                                   </Button>
                                 </div>
                               );
-                              return sodBlocked ? (
+                              return levelAllowed ? (
+                                <div key={`${row.change.id}-${level}`}>{buttons}</div>
+                              ) : (
                                 <Tooltip key={`${row.change.id}-${level}`}>
                                   <TooltipTrigger asChild>
                                     <span className="inline-block cursor-not-allowed opacity-50">
@@ -429,12 +455,11 @@ export function ChangeApprovalsView() {
                                     </span>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    Blocked by separation of duties — the requester cannot
-                                    approve a {row.change.riskLevel} change
+                                    {sodBlocked
+                                      ? `Blocked by separation of duties — the requester cannot approve a ${row.change.riskLevel} change`
+                                      : "Your role is not entitled to decide this approval level (server-enforced)"}
                                   </TooltipContent>
                                 </Tooltip>
-                              ) : (
-                                <div key={`${row.change.id}-${level}`}>{buttons}</div>
                               );
                             })}
                           </div>

@@ -5,7 +5,7 @@ import {
   newCorrelationId,
   ok,
 } from "../../_lib/api";
-import { resolveActingUser } from "../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +47,18 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): editing maintenance windows
+  // requires the "maintenance.write" permission; the actor is the session
+  // principal (resolveActingUser replaced by requirePermission).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "maintenance.write");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
 
   let body: unknown;
   try {
@@ -91,11 +103,6 @@ export async function PATCH(
     );
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
-
   const before = {
     name: existing.name,
     siteId: existing.siteId,
@@ -132,8 +139,8 @@ export async function PATCH(
   const correlationId = newCorrelationId("MW");
   await db.auditEvent.create({
     data: {
-      actorId: actor?.id ?? null,
-      actorName: actor?.name ?? "unknown",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "MAINTENANCE_WINDOW_UPDATED",
       resourceType: "MaintenanceWindow",
       resourceId: id,
@@ -177,6 +184,18 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
+  // Phase 19-C (audit AUTHZ-001 sweep): deleting maintenance windows
+  // requires the "maintenance.write" permission; the audit row is
+  // attributed to the session principal (hardcoded "Admin" removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(_request, "maintenance.write");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const existing = await db.maintenanceWindow.findUnique({ where: { id } });
   if (!existing) {
     return fail("MAINTENANCE_NOT_FOUND", "Maintenance window not found", 404);
@@ -187,7 +206,8 @@ export async function DELETE(
   const correlationId = newCorrelationId("MW");
   await db.auditEvent.create({
     data: {
-      actorName: "Admin",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "MAINTENANCE_WINDOW_DELETED",
       resourceType: "MaintenanceWindow",
       resourceId: id,

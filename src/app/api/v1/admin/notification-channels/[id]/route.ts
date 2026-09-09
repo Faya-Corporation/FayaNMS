@@ -9,7 +9,7 @@ import {
   requestContext,
 } from "../../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
-import { authErrorToFail } from "@/lib/auth/session";
+import { authErrorToFail, requireRole } from "@/lib/auth/session";
 import { channelView } from "@/lib/integrations/webhooks";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +38,17 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { actor } = await resolveAdminActor(request);
+    // Phase 19-C (audit AUTHZ-001 sweep): admin-only gate (requireRole
+    // replaces resolveAdminActor, whose UNAUTHENTICATED fallback let
+    // anonymous callers through).
+    let actor: Awaited<ReturnType<typeof requireRole>>;
+    try {
+      actor = await requireRole(request, "admin");
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
     const { id } = await params;
     const body = await request.json().catch(() => null);
     const parsed = patchSchema.safeParse(body);
@@ -64,7 +74,7 @@ export async function PATCH(
     await db.auditEvent.create({
       data: {
         actorId: actor.id,
-        actorName: actor.name,
+        actorName: actor.name ?? actor.email,
         action: "CHANNEL_UPDATED",
         resourceType: "NotificationChannel",
         resourceId: id,
@@ -94,7 +104,17 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { actor } = await resolveAdminActor(request);
+    // Phase 19-C (audit AUTHZ-001 sweep): admin-only gate (requireRole
+    // replaces resolveAdminActor, whose UNAUTHENTICATED fallback let
+    // anonymous callers through).
+    let actor: Awaited<ReturnType<typeof requireRole>>;
+    try {
+      actor = await requireRole(request, "admin");
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
     const { id } = await params;
 
     const existing = await db.notificationChannel.findUnique({ where: { id } });
@@ -108,7 +128,7 @@ export async function DELETE(
     await db.auditEvent.create({
       data: {
         actorId: actor.id,
-        actorName: actor.name,
+        actorName: actor.name ?? actor.email,
         action: "CHANNEL_DELETED",
         resourceType: "NotificationChannel",
         resourceId: id,

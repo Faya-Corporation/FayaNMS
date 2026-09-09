@@ -7,6 +7,7 @@ import {
 } from "../_lib/api";
 import { parsePolicyScope, scopeDeviceWhere } from "../_lib/scope";
 import { isValidCronExpr } from "@/lib/cron";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -129,6 +130,18 @@ export async function POST(request: Request) {
   }
   const data = parsed.data;
 
+  // Phase 19-C (audit AUTHZ-001 sweep): creating backup policies requires
+  // the "config.backup" permission; the audit row is attributed to the
+  // session principal (the legacy hardcoded actorName "Admin" is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "config.backup");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   // Validate site codes against the inventory (or "*" for fleet-wide).
   if (data.scope?.siteCodes && data.scope.siteCodes.length > 0) {
     const codes = data.scope.siteCodes;
@@ -176,7 +189,8 @@ export async function POST(request: Request) {
 
     const audit = await db.auditEvent.create({
       data: {
-        actorName: "Admin",
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
         action: "BACKUP_POLICY_CREATED",
         resourceType: "BackupPolicy",
         resourceId: policy.id,

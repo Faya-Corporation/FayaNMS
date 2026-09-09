@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,18 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const { deviceIds } = parsed.data;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): bulk device actions require the
+  // "device.write" permission; the audit rows are attributed to the session
+  // principal (the legacy hardcoded actorName "Admin" is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "device.write");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
 
   // De-duplicate while preserving order.
   const uniqueIds = Array.from(new Set(deviceIds));
@@ -78,7 +91,8 @@ export async function POST(request: Request) {
     }),
     db.auditEvent.createMany({
       data: eligible.map((device, index) => ({
-        actorName: "Admin",
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
         action: "CONFIG_BACKUP_QUEUED",
         resourceType: "Device",
         resourceId: device.id,

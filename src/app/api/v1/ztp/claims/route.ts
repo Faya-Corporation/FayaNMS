@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok, requestContext } from "../../_lib/api";
-import { resolveActingUser } from "../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { ZTP_TEMPLATES, getZtpTemplate } from "@/lib/ztp/templates";
 import { projectMgmtIp } from "@/lib/ztp/provision";
 import { z } from "zod";
@@ -235,6 +235,18 @@ export async function POST(request: Request) {
   }
   const { serial, hostname, vendorKey, model, templateId } = parsed.data;
 
+  // Phase 19-C (audit AUTHZ-001 sweep): zero-touch provisioning requires
+  // the "ztp.provision" permission; the actor is the session principal
+  // (resolveActingUser replaced, "Admin" fallback removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "ztp.provision");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   // ── Domain validation (template ↔ vendor ↔ seeded set ↔ site) ──
   const template = getZtpTemplate(templateId);
   if (!template) {
@@ -292,11 +304,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
-  const actorName = actor?.name ?? "Admin";
+  const actorName = actor.name ?? "Unknown user";
   const correlationId = newJobCorrelationId();
   const projectedMgmtIp = await projectMgmtIp(parsed.data.siteId ?? null);
 
@@ -338,7 +346,7 @@ export async function POST(request: Request) {
 
       await tx.auditEvent.create({
         data: {
-          actorId: actor?.id,
+          actorId: actor.id,
           actorName,
           action: "ZTP_CLAIM_CREATED",
           resourceType: "ZtpClaim",

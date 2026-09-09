@@ -238,6 +238,11 @@ model ConfigSnapshot {
   wrappedDek     String?
   wrapIv         String?
   wrapTag        String?
+  // Phase 19-C (audit CRYPTO-101): GCM additional-authenticated-data context
+  // ("v1|deviceId|version|configType|source") bound into every cipher of the
+  // envelope — a ciphertext transplanted onto another row fails auth. Null on
+  // pre-19-C rows (legacy envelopes decrypt AAD-free).
+  encAad         String?
   userId         String?
   user           User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   changeId       String?

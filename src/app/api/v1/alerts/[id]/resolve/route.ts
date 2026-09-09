@@ -5,7 +5,7 @@ import {
   newCorrelationId,
   ok,
 } from "../../../_lib/api";
-import { resolveActingUser } from "../../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +15,8 @@ export const dynamic = "force-dynamic";
  * Works from ACTIVE | ACKNOWLEDGED | SUPPRESSED; audits ALERT_RESOLVED.
  * (Auto-resolution by the engine uses the same action name — the audit
  * actor distinguishes system:alert-engine from a human.)
+ * Requires the "alert.ack" permission (Phase 19-C, audit AUTHZ-001 sweep
+ * — was authentication-only via resolveActingUser).
  */
 const resolveSchema = z.object({
 });
@@ -24,6 +26,17 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): resolving requires the
+  // "alert.ack" permission; the actor is the session principal.
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "alert.ack");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
 
   let body: unknown = {};
   try {
@@ -54,10 +67,6 @@ export async function POST(
     return fail("INVALID_STATE", "This alert is already resolved", 409);
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
   const previousStatus = alert.status;
 
   const updated = await db.alert.update({
@@ -68,8 +77,8 @@ export async function POST(
   const correlationId = newCorrelationId("ALR");
   await db.auditEvent.create({
     data: {
-      actorId: actor?.id ?? null,
-      actorName: actor?.name ?? "unknown",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "ALERT_RESOLVED",
       resourceType: "Alert",
       resourceId: id,

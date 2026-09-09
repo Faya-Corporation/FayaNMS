@@ -121,12 +121,3 @@ export async function nextChangeNumber(): Promise<string> {
     (Number.isFinite(maxSeq) ? maxSeq : 0) + 1
   ).padStart(5, "0")}`;
 }
-
-/** Seeded admin user as the demo requester (same lookup as the restore route). */
-export async function demoActor(): Promise<{ id: string; name: string | null } | null> {
-  return db.user.findFirst({
-    where: { role: "admin", isActive: true },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, name: true },
-  });
-}

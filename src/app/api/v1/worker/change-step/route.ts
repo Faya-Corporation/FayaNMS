@@ -9,6 +9,7 @@ import {
 } from "@/lib/config/create-snapshot";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import { authenticateServiceRequest } from "@/lib/auth/service-auth";
+import { workerControlHeaders } from "@/lib/worker/control-client";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -109,7 +110,7 @@ async function workerSimPost(
   try {
     response = await fetch(WORKER_BASE_URL + path, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: workerControlHeaders(),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -311,7 +312,7 @@ async function consumeFailAt(jobId: string, payload: Record<string, unknown>) {
 
 export async function POST(request: Request) {
   // P19 SEC-002 — machine principal only (service JWT; see service-auth.ts).
-  const service = authenticateServiceRequest(request);
+  const service = authenticateServiceRequest(request, "jobs");
   if (!service.ok) {
     return fail(service.code, service.message, 401);
   }

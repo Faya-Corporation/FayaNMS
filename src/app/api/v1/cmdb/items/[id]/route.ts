@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok, requestContext } from "../../../_lib/api";
-import { resolveActingUser } from "../../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
   CMDB_ITEM_SUMMARY_SELECT,
   cmdbCriticalitySchema,
@@ -244,6 +244,19 @@ export async function PATCH(
   const ctx = requestContext(request);
   const { id } = await params;
 
+  // Phase 19-C (audit AUTHZ-001 sweep): updating configuration items
+  // requires the "cmdb.write" permission; the actor is the session
+  // principal (resolveActingUser replaced by requirePermission, and the
+  // "Admin" actorName fallback removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "cmdb.write");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -325,11 +338,7 @@ export async function PATCH(
     return ok(detail, { unchanged: true }, 200, ctx);
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
-  const actorName = actor?.name ?? "Admin";
+  const actorName = actor.name ?? "Unknown user";
   const correlationId = newCorrelationId("CI");
 
   const [updated] = await db.$transaction([
@@ -339,7 +348,7 @@ export async function PATCH(
     }),
     db.auditEvent.create({
       data: {
-        actorId: actor?.id,
+        actorId: actor.id,
         actorName,
         action: "CMDB_CI_UPDATED",
         resourceType: "CmdbItem",

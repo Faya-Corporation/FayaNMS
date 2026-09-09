@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, newJobCorrelationId, ok } from "../../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,18 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const { deviceId } = parsed.data;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): manual drift checks require the
+  // "config.baseline" permission; the audit row is attributed to the
+  // session principal (the legacy hardcoded actorName "Admin" is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "config.baseline");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
 
   // Summary correlation id for the audit event (jobs keep their JOB- ids).
   const correlationId = newCorrelationId("DFT");
@@ -85,7 +98,8 @@ export async function POST(request: Request) {
         });
         await tx.auditEvent.create({
           data: {
-            actorName: "Admin",
+            actorId: actor.id,
+            actorName: actor.name ?? "Unknown user",
             action: "DRIFT_CHECK_QUEUED",
             resourceType: "DEVICE",
             resourceId: device.id,
@@ -171,7 +185,8 @@ export async function POST(request: Request) {
       });
       await tx.auditEvent.create({
         data: {
-          actorName: "Admin",
+          actorId: actor.id,
+          actorName: actor.name ?? "Unknown user",
           action: "DRIFT_CHECK_QUEUED",
           resourceType: "DriftRecord",
           resourceLabel: "fleet",

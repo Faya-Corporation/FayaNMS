@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { workerControlHeaders } from "@/lib/worker/control-client";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -79,6 +81,19 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
 
+  // Phase 19-C (audit AUTHZ-001 sweep): reachability probes exercise the
+  // data plane — they require the "config.backup" permission (operator +
+  // engineer seeded) and are attributed to the session principal (the
+  // legacy hardcoded actorName "Admin" is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "config.backup");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const device = await db.device.findUnique({
     where: { id: parsed.data.deviceId },
     select: {
@@ -101,7 +116,7 @@ export async function POST(request: Request) {
   try {
     const response = await fetch(WORKER_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: workerControlHeaders(),
       body: JSON.stringify({
         vendor: vendorKey,
         host: device.mgmtIp,
@@ -145,7 +160,8 @@ export async function POST(request: Request) {
   // Audit every probe (SUCCESS when the worker answered, FAILURE otherwise).
   await db.auditEvent.create({
     data: {
-      actorName: "Admin",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "DEVICE_CONNECTION_TESTED",
       resourceType: "Device",
       resourceId: device.id,

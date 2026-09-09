@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,18 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): credential profiles are sensitive
+  // administration — editing requires "admin.credential"; the audit row is
+  // attributed to the session principal (hardcoded "admin" removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "admin.credential");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
 
   let body: unknown;
   try {
@@ -90,7 +103,8 @@ export async function PATCH(
     });
     await tx.auditEvent.create({
       data: {
-        actorName: "admin",
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
         action: "CREDENTIAL_UPDATED",
         resourceType: "CredentialProfile",
         resourceId: updated.id,

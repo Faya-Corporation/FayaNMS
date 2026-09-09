@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { requireUser, authErrorToFail } from "@/lib/auth/session";
+import { requireUser, authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
   fail,
   firstIssueMessage,
@@ -152,12 +152,15 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  let actor: Awaited<ReturnType<typeof requireUser>>;
+  // Phase 19-C (audit AUTHZ-001 sweep): creating report schedules requires
+  // the "report.schedule" permission (was authentication-only via
+  // requireUser). The GET authentication gate above is unchanged.
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    actor = await requireUser(request);
+    actor = await requirePermission(request, "report.schedule");
   } catch (error) {
-    const envelope = authErrorToFail(error);
-    if (envelope) return envelope;
+    const authFail = authErrorToFail(error);
+    if (authFail) return authFail;
     throw error;
   }
 

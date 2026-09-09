@@ -32,6 +32,7 @@ import { adapters, pickAdapter, type DeviceTarget } from "./adapters";
 import { startRunner, getCounters } from "./runner";
 import { startScheduler, getSchedulerState } from "./scheduler";
 import { log } from "./next-client";
+import { controlRejectResponse, verifyControlToken } from "./control-auth";
 
 const PORT = 3030; // hardcoded — do not read PORT env (task 2-b contract)
 const STARTED_AT = Date.now();
@@ -51,6 +52,10 @@ async function handle(req: Request): Promise<Response> {
     }
 
     if (req.method === "GET" && url.pathname === "/capabilities") {
+      // Phase 19-C (audit GATEWAY-101): the adapter manifest is privileged
+      // architecture disclosure — control-plane token required.
+      const auth = verifyControlToken(req);
+      if (!auth.ok) return controlRejectResponse(auth);
       return Response.json(
         adapters.map((a) => ({
           vendor: a.vendor,
@@ -60,6 +65,15 @@ async function handle(req: Request): Promise<Response> {
           notes: a.notes,
         }))
       );
+    }
+
+    // Phase 19-C (audit GATEWAY-101): every /simulate/* mutation requires a
+    // control-plane service JWT with the "simulate" scope. The sandbox
+    // gateway can reach :3030, so anonymous simulator control is closed —
+    // this becomes the direct device-control gate when real adapters land.
+    if (url.pathname.startsWith("/simulate/")) {
+      const auth = verifyControlToken(req, "simulate");
+      if (!auth.ok) return controlRejectResponse(auth);
     }
 
     if (req.method === "POST" && url.pathname === "/simulate/connect") {

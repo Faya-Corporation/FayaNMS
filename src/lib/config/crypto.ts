@@ -3,6 +3,7 @@ import {
   createDecipheriv,
   randomBytes,
   createHash,
+  timingSafeEqual,
 } from "node:crypto";
 
 /**
@@ -45,6 +46,9 @@ export interface SnapshotEnvelopeColumns {
   wrappedDek: string;
   wrapIv: string;
   wrapTag: string;
+  /** AAD context bound into every GCM cipher of this envelope (may be null
+   *  for legacy rows encrypted before Phase 19-C / audit CRYPTO-101). */
+  encAad: string | null;
 }
 
 export interface SnapshotEnvelopeRow {
@@ -56,6 +60,25 @@ export interface SnapshotEnvelopeRow {
   wrappedDek?: string | null;
   wrapIv?: string | null;
   wrapTag?: string | null;
+  encAad?: string | null;
+  /** sha256 over the PLAINTEXT rawText — verified on every decrypt. */
+  sha256?: string | null;
+}
+
+/**
+ * Canonical AAD context for a snapshot (audit CRYPTO-101 §13.4): binds the
+ * ciphertext envelope to the row's identity so a ciphertext swapped between
+ * rows/devices/types fails GCM authentication even when keys match.
+ * Not secret — stored beside the envelope in encAad so decrypt can set the
+ * identical AAD deterministically (and legacy rows stay readable: null AAD).
+ */
+export function snapshotAad(input: {
+  deviceId: string;
+  version: number;
+  configType: string;
+  source: string;
+}): string {
+  return `v1|${input.deviceId}|${input.version}|${input.configType}|${input.source}`;
 }
 
 function masterKeyMaterial(): { key: Buffer; keyId: string } {
@@ -74,16 +97,18 @@ export function sha256Plaintext(plain: string): string {
   return createHash("sha256").update(plain).digest("hex");
 }
 
-function gcmEncrypt(key: Buffer, plain: string): { ct: Buffer; iv: Buffer; tag: Buffer } {
+function gcmEncrypt(key: Buffer, plain: string, aad: string | null): { ct: Buffer; iv: Buffer; tag: Buffer } {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
+  if (aad) cipher.setAAD(Buffer.from(aad, "utf8"));
   const ct = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
   return { ct, iv, tag: cipher.getAuthTag() };
 }
 
-function gcmDecrypt(key: Buffer, ctB64: string, ivB64: string, tagB64: string): string {
+function gcmDecrypt(key: Buffer, ctB64: string, ivB64: string, tagB64: string, aad: string | null): string {
   const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB64, "base64"));
   decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+  if (aad) decipher.setAAD(Buffer.from(aad, "utf8"));
   return Buffer.concat([
     decipher.update(Buffer.from(ctB64, "base64")),
     decipher.final(),
@@ -93,21 +118,26 @@ function gcmDecrypt(key: Buffer, ctB64: string, ivB64: string, tagB64: string): 
 /**
  * Build the encrypted column set for a snapshot write: encrypts rawText and
  * normalizedText (when present) under a fresh per-row DEK wrapped by the
- * master key. Returns exactly the columns the caller spreads into the
- * Prisma create/update, with ciphertext already in rawText/normalizedText.
+ * master key, binding the whole envelope to `aad` via GCM additional
+ * authenticated data when provided (Phase 19-C / audit CRYPTO-101 — a
+ * ciphertext transplanted onto another row fails authentication).
+ * Returns exactly the columns the caller spreads into the Prisma
+ * create/update, with ciphertext already in rawText/normalizedText.
  */
 export function prepareSnapshotColumns(
   rawText: string,
-  normalizedText: string | null
+  normalizedText: string | null,
+  aad: string | null = null
 ): { rawText: string; normalizedText: string | null } & SnapshotEnvelopeColumns {
   const { key, keyId } = masterKeyMaterial();
   const dek = randomBytes(32);
 
-  const raw = gcmEncrypt(dek, rawText);
-  const norm = normalizedText !== null ? gcmEncrypt(dek, normalizedText) : null;
+  const raw = gcmEncrypt(dek, rawText, aad);
+  const norm = normalizedText !== null ? gcmEncrypt(dek, normalizedText, aad) : null;
 
   const wrapIv = randomBytes(12);
   const wrap = createCipheriv("aes-256-gcm", key, wrapIv);
+  if (aad) wrap.setAAD(Buffer.from(aad, "utf8"));
   const wrappedDek = Buffer.concat([wrap.update(dek), wrap.final()]);
   const wrapTag = wrap.getAuthTag();
 
@@ -122,6 +152,7 @@ export function prepareSnapshotColumns(
     wrappedDek: wrappedDek.toString("base64"),
     wrapIv: wrapIv.toString("base64"),
     wrapTag: wrapTag.toString("base64"),
+    encAad: aad,
   };
 }
 
@@ -129,15 +160,23 @@ export function prepareSnapshotColumns(
 function unwrapDek(
   wrappedDek: string,
   wrapIv: string,
-  wrapTag: string
+  wrapTag: string,
+  aad: string | null
 ): Buffer {
   const { key } = masterKeyMaterial();
   const unwrap = createDecipheriv("aes-256-gcm", key, Buffer.from(wrapIv, "base64"));
   unwrap.setAuthTag(Buffer.from(wrapTag, "base64"));
+  if (aad) unwrap.setAAD(Buffer.from(aad, "utf8"));
   return Buffer.concat([
     unwrap.update(Buffer.from(wrappedDek, "base64")),
     unwrap.final(),
   ]);
+}
+
+/** Timing-safe hex-digest comparison (equal length guaranteed by sha256). */
+function digestEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"));
 }
 
 /**
@@ -145,11 +184,21 @@ function unwrapDek(
  * Legacy rows (encKeyId null → plaintext) pass through untouched, so this
  * is safe to call unconditionally on any row. Throws on tampered or
  * incomplete envelopes.
+ *
+ * Phase 19-C integrity hardening (audit CRYPTO-101):
+ *   1. AAD binding — rows carrying encAad have it set as GCM additional
+ *      authenticated data on EVERY cipher (texts + DEK wrap); a ciphertext
+ *      envelope transplanted from another row/device/type fails loudly.
+ *      Rows without encAad (pre-19-C) decrypt AAD-free, unchanged.
+ *   2. Plaintext digest verification — when the row carries sha256, the
+ *      decrypted rawText is re-hashed and compared (timing-safe) BEFORE
+ *      the value is returned; a mismatch throws CONFIG_INTEGRITY_FAIL.
  */
 export function decryptSnapshotTexts<
   T extends SnapshotEnvelopeRow & { rawText: string; normalizedText?: string | null },
 >(row: T): { rawText: string; normalizedText: string | null } {
   if (!row.encKeyId) {
+    verifyPlaintextDigest(row.rawText, row.sha256 ?? null);
     return { rawText: row.rawText, normalizedText: row.normalizedText ?? null };
   }
   if (
@@ -163,9 +212,11 @@ export function decryptSnapshotTexts<
       `Snapshot row has an incomplete encryption envelope (encKeyId=${row.encKeyId}).`
     );
   }
-  const dek = unwrapDek(row.wrappedDek, row.wrapIv, row.wrapTag);
+  const aad = row.encAad ?? null;
+  const dek = unwrapDek(row.wrappedDek, row.wrapIv, row.wrapTag, aad);
 
-  const rawText = gcmDecrypt(dek, row.rawText, row.encIv, row.encTag);
+  const rawText = gcmDecrypt(dek, row.rawText, row.encIv, row.encTag, aad);
+  verifyPlaintextDigest(rawText, row.sha256 ?? null);
   let normalizedText: string | null = null;
   if (row.normalizedText) {
     if (!row.normIv || !row.normTag) {
@@ -173,7 +224,18 @@ export function decryptSnapshotTexts<
         "Snapshot row has an encrypted normalizedText without normIv/normTag."
       );
     }
-    normalizedText = gcmDecrypt(dek, row.normalizedText, row.normIv, row.normTag);
+    normalizedText = gcmDecrypt(dek, row.normalizedText, row.normIv, row.normTag, aad);
   }
   return { rawText, normalizedText };
+}
+
+/** Throw CONFIG_INTEGRITY_FAIL when the stored digest disagrees with the plaintext. */
+function verifyPlaintextDigest(rawText: string, expected: string | null): void {
+  if (!expected) return;
+  const actual = sha256Plaintext(rawText);
+  if (!digestEquals(actual, expected)) {
+    throw new Error(
+      "CONFIG_INTEGRITY_FAIL — decrypted configuration does not match its recorded sha256 digest (possible ciphertext substitution)."
+    );
+  }
 }

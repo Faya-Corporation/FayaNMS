@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -114,6 +115,19 @@ export async function POST(request: Request) {
   }
   const { subnets, name } = parsed.data;
 
+  // Phase 19-C (audit AUTHZ-001 sweep): queueing discovery scans requires
+  // the "device.write" permission (the import turns candidates into real
+  // devices); the audit row is attributed to the session principal
+  // (hardcoded "Admin" removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "device.write");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const correlationId = newJobCorrelationId();
 
   const [job, audit] = await db.$transaction([
@@ -132,7 +146,8 @@ export async function POST(request: Request) {
     }),
     db.auditEvent.create({
       data: {
-        actorName: "Admin",
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
         action: "DISCOVERY_QUEUED",
         resourceType: "SYSTEM",
         resourceLabel: name ?? subnets.join(", "),

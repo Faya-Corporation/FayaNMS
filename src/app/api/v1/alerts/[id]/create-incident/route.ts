@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../../_lib/api";
-import { resolveActingUser } from "../../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { createIncidentForAlert } from "@/lib/incidents/create";
 import { z } from "zod";
 
@@ -25,6 +25,17 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): escalating an alert requires the
+  // "incident.create" permission; the actor is the session principal.
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "incident.create");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
 
   let body: unknown = {};
   try {
@@ -67,11 +78,6 @@ export async function POST(
     );
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
-
   const result = await createIncidentForAlert({
     alert: {
       id: alert.id,
@@ -85,8 +91,8 @@ export async function POST(
       siteId: alert.device.siteId,
     },
     source: "MANUAL",
-    actorName: actor?.name ?? "unknown",
-    actorId: actor?.id ?? null,
+    actorName: actor.name ?? "Unknown user",
+    actorId: actor.id,
     title: parsed.data.title,
   });
 

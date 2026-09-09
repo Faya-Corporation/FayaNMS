@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
-import { resolveActingUser } from "../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +40,18 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
 
+  // Phase 19-C (audit AUTHZ-001 sweep): correlating an incident from a
+  // failed change requires the "incident.create" permission; the actor is
+  // the session principal.
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "incident.create");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const change = await db.changeRequest.findUnique({
     where: { id: parsed.data.changeId },
     include: {
@@ -71,11 +83,6 @@ export async function POST(request: Request) {
       `Incident ${existing.number} is already linked to this change`,
       409
     );
-  }
-
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
   }
 
   const maxIncident = await db.incident.findFirst({
@@ -122,7 +129,7 @@ export async function POST(request: Request) {
           status: "NEW",
           source: "FAILED_CHANGE",
           siteId: change.site?.id ?? null,
-          ownerId: actor?.id ?? null,
+          ownerId: actor.id,
           changeId: change.id,
           slaDueAt,
         },
@@ -142,14 +149,14 @@ export async function POST(request: Request) {
           incidentId: created.id,
           kind: "SYSTEM",
           message: `Incident created from failed change ${change.number} (${change.status}).`,
-          actorId: actor?.id ?? null,
+          actorId: actor.id,
         },
       });
 
       await tx.auditEvent.create({
         data: {
-          actorId: actor?.id ?? null,
-          actorName: actor?.name ?? "system:change-engine",
+          actorId: actor.id,
+          actorName: actor.name ?? "Unknown user",
           action: "INCIDENT_CREATED",
           resourceType: "Incident",
           resourceId: created.id,

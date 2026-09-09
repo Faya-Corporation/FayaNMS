@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -146,6 +147,18 @@ export async function PATCH(
   }
   const data = parsed.data;
 
+  // Phase 19-C (audit AUTHZ-001 sweep): editing a device requires the
+  // "device.write" permission and the audit row is attributed to the
+  // session principal (the legacy hardcoded actorName "Admin" is removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "device.write");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const current = await db.device.findUnique({ where: { id } });
   if (!current) {
     return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
@@ -214,7 +227,8 @@ export async function PATCH(
 
   await db.auditEvent.create({
     data: {
-      actorName: "Admin",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "DEVICE_UPDATED",
       resourceType: "Device",
       resourceId: id,

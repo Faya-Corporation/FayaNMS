@@ -1,6 +1,11 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../_lib/api";
-import { isSodViolation, resolveActingUser } from "../../../_lib/actor";
+import { isSodViolation } from "../../../_lib/actor";
+import {
+  authErrorToFail,
+  actorIsWildcard,
+  requireApprovalEntitlement,
+} from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -16,9 +21,17 @@ export const dynamic = "force-dynamic";
  *   409 ALREADY_DECIDED — the approval row is not PENDING;
  *   409 INVALID_STATE — the change is not AWAITING_APPROVAL;
  *   401 UNAUTHENTICATED — no valid session (actor = session principal; P19);
- *   403 SOD_VIOLATION — separation of duties: the requester cannot approve
- *     their own HIGH/CRITICAL change (MEDIUM/LOW self-approval is allowed
- *     and flagged selfApproval: true).
+ *   403 RBAC_FORBIDDEN — the session role lacks the "change.approve" gate
+ *     or the level-specific entitlement (Phase 19-C / audit AUTHZ-101A:
+ *     TECHNICAL → change.approve.technical, SECURITY → .security,
+ *     MANAGER → .manager, CAB → .cab; manager = technical+manager+cab,
+ *     security is admin-wildcard only);
+ *   403 SOD_VIOLATION — separation of duties, two forms:
+ *     (a) the requester cannot approve their own HIGH/CRITICAL change
+ *         (MEDIUM/LOW self-approval is allowed and flagged selfApproval);
+ *     (b) the same principal cannot decide TWO DIFFERENT levels on one
+ *         change unless they hold the admin wildcard (audit acceptance:
+ *         one principal cannot satisfy multiple independent levels).
  *
  * On success (single short transaction):
  *   - approval row → decision (approverId/decidedAt/comment);
@@ -61,6 +74,18 @@ export async function POST(
   }
   const { level, decision, comment } = parsed.data;
 
+  // Phase 19-C (audit AUTHZ-101A): the approval decision is a privileged
+  // act — the permission gate comes FIRST (before any resource lookup, so
+  // unauthorized callers learn nothing about change existence).
+  let actor: Awaited<ReturnType<typeof requireApprovalEntitlement>>;
+  try {
+    actor = await requireApprovalEntitlement(request, level);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const change = await db.changeRequest.findUnique({
     where: { id },
     select: {
@@ -75,21 +100,33 @@ export async function POST(
     return fail("CHANGE_NOT_FOUND", "The requested change does not exist", 404);
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail(
-      "UNAUTHENTICATED",
-      "Sign in required — approvals are attributed to the authenticated session principal (P19 SEC-001).",
-      401
-    );
-  }
-
   // Separation of duties (server-authoritative — the UI disables the
   // button as a pre-check only).
   if (isSodViolation(change.riskLevel, change.requesterId, actor.id)) {
     return fail(
       "SOD_VIOLATION",
       `Separation of duties: the requester cannot approve a ${change.riskLevel} change. Switch the acting user to decide this level.`,
+      403
+    );
+  }
+
+  // Separation of duties, second form (Phase 19-C / audit acceptance test
+  // "same principal cannot satisfy multiple independent approval levels"):
+  // one approver may not decide two distinct levels of the same change —
+  // admin wildcard holders are the documented policy exception.
+  const decidedElsewhere = await db.changeApproval.findFirst({
+    where: {
+      changeId: change.id,
+      approverId: actor.id,
+      level: { not: level },
+      status: { in: ["APPROVED", "REJECTED"] },
+    },
+    select: { level: true },
+  });
+  if (decidedElsewhere && !(await actorIsWildcard(actor.id))) {
+    return fail(
+      "SOD_VIOLATION",
+      `Separation of duties: ${actor.name ?? "this approver"} already decided the ${decidedElsewhere.level} level of this change — independent approvers are required for the remaining levels.`,
       403
     );
   }

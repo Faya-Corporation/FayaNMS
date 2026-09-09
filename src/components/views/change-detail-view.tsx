@@ -32,6 +32,8 @@ import { useStatusLabel } from "@/hooks/use-status-label";
 import { useSession } from "next-auth/react";
 import { usePreferencesStore } from "@/stores/preferences";
 import { usePermissionsStore } from "@/stores/permissions";
+import { useCanApproveLevel, APPROVAL_LEVEL_PERMISSIONS, useCan } from "@/lib/permissions-client";
+import type { ApprovalLevel } from "@/lib/auth/permissions";
 import {
   getStatusConfig,
   INCIDENT_SEVERITY,
@@ -272,6 +274,27 @@ export function ChangeDetailView() {
   } | null>(null);
   const [comment, setComment] = useState("");
 
+  // Phase 19-C client-side permission mirrors — hooks MUST run before the
+  // early returns below (rules of hooks). The server gates remain the hard
+  // backstop; these only disable the affordances.
+  const mayExecute = useCan("change.execute");
+  const mayCancel = useCan("change.cancel");
+  const mayClose = useCan("change.close");
+  const canTechnical = useCanApproveLevel("TECHNICAL");
+  const canSecurity = useCanApproveLevel("SECURITY");
+  const canManager = useCanApproveLevel("MANAGER");
+  const canCab = useCanApproveLevel("CAB");
+  const LEVEL_ENTITLED: Record<ApprovalLevel, boolean> = {
+    TECHNICAL: canTechnical,
+    SECURITY: canSecurity,
+    MANAGER: canManager,
+    CAB: canCab,
+  };
+  const levelEntitled = (level: string): boolean =>
+    LEVEL_ENTITLED[level as ApprovalLevel] ?? false;
+  const levelEntitlementHint = (level: string): string =>
+    `Requires the "${APPROVAL_LEVEL_PERMISSIONS[level as ApprovalLevel]}" permission, which your role does not hold.`;
+
   if (!changeId) {
     return (
       <div className="flex flex-col gap-4">
@@ -310,14 +333,15 @@ export function ChangeDetailView() {
 
   const change = detail.data;
   const canEdit = EDITABLE_STATUSES.includes(change.status);
-  const canCancel = CANCELLABLE_STATUSES.includes(change.status);
+  const canCancel = CANCELLABLE_STATUSES.includes(change.status) && mayCancel;
   const canExecute =
     EXECUTABLE_STATUSES.includes(change.status) &&
     change.approvals.every(
       (approval) => approval.status === "APPROVED" || approval.status === "NOT_REQUIRED"
     ) &&
-    change.approvals.length > 0;
-  const canClose = change.status === "SUCCESSFUL";
+    change.approvals.length > 0 &&
+    mayExecute;
+  const canClose = change.status === "SUCCESSFUL" && mayClose;
   const executing = EXECUTION_STATUSES.includes(change.status);
   const stepsDone = change.steps.filter(
     (step) => step.status === "PASSED" || step.status === "SKIPPED"
@@ -730,6 +754,7 @@ export function ChangeDetailView() {
                               className="h-8"
                               disabled={
                                 sodBlocked ||
+                                !levelEntitled(level) ||
                                 decide.isPending ||
                                 updateChange.isPending
                               }
@@ -745,11 +770,17 @@ export function ChangeDetailView() {
                             </Button>
                           </span>
                         </TooltipTrigger>
-                        {sodBlocked && (
+                        {sodBlocked ? (
                           <TooltipContent>
                             Blocked by separation of duties — the requester cannot
                             approve a {change.riskLevel} change
                           </TooltipContent>
+                        ) : (
+                          !levelEntitled(level) && (
+                            <TooltipContent>
+                              {levelEntitlementHint(level)}
+                            </TooltipContent>
+                          )
                         )}
                       </Tooltip>
                       <Tooltip>
@@ -760,6 +791,7 @@ export function ChangeDetailView() {
                               className="h-8"
                               disabled={
                                 sodBlocked ||
+                                !levelEntitled(level) ||
                                 decide.isPending ||
                                 updateChange.isPending
                               }
@@ -776,16 +808,27 @@ export function ChangeDetailView() {
                             </Button>
                           </span>
                         </TooltipTrigger>
-                        {sodBlocked && (
+                        {sodBlocked ? (
                           <TooltipContent>
                             Blocked by separation of duties — the requester cannot
                             reject a {change.riskLevel} change
                           </TooltipContent>
+                        ) : (
+                          !levelEntitled(level) && (
+                            <TooltipContent>
+                              {levelEntitlementHint(level)}
+                            </TooltipContent>
+                          )
                         )}
                       </Tooltip>
                       {sodBlocked && (
                         <span className="text-xs text-warning">
                           SoD — switch the acting user to decide
+                        </span>
+                      )}
+                      {!levelEntitled(level) && !sodBlocked && (
+                        <span className="text-xs text-muted-foreground">
+                          Not entitled for this level
                         </span>
                       )}
                     </div>

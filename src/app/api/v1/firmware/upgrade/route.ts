@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok, requestContext } from "../../_lib/api";
-import { resolveActingUser } from "../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { isValidTargetVersion } from "@/lib/firmware/lifecycle";
 import { z } from "zod";
 
@@ -50,6 +50,19 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
   }
   const { deviceId, targetVersion } = parsed.data;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): firmware upgrades are high-risk
+  // mutations — they require the "firmware.execute" permission; the actor
+  // is the session principal (resolveActingUser replaced,
+  // "Admin" fallback removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "firmware.execute");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
 
   const device = await db.device.findUnique({
     where: { id: deviceId },
@@ -115,11 +128,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
-  const actorName = actor?.name ?? "Admin";
+  const actorName = actor.name ?? "Unknown user";
   const correlationId = newJobCorrelationId();
 
   const [job] = await db.$transaction(
@@ -143,7 +152,7 @@ export async function POST(request: Request) {
 
       await tx.auditEvent.create({
         data: {
-          actorId: actor?.id,
+          actorId: actor.id,
           actorName,
           action: "FIRMWARE_UPGRADE_QUEUED",
           resourceType: "Device",

@@ -7,6 +7,7 @@ import {
 } from "../../_lib/api";
 import { ALERT_RULE_METRICS, ALERT_RULE_OPERATORS } from "@/lib/alerts/evaluate";
 import { parsePolicyScope } from "../../_lib/scope";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -127,6 +128,18 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
 
+  // Phase 19-C (audit AUTHZ-001 sweep): alert rules are system
+  // administration — creating them requires "admin.system" and the audit
+  // row is attributed to the session principal (hardcoded "Admin" removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "admin.system");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const parsed = createRuleSchema.safeParse(body);
   if (!parsed.success) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
@@ -161,7 +174,8 @@ export async function POST(request: Request) {
   const correlationId = newCorrelationId("ARL");
   await db.auditEvent.create({
     data: {
-      actorName: "Admin",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "ALERT_RULE_CREATED",
       resourceType: "AlertRule",
       resourceId: created.id,

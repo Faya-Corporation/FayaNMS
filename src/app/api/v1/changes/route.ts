@@ -15,6 +15,7 @@ import {
   scoreChangeServerSide,
 } from "../_lib/change";
 import { resolveActingUser } from "../_lib/actor";
+import { requirePermission, authErrorToFail } from "@/lib/auth/session";
 import { approvalLevelsFor } from "@/lib/change/risk";
 import { z } from "zod";
 
@@ -258,9 +259,16 @@ export async function POST(request: Request) {
   const correlationId = newCorrelationId("CHG");
 
   const number = await nextChangeNumber();
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  // Phase 19-C (audit AUTHZ-101D): change authoring is permission-gated —
+  // the seeded matrix grants change.create to engineer (admin via wildcard);
+  // operator/manager/viewer/auditor are denied server-side (403).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "change.create");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
 
   const change = await db.$transaction(

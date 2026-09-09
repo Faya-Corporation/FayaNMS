@@ -6,6 +6,13 @@ import {
   scoreChangeServerSide,
 } from "../../_lib/change";
 import { approvalLevelsFor } from "@/lib/change/risk";
+import {
+  authErrorToFail,
+  loadRolePermissions,
+  requirePermission,
+} from "@/lib/auth/session";
+import { isWildcardHolder } from "@/lib/auth/permissions";
+import type { User } from "@prisma/client";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -260,9 +267,51 @@ export async function PATCH(
   }
   const data = parsed.data;
 
+  const correlationId = newCorrelationId("CHG");
+
+  // Phase 19-C (audit AUTHZ-101D / §35): session-authoritative actor +
+  // per-action permission gate, resolved BEFORE any resource lookup so
+  // unauthorized callers learn nothing about change existence. The legacy
+  // "first active admin" actor synthesis (a SEC-001-class attribution
+  // regression surfaced by the 19-C sweep — every audit row here was
+  // attributed to "Admin") is REMOVED: the actor is now ALWAYS the
+  // authenticated session principal.
+  //   field edit / SUBMIT → change.create + draft ownership (requester
+  //     only; admin wildcard excepted);
+  //   CANCEL → change.cancel (operator/engineer/manager seeded);
+  //   CLOSE  → change.close  (operator/engineer/manager seeded).
+  let actor: User;
+  try {
+    if (data.action === "CANCEL") {
+      actor = await requirePermission(request, "change.cancel");
+    } else if (data.action === "CLOSE") {
+      actor = await requirePermission(request, "change.close");
+    } else {
+      actor = await requirePermission(request, "change.create");
+    }
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const existing = await db.changeRequest.findUnique({ where: { id } });
   if (!existing) {
     return fail("CHANGE_NOT_FOUND", "The requested change does not exist", 404);
+  }
+
+  // Draft authoring is requester-only (admin wildcard excepted).
+  if (
+    data.action !== "CANCEL" &&
+    data.action !== "CLOSE" &&
+    existing.requesterId !== actor.id &&
+    !isWildcardHolder(await loadRolePermissions(actor.role))
+  ) {
+    return fail(
+      "CHANGE_FORBIDDEN",
+      "Only the requester (or an administrator) can edit or submit this draft change.",
+      403
+    );
   }
 
   const hasFieldEdits =
@@ -324,13 +373,6 @@ export async function PATCH(
   ) {
     return fail("SCHEDULE_INVALID", "scheduledEnd must be after scheduledStart", 400);
   }
-
-  const correlationId = newCorrelationId("CHG");
-  const actor = await db.user.findFirst({
-    where: { role: "admin", isActive: true },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, name: true },
-  });
 
   /* ------------------------- field-edit path ------------------------- */
   if (hasFieldEdits) {
@@ -443,8 +485,8 @@ export async function PATCH(
 
         await tx.auditEvent.create({
           data: {
-            actorId: actor?.id ?? null,
-            actorName: actor?.name ?? "Admin",
+            actorId: actor.id,
+            actorName: actor.name ?? "Unknown user",
             action: "CHANGE_UPDATED",
             resourceType: "ChangeRequest",
             resourceId: existing.id,
@@ -506,8 +548,8 @@ export async function PATCH(
 
         await tx.auditEvent.create({
           data: {
-            actorId: actor?.id ?? null,
-            actorName: actor?.name ?? "Admin",
+            actorId: actor.id,
+            actorName: actor.name ?? "Unknown user",
             action: "CHANGE_SUBMITTED",
             resourceType: "ChangeRequest",
             resourceId: current.id,
@@ -549,8 +591,8 @@ export async function PATCH(
 
         await tx.auditEvent.create({
           data: {
-            actorId: actor?.id ?? null,
-            actorName: actor?.name ?? "Admin",
+            actorId: actor.id,
+            actorName: actor.name ?? "Unknown user",
             action: "CHANGE_CANCELLED",
             resourceType: "ChangeRequest",
             resourceId: current.id,
@@ -588,8 +630,8 @@ export async function PATCH(
 
         await tx.auditEvent.create({
           data: {
-            actorId: actor?.id ?? null,
-            actorName: actor?.name ?? "Admin",
+            actorId: actor.id,
+            actorName: actor.name ?? "Unknown user",
             action: "CHANGE_CLOSED",
             resourceType: "ChangeRequest",
             resourceId: current.id,

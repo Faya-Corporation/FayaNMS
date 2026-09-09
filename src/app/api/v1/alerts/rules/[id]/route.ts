@@ -6,6 +6,7 @@ import {
   ok,
 } from "../../../_lib/api";
 import { ALERT_RULE_METRICS, ALERT_RULE_OPERATORS } from "@/lib/alerts/evaluate";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +53,18 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Phase 19-C (audit AUTHZ-001 sweep): alert rules are system
+  // administration — updating requires "admin.system" and the audit row is
+  // attributed to the session principal (hardcoded "Admin" removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "admin.system");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
 
   let body: unknown;
   try {
@@ -108,7 +121,8 @@ export async function PATCH(
   const correlationId = newCorrelationId("ARL");
   await db.auditEvent.create({
     data: {
-      actorName: "Admin",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "ALERT_RULE_UPDATED",
       resourceType: "AlertRule",
       resourceId: id,
@@ -147,6 +161,18 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
+  // Phase 19-C (audit AUTHZ-001 sweep): alert rules are system
+  // administration — deleting requires "admin.system" and the audit row is
+  // attributed to the session principal (hardcoded "Admin" removed).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(_request, "admin.system");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const before = await db.alertRule.findUnique({
     where: { id },
     include: { _count: { select: { alerts: true } } },
@@ -168,7 +194,8 @@ export async function DELETE(
   const correlationId = newCorrelationId("ARL");
   await db.auditEvent.create({
     data: {
-      actorName: "Admin",
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
       action: "ALERT_RULE_DELETED",
       resourceType: "AlertRule",
       resourceId: id,

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../../../_lib/api";
-import { resolveActingUser } from "../../../../../_lib/actor";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +15,12 @@ export const dynamic = "force-dynamic";
  *   - confirmHostname must match the device hostname EXACTLY
  *     (case-sensitive) — 400 CONFIRM_MISMATCH otherwise.
  *
- * AUTHORIZATION (P19 / audit SEC-006): the requester is the authenticated
- * session principal (401 UNAUTHENTICATED otherwise). The flow NEVER
+ * AUTHORIZATION (P19 / audit SEC-006 + Phase 19-C AUTHZ-101C): the requester
+ * is the authenticated session principal (401 UNAUTHENTICATED otherwise) AND
+ * must hold the dedicated "config.restore" permission (403 RBAC_FORBIDDEN
+ * otherwise — seeded to operator + engineer; admin via wildcard). A viewer
+ * can no longer file emergency restores merely because an approval follows:
+ * requesting a restore is itself a privileged, audited act. The flow NEVER
  * auto-approves — the `autoApprove` flag and seeded-identity approvals were
  * removed: restore changes always land AWAITING_APPROVAL and a real human
  * holder of the required approval level must decide through the audited
@@ -76,15 +80,16 @@ export async function POST(
   }
   const { confirmHostname } = parsed.data;
 
-  // The restore requester is the authenticated principal — no synthesized
-  // identity may file a high-risk restore (P19 SEC-001/SEC-006).
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail(
-      "UNAUTHENTICATED",
-      "Sign in required — restores are attributed to the authenticated session principal (P19 SEC-006).",
-      401
-    );
+  // The restore requester is the authenticated principal AND must hold
+  // "config.restore" (Phase 19-C / audit AUTHZ-101C — 401/403 otherwise).
+  // No synthesized identity may file a high-risk restore (P19 SEC-001/006).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "config.restore");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
 
   const device = await db.device.findUnique({
