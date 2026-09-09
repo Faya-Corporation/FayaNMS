@@ -7,6 +7,7 @@ import {
   Ban,
   ChevronDown,
   ChevronRight,
+  HeartCrack,
   RotateCcw,
 } from "lucide-react";
 
@@ -160,6 +161,10 @@ const JobItem = function JobItem({
   const t = useTranslations("jobs");
   const cancellable = CANCELLABLE.has(job.status);
   const retryable = RETRYABLE.has(job.status);
+  // Phase 16 reaper marker: the scheduler fails orphaned jobs (worker died
+  // mid-run) with a known error prefix — surfaced as a distinct chip + hint
+  // so operators can tell an automatic reap from a real job failure.
+  const isOrphaned = job.error?.startsWith("Orphaned:") ?? false;
 
   return (
     <li className="rounded-lg border bg-card p-3 shadow-e1">
@@ -178,6 +183,15 @@ const JobItem = function JobItem({
           )}
         </button>
         <JobStatusBadge value={job.status} />
+        {isOrphaned && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full border bg-warning-subtle px-1.5 py-0.5 text-[10px] font-medium text-warning"
+            title={t("orphanedHint")}
+          >
+            <HeartCrack aria-hidden="true" className="size-3" />
+            {t("orphanedChip")}
+          </span>
+        )}
         <span className="text-sm font-medium">{jobTypeLabel(job.type, t)}</span>
         <span className="ms-auto text-[11px] text-muted-foreground">
           {job.finishedAt
@@ -250,6 +264,11 @@ const JobItem = function JobItem({
       {job.error && (
         <p className="mt-2 rounded-md bg-danger-subtle px-2 py-1.5 text-xs text-danger sm:ms-7">
           {job.error}
+        </p>
+      )}
+      {isOrphaned && (
+        <p className="mt-1 text-[11px] text-muted-foreground sm:ms-7">
+          {t("orphanedHint")}
         </p>
       )}
 

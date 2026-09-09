@@ -1077,6 +1077,8 @@
     "progressAria": "Job {correlation} progress",
     "deviceTarget": "device",
     "attempt": "attempt {current}/{max}",
+    "orphanedChip": "Orphaned",
+    "orphanedHint": "Worker died mid-run — the scheduler reaped this job automatically. Retry queues a fresh run.",
     "payload": "Payload",
     "result": "Result",
     "times": {

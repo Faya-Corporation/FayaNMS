@@ -1241,3 +1241,19 @@ Work Log:
 
 Stage Summary:
 - Phase 16 COMPLETE — the last documented hardening gap is closed: every RUNNING job type now gets reaped if orphaned (type-agnostic reaper with a safe CHANGE_EXECUTE margin), ZTP claims can no longer wedge in "provisioning", and reaps leave a lean audit trail. No schema changes, no new dependencies, no worker-file edits. Git history reconciled (single main line at 41d0557). Roadmap 0–15 + hardening closeout 16 all COMPLETE; parked list remains empty.
+
+---
+Task ID: 17
+Agent: Orchestrator (Z.ai Code) — small-surface release-readiness pass, no shards warranted
+Task: Phase 17 — release readiness: Job Center orphaned-job UX (completes the Phase 16 operator story) + root README
+
+Work Log:
+- State: HEAD ee61416 (env auto-checkpoint of the Phase 16 worklog append; remote 41d0557) — left unpushed intentionally, rides with this phase's push. dev :3000 + worker :3030 healthy.
+- 17-a job-center.tsx (shared by the header sheet AND the ops.jobs view): jobs whose error starts with "Orphaned:" (the Phase 16 reaper marker; detection mirrors the component's existing RETRY_OF payload-prefix pattern) now render a warning-subtle HeartCrack chip next to the status badge (title tooltip) + a muted hint line under the error paragraph explaining the automatic reap and pointing at Retry — the FAILED/DEAD retry button already existed, so the full operator loop is: see Orphaned chip → read hint → Retry re-queues a fresh run. i18n jobs.orphanedChip/jobs.orphanedHint ×2 locales ("مهمة يتيمة" + genuine Arabic hint) → parity 1140=1140.
+- 17-b README.md (root): demo-simulation honesty banner, stack table, architecture-in-brief (single-route shell, evaluate-in-Next, audit-as-event-store, deterministic simulations, secrets hygiene), full 7-group feature map from sidebar-config, getting-started (Bun, env, db:push + seed, dev + worker), demo creds admin@faya.local/faya123, scripts table, worker section incl. the Phase 16 reaper semantics, conventions (envelope/Zod, i18n parity, a11y, HighRiskActionDialog), repo layout. All claims grounded in code/worklog (parity count script-verified 1140=1140 before asserting).
+- Gates: bunx tsc 0 errors under src/; bun run lint exit 0; parity 1140=1140.
+- Browser verification (agent-browser): signed in (admin@faya.local) → injected synthetic FAILED job with "Orphaned: no worker heartbeat…" error → Job Center shows Failed badge + Orphaned chip + "Firmware upgrade" + Retry button + raw error + localized hint (EN verified; dark-mode screenshot; AR RTL: فاشل + مهمة يتيمة + ترقية البرنامج الثابت + AR retry aria, dir=rtl confirmed); 375px scrollWidth stable 375 across 4 reads in both the sheet-open and sheet-closed states (one transient 377 during viewport-switch/sheet animation, not reproducible — not a layout defect); console clean. Synthetic job deleted after verification; dev.log clean.
+- Ops: pristine reseed not needed (synthetic row deleted; DB was already pristine from Phase 16 restore). Commit + push + ls-remote verify follows this entry.
+
+Stage Summary:
+- Phase 17 COMPLETE — release readiness: orphaned (reaped) jobs are now a first-class, localized state in the Job Center completing the Phase 16 backend story end-to-end for operators, and the repo has a grounded README for the first time. No schema/API/worker changes. i18n parity 1140=1140. Roadmap 0–15 + hardening 16 + release-readiness 17 all COMPLETE.

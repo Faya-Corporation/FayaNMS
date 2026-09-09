@@ -1077,6 +1077,8 @@
     "progressAria": "تقدم المهمة {correlation}",
     "deviceTarget": "جهاز",
     "attempt": "المحاولة {current}/{max}",
+    "orphanedChip": "مهمة يتيمة",
+    "orphanedHint": "توقّف العامل أثناء التنفيذ فأزالها المجدول تلقائيًا — أعد المحاولة لإنشاء مهمة جديدة.",
     "payload": "الحمولة",
     "result": "النتيجة",
     "times": {
