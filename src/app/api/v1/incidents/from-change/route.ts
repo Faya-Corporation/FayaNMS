@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * change (Task 4-b). Offered by the change-detail outcome banner when an
  * execution FAILED.
  *
- * Body: { changeId, actAsUserId? }
+ * Body: { changeId }
  *
  * Guards:
  *   404 CHANGE_NOT_FOUND;
@@ -25,7 +25,6 @@ export const dynamic = "force-dynamic";
  */
 const fromChangeSchema = z.object({
   changeId: z.string().trim().min(1).max(64),
-  actAsUserId: z.string().trim().max(64).optional(),
 });
 
 export async function POST(request: Request) {
@@ -74,7 +73,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const actor = await resolveActingUser(parsed.data.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
 
   const maxIncident = await db.incident.findFirst({
     orderBy: { number: "desc" },

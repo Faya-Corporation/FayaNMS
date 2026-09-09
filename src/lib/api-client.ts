@@ -635,7 +635,6 @@ export interface IncidentActionResult {
 }
 
 export interface IncidentLifecycleActionPayload {
-  actAsUserId?: string;
   note?: string;
   resolutionNote?: string;
   ownerId?: string;
@@ -866,7 +865,7 @@ export interface ApprovalQueueRow {
 /** meta of GET /api/v1/approvals — KPI counts for the queue view. */
 export interface ApprovalQueueMeta {
   pending: number;
-  /** SoD-aware count the acting user may decide (null without actAsUserId). */
+  /** SoD-aware count the authenticated principal may decide. */
   mine: number | null;
   approvedToday: number;
   rejectedToday: number;
@@ -876,7 +875,6 @@ export interface ApprovalDecisionPayload {
   level: string;
   decision: "APPROVED" | "REJECTED";
   comment?: string;
-  actAsUserId?: string;
 }
 
 /** POST /api/v1/changes/[id]/approvals result. */
@@ -896,7 +894,6 @@ export interface ApprovalDecisionResult {
 /** POST /api/v1/changes/[id]/execute body + result. */
 export interface ExecuteChangePayload {
   failAt?: "APPLY" | "VALIDATE" | null;
-  actAsUserId?: string;
 }
 
 export interface ExecuteChangeResult {
@@ -914,7 +911,6 @@ export interface ExecuteChangeResult {
 /** POST /api/v1/incidents/from-change body + result. */
 export interface IncidentFromChangePayload {
   changeId: string;
-  actAsUserId?: string;
 }
 
 export interface IncidentFromChangeResult {
@@ -1621,7 +1617,6 @@ export interface MaintenanceWindowPayload {
   reason?: string | null;
   isActive?: boolean;
   /** Demo acting identity (Task 4-b act-as selector). */
-  actAsUserId?: string;
 }
 
 /** PATCH body — every field optional; explicit null clears the link. */
@@ -1634,7 +1629,6 @@ export interface UpdateMaintenanceWindowPayload {
   endsAt?: string;
   reason?: string | null;
   isActive?: boolean;
-  actAsUserId?: string;
 }
 
 /** Non-blocking same-scope overlap warning attached to write responses. */
@@ -2715,7 +2709,6 @@ export interface AiAssistPayload {
   /** 1..500 chars, enforced server-side too. */
   question: string;
   locale: "en" | "ar";
-  actAsUserId?: string;
 }
 
 export interface AiAssistResult {
@@ -2740,7 +2733,6 @@ export interface RcaDraft {
 export interface AiRcaDraftPayload {
   incidentId: string;
   locale: "en" | "ar";
-  actAsUserId?: string;
 }
 
 export interface AiRcaDraftResult {
@@ -2806,7 +2798,6 @@ export interface AiChangeDraftPayload {
   /** 10..600 chars, enforced server-side too. */
   prompt: string;
   locale: "en" | "ar";
-  actAsUserId?: string;
 }
 
 export interface AiChangeDraftResult {
@@ -3124,7 +3115,6 @@ export interface FirmwareUpgradeResult {
 export async function requestFirmwareUpgrade(payload: {
   deviceId: string;
   targetVersion: string;
-  actAsUserId?: string;
 }): Promise<FirmwareUpgradeResult> {
   return apiFetch<FirmwareUpgradeResult>("/api/v1/firmware/upgrade", {
     method: "POST",
@@ -3347,7 +3337,6 @@ export interface HaFailoverTestResult {
 
 export async function requestFailoverTest(payload: {
   pairId: string;
-  actAsUserId?: string;
 }): Promise<HaFailoverTestResult> {
   return apiFetch<HaFailoverTestResult>("/api/v1/ha/failover-test", {
     method: "POST",

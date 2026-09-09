@@ -17,7 +17,6 @@ export const dynamic = "force-dynamic";
  * ALERT_ACKNOWLEDGED.
  */
 const ackSchema = z.object({
-  actAsUserId: z.string().trim().max(64).optional(),
 });
 
 export async function POST(
@@ -59,7 +58,10 @@ export async function POST(
     );
   }
 
-  const actor = await resolveActingUser(parsed.data.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
   const now = new Date();
 
   const updated = await db.alert.update({

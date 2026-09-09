@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/v1/changes/[id]/execute — queue a change execution (Task 4-b).
  *
- * Body: { failAt?: "APPLY"|"VALIDATE"|null, actAsUserId? }
+ * Body: { failAt?: "APPLY"|"VALIDATE"|null }
  *   failAt is the DEMO-ONLY control rendered as "Simulate failure at" in the
  *   execute dialog — it forces the engine down its rollback path.
  *
@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
  *     NOT_REQUIRED) before the engine may run.
  *
  * Creates a QUEUED JobExecution (type CHANGE_EXECUTE, targetType CHANGE,
- * targetId = change.id, payloadJson { failAt, actAsUserId, triggerUserId })
+ * targetId = change.id, payloadJson { failAt, triggerUserId })
  * + a CHANGE_EXECUTION_QUEUED audit event. The change status stays untouched
  * until the worker claims the job and the step executor drives the state
  * machine (PRE_CHECK → EXECUTING → VALIDATING → SUCCESSFUL / ROLLBACK…).
@@ -28,7 +28,6 @@ const ID_MAX = 64;
 
 const executeSchema = z.object({
   failAt: z.enum(["APPLY", "VALIDATE"]).nullable().optional(),
-  actAsUserId: z.string().trim().max(64).optional(),
 });
 
 export async function POST(
@@ -75,12 +74,12 @@ export async function POST(
     );
   }
 
-  const actor = await resolveActingUser(parsed.data.actAsUserId);
+  const actor = await resolveActingUser(request);
   if (!actor) {
     return fail(
-      "ACTOR_NOT_FOUND",
-      "actAsUserId does not match any active user — pick a user from the Act-as selector",
-      400
+      "UNAUTHENTICATED",
+      "Sign in required — executions are attributed to the authenticated session principal (P19 SEC-001).",
+      401
     );
   }
 
@@ -129,7 +128,6 @@ export async function POST(
           maxAttempts: 3,
           payloadJson: JSON.stringify({
             failAt: failAt ?? null,
-            actAsUserId: actor.id,
             triggerUserId: actor.id,
             changeNumber: change.number,
             changeTitle: change.title,

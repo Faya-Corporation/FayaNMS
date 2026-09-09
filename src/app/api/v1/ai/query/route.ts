@@ -703,7 +703,10 @@ export async function POST(request: Request) {
   const { prompt, locale } = parsed.data;
 
   const correlationId = newCorrelationId("AI");
-  const actor = await resolveActingUser();
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
 
   /* ── Grounding vocabulary (labels only) ─────────────────────────────── */
   const [sites, vendors] = await Promise.all([

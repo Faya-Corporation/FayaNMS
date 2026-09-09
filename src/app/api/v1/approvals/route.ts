@@ -10,8 +10,6 @@ export const dynamic = "force-dynamic";
  *
  * Query:
  *   status       csv multi over ChangeApproval.status (default "PENDING")
- *   actAsUserId  demo acting user (id or username key) — feeds the
- *                "awaiting my decision" meta count (SoD-aware)
  *   q            change number/title contains
  *
  * Rows are per approval row, joined with the change (number/title/type/
@@ -27,7 +25,6 @@ export const dynamic = "force-dynamic";
 
 const querySchema = z.object({
   status: z.string().optional(),
-  actAsUserId: z.string().trim().max(64).optional(),
   q: z.string().trim().max(120).optional(),
 });
 
@@ -35,7 +32,6 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     status: url.searchParams.get("status") ?? undefined,
-    actAsUserId: url.searchParams.get("actAsUserId") ?? undefined,
     q: url.searchParams.get("q") ?? undefined,
   });
   if (!parsed.success) {
@@ -70,7 +66,7 @@ export async function GET(request: Request) {
         },
       },
     }),
-    resolveActingUser(parsed.data.actAsUserId),
+    resolveActingUser(request),
   ]);
 
   const shaped = rows.map((row) => ({

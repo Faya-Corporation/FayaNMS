@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/v1/ai/rca-draft — LLM-drafted post-incident review (Phase 12-a).
  *
- * Body (Zod-validated): { incidentId, locale: "en"|"ar", actAsUserId? }
+ * Body (Zod-validated): { incidentId, locale: "en"|"ar" } — actor is the session principal (P19 SEC-001)
  *
  * Loads the incident + full timeline + linked alerts/devices, asks the model
  * for a STRICT JSON draft:
@@ -44,7 +44,6 @@ export const dynamic = "force-dynamic";
 const bodySchema = z.object({
   incidentId: z.string().trim().min(1, "incidentId is required").max(64),
   locale: z.enum(["en", "ar"]).default("en"),
-  actAsUserId: z.string().trim().max(64).optional(),
 });
 
 const RAW_DETAIL_MAX = 4000;
@@ -112,7 +111,7 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
   }
-  const { incidentId, locale, actAsUserId } = parsed.data;
+  const { incidentId, locale } = parsed.data;
 
   const incident = await db.incident.findUnique({
     where: { id: incidentId },
@@ -128,7 +127,10 @@ export async function POST(request: Request) {
   }
 
   const correlationId = newCorrelationId("AI");
-  const actor = await resolveActingUser(actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
 
   // ── LLM round-trip (timeout guard + one retry inside aiChat) ─────────
   let raw: string;

@@ -35,7 +35,6 @@ const patchSchema = z
     endsAt: isoDatetime.optional(),
     reason: z.string().trim().max(500).nullable().optional(),
     isActive: z.boolean().optional(),
-    actAsUserId: z.string().trim().max(64).optional(),
   })
   .refine(
     (data) =>
@@ -92,7 +91,10 @@ export async function PATCH(
     );
   }
 
-  const actor = await resolveActingUser(data.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
 
   const before = {
     name: existing.name,

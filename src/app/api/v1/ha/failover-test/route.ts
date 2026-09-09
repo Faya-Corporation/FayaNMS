@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * POST /api/v1/ha/failover-test — deterministic staged failover simulation
- * (Phase 14-c). Body: { pairId, actAsUserId? }.
+ * (Phase 14-c). Body: { pairId }.
  *
  * Guards, in order:
  *   404 HA_PAIR_NOT_FOUND    — unknown pairId (pairs are the in-code matrix)
@@ -40,7 +40,6 @@ const TEST_COOLDOWN_MS = 3 * 60 * 1000;
 
 const testSchema = z.object({
   pairId: z.string().trim().min(1).max(64),
-  actAsUserId: z.string().trim().min(1).max(64).optional(),
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -105,7 +104,10 @@ export async function POST(request: Request) {
   const result: "passed" | "degraded" =
     offlineMembers.length > 0 ? "degraded" : "passed";
 
-  const actor = await resolveActingUser(parsed.data.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
   const actorName = actor?.name ?? "Admin";
   const correlationId = newCorrelationId("HA");
   const startedAt = Date.now();

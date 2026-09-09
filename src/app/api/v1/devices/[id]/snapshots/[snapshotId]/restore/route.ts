@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../../../_lib/api";
+import { resolveActingUser } from "../../../../../_lib/actor";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -10,9 +11,19 @@ export const dynamic = "force-dynamic";
  * action: this endpoint creates an EMERGENCY ChangeRequest that the Phase 4
  * execution engine will run — it does not push configuration itself.
  *
- * Body: { confirmHostname: string, autoApprove?: boolean }
+ * Body: { confirmHostname: string }
  *   - confirmHostname must match the device hostname EXACTLY
  *     (case-sensitive) — 400 CONFIRM_MISMATCH otherwise.
+ *
+ * AUTHORIZATION (P19 / audit SEC-006): the requester is the authenticated
+ * session principal (401 UNAUTHENTICATED otherwise). The flow NEVER
+ * auto-approves — the `autoApprove` flag and seeded-identity approvals were
+ * removed: restore changes always land AWAITING_APPROVAL and a real human
+ * holder of the required approval level must decide through the audited
+ * approvals API (which enforces separation of duties — the requester cannot
+ * approve their own HIGH/CRITICAL restore). Break-glass/fast-path execution
+ * is a deliberate future capability (MFA + reason + expiry + notification),
+ * not a request-body boolean.
  *
  * Risk heuristic (simple, deterministic):
  *   base 45 (target version is not the latest)  + 15 open drift records
@@ -25,15 +36,13 @@ export const dynamic = "force-dynamic";
  *   3 APPLY    Apply baseline configuration
  *   4 VALIDATE Post-restore validation
  *   5 BACKUP   Post-restore backup
- * and a ChangeDevice link. With autoApprove=true a MANAGER ChangeApproval
- * row (APPROVED, seeded manager account) is recorded and the change goes
- * straight to SCHEDULED (scheduledStart = now) — steps stay PENDING until
- * the Phase 4 executor claims scheduled changes.
+ * and a ChangeDevice link. The change always enters AWAITING_APPROVAL —
+ * steps stay PENDING until a real approver decides and the executor claims
+ * the scheduled change.
  */
 
 const restoreSchema = z.object({
   confirmHostname: z.string().trim().min(1).max(255),
-  autoApprove: z.boolean().optional(),
 });
 
 const ID_MAX = 64;
@@ -65,7 +74,18 @@ export async function POST(
   if (!parsed.success) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
-  const { confirmHostname, autoApprove = false } = parsed.data;
+  const { confirmHostname } = parsed.data;
+
+  // The restore requester is the authenticated principal — no synthesized
+  // identity may file a high-risk restore (P19 SEC-001/SEC-006).
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail(
+      "UNAUTHENTICATED",
+      "Sign in required — restores are attributed to the authenticated session principal (P19 SEC-006).",
+      401
+    );
+  }
 
   const device = await db.device.findUnique({
     where: { id },
@@ -124,25 +144,8 @@ export async function POST(
     (Number.isFinite(maxSeq) ? maxSeq : 0) + 1
   ).padStart(5, "0")}`;
 
-  // Actor accounts: seeded admin requests, seeded manager auto-approves.
-  const [admin, manager] = await Promise.all([
-    db.user.findFirst({
-      where: { role: "admin", isActive: true },
-      orderBy: { createdAt: "asc" },
-      select: { id: true, name: true },
-    }),
-    autoApprove
-      ? db.user.findFirst({
-          where: { role: "manager", isActive: true },
-          orderBy: { createdAt: "asc" },
-          select: { id: true, name: true },
-        })
-      : Promise.resolve(null),
-  ]);
-
   const correlationId = newCorrelationId("RST");
-  const now = new Date();
-  const status = autoApprove ? "SCHEDULED" : "AWAITING_APPROVAL";
+  const status = "AWAITING_APPROVAL";
 
   const change = await db.$transaction(
     async (tx) => {
@@ -154,18 +157,16 @@ export async function POST(
             `Guarded restore of ${device.hostname} to snapshot v${snapshot.version} (approved via the HighRiskActionDialog flow).`,
             `Restore source: snapshot ${snapshot.id} · v${snapshot.version} · sha256 ${snapshot.sha256}.`,
             `Risk heuristic: not-latest version +45, ${openDrifts} open drift record(s) +${openDrifts > 0 ? 15 : 0}, criticality ${device.criticality} +${device.criticality === "CRITICAL" ? 10 : 0} → score ${riskScore} (${riskLevel}).`,
-            autoApprove
-              ? "Auto-approved (MANAGER approval recorded automatically) — scheduled for immediate execution by the change engine."
-              : "Awaiting approval in the Changes queue; step execution starts once approved and scheduled.",
+            "Awaiting approval in the Changes queue; step execution starts once a real approver (per approval policy, SoD-enforced) decides and the change is scheduled.",
             `Correlation ID: ${correlationId}`,
           ].join("\n"),
           type: "EMERGENCY",
           status,
           riskScore,
           riskLevel,
-          requesterId: admin?.id ?? (manager?.id ?? ""),
-          ownerId: admin?.id ?? null,
-          scheduledStart: autoApprove ? now : null,
+          requesterId: actor.id,
+          ownerId: actor.id,
+          scheduledStart: null,
           implementationPlan:
             "Restore the approved configuration snapshot via the change executor: pre-check reachability, capture a pre-restore backup, apply the stored configuration, validate, then capture a post-restore backup.",
           validationPlan:
@@ -219,23 +220,10 @@ export async function POST(
         ],
       });
 
-      if (autoApprove && manager) {
-        await tx.changeApproval.create({
-          data: {
-            changeId: created.id,
-            level: "MANAGER",
-            status: "APPROVED",
-            approverId: manager.id,
-            decidedAt: now,
-            comment: "Auto-approved via guarded restore flow",
-          },
-        });
-      }
-
       await tx.auditEvent.create({
         data: {
-          actorId: admin?.id ?? null,
-          actorName: admin?.name ?? "Admin",
+          actorId: actor.id,
+          actorName: actor.name ?? "Unknown user",
           action: "RESTORE_REQUESTED",
           resourceType: "ChangeRequest",
           resourceId: created.id,
@@ -246,7 +234,6 @@ export async function POST(
             changeNumber: created.number,
             snapshotId: snapshot.id,
             version: snapshot.version,
-            autoApprove,
             riskScore,
             riskLevel,
           }),
@@ -267,9 +254,8 @@ export async function POST(
         riskScore: change.riskScore,
         riskLevel: change.riskLevel,
       },
-      message: autoApprove
-        ? "Approved and scheduled — step execution runs when the Phase 4 change executor ships."
-        : "Change request created — awaiting approval in the Changes queue.",
+      message:
+        "Change request created — awaiting a real approval in the Changes queue (SoD-enforced; auto-approval was removed in P19).",
       audit: { action: "RESTORE_REQUESTED", correlationId },
     },
     undefined,

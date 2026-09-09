@@ -113,3 +113,44 @@ export async function requireRole(
   }
   return user;
 }
+
+/**
+ * Permission check against the role's seeded permissionsJson matrix
+ * (P19 / audit SEC-005 + AUTH-001 — the permission arrays become
+ * authoritative for the sensitive paths that call this helper).
+ *
+ * Pattern semantics (matches the seeded matrix):
+ *   "*"         — wildcard: every permission (admin)
+ *   "*.read"    — trailing-segment wildcard: any permission ending ".read"
+ *   "x.y"       — exact key
+ *
+ * Throws 403 RBAC_FORBIDDEN when the caller's role lacks the permission.
+ */
+export async function requirePermission(
+  req: Request,
+  permission: string
+): Promise<User> {
+  const user = await requireUser(req);
+  const role = await db.role.findUnique({ where: { name: user.role } });
+  let permissions: string[] = [];
+  try {
+    permissions = role?.permissionsJson
+      ? (JSON.parse(role.permissionsJson) as string[])
+      : [];
+  } catch {
+    permissions = [];
+  }
+  const holds = permissions.some((pattern) => {
+    if (pattern === "*") return true;
+    if (pattern.startsWith("*.")) return permission.endsWith(pattern.slice(1));
+    return pattern === permission;
+  });
+  if (!holds) {
+    throw new AuthError(
+      "RBAC_FORBIDDEN",
+      `This action requires the "${permission}" permission, which the "${user.role}" role does not hold.`,
+      403
+    );
+  }
+  return user;
+}

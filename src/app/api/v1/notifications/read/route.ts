@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/v1/notifications/read — mark notifications read (Task 5-a).
  *
- * Body: { ids?: string[], all?: boolean, actAsUserId? } — either a list of
+ * Body: { ids?: string[], all?: boolean } — either a list of
  * ids or all:true. Only rows visible to the acting user (own + broadcast)
  * are touched; unread ones get readAt = now. Demo simplification: marking
  * a broadcast row read is global (SQLite demo has no per-user read state).
@@ -18,7 +18,6 @@ const readSchema = z
   .object({
     ids: z.array(z.string().trim().min(1).max(64)).max(100).optional(),
     all: z.boolean().optional(),
-    actAsUserId: z.string().trim().max(64).optional(),
   })
   .refine(
     (data) => data.all === true || (data.ids !== undefined && data.ids.length > 0),
@@ -37,7 +36,10 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
 
-  const actor = await resolveActingUser(parsed.data.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
   const visibility = {
     OR: [{ userId: null }, ...(actor ? [{ userId: actor.id }] : [])],
   };

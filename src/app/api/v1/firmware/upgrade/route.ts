@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/v1/firmware/upgrade — guarded firmware-upgrade enqueue
- * (Phase 13-b). Body: { deviceId, targetVersion, actAsUserId? }.
+ * (Phase 13-b). Body: { deviceId, targetVersion }.
  *
  * Guards, in order:
  *   404 DEVICE_NOT_FOUND        — unknown device
@@ -33,7 +33,6 @@ export const dynamic = "force-dynamic";
 const upgradeSchema = z.object({
   deviceId: z.string().trim().min(1).max(64),
   targetVersion: z.string().trim().min(1).max(32),
-  actAsUserId: z.string().trim().min(1).max(64).optional(),
 });
 
 export async function POST(request: Request) {
@@ -116,7 +115,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const actor = await resolveActingUser(parsed.data.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
   const actorName = actor?.name ?? "Admin";
   const correlationId = newJobCorrelationId();
 

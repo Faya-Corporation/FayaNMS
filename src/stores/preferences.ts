@@ -17,15 +17,6 @@ interface PreferencesState {
    */
   locale: Locale;
   /**
-   * Acting-user identity for the demo (no auth server yet — Task 7).
-   * Stores the USERNAME-style key of the seeded account ("admin", "noc1",
-   * "engineer1", "auditor1", "manager1"); GET /api/v1/meta exposes the
-   * matching user rows (id/name/roleLabel) so UI resolves id + display name.
-   * The value is sent as `actAsUserId` on approval/execution mutations and
-   * the server resolves it (id first, then email local-part).
-   */
-  actAsUserId: string;
-  /**
    * Guided tour (Phase 9-b): tourCompleted persists the one-time dismissal
    * (set when the tour is started, finished or its dashboard hint is
    * dismissed); tourActive is RUNTIME ONLY (excluded from persistence via
@@ -35,7 +26,6 @@ interface PreferencesState {
   tourActive: boolean;
   setDensity: (density: Density) => void;
   toggleSidebar: () => void;
-  setActAsUserId: (userId: string) => void;
   setLocale: (locale: Locale) => void;
   startTour: () => void;
   completeTour: () => void;
@@ -51,14 +41,12 @@ export const usePreferencesStore = create<PreferencesState>()(
     (set) => ({
       density: "comfortable",
       sidebarCollapsed: false,
-      actAsUserId: "admin",
       locale: "en" satisfies Locale,
       tourCompleted: false,
       tourActive: false,
       setDensity: (density) => set({ density }),
       toggleSidebar: () =>
         set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
-      setActAsUserId: (actAsUserId) => set({ actAsUserId }),
       setLocale: (locale) => set({ locale }),
       startTour: () =>
         set({ tourActive: true, tourCompleted: true }),
@@ -70,19 +58,9 @@ export const usePreferencesStore = create<PreferencesState>()(
       partialize: (state) => ({
         density: state.density,
         sidebarCollapsed: state.sidebarCollapsed,
-        actAsUserId: state.actAsUserId,
         locale: state.locale,
         tourCompleted: state.tourCompleted,
       }),
     }
   )
 );
-
-/** Seeded username keys the act-as identity supports (prisma/seed.ts USERS). */
-export const ACT_AS_USER_KEYS = [
-  "admin",
-  "noc1",
-  "engineer1",
-  "auditor1",
-  "manager1",
-] as const;

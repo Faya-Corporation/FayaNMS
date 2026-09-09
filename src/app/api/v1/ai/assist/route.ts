@@ -18,8 +18,8 @@ export const dynamic = "force-dynamic";
  * POST /api/v1/ai/assist — AI troubleshooting assistant (Phase 12-a).
  *
  * Body (Zod-validated):
- *   { scope: "device" | "incident", id, question (1..500 chars), locale: "en"|"ar",
- *     actAsUserId? }
+ *   { scope: "device" | "incident", id, question (1..500 chars),
+ *     locale: "en"|"ar" }  — actor is the session principal (P19 SEC-001)
  *
  * The operational context is assembled server-side from FayaNMS records
  * (device → record/last alerts/audit trail/open incidents/interface summary;
@@ -44,7 +44,6 @@ const bodySchema = z.object({
     .min(1, "question is required")
     .max(500, "question must be 500 characters or fewer"),
   locale: z.enum(["en", "ar"]).default("en"),
-  actAsUserId: z.string().trim().max(64).optional(),
 });
 
 const QUESTION_AUDIT_MAX = 200;
@@ -62,7 +61,7 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
   }
-  const { scope, id, question, locale, actAsUserId } = parsed.data;
+  const { scope, id, question, locale } = parsed.data;
 
   // ── Assemble the operational context (server-side, secret-free) ──────
   let contextText: string;
@@ -94,7 +93,10 @@ export async function POST(request: Request) {
   }
 
   const correlationId = newCorrelationId("AI");
-  const actor = await resolveActingUser(actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
   const scopeLabel = scope === "device" ? "device" : "incident";
 
   // ── LLM round-trip (timeout guard + one retry inside aiChat) ─────────

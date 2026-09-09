@@ -27,10 +27,11 @@ import {
   useExecuteChange,
   useUpdateChange,
 } from "@/hooks/api/use-change-mutations";
-import { useActingUser } from "@/hooks/api/use-approvals";
 import { useDecideApproval } from "@/hooks/api/use-approval-mutations";
 import { useStatusLabel } from "@/hooks/use-status-label";
+import { useSession } from "next-auth/react";
 import { usePreferencesStore } from "@/stores/preferences";
+import { usePermissionsStore } from "@/stores/permissions";
 import {
   getStatusConfig,
   INCIDENT_SEVERITY,
@@ -247,10 +248,11 @@ export function ChangeDetailView() {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   // Status labels resolve in the active locale (falls back to config.label).
   const resolveStatusLabel = useStatusLabel();
+  // Signed-in principal for the client-side SoD pre-check (server enforces it).
+  const { data: sessionData } = useSession();
+  const permissionUser = usePermissionsStore((state) => state.user);
   const changeId = params?.changeId ?? null;
 
-  const actAsUserId = usePreferencesStore((state) => state.actAsUserId);
-  const { actingUser } = useActingUser(actAsUserId);
 
   const detail = useChangeDetail(changeId);
   const updateChange = useUpdateChange();
@@ -330,10 +332,11 @@ export function ChangeDetailView() {
   const showFailedBanner =
     FAILED_STATUSES.includes(change.status) && change.incidents.length === 0;
 
-  /** SoD pre-check — the requester cannot decide a HIGH/CRITICAL change. */
+  /** SoD pre-check against the signed-in principal (server-enforced; P19). */
+  const sessionUserId = permissionUser?.id ?? sessionData?.user?.id;
   const sodBlocked = Boolean(
-    actingUser &&
-      change.requester.id === actingUser.id &&
+    sessionUserId &&
+      change.requester.id === sessionUserId &&
       SOD_GATED_RISK_LEVELS.includes(change.riskLevel)
   );
 
@@ -362,7 +365,6 @@ export function ChangeDetailView() {
           level: decision.level,
           decision: decision.decision,
           comment: trimmed || undefined,
-          actAsUserId: actAsUserId || undefined,
         },
       },
       {
@@ -381,7 +383,6 @@ export function ChangeDetailView() {
         id: change.id,
         payload: {
           failAt: failAt === "APPLY" || failAt === "VALIDATE" ? failAt : null,
-          actAsUserId: actAsUserId || undefined,
         },
       },
       { onSuccess: () => setExecuteOpen(false) }
@@ -507,8 +508,7 @@ export function ChangeDetailView() {
             onClick={() =>
               createIncident.mutate({
                 changeId: change.id,
-                actAsUserId: actAsUserId || undefined,
-              })
+                    })
             }
             size="sm"
             type="button"
@@ -685,15 +685,11 @@ export function ChangeDetailView() {
           actions={
             change.status === "AWAITING_APPROVAL" && (
               <span className="text-xs text-muted-foreground">
-                Acting as:{" "}
-                <span className="font-medium text-foreground">
-                  {actingUser?.name ?? actAsUserId}
-                </span>{" "}
-                — demo identity
+                Decisions are recorded under your signed-in account
               </span>
             )
           }
-          description="Levels required by the risk policy — decide as the acting user"
+          description="Levels required by the risk policy — decide under your signed-in account"
           title="Approvals"
         >
           <div className="flex flex-col gap-2">
@@ -932,8 +928,8 @@ export function ChangeDetailView() {
             </DialogTitle>
             <DialogDescription>
               Queues a CHANGE_EXECUTE job — the worker drives each step
-              (pre-checks, pre-change backup, apply, validation). Acting as{" "}
-              {actingUser?.name ?? actAsUserId} (demo identity).
+              (pre-checks, pre-change backup, apply, validation). The run is
+              attributed to your signed-in account.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">
@@ -1013,8 +1009,8 @@ export function ChangeDetailView() {
                 </DialogTitle>
                 <DialogDescription>
                   {decision.decision === "APPROVED"
-                    ? `Recorded as ${actingUser?.name ?? actAsUserId} — a comment is optional.`
-                    : `Recorded as ${actingUser?.name ?? actAsUserId} — a short reason (min 4 characters) is required.`}
+                    ? "Recorded under your signed-in account — a comment is optional."
+                    : "Recorded under your signed-in account — a short reason (min 4 characters) is required."}
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-col gap-2">

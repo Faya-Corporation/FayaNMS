@@ -12,12 +12,11 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/v1/alerts/[id]/suppress — ACTIVE|ACKNOWLEDGED → SUPPRESSED
- * (Task 5-a). Body: { reason?, actAsUserId? } — the reason is stored on
+ * (Task 5-a). Body: { reason? } — the reason is stored on
  * suppressReason (default "Manually suppressed"). Audits ALERT_SUPPRESSED.
  */
 const suppressSchema = z.object({
   reason: z.string().trim().max(240).optional(),
-  actAsUserId: z.string().trim().max(64).optional(),
 });
 
 export async function POST(
@@ -59,7 +58,10 @@ export async function POST(
     );
   }
 
-  const actor = await resolveActingUser(parsed.data.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
   const reason = parsed.data.reason?.trim() || "Manually suppressed";
 
   const updated = await db.alert.update({

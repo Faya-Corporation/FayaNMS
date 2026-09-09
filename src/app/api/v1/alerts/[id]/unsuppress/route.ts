@@ -16,7 +16,6 @@ export const dynamic = "force-dynamic";
  * Audits ALERT_UNSUPPRESSED.
  */
 const unsuppressSchema = z.object({
-  actAsUserId: z.string().trim().max(64).optional(),
 });
 
 export async function POST(
@@ -59,7 +58,10 @@ export async function POST(
     );
   }
 
-  const actor = await resolveActingUser(parsed.data.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
 
   const updated = await db.alert.update({
     where: { id },

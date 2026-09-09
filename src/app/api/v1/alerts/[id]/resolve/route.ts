@@ -17,7 +17,6 @@ export const dynamic = "force-dynamic";
  * actor distinguishes system:alert-engine from a human.)
  */
 const resolveSchema = z.object({
-  actAsUserId: z.string().trim().max(64).optional(),
 });
 
 export async function POST(
@@ -55,7 +54,10 @@ export async function POST(
     return fail("INVALID_STATE", "This alert is already resolved", 409);
   }
 
-  const actor = await resolveActingUser(parsed.data.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
   const previousStatus = alert.status;
 
   const updated = await db.alert.update({

@@ -11,10 +11,12 @@ import {
   XCircle,
 } from "lucide-react";
 
-import { useApprovals, useActingUser } from "@/hooks/api/use-approvals";
+import { useSession } from "next-auth/react";
+import { useApprovals } from "@/hooks/api/use-approvals";
 import { useDecideApproval } from "@/hooks/api/use-approval-mutations";
 import { useStatusLabel } from "@/hooks/use-status-label";
 import { usePreferencesStore } from "@/stores/preferences";
+import { usePermissionsStore } from "@/stores/permissions";
 import { ChangeRiskBadge } from "@/components/domain/change-risk-badge";
 import { EmptyState } from "@/components/domain/empty-state";
 import { ErrorState } from "@/components/domain/error-state";
@@ -96,9 +98,6 @@ export function ChangeApprovalsView() {
   // Status labels resolve in the active locale (falls back to config.label).
   const resolveStatusLabel = useStatusLabel();
 
-  const actAsUserId = usePreferencesStore((state) => state.actAsUserId);
-  const setActAsUserId = usePreferencesStore((state) => state.setActAsUserId);
-  const { users, actingUser } = useActingUser(actAsUserId);
 
   const [statusKey, setStatusKey] = useState("PENDING");
   const [searchInput, setSearchInput] = useState("");
@@ -117,7 +116,6 @@ export function ChangeApprovalsView() {
   const approvals = useApprovals(
     {
       status: activeFilter.values,
-      actAsUserId: actAsUserId || undefined,
       q: q || undefined,
     },
     { refetchInterval: 15_000 }
@@ -141,10 +139,15 @@ export function ChangeApprovalsView() {
     }));
   }, [rows]);
 
+  // SoD pre-check against the authenticated session principal (the server
+  // enforces it authoritatively — P19 SEC-001; the UI disable is a courtesy).
+  const { data: sessionData } = useSession();
+  const permissionUser = usePermissionsStore((state) => state.user);
+  const sessionUserId = permissionUser?.id ?? sessionData?.user?.id;
   const isSodBlocked = (row: (typeof changeRows)[number]) =>
     Boolean(
-      actingUser &&
-        row.change.requesterId === actingUser.id &&
+      sessionUserId &&
+        row.change.requesterId === sessionUserId &&
         SOD_GATED_RISK_LEVELS.includes(row.change.riskLevel)
     );
 
@@ -174,7 +177,6 @@ export function ChangeApprovalsView() {
           level: decision.level,
           decision: decision.decision,
           comment: trimmed || undefined,
-          actAsUserId: actAsUserId || undefined,
         },
       },
       { onSuccess: () => setDecision(null) }
@@ -185,32 +187,6 @@ export function ChangeApprovalsView() {
     <div className="flex flex-col gap-5">
       <PageHeader
         description="Approval queue across changes — separation of duties enforced"
-        primaryAction={
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-muted-foreground" htmlFor="act-as-select">
-              Act as
-            </Label>
-            <Select
-              onValueChange={(value) => setActAsUserId(value)}
-              value={actAsUserId}
-            >
-              <SelectTrigger
-                aria-label="Acting user (demo identity)"
-                className="w-[230px]"
-                id="act-as-select"
-              >
-                <SelectValue placeholder="Acting user" />
-              </SelectTrigger>
-              <SelectContent>
-                {users.map((user) => (
-                  <SelectItem key={user.id} value={user.username}>
-                    {user.name} · {user.roleLabel}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        }
         title="Approvals"
       />
 
@@ -277,7 +253,7 @@ export function ChangeApprovalsView() {
           </div>
         }
         contentClassName="p-0"
-        description={`Acting as: ${actingUser?.name ?? actAsUserId} — demo identity`}
+        description="Decisions are recorded under your signed-in account (P19)"
         title="Approval queue"
       >
         {/* Search */}

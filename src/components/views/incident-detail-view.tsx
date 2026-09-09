@@ -33,7 +33,6 @@ import { aiErrorKey, useAiRcaDraft } from "@/hooks/api/use-ai";
 import { useTranslations } from "next-intl";
 import { useCurrentLocale } from "@/i18n/locale-provider";
 import { usePreferencesStore } from "@/stores/preferences";
-import { useActingUser } from "@/hooks/api/use-approvals";
 import { EmptyState } from "@/components/domain/empty-state";
 import { ErrorState } from "@/components/domain/error-state";
 import { KpiCard } from "@/components/domain/kpi-card";
@@ -169,8 +168,6 @@ export function IncidentDetailView() {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   const incidentId = params?.incidentId ?? null;
 
-  const actAsUserId = usePreferencesStore((state) => state.actAsUserId);
-  const { actingUser } = useActingUser(actAsUserId);
   const meta = useMeta();
 
   const incident = useIncidentDetail(incidentId);
@@ -228,7 +225,7 @@ export function IncidentDetailView() {
   const generateRcaDraft = () => {
     if (!incidentId || rcaDraft.isPending) return;
     rcaDraft.mutate(
-      { incidentId, locale, actAsUserId: actAsUserId || undefined },
+      { incidentId, locale },
       {
         onSuccess: (result) => {
           const { draft } = result;
@@ -283,7 +280,6 @@ export function IncidentDetailView() {
       {
         id: incidentId,
         payload: {
-          actAsUserId: actAsUserId || undefined,
           note: noteText.trim() || undefined,
           resolutionNote: noteAction === "resolve" ? noteText.trim() || undefined : undefined,
         },
@@ -303,7 +299,6 @@ export function IncidentDetailView() {
       {
         id: incidentId,
         payload: {
-          actAsUserId: actAsUserId || undefined,
           ownerId: assignOwnerId || undefined,
           ownerTeam: assignTeam.trim() || undefined,
         },
@@ -321,7 +316,7 @@ export function IncidentDetailView() {
   const submitLink = () => {
     if (!incidentId || !linkChangeId) return;
     linkChangeAction.mutate(
-      { id: incidentId, payload: { actAsUserId: actAsUserId || undefined, changeId: linkChangeId } },
+      { id: incidentId, payload: { changeId: linkChangeId } },
       {
         onSuccess: () => {
           setLinkOpen(false);
@@ -336,7 +331,6 @@ export function IncidentDetailView() {
     savePirAction.mutate({
       id: incidentId,
       payload: {
-        actAsUserId: actAsUserId || undefined,
         rootCause: pirRootCause,
         correctiveAction: pirCorrective,
         preventiveAction: pirPreventive,
@@ -407,10 +401,7 @@ export function IncidentDetailView() {
                 {detail.site ? `${detail.site.name} · ` : ""}
                 created {formatDistanceToNow(new Date(detail.createdAt), { addSuffix: true })}
                 {detail.owner ? ` · owner ${detail.owner.name}` : ""}
-                {detail.ownerTeam ? ` (${detail.ownerTeam})` : ""} · acting as{" "}
-                <span className="font-medium text-foreground">
-                  {actingUser?.name ?? actAsUserId}
-                </span>
+
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -472,7 +463,7 @@ export function IncidentDetailView() {
                       <CircleCheck aria-hidden className="size-4" /> Resolve…
                     </DropdownMenuItem>
                     {detail.status === "RESOLVED" && (
-                      <DropdownMenuItem onSelect={() => reviewAction.mutate({ id: detail.id, payload: { actAsUserId: actAsUserId || undefined } })}>
+                      <DropdownMenuItem onSelect={() => reviewAction.mutate({ id: detail.id, payload: {} })}>
                         <ClipboardList aria-hidden className="size-4" /> Open PIR review
                       </DropdownMenuItem>
                     )}
@@ -490,7 +481,7 @@ export function IncidentDetailView() {
                     {detail.changeId ? (
                       <DropdownMenuItem
                         onSelect={() =>
-                          unlinkChangeAction.mutate({ id: detail.id, payload: { actAsUserId: actAsUserId || undefined } })
+                          unlinkChangeAction.mutate({ id: detail.id, payload: {} })
                         }
                       >
                         <Unlink aria-hidden className="size-4" /> Unlink change

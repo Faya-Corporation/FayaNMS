@@ -10,11 +10,11 @@ import {
 } from "../_lib/api";
 import {
   DEFAULT_CHANGE_STEPS,
-  demoActor,
   fetchRiskDevices,
   nextChangeNumber,
   scoreChangeServerSide,
 } from "../_lib/change";
+import { resolveActingUser } from "../_lib/actor";
 import { approvalLevelsFor } from "@/lib/change/risk";
 import { z } from "zod";
 
@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
  * GET /api/v1/changes
  * Filters: status (csv multi), type (csv multi), riskLevel (csv multi),
  *          q (number/title contains), requesterId (user id; "me" resolves
- *          to the seeded admin — the demo identity).
+ *          to the authenticated session principal — P19 SEC-001).
  * Row fields from Phase 1 are preserved; `pendingApprovals` was added in
  * Task 4-a and meta now carries a light `summary` for the KPI mini-row.
  * Ordered newest first.
@@ -63,15 +63,15 @@ export async function GET(request: Request) {
   const scheduledFrom = parsed.data.scheduledFrom ?? null;
   const scheduledTo = parsed.data.scheduledTo ?? null;
 
-  // "me" resolves to the seeded admin (demo identity — no auth yet, F-05).
+  // "me" resolves to the authenticated principal (server-authoritative,
+  // P19 SEC-001 — previously the seeded admin). 401 on dead sessions.
   let requesterFilter: string | undefined = requesterId;
   if (requesterId === "me") {
-    const admin = await db.user.findFirst({
-      where: { role: "admin", isActive: true },
-      orderBy: { createdAt: "asc" },
-      select: { id: true },
-    });
-    requesterFilter = admin?.id;
+    const me = await resolveActingUser(request);
+    if (!me) {
+      return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+    }
+    requesterFilter = me.id;
   }
 
   const where = {
@@ -257,7 +257,11 @@ export async function POST(request: Request) {
   const status = submit ? "AWAITING_APPROVAL" : "DRAFT";
   const correlationId = newCorrelationId("CHG");
 
-  const [actor, number] = await Promise.all([demoActor(), nextChangeNumber()]);
+  const number = await nextChangeNumber();
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
 
   const change = await db.$transaction(
     async (tx) => {
@@ -270,8 +274,8 @@ export async function POST(request: Request) {
           status,
           riskScore: risk.score,
           riskLevel: risk.level,
-          requesterId: actor?.id ?? "",
-          ownerId: actor?.id ?? null,
+          requesterId: actor.id,
+          ownerId: actor.id,
           siteId: data.siteId ?? null,
           scheduledStart: data.scheduledStart ?? null,
           scheduledEnd: data.scheduledEnd ?? null,
@@ -313,8 +317,8 @@ export async function POST(request: Request) {
 
       await tx.auditEvent.create({
         data: {
-          actorId: actor?.id ?? null,
-          actorName: actor?.name ?? "Admin",
+          actorId: actor.id,
+          actorName: actor.name ?? "Unknown user",
           action: "CHANGE_CREATED",
           resourceType: "ChangeRequest",
           resourceId: created.id,
@@ -337,8 +341,8 @@ export async function POST(request: Request) {
       if (submit) {
         await tx.auditEvent.create({
           data: {
-            actorId: actor?.id ?? null,
-            actorName: actor?.name ?? "Admin",
+            actorId: actor.id,
+            actorName: actor.name ?? "Unknown user",
             action: "CHANGE_SUBMITTED",
             resourceType: "ChangeRequest",
             resourceId: created.id,

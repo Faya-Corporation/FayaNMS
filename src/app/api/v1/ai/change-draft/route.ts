@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/v1/ai/change-draft — natural-language → change-request draft (Phase 13-a).
  *
- * Body (Zod-validated): { prompt (10..600 chars), locale: "en"|"ar", actAsUserId? }
+ * Body (Zod-validated): { prompt (10..600 chars), locale: "en"|"ar" } — actor is the session principal (P19 SEC-001)
  *
  * The server first loads the REAL device inventory (hostname, model, vendor
  * key, site, role, criticality) and embeds it in the LLM prompt, so the draft
@@ -54,7 +54,6 @@ const bodySchema = z.object({
     .min(10, "prompt must be at least 10 characters")
     .max(600, "prompt is limited to 600 characters"),
   locale: z.enum(["en", "ar"]).default("en"),
-  actAsUserId: z.string().trim().max(64).optional(),
 });
 
 const RAW_DETAIL_MAX = 4000;
@@ -167,7 +166,7 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
   }
-  const { prompt, locale, actAsUserId } = parsed.data;
+  const { prompt, locale } = parsed.data;
 
   // ── Real inventory snapshot for grounding (labels only — no secrets) ──
   const devices = await db.device.findMany({
@@ -184,7 +183,10 @@ export async function POST(request: Request) {
   });
 
   const correlationId = newCorrelationId("AI");
-  const actor = await resolveActingUser(actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
 
   const deviceListText = devices
     .map((device) =>

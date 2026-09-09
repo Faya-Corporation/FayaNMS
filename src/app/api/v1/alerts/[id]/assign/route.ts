@@ -12,13 +12,12 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/v1/alerts/[id]/assign — set the assigned owner (Task 5-a).
- * Body: { assignedToId, actAsUserId? } — assignedToId is a User id (the
+ * Body: { assignedToId } — assignedToId is a User id (the
  * assignee must exist and be active). Works from any open status; audits
  * ALERT_ASSIGNED.
  */
 const assignSchema = z.object({
   assignedToId: z.string().trim().min(1).max(64),
-  actAsUserId: z.string().trim().max(64).optional(),
 });
 
 export async function POST(
@@ -72,7 +71,10 @@ export async function POST(
     );
   }
 
-  const actor = await resolveActingUser(parsed.data.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
 
   const updated = await db.alert.update({
     where: { id },

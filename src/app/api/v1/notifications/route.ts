@@ -14,12 +14,11 @@ export const dynamic = "force-dynamic";
  *
  * Returns the latest rows visible to the acting demo user: their own rows
  * (userId = me) + broadcasts (userId null), newest first. Meta carries
- * unreadCount. `?actAsUserId=` selects the demo identity (default admin).
+ * unreadCount. Identity = the authenticated session principal (P19 SEC-001).
  * `?unreadOnly=true` filters to unread.
  */
 const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),
-  actAsUserId: z.string().trim().max(64).optional(),
   unreadOnly: z.enum(["true", "false"]).default("false"),
 });
 
@@ -27,14 +26,16 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     limit: url.searchParams.get("limit") ?? undefined,
-    actAsUserId: url.searchParams.get("actAsUserId") ?? undefined,
     unreadOnly: url.searchParams.get("unreadOnly") ?? undefined,
   });
   if (!parsed.success) {
     return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400, requestContext(request));
   }
 
-  const actor = await resolveActingUser(parsed.data.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
   const visibility = {
     OR: [{ userId: null }, ...(actor ? [{ userId: actor.id }] : [])],
   };

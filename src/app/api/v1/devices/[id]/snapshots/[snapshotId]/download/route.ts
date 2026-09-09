@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { fail, newCorrelationId } from "../../../../../_lib/api";
+import { requirePermission, authErrorToFail } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,13 @@ export const dynamic = "force-dynamic";
  * writes a CONFIG_DOWNLOAD AuditEvent with the snapshot id, version,
  * sha256 and hostname before the body is returned.
  *
+ * AUTHORIZATION (P19 / audit SEC-005): the caller must hold the explicit
+ * "config.download" permission (seeded to engineer + admin via "*"; the
+ * middleware session check alone is NOT sufficient — a bare read-oriented
+ * role must not gain raw-configuration export). The audit actor is the
+ * authenticated principal (never a hardcoded name), and rejected attempts
+ * are audited as CONFIG_DOWNLOAD_DENIED. Response is no-store.
+ *
  * Response: text/plain attachment
  *   Content-Disposition: attachment; filename="<hostname>-v<version>.cfg"
  */
@@ -24,12 +32,42 @@ function safeFilenamePart(value: string): string {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; snapshotId: string }> }
 ) {
   const { id, snapshotId } = await params;
   if (!id || id.length > ID_MAX || !snapshotId || snapshotId.length > ID_MAX) {
     return fail("INVALID_ID", "Invalid device or snapshot id", 400);
+  }
+
+  // Permission gate FIRST — raw configuration export is a privileged act
+  // (401 UNAUTHENTICATED / 403 RBAC_FORBIDDEN without it).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "config.download");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    // Audit the rejected attempt (best-effort — the denial response wins).
+    try {
+      await db.auditEvent.create({
+        data: {
+          actorName: "unknown",
+          action: "CONFIG_DOWNLOAD_DENIED",
+          resourceType: "ConfigSnapshot",
+          resourceId: snapshotId,
+          resourceLabel: `device ${id}`,
+          result: "DENIED",
+          correlationId: newCorrelationId("DL"),
+          afterJson: JSON.stringify({
+            reason: error instanceof Error ? error.message : "auth failure",
+          }),
+        },
+      });
+    } catch {
+      /* audit best-effort */
+    }
+    return authFail;
   }
 
   const device = await db.device.findUnique({
@@ -63,7 +101,8 @@ export async function GET(
   const correlationId = newCorrelationId("DL");
   await db.auditEvent.create({
     data: {
-      actorName: "Admin",
+      actorId: actor.id,
+      actorName: actor.name ?? actor.email,
       action: "CONFIG_DOWNLOAD",
       resourceType: "ConfigSnapshot",
       resourceId: snapshot.id,

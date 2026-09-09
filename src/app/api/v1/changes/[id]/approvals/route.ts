@@ -8,14 +8,14 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/v1/changes/[id]/approvals — record an approval decision (4-b).
  *
- * Body: { level, decision: "APPROVED"|"REJECTED", comment?, actAsUserId? }
+ * Body: { level, decision: "APPROVED"|"REJECTED", comment? }
  *
  * Guards (in order):
  *   404 CHANGE_NOT_FOUND / APPROVAL_NOT_FOUND — change or (changeId, level)
  *     row missing;
  *   409 ALREADY_DECIDED — the approval row is not PENDING;
  *   409 INVALID_STATE — the change is not AWAITING_APPROVAL;
- *   400 ACTOR_NOT_FOUND — actAsUserId does not resolve to a seeded user;
+ *   401 UNAUTHENTICATED — no valid session (actor = session principal; P19);
  *   403 SOD_VIOLATION — separation of duties: the requester cannot approve
  *     their own HIGH/CRITICAL change (MEDIUM/LOW self-approval is allowed
  *     and flagged selfApproval: true).
@@ -37,7 +37,6 @@ const decisionSchema = z.object({
   level: z.enum(["TECHNICAL", "SECURITY", "MANAGER", "CAB"]),
   decision: z.enum(["APPROVED", "REJECTED"]),
   comment: z.string().trim().max(1000).optional(),
-  actAsUserId: z.string().trim().max(64).optional(),
 });
 
 export async function POST(
@@ -76,12 +75,12 @@ export async function POST(
     return fail("CHANGE_NOT_FOUND", "The requested change does not exist", 404);
   }
 
-  const actor = await resolveActingUser(parsed.data.actAsUserId);
+  const actor = await resolveActingUser(request);
   if (!actor) {
     return fail(
-      "ACTOR_NOT_FOUND",
-      "actAsUserId does not match any active user — pick a user from the Act-as selector",
-      400
+      "UNAUTHENTICATED",
+      "Sign in required — approvals are attributed to the authenticated session principal (P19 SEC-001).",
+      401
     );
   }
 

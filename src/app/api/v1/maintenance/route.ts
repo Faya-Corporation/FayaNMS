@@ -57,7 +57,6 @@ const createSchema = z
     endsAt: isoDatetime,
     reason: z.string().trim().max(500).nullish(),
     isActive: z.boolean().default(true),
-    actAsUserId: z.string().trim().max(64).optional(),
   })
   .refine((data) => data.endsAt > data.startsAt, {
     message: "endsAt must be after startsAt",
@@ -229,7 +228,10 @@ export async function POST(request: Request) {
     if (!change) return fail("CHANGE_INVALID", "The selected change does not exist", 400);
   }
 
-  const actor = await resolveActingUser(data.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
 
   const overlap = await findOverlap({
     deviceId: data.deviceId ?? null,

@@ -37,7 +37,7 @@ export const dynamic = "force-dynamic";
  *   link-change        { changeId } — validates the change exists, links it.
  *   unlink-change      clears the change link (409 when none is linked).
  *
- * Every action resolves the acting user (actAsUserId → _lib/actor, admin
+ * Every action resolves the acting user from the session principal (_lib/actor — never a seeded default; P19
  * fallback), writes a USER IncidentEvent with actor attribution and an
  * audit row (INCIDENT_<ACTION>), all in one short interactive transaction.
  * 409 INVALID_STATE on illegal transitions; 404 INCIDENT_NOT_FOUND.
@@ -46,7 +46,6 @@ export const dynamic = "force-dynamic";
 const ID_MAX = 64;
 
 const bodySchema = z.object({
-  actAsUserId: z.string().trim().max(64).optional(),
   note: z.string().trim().max(2000).optional(),
   resolutionNote: z.string().trim().max(2000).optional(),
   ownerId: z.string().trim().max(64).optional(),
@@ -132,7 +131,10 @@ export async function POST(
     return fail("UNKNOWN_ACTION", `Unknown incident action "${action}"`, 404);
   }
 
-  const actor = await resolveActingUser(input.actAsUserId);
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
   const correlationId = newCorrelationId("INC");
 
   // save-pir / link-change need their required fields up front.

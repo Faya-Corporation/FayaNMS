@@ -155,7 +155,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const actor = await resolveActingUser();
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
   const actorName = actor?.name ?? "Admin";
   const correlationId = newCorrelationId("REL");
   const resourceLabel = `${source.ciId} → ${target.ciId} (${relationType})`;
@@ -240,7 +243,10 @@ export async function DELETE(request: Request) {
     return fail("CMDB_NOT_FOUND", `No relation matches "${id}"`, 404, ctx);
   }
 
-  const actor = await resolveActingUser();
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
   const actorName = actor?.name ?? "Admin";
   const correlationId = newCorrelationId("REL");
 

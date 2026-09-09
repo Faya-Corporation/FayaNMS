@@ -1,48 +1,44 @@
 import { db } from "@/lib/db";
 import type { User } from "@prisma/client";
 
+import { requireUser } from "@/lib/auth/session";
+
 /**
- * Demo acting-user resolution (Task 4-b).
+ * Server-authoritative actor resolution (Phase 19 / audit SEC-001).
  *
- * The platform ships without a login wall (ADR-04 — full NextAuth lands in
- * Phase 7). Until then, mutating endpoints that need an identity accept
- * `actAsUserId` — a seeded user id ("usr-admin") or username key ("admin",
- * the email prefix exposed by /api/v1/meta). The UI's Act-as selector feeds
- * this; the server is always authoritative.
+ * HISTORY: this helper once accepted a client-supplied `actAsUserId`
+ * (id or username key) and defaulted to the seeded admin account when the
+ * value was absent — a demo-era identity model that let any authenticated
+ * caller choose whose name appeared on approvals, executions and audit rows,
+ * defeating separation of duties and evidence integrity.
+ *
+ * INVARIANT (see docs/design-governance.md and README):
+ *   "No business route may synthesize, default, impersonate, or guess a
+ *    human actor. The client never chooses the actor."
+ *
+ * The acting user is now ALWAYS the authenticated request principal,
+ * re-verified against the database (active account required) via
+ * requireUser(). Client-supplied identity fields are ignored everywhere;
+ * has been removed from production request DTOs.
  */
 
 /** Risk levels where the requester may never approve their own change. */
 export const SOD_GATED_RISK_LEVELS: readonly string[] = ["HIGH", "CRITICAL"];
 
 /**
- * Resolve the acting user by id or username key. Falls back to the seeded
- * admin account when no explicit identity is supplied (demo default),
- * matching the 4-a requester convention.
+ * Resolve the acting user for a business operation: the authenticated
+ * principal of the request, re-verified against the database (active account
+ * required). Returns null when the session is absent or the account is no
+ * longer active — callers respond 401 UNAUTHENTICATED (never a synthesized
+ * identity, never the seeded admin).
  */
-export async function resolveActingUser(
-  actAsUserId?: string | null
-): Promise<User | null> {
-  const key = actAsUserId?.trim();
-  if (!key) {
-    return db.user.findFirst({
-      where: { isActive: true, email: { startsWith: "admin@" } },
-      orderBy: { createdAt: "asc" },
-    });
+export async function resolveActingUser(req: Request): Promise<User | null> {
+  try {
+    return await requireUser(req);
+  } catch {
+    // Dead/absent session — no actor can be derived from the request.
+    return null;
   }
-
-  const byId = await db.user.findFirst({
-    where: { isActive: true, id: key },
-  });
-  if (byId) return byId;
-
-  // Username key = email prefix (meta exposes "admin", "manager1", …).
-  return db.user.findFirst({
-    where: {
-      isActive: true,
-      email: { startsWith: `${key.toLowerCase()}@` },
-    },
-    orderBy: { createdAt: "asc" },
-  });
 }
 
 /**
