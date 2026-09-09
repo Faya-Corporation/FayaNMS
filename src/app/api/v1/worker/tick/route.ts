@@ -65,6 +65,19 @@ export const dynamic = "force-dynamic";
  *   POST /api/v1/metrics/retention/prune (evaluate-in-Next; a 429
  *   PRUNE_THROTTLED from the 60 s manual-prune guard is a graceful no-op).
  *
+ * Stale-job reaper (hardening closeout), after the scheduling blocks:
+ *   RUNNING jobs whose startedAt is older than 10 minutes were orphaned
+ *   (worker/backend death mid-flight — the in-memory runner state is gone)
+ *   and are failed so the Job Center shows the truth. Type-agnostic: every
+ *   non-change job has a 30 s worker budget, so 10 minutes without
+ *   completion is always a lie. CHANGE_EXECUTE is the one legitimately
+ *   long job (worker budget 10 min / ≤40 step calls) and gets a 15-minute
+ *   threshold so the reaper can never race a live run. Side-effects: a
+ *   reaped ZTP_PROVISION flips its claim provisioning→failed; one summary
+ *   JOB_ORPHAN_REAPED audit row per tick. Recovery = jobs/[id]/retry (for
+ *   CHANGE_EXECUTE the change-step engine's orphan-step reaper then owns
+ *   the rollback-or-fail decision).
+ *
  * Returns { enqueued, driftEnqueued, alertEvalEnqueued,
  * metricRetentionEnqueued, reapedOrphans, pruned, evaluatedAt, policies }.
  */
@@ -389,25 +402,90 @@ export async function POST(request: Request) {
   // job per 24 h — the worker triggers the evaluate-in-Next prune.
   const metricRetentionEnqueued = await enqueueMetricRetention(now);
 
-  // Reaper: RUNNING engine jobs whose startedAt is older than 10 minutes
-  // were orphaned (server crash, worker restart mid-flight — the in-memory
-  // runner state is gone) and would otherwise stay RUNNING forever. Fail
-  // them so the Job Center shows the truth; retries happen through normal
-  // re-enqueue (manual backup-now/upgrade or the next scheduler tick).
+  // Reaper: RUNNING jobs whose startedAt is older than the stale threshold
+  // were orphaned (worker crash / backend restart mid-flight — the
+  // in-memory runner state is gone) and would otherwise stay RUNNING
+  // forever. Type-agnostic by design: every non-change job has a 30 s
+  // worker budget, so 10 minutes without completion is always a lie.
+  // CHANGE_EXECUTE is the one legitimately long job (worker budget
+  // CHANGE_JOB_TIMEOUT_MS = 10 min, ≤40 step calls) — its threshold is 15
+  // minutes so the reaper can never race a live run. The Job Center then
+  // shows the truth; recovery is the standard jobs/[id]/retry re-enqueue
+  // (for CHANGE_EXECUTE the change-step engine's own orphan-step reaper
+  // engages on the retry's first step call and rolls back or fails the
+  // change — that ownership stays with the engine, deliberately not
+  // duplicated here).
   const STALE_RUNNING_MS = 10 * 60_000;
-  const reaped = await db.jobExecution.updateMany({
+  const STALE_CHANGE_MS = 15 * 60_000;
+  const staleJobs = await db.jobExecution.findMany({
     where: {
-      type: { in: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "ALERT_EVALUATION", "METRIC_RETENTION", "FIRMWARE_UPGRADE"] },
       status: "RUNNING",
-      startedAt: { lt: new Date(now.getTime() - STALE_RUNNING_MS) },
+      startedAt: { not: null },
+      OR: [
+        {
+          type: { not: "CHANGE_EXECUTE" },
+          startedAt: { lt: new Date(now.getTime() - STALE_RUNNING_MS) },
+        },
+        {
+          type: "CHANGE_EXECUTE",
+          startedAt: { lt: new Date(now.getTime() - STALE_CHANGE_MS) },
+        },
+      ],
     },
-    data: {
-      status: "FAILED",
-      progress: 0,
-      error: "Orphaned: no worker heartbeat for over 10 minutes (reaped by scheduler tick)",
-      finishedAt: now,
-    },
+    select: { id: true, type: true, targetId: true },
   });
+
+  let reapedCount = 0;
+  let ztpClaimsFailed = 0;
+  if (staleJobs.length > 0) {
+    // Side-effect: a reaped ZTP_PROVISION leaves its claim wedged in
+    // "provisioning" — flip it to "failed" so the ZTP queue tells the truth
+    // (no device was created: registration happens at job completion).
+    const claimIds = staleJobs
+      .filter((j) => j.type === "ZTP_PROVISION" && j.targetId)
+      .map((j) => j.targetId as string);
+    if (claimIds.length > 0) {
+      const claimRes = await db.ztpClaim.updateMany({
+        where: { id: { in: claimIds }, status: "provisioning" },
+        data: { status: "failed" },
+      });
+      ztpClaimsFailed = claimRes.count;
+    }
+
+    const reapRes = await db.jobExecution.updateMany({
+      where: { id: { in: staleJobs.map((j) => j.id) }, status: "RUNNING" },
+      data: {
+        status: "FAILED",
+        progress: 0,
+        error: "Orphaned: no worker heartbeat (reaped by scheduler tick)",
+        finishedAt: now,
+      },
+    });
+    reapedCount = reapRes.count;
+
+    if (reapedCount > 0) {
+      // One summary audit event per tick (never one row per job) — same
+      // pattern as CONFIG_RETENTION_PRUNED below.
+      const byType: Record<string, number> = {};
+      for (const job of staleJobs) {
+        byType[job.type] = (byType[job.type] ?? 0) + 1;
+      }
+      await db.auditEvent.create({
+        data: {
+          actorName: "system:worker-scheduler",
+          action: "JOB_ORPHAN_REAPED",
+          resourceType: "JobExecution",
+          result: "SUCCESS",
+          correlationId: newCorrelationId("REAP"),
+          afterJson: JSON.stringify({
+            count: reapedCount,
+            byType,
+            ztpClaimsFailed,
+          }),
+        },
+      });
+    }
+  }
 
   // Retention pruning (Task 3-a) — after enqueue processing, before the
   // response. One console line + one summary audit event per pruning tick.
@@ -423,7 +501,7 @@ export async function POST(request: Request) {
     driftEnqueued: driftTargets,
     alertEvalEnqueued,
     metricRetentionEnqueued,
-    reapedOrphans: reaped.count,
+    reapedOrphans: reapedCount,
     pruned: prune.pruned,
     prunedDevices: prune.prunedDevices,
     evaluatedAt: now.toISOString(),
