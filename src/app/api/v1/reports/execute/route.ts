@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
+import { authenticateServiceRequest } from "@/lib/auth/service-auth";
 import { generateReport } from "@/lib/reports/generate";
 import { z } from "zod";
 
@@ -58,6 +59,11 @@ function safeParseJson(text: string | null | undefined): Record<string, unknown>
 }
 
 export async function POST(request: Request) {
+  // P19 SEC-002 — machine principal only (service JWT; see service-auth.ts).
+  const service = authenticateServiceRequest(request);
+  if (!service.ok) {
+    return fail(service.code, service.message, 401);
+  }
   let body: unknown = {};
   try {
     const text = await request.text();

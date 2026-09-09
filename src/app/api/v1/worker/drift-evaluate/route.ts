@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
+import { authenticateServiceRequest } from "@/lib/auth/service-auth";
 import { diffLines, diffStats, type DiffStats } from "@/lib/config/diff";
 import { normalizeConfig } from "@/lib/config/normalize";
 import { z } from "zod";
@@ -71,6 +72,11 @@ function buildDiffSummary(rows: ReturnType<typeof diffLines>, stats: DiffStats):
 }
 
 export async function POST(request: Request) {
+  // P19 SEC-002 — machine principal only (service JWT; see service-auth.ts).
+  const service = authenticateServiceRequest(request);
+  if (!service.ok) {
+    return fail(service.code, service.message, 401);
+  }
   let body: unknown;
   try {
     body = await request.json();

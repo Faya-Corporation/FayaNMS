@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../_lib/api";
+import { requireServiceOrPermission } from "@/lib/auth/service-auth";
+import { authErrorToFail } from "@/lib/auth/session";
 import {
   METRICS_RETENTION_KEY,
   parseStoredRetention,
@@ -41,6 +43,16 @@ let lastPruneStartedAtMs: number | null = null;
 const THROTTLE_MS = 60_000;
 
 export async function POST(request: Request) {
+  // P19 SEC-002 — dual gate: the worker scheduler drives this with a service
+  // JWT; the admin UI's "Prune now" drives it with a session holding the
+  // "metrics.prune" permission (admin via "*"). Anonymous calls: 401.
+  try {
+    await requireServiceOrPermission(request, "metrics.prune");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
   let body: unknown = {};
   try {
     const text = await request.text();

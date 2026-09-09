@@ -13,6 +13,8 @@
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { serviceAuthHeader } from "./service-token";
+
 export const NEXT_BASE_URL = "http://localhost:3000";
 export const SELF_BASE_URL = "http://localhost:3030";
 
@@ -38,11 +40,20 @@ async function postJson(
   base: string,
   path: string,
   body: unknown,
-  timeoutMs: number
+  timeoutMs: number,
+  opts: { serviceAuth?: boolean } = {}
 ): Promise<unknown> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  // P19 SEC-002: calls to the Next.js job engine carry the machine-principal
+  // service JWT. Self-calls (simulate/*) stay unauthenticated loopback.
+  if (opts.serviceAuth) {
+    headers.authorization = serviceAuthHeader();
+  }
   const res = await fetch(base + path, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers,
     body: JSON.stringify(body ?? {}),
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -72,7 +83,7 @@ export function nextPost(
   body: unknown,
   timeoutMs = 10_000
 ): Promise<unknown> {
-  return postJson(NEXT_BASE_URL, path, body, timeoutMs);
+  return postJson(NEXT_BASE_URL, path, body, timeoutMs, { serviceAuth: true });
 }
 
 /** Loopback self-call (runner connect step goes through /simulate/connect). */

@@ -15,17 +15,19 @@ import { getToken } from "next-auth/jwt";
  *   - /api/v1/meta        — branding/status bootstrap used pre-sign-in
  *   - /api/v1/auth/*      — session bootstrap (answers its own 401 envelope)
  *
- * INTERNAL SERVICE ENDPOINTS (deliberate trust-boundary decision): the
- * worker mini-service (:3030) drives the job engine backend-to-backend with
- * no user session — POST /api/v1/worker/*, /api/v1/alerts/evaluate,
- * /api/v1/reports/execute (Task 9-a evaluate-in-Next report generation) and
- * /api/v1/metrics/retention/prune stay open so scheduled backups, drift
- * checks, alert evaluation, report runs and retention pruning keep working.
- * Hardening these with a shared service token is parked for Phase 7-b.
+ * INTERNAL SERVICE ENDPOINTS (P19 / audit SEC-002): the worker mini-service
+ * (:3030) drives the job engine backend-to-backend with no user session —
+ * the exact POST routes below stay session-exempt BUT each of them now
+ * enforces a service-principal JWT (src/lib/auth/service-auth.ts,
+ * FAYANMS_SERVICE_SECRET, aud "fayanms:internal", short expiry, rotation via
+ * FAYANMS_SERVICE_SECRETS). /api/v1/metrics/retention/prune additionally
+ * accepts an authorized human session (requireServiceOrPermission) because
+ * the admin UI's "Prune now" action calls it. The /worker/status diagnostic
+ * is deliberately NOT exempt — it answers to human sessions only.
  *
  * Route handlers additionally verify identity server-side via
- * src/lib/auth/session.ts (requireUser/requireRole) — middleware is the
- * coarse gate, not the only check.
+ * src/lib/auth/session.ts (requireUser/requireRole/requirePermission) —
+ * middleware is the coarse gate, not the only check.
  */
 
 const UNAUTHENTICATED_BODY = {
@@ -47,11 +49,19 @@ const RBAC_FORBIDDEN_BODY = {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Public surfaces (bootstrap + internal worker trust boundary).
+  // Public surfaces (bootstrap) + service-principal routes (see above —
+  // each enforcing its own service JWT at the handler layer).
   if (
     pathname === "/api/v1/meta" ||
     pathname.startsWith("/api/v1/auth/") ||
-    pathname.startsWith("/api/v1/worker/") ||
+    pathname === "/api/v1/worker/claim" ||
+    pathname === "/api/v1/worker/complete" ||
+    pathname === "/api/v1/worker/progress" ||
+    pathname === "/api/v1/worker/tick" ||
+    pathname === "/api/v1/worker/drift-evaluate" ||
+    pathname === "/api/v1/worker/change-step" ||
+    pathname === "/api/v1/worker/firmware-upgrade" ||
+    pathname === "/api/v1/worker/ztp-provision" ||
     pathname === "/api/v1/alerts/evaluate" ||
     pathname === "/api/v1/reports/execute" ||
     pathname === "/api/v1/metrics/retention/prune"
