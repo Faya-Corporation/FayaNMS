@@ -1,0 +1,79 @@
+# ENABLE: copy this file to .github/workflows/ci.yml (a push token with the
+# `workflow` scope is required — the current repository token lacks it, so
+# the file ships here ready-to-enable instead of live).
+
+name: CI gate
+
+# P19 / audit QA-001 (partial) — the release gate the repository previously
+# lacked. Per the audit's Phase-20 plan the full automated test suite
+# (unit/contract/integration/E2E) remains future work; this workflow makes
+# the ALREADY-mandated local gates non-bypassable on every push/PR:
+#   1. lint                          (eslint, exit code enforced)
+#   2. typecheck                     (tsc --noEmit — src/ zero-error policy)
+#   3. schema validation             (prisma validate + db push to a fresh DB)
+#   4. i18n parity                   (messages/en.json ≡ messages/ar.json)
+#   5. production build              (next build with ignoreBuildErrors:false)
+# Secrets: CI uses well-formed THROWAWAY hex values — the startup security
+# policy validates the shape, and no real secret ever lives in this repo.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "file:./ci-gate.db"
+      NEXTAUTH_URL: "http://localhost:3000"
+      NEXTAUTH_SECRET: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
+      FAYANMS_SERVICE_SECRET: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
+      FAYANMS_CONFIG_ENC_KEY: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck (tsc --noEmit)
+        run: bunx tsc --noEmit
+
+      - name: Prisma schema validation
+        run: bunx prisma validate
+
+      - name: Schema applies to a fresh database
+        run: bun run db:push
+
+      - name: i18n parity (EN ≡ AR)
+        run: |
+          node -e '
+          const flat = (d, p = "") => {
+            const out = new Set();
+            for (const [k, v] of Object.entries(d)) {
+              const key = p ? p + "." + k : k;
+              if (v && typeof v === "object") for (const x of flat(v, key)) out.add(x);
+              else out.add(key);
+            }
+            return out;
+          };
+          const en = flat(require("./messages/en.json"));
+          const ar = flat(require("./messages/ar.json"));
+          const onlyEn = [...en].filter((k) => !ar.has(k));
+          const onlyAr = [...ar].filter((k) => !en.has(k));
+          if (en.size !== ar.size || onlyEn.length || onlyAr.length) {
+            console.error("i18n parity FAIL", { en: en.size, ar: ar.size, onlyEn, onlyAr });
+            process.exit(1);
+          }
+          console.log("i18n parity OK:", en.size, "=", ar.size, "keys");
+          '
+
+      - name: Production build (typecheck-bypassing is disabled)
+        run: bun run build
