@@ -1,25 +1,30 @@
 # FayaNMS — ACTIVE CI gate (.github/workflows/ci.yml · task R2-c · re-audit finding B0-002).
-# Job structure comes from docs/ci/ci-gate.yml (the ready-to-push definition), corrected
-# and made self-contained. That pointer file's history (incl. the corrupted
-# `branches: ain]` trigger line and the PAT `workflow`-scope blocker) is documented there.
 #
-# ── ACTIVATION STATUS — read before describing this gate anywhere ─────────────────────
-# Committing this file is necessary but NOT sufficient. Per B0-002: do NOT describe
-# brand governance as CI-enforced until a pushed commit has a GREEN REQUIRED check.
-# Remaining activation steps (token-scope + settings-side actions, tracked in
-# docs/brand/SOCIAL-REPOSITORY.md and the release checklist):
-#   1. push this workflow with a token carrying the `workflow` scope — the current
-#      repository PAT lacks it (historical blocker: P19-10 and Phase 19-C hit the same
-#      remote rejection; the earlier ready commit lives on the local branch
-#      `local/ci-workflow-activation`);
-#   2. verify a green run on that real pushed commit;
-#   3. protect main + require the `gate` and `scan` status checks in GitHub settings
-#      (PR + 1 approval + CODEOWNERS review + conversation resolution, no force
-#      push / no deletion).
+# ── ACTIVATION STATUS: ACTIVE ───────────────────────────────────────────────────────
+# Activated:         2026-09-10 (R8: workflow push; R9: settings-side activation)
+# Required checks:   gate + scan — required status checks on the protected main branch
+# Branch protection: active — PRs require 1 approval incl. CODEOWNERS review,
+#                    conversation resolution required, no force pushes / no deletions
+# Admin enforcement: intentionally disabled (enforce_admins=false) — the owner retains
+#                    an explicit direct-push bypass, documented as a development
+#                    break-glass exception in docs/brand/SOCIAL-REPOSITORY.md §6.
+#                    Do NOT describe this gate as "universally non-bypassable"; the
+#                    accurate claim is: "CI-enforced and PR-protected for normal
+#                    contributors, with an explicit owner/admin bypass retained."
+# History:           the activation path (PAT workflow-scope blocker, the corrupted
+#                    `branches: ain]` trigger, the docs/ci/ci-gate.yml pointer era,
+#                    runs #1–#5 shakedown failures, first green run #6) is recorded
+#                    in worklog.md and docs/brand/SOCIAL-REPOSITORY.md §6.
+#
+# Supply-chain hardening (re-audit R10-005, 2026-09-11): every third-party action is
+# pinned to the full commit SHA its version tag resolved to on 2026-09-11 (tags are
+# mutable; SHAs are not), and both downloaded binaries (osv-scanner, syft) are
+# sha256-verified against upstream release checksums BEFORE execution. Update pins
+# deliberately, never passively.
 #
 # Job structure (audit Phase-20 plan; the full unit/contract/integration/E2E suite
 # remains future work — the environment policy forbids test code in this sandbox — so
-# this workflow makes the ALREADY-mandated local gates non-bypassable on every push/PR):
+# this workflow runs the ALREADY-mandated local gates on every push/PR):
 #   job `gate`:
 #     1. lint                          (eslint, exit code enforced)
 #     2. typecheck                     (tsc --noEmit — src/ zero-error policy)
@@ -57,11 +62,11 @@ jobs:
       FAYANMS_SERVICE_SECRET: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
       FAYANMS_CONFIG_ENC_KEY: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (SHA-pinned 2026-09-11)
         with:
           fetch-depth: 0 # full history — gitleaks scans origin commits too
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2 (SHA-pinned 2026-09-11)
         with:
           bun-version: 1.3.14 # pinned: the version this repo is developed/tested with
 
@@ -143,13 +148,13 @@ jobs:
     needs: gate
     continue-on-error: false # explicit: scan steps are a hard gate, not advisory
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (SHA-pinned 2026-09-11)
         with:
           fetch-depth: 0
 
       # ── 8. P20-010 — secret scanning ──
       - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2 (SHA-pinned 2026-09-11)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -157,30 +162,41 @@ jobs:
       # Action path preserved verbatim from docs/ci/ci-gate.yml; the same v1
       # action also exists under the current org name semgrep/semgrep-action@v1.
       - name: SAST (semgrep)
-        uses: returntocorp/semgrep-action@v1
+        uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1 (SHA-pinned 2026-09-11)
         with:
           config: p/default
           # Gate policy: any ERROR finding fails the build. Audit findings are
           # triaged before enabling; this is the audit's required SAST gate.
 
       # ── 10. P20-012 — dependency scan ──
-      # Note: the upstream raw install.sh (main branch) was removed — 404 in run
-      # 34532398506 — so the release binary is pinned and downloaded directly.
+      # History: the upstream raw install.sh (main branch) 404'd in run 34532398506,
+      # so the release binary is downloaded directly (R8). R10-005 hardening: the
+      # binary is sha256-verified against the upstream v2.5.1 SHA256SUMS value
+      # BEFORE it is made executable and run.
       - name: Dependency scan (osv-scanner)
         run: |
-          curl -sSfL -o /usr/local/bin/osv-scanner \
+          curl -sSfL -o /tmp/osv-scanner \
             https://github.com/google/osv-scanner/releases/download/v2.5.1/osv-scanner_linux_amd64
-          chmod +x /usr/local/bin/osv-scanner
+          echo "f9f25499a2c8cc367b3af45df2ea7eeca7fbccceab9c35079968f4b3652194be  /tmp/osv-scanner" | sha256sum -c -
+          chmod +x /tmp/osv-scanner
+          mv /tmp/osv-scanner /usr/local/bin/osv-scanner
           osv-scanner scan --lockfile=./bun.lock
 
       # ── 11. P20-014 — SBOM ──
+      # R10-005 hardening: the unpinned `curl main/install.sh | sh` path inside a
+      # security gate is GONE. syft is a pinned release tarball, sha256-verified
+      # against the upstream v1.51.1 checksums file before extraction/install.
       - name: SBOM (syft → CycloneDX)
         run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-            | sh -s -- -b /usr/local/bin
+          curl -sSfL -o /tmp/syft.tar.gz \
+            https://github.com/anchore/syft/releases/download/v1.51.1/syft_1.51.1_linux_amd64.tar.gz
+          echo "8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3  /tmp/syft.tar.gz" | sha256sum -c -
+          mkdir -p /tmp/syft-extract
+          tar -xzf /tmp/syft.tar.gz -C /tmp/syft-extract
+          install -m 0755 /tmp/syft-extract/syft /usr/local/bin/syft
           syft dir:. -o cyclonedx-json > sbom.cdx.json
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 (SHA-pinned 2026-09-11)
         with:
           name: sbom-cyclonedx
           path: sbom.cdx.json
@@ -188,7 +204,7 @@ jobs:
       # ── 12. P20-013 — container scan (auto-skips until a Dockerfile exists) ──
       - name: Container scan (trivy, conditional)
         if: ${{ hashFiles('Dockerfile') != '' }}
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA-pinned 2026-09-11)
         with:
           scan-type: fs
           scan-ref: .

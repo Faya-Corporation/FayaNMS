@@ -92,27 +92,59 @@ Keep the demo semantics visible in the one-liner; the README body carries the fu
 1. ✅ **Workflow push** — task R8 (2026-09-10): the fresh fine-grained PAT did carry the
    `workflow` scope (the R6/P19-10 blocker no longer applied); ci.yml landed on `main`
    and triggers on push.
-2. ✅ **Green run on a real pushed commit** — runs [#8](https://github.com/fayafatehi/FayaNMS/actions/runs/34540067242)
-   (`3e97d3b`) and [#7](https://github.com/fayafatehi/FayaNMS/actions/runs/34539971028)
-   (`d68e47a`): both jobs `gate` and `scan` concluded `success` with zero failed steps
+2. ✅ **Green run on a real pushed commit** — runs [#6](https://github.com/fayafatehi/FayaNMS/actions/runs/34539971028)
+   (`d68e47a`) and [#7](https://github.com/fayafatehi/FayaNMS/actions/runs/34540067242)
+   (`3e97d3b`): both jobs `gate` and `scan` concluded `success` with zero failed steps
    (verified via the Actions API).
 3. ✅ **Protect `main`** — task R9 (2026-09-10 23:2x UTC), via the branch-protection REST
    API with the Administration:write token: required status checks **`gate` + `scan`** ·
    pull requests required with **1 approval** + **CODEOWNERS review** · **conversation
    resolution required** · **no force pushes · no deletions**. `enforce_admins` is left
-   OFF so the owner's direct-push workflow (including sandbox commits) keeps working —
-   the required checks still gate every PR and are the repository's non-bypassable
-   record for external contributors.
+   OFF — an explicit, governed owner bypass (see **Admin-bypass policy** below).
 4. ✅ **15 recommended topics populated** (§1) — task R9, `PUT /repos/.../topics`, 200,
    read-back verified set-equal.
 5. ✅ **About description aligned** (§5) — task R9, `PATCH /repos/...`, 200, read-back
    byte-exact.
-6. ⬜ **Upload `public/brand/github-social-preview.png`** as the repository social preview
+6. ✅ **Closing proof run (R9 re-audit evidence):** run
+   [#8](https://github.com/fayafatehi/FayaNMS/actions/runs/34542123439) — ID
+   `34542123439`, HEAD `66ab91a`, run number **8**, `completed / success`; both jobs
+   `gate` and `scan` green with zero failed steps. Run-number correction (R10-003,
+   2026-09-11): the authoritative Actions-API mapping is #6 = `34539971028`, #7 =
+   `34540067242`, #8 = `34542123439`; an earlier draft of this section had #7/#8
+   transposed.
+7. ⬜ **Upload `public/brand/github-social-preview.png`** as the repository social preview
    (§2 above) — the GitHub REST API has **no endpoint** for the social preview image;
-   this remains the single manual web-UI action (Settings → General → Social preview).
+   this remains the single manual web-UI action (Settings → General → Social preview →
+   Upload new image), then verify the unfurl (full lockup, no crop, cache refresh).
+
+**Admin-bypass policy (R10-004, formalized 2026-09-11):** the branch-protection verdict
+for this repository is exactly: **"CI-enforced and PR-protected for normal contributors,
+with an explicit owner/admin bypass retained."** Never describe the gate as
+"universally non-bypassable" while `enforce_admins=false` is in force. The bypass is a
+deliberate development-phase break-glass exception: it keeps the owner's (and the
+design sandbox's) direct-push workflow alive, and every direct push still triggers the
+gate + scan runs on main, so a broken push is *detected* immediately even though it is
+not *blocked* pre-merge. Before the repository enters production-team ownership, flip
+to `enforce_admins=true` (or re-model emergency owner access as explicit break-glass
+governance) — re-audit finding GOV-R9-001.
+
+**CI supply-chain hardening (R10-005, executed 2026-09-11):** every third-party action
+in ci.yml is pinned to the full commit SHA its version tag resolved to on 2026-09-11
+(checkout `11d5960a…`, setup-bun `0c5077e5…`, gitleaks-action `ff98106e…`,
+semgrep-action `713efdd3…`, upload-artifact `ea165f8d…`, trivy-action `ed142fd0…`), and
+the two downloaded binaries are sha256-verified before execution — osv-scanner v2.5.1
+(`f9f25499…194be`, upstream SHA256SUMS) and syft v1.51.1 (`8fcb3301…b9fc3`, upstream
+checksums file; the unpinned `curl main/install.sh | sh` path was removed). Update
+pins deliberately, never passively.
 
 **CI badge:** with steps 1–3 complete, the CI badge became factual and is now on the
 README badge row (§4).
+
+**Deferred (optional, tracked — not part of the closeout gate):** (a) a compact
+Playwright brand smoke matrix (loading / sign-in / sidebar / mobile drawer / devices /
+drivers × 375 / 768 / 1440 × light-dark × EN-AR) as a CI-native job, with the full
+43-view cycle remaining release certification (re-audit TEST-R9-006); (b) signed
+release tags / artifact provenance (B3-030 / R10-007).
 
 **Historical note (the rule this section superseded):** while the workflow push was
 pending, the governance rule was "committed ≠ enforced" — docs had to keep describing the

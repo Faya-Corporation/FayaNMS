@@ -205,6 +205,13 @@ describe("CI gate wires the brand governance (B0-002)", () => {
       "img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml",
     );
     expect(readme).toMatch(/CI-enforced/i);
+    // GOV-R9-001 / R10-004 — admin-bypass verdict wording: the user-facing
+    // README must never claim "universally non-bypassable" while
+    // enforce_admins=false, and the governance doc must carry the accurate
+    // verdict ("CI-enforced and PR-protected for normal contributors, with an
+    // explicit owner/admin bypass retained").
+    expect(readme).not.toMatch(/universally non-bypassable/i);
+    expect(social).toMatch(/explicit owner\/admin bypass retained/);
   });
 });
 
