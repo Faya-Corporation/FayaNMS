@@ -4,13 +4,13 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useSession } from "next-auth/react";
-import { Waypoints } from "lucide-react";
 
 import { useDashboard } from "@/hooks/api/use-dashboard";
 import { fetchAuthSession } from "@/lib/api-client";
 import { queryKeys } from "@/lib/query-keys";
 import { usePermissionsStore } from "@/stores/permissions";
 import { useLocaleInfo } from "@/i18n/locale-provider";
+import { FayaNMSLockup, FayaNMSMark } from "@/components/brand";
 import { SignInGate } from "@/components/auth/sign-in-gate";
 import { SkipLink } from "@/components/domain/skip-link";
 import { GuidedTour } from "@/components/tour/guided-tour";
@@ -123,8 +123,10 @@ export function AppShell() {
         <div className="h-14 border-b" />
         <main className="flex flex-1 items-center justify-center">
           <span className="flex flex-col items-center gap-3 text-muted-foreground">
-            <span className="flex size-12 animate-pulse items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Waypoints className="size-6" />
+            {/* Re-audit B0-001: the canonical FayaNMS mark (brand tone) —
+                never a generic/pseudo-brand glyph on the loading surface. */}
+            <span className="flex size-12 animate-pulse items-center justify-center rounded-xl bg-primary/10">
+              <FayaNMSMark size="lg" tone="brand" />
             </span>
             <span className="text-sm">{tA11y("loadingApp")}…</span>
           </span>
@@ -186,14 +188,11 @@ export function AppShell() {
           side={isRtl ? "right" : "left"}
         >
           <SheetHeader className="border-b">
-            <SheetTitle className="flex items-center gap-2.5">
-              <span
-                aria-hidden="true"
-                className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground"
-              >
-                <Waypoints className="size-4.5" />
-              </span>
-              FayaNMS
+            {/* Re-audit B0-001/B1-003: canonical tiled lockup — the only
+                sanctioned identity composition (no Waypoints, no literal
+                hand-assembled name). */}
+            <SheetTitle>
+              <FayaNMSLockup variant="tiled" />
             </SheetTitle>
           </SheetHeader>
           <SidebarNav

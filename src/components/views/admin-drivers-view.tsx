@@ -86,8 +86,8 @@ export function AdminDriversView() {
                       <span className="break-all">{driver.adapter}</span>
                       <span aria-hidden="true">·</span>
                       <span className="flex items-center gap-1">
-                        {/* Config-flavor prefix (decorative — flavor text adjacent). */}
-                        <FayanmsIcon name="configuration" size={12} />
+                        {/* Config-flavor prefix (decorative — flavor text adjacent). xs=14px is the documented glyph minimum (B2-022). */}
+                        <FayanmsIcon name="configuration" size="xs" />
                         <span>
                           flavor {driver.configFlavor}
                         </span>

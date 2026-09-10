@@ -8,10 +8,18 @@
 
 ## 1. Decorative vs meaningful icons
 
-The renderer bakes the decision into the component: passing a `title` renders `role="img"` +
-accessible name; omitting it renders `aria-hidden="true"`. Every other icon component
+The renderer bakes the decision into the component: passing a `title` renders `role="img"` with
+that string as the accessible name — the **primary accessible-name API is `aria-label`** (re-audit
+B2-021), and the native `title` attribute is set too but is a hover affordance only, never the
+naming mechanism. Omitting `title` renders `aria-hidden="true"`. Every other icon component
 (`DomainIcon`, `NetworkDeviceIcon`, `DeviceVendorIcon`, `FayanmsMark`/lockups) defaults to
 decorative.
+
+**Standalone device glyphs carry real names** (re-audit B2-020): a standalone `NetworkDeviceIcon`
+resolves its accessible name through `deviceIconLabelFor()` — canonical role labels from
+`DEVICE_ROLE_META`, e.g. `TOP_OF_RACK` → "Top of rack", `CORE_ROUTER` → "Core router",
+`WAN_GATEWAY` → "WAN gateway"; free-form types fall back to the family name ("Firewall",
+"Router", …), unknown types to "Device".
 
 **Rule:** if the information is available as visible text right next to the icon, the icon is
 decoration and must be hidden from assistive tech (no duplicate announcements).
@@ -37,8 +45,10 @@ decoration and must be hidden from assistive tech (no duplicate announcements).
 
 ## 2. Icon-only controls
 
-A control whose **only** content is an icon must expose an accessible name — via the icon's
-`title` (which upgrades it to `role="img"` with a name) **and** the control's own label:
+A control whose **only** content is an icon must expose an accessible name — the control names
+**itself** with its own `aria-label` (the icon's `title`/`aria-label`, where present, upgrades the
+glyph to `role="img"` and stays consistent as tooltip text, but the control-level label is what
+assistive tech announces):
 
 ```tsx
 // ✅ Icon-only action: named at the control level, tooltip text kept consistent

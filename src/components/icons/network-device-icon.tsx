@@ -1,5 +1,5 @@
 import { FayanmsIcon } from "@/components/icons/fayanms-icon";
-import { deviceIconFor } from "@/lib/icons/device-icons";
+import { deviceIconFor, deviceIconLabelFor } from "@/lib/icons/device-icons";
 import { cn } from "@/lib/utils";
 
 export interface NetworkDeviceIconProps {
@@ -14,6 +14,8 @@ export interface NetworkDeviceIconProps {
 /**
  * Device-type glyph rendered before hostnames / device titles. Decorative by
  * default — the hostname or role label adjacent to it carries the semantics.
+ * In standalone mode the accessible name is the resolved role label
+ * ("Router", "Top of rack", …) instead of a generic description (B2-020).
  */
 export function NetworkDeviceIcon({
   deviceType,
@@ -26,7 +28,7 @@ export function NetworkDeviceIcon({
       className={cn(className)}
       name={deviceIconFor(deviceType)}
       size={size}
-      title={standalone ? "Device type glyph" : undefined}
+      title={standalone ? deviceIconLabelFor(deviceType) : undefined}
     />
   );
 }

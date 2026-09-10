@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
-import { FayaNMSMark } from "@/components/brand/fayanms-mark";
+import { FayaNMSLockup } from "@/components/brand";
 import { SidebarNav, type SidebarCounts } from "./sidebar-nav";
 import { Button } from "@/components/ui/button";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
@@ -16,7 +16,9 @@ interface AppSidebarProps {
 
 /**
  * Desktop sidebar: 264px expanded / 72px collapsed (preferences store),
- * brand mark on top, scrollable nav groups, collapse toggle at the bottom.
+ * canonical brand lockup on top (re-audit B1-003 — no hand-composed
+ * mark + literal name), scrollable nav groups, collapse toggle at the
+ * bottom.
  */
 export function AppSidebar({
   collapsed,
@@ -39,24 +41,18 @@ export function AppSidebar({
       <div
         className={cn(
           "flex h-14 shrink-0 items-center border-b",
-          collapsed ? "justify-center px-2" : "gap-2.5 px-4"
+          collapsed ? "justify-center px-2" : "px-4"
         )}
       >
-        <span
-          aria-hidden="true"
-          className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"
-        >
-          <FayaNMSMark size="sm" tone="white" />
-        </span>
-        {!collapsed && (
-          <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold leading-tight">
-              FayaNMS
-            </span>
-            <span className="block text-[11px] leading-tight text-muted-foreground">
-              {tNav("brand.subtitle")}
-            </span>
-          </span>
+        {/* Canonical lockup — expanded: tile + name + translated subtitle
+            via the lockup's descriptorOverride API; collapsed: tile only. */}
+        {collapsed ? (
+          <FayaNMSLockup variant="compact" />
+        ) : (
+          <FayaNMSLockup
+            variant="tiled"
+            descriptorOverride={tNav("brand.subtitle")}
+          />
         )}
       </div>
 

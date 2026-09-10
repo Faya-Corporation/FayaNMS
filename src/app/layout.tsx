@@ -7,7 +7,13 @@ import { MotionProvider } from "@/components/providers/motion-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
 import { LocaleProvider } from "@/i18n/locale-provider";
-import { FAYANMS_BRAND, siteUrl } from "@/lib/brand/identity";
+import {
+  BRAND_TITLE,
+  BRAND_TITLE_TEMPLATE,
+  BRAND_THEME_COLOR,
+  FAYANMS_BRAND,
+  siteUrl,
+} from "@/lib/brand/identity";
 
 const fontSans = Inter({
   variable: "--font-sans",
@@ -24,12 +30,12 @@ const fontMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
   title: {
-    default: "FayaNMS — Network Operations Management",
-    template: "%s · FayaNMS",
+    default: BRAND_TITLE,
+    template: BRAND_TITLE_TEMPLATE,
   },
   description: FAYANMS_BRAND.description,
   keywords: [
-    "FayaNMS",
+    FAYANMS_BRAND.name,
     "network management",
     "NMS",
     "NOC",
@@ -39,21 +45,21 @@ export const metadata: Metadata = {
     "network monitoring",
   ],
   applicationName: FAYANMS_BRAND.name,
-  creator: "FayaNMS",
-  publisher: "FayaNMS",
+  creator: FAYANMS_BRAND.name,
+  publisher: FAYANMS_BRAND.name,
   // Phase B0 (BRAND-001): the external Z-AI/ChatGLM favicon was removed.
   // Local file-based metadata (src/app/icon.svg, apple-icon, opengraph-image)
   // now supplies every browser/app icon — no third-party identity fetches.
   openGraph: {
     type: "website",
     siteName: FAYANMS_BRAND.name,
-    title: "FayaNMS — Network Operations Management",
+    title: BRAND_TITLE,
     description: FAYANMS_BRAND.description,
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "FayaNMS — Network Operations Management",
+    title: BRAND_TITLE,
     description: FAYANMS_BRAND.description,
   },
   robots: {
@@ -69,7 +75,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#2563EB",
+  themeColor: BRAND_THEME_COLOR,
 };
 
 export default function RootLayout({

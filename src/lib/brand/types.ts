@@ -19,6 +19,11 @@ export interface BrandColors {
 
 export interface BrandAssetPaths {
   mark: string;
+  /** Static brand-primary mark for external contexts (README, email, docs) —
+   * `<img>`-loaded SVGs cannot inherit page currentColor (re-audit B1-013). */
+  markBrand: string;
+  /** 16–20px optimized favicon micro-mark (re-audit B1-014). */
+  markMicro: string;
   markMono: string;
   markWhite: string;
   wordmark: string;
@@ -44,6 +49,18 @@ export interface BrandIdentity {
   /** Optional marketing tagline (unused in app chrome by default). */
   tagline: string;
   colors: BrandColors;
+  /** Neutral artboard/background color for generated artwork (OG cards,
+   * favicon tiles, social preview). Not a status color. */
+  colorsNeutral: {
+    /** Ink (headline text on light artwork). */
+    ink: string;
+    /** Muted (supporting text on light artwork). */
+    muted: string;
+    /** Light artboard surface. */
+    surface: string;
+    /** White tile background (favicon/app icon tiles). */
+    tile: string;
+  };
   assets: BrandAssetPaths;
   urls: {
     repository: string;

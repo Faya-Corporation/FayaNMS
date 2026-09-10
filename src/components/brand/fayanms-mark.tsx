@@ -1,17 +1,32 @@
 import { cn } from "@/lib/utils";
 import type { BrandTone } from "@/lib/brand/types";
+import { MARK_GEOMETRY, type MarkShape } from "@/lib/brand/mark-geometry";
 
+/**
+ * Named sizes (re-audit B2-019): the guide's container-vs-glyph minimums map
+ * onto these named variants — xs 14 (footer), sm 20 (nav), md 24 (headers),
+ * lg 32 (loading/report sub-header), xl 40 (sign-in glyph), 2xl 64 (docs and
+ * report covers). Numeric sizes remain an explicit escape hatch.
+ */
 const MARK_SIZES = {
   xs: 14,
   sm: 20,
   md: 24,
   lg: 32,
+  xl: 40,
+  "2xl": 64,
 } as const;
 
 export type FayaNMSMarkSize = keyof typeof MARK_SIZES;
 
+/**
+ * Tone → CSS token class (re-audit B2-018): application rendering uses the
+ * design tokens, never the raw brand hex. The hex values exist only in
+ * `FAYANMS_BRAND` for non-CSS artifacts (metadata, SVG masters, satori
+ * cards, raster scripts).
+ */
 const MARK_TONES: Record<BrandTone, string> = {
-  brand: "text-[#2563EB]",
+  brand: "text-primary",
   current: "",
   white: "text-white",
   mono: "text-foreground",
@@ -31,13 +46,45 @@ export interface FayaNMSMarkProps {
   className?: string;
 }
 
+/** Render the shared geometry as JSX (single geometry source, B1-005/006). */
+function MarkShapes({ geometry }: { geometry: readonly MarkShape[] }) {
+  return (
+    <>
+      {geometry.map((shape, index) => {
+        if (shape.kind === "circle") {
+          return (
+            <circle
+              key={index}
+              cx={shape.cx}
+              cy={shape.cy}
+              r={shape.r}
+              fill={shape.filled ? "currentColor" : "none"}
+            />
+          );
+        }
+        return (
+          <line
+            key={index}
+            x1={shape.x1}
+            y1={shape.y1}
+            x2={shape.x2}
+            y2={shape.y2}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 /**
  * FayaNMS primary product mark — network nodes inside a protected
  * operations ring (Phase B0, BRAND-002/004).
  *
- * Inline SVG using `currentColor` so the mark adapts to app theming without
- * separate dark geometry. Never animated, never keyboard-focusable, never
- * recolored with status semantics.
+ * Geometry is consumed from `src/lib/brand/mark-geometry.ts` — the single
+ * geometric source shared with the metadata artwork, raster generator and
+ * static masters. Inline SVG using `currentColor` so the mark adapts to app
+ * theming without separate dark geometry. Never animated, never
+ * keyboard-focusable, never recolored with status semantics.
  */
 export function FayaNMSMark({
   size = "md",
@@ -62,16 +109,11 @@ export function FayaNMSMark({
       aria-hidden={accessible ? undefined : true}
       focusable="false"
       role={accessible ? "img" : undefined}
+      aria-label={accessible ? title : undefined}
       className={cn("shrink-0", MARK_TONES[tone], className)}
     >
       {accessible ? <title>{title}</title> : null}
-      <circle cx="12" cy="12" r="9" />
-      <circle cx="12" cy="8" r="1.5" />
-      <circle cx="8" cy="15" r="1.5" />
-      <circle cx="16" cy="15" r="1.5" />
-      <line x1="12" y1="9.5" x2="12" y2="12" />
-      <line x1="12" y1="12" x2="8.8" y2="13.8" />
-      <line x1="12" y1="12" x2="15.2" y2="13.8" />
+      <MarkShapes geometry={MARK_GEOMETRY} />
     </svg>
   );
 }

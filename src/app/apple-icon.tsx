@@ -1,15 +1,17 @@
 import { ImageResponse } from "next/og";
+import { FAYANMS_BRAND } from "@/lib/brand/identity";
+import { MARK_GEOMETRY } from "@/lib/brand/mark-geometry";
 
 /**
- * Apple touch icon (180×180) — Phase B0/§20: file-based metadata generated
- * at request time (no hand-maintained binaries). Satori cannot use CSS
- * masks or currentColor, so the mark geometry + brand blue are inlined
- * literally here (kept in sync with docs/brand/ASSET-MANIFEST.md).
+ * Apple touch icon (180×180) — file-based metadata generated at request
+ * time (no hand-maintained binaries). Geometry comes from the shared mark
+ * module (re-audit B1-006: no per-file inlined mark); the paint is the
+ * literal brand primary because satori cannot use currentColor.
  */
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
-const BLUE = "#2563EB";
+const BLUE = FAYANMS_BRAND.colors.primary;
 
 export default function AppleIcon() {
   return new ImageResponse(
@@ -21,7 +23,7 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#FFFFFF",
+          background: FAYANMS_BRAND.colorsNeutral.tile,
         }}
       >
         <svg
@@ -34,13 +36,22 @@ export default function AppleIcon() {
           strokeLinecap="round"
           strokeLinejoin="round"
         >
-          <circle cx="12" cy="12" r="9" />
-          <circle cx="12" cy="8" r="1.5" />
-          <circle cx="8" cy="15" r="1.5" />
-          <circle cx="16" cy="15" r="1.5" />
-          <line x1="12" y1="9.5" x2="12" y2="12" />
-          <line x1="12" y1="12" x2="8.8" y2="13.8" />
-          <line x1="12" y1="12" x2="15.2" y2="13.8" />
+          {MARK_GEOMETRY.map((shape, index) => {
+            if (shape.kind === "circle") {
+              return (
+                <circle key={index} cx={shape.cx} cy={shape.cy} r={shape.r} />
+              );
+            }
+            return (
+              <line
+                key={index}
+                x1={shape.x1}
+                y1={shape.y1}
+                x2={shape.x2}
+                y2={shape.y2}
+              />
+            );
+          })}
         </svg>
       </div>
     ),

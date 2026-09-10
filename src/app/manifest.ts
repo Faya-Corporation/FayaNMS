@@ -12,7 +12,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description: FAYANMS_BRAND.description,
     start_url: "/",
     display: "standalone",
-    background_color: "#FFFFFF",
+    background_color: FAYANMS_BRAND.colorsNeutral.tile,
     theme_color: FAYANMS_BRAND.colors.primary,
     icons: [
       {

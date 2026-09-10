@@ -1,162 +1,45 @@
-# ENABLE: copy this file to .github/workflows/ci.yml and push with a token
-# carrying the `workflow` scope (the current repository PAT lacks it — P19-10
-# and Phase 19-C both hit the same remote rejection; the ready-to-push commit
-# is preserved on the local branch `local/ci-workflow-activation`). After
-# activation, enable branch protection + required checks in GitHub settings.
+# CI gate — moved to `.github/workflows/ci.yml`
 
-name: CI gate
+This file is **no longer the CI definition**. The active workflow now lives at:
 
-# P19 / audit QA-001 (partial) + P20-010..014 (definitions) — the release gate
-# the repository previously lacked. Per the audit's Phase-20 plan the full
-# automated test suite (unit/contract/integration/E2E) remains future work
-# (environment policy forbids test code in this sandbox); this workflow makes
-# the ALREADY-mandated local gates non-bypassable on every push/PR:
-#   job `gate`:
-#     1. lint                          (eslint, exit code enforced)
-#     2. typecheck                     (tsc --noEmit — src/ zero-error policy)
-#     3. unit/contract/security tests  (bun test tests/ — Phase 19-C
-#                                     AUTHZ-006 suite: role matrix,
-#                                     authorization contract inventory,
-#                                     service auth, crypto, audit chain)
-#     4. schema validation             (prisma validate + db push to a fresh DB)
-#     5. i18n parity                   (messages/en.json ≡ messages/ar.json)
-#     6. production build              (next build with ignoreBuildErrors:false)
-#   job `scan` (audit Phase 20 security gates — definitions, executed in CI):
-#     6. secret scanning               (gitleaks — history + working tree)
-#     7. SAST                          (semgrep p/default, error-severity fails)
-#     8. dependency scan               (osv-scanner against bun.lock)
-#     9. SBOM                          (syft → CycloneDX JSON artifact)
-#    10. container scan                (trivy — auto-skips until a Dockerfile exists)
-# Secrets: CI uses well-formed THROWAWAY hex values — the startup security
-# policy validates the shape, and no real secret ever lives in this repo.
+```text
+.github/workflows/ci.yml
+```
 
-on:
-  push:
-    branches: [main]
-  pull_request:
+(created by task R2-c, re-audit finding B0-002). A workflow only runs from
+`.github/workflows/`; the definition previously stored here was a
+ready-to-push copy, never an active gate.
 
-jobs:
-  gate:
-    runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: "file:./ci-gate.db"
-      NEXTAUTH_URL: "http://localhost:3000"
-      NEXTAUTH_SECRET: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
-      FAYANMS_SERVICE_SECRET: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
-      FAYANMS_CONFIG_ENC_KEY: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # full history — gitleaks scans origin commits too
+## History note
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+- The definition that used to live here had a corrupted trigger line —
+  `branches: ain]` instead of `branches: [main]` — recorded during task R1
+  (worklog R1-orch), which would have failed YAML parsing. The corrected
+  `branches: [main]` trigger is carried into `.github/workflows/ci.yml`.
+- The old copy also ran bare `bunx tsc --noEmit`; the active workflow instead
+  implements the documented **src/ zero-error policy** (full `tsc` output is
+  kept visible, and any error under `src/` or `scripts/` fails the job, while
+  the known pre-existing legacy errors under `examples/` and `skills/` do not
+  block — that cleanup is tracked separately).
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+## Activation status (still not CI-enforced — B0-002)
 
-      - name: Lint
-        run: bun run lint
+Activation requires **both**:
 
-      - name: Typecheck (tsc --noEmit)
-        run: bunx tsc --noEmit
+1. **Push of `.github/workflows/ci.yml` with a token that carries the
+   `workflow` scope.** Historical blocker: the current repository PAT lacks
+   that scope — P19-10 and Phase 19-C both hit the same remote rejection; the
+   earlier ready-to-push commit is preserved on the local branch
+   `local/ci-workflow-activation`.
+2. **Branch protection + required status checks (`gate`, `scan`) in GitHub
+   settings** (PR required + 1 approval + CODEOWNERS review + conversation
+   resolution, no force push/delete). These are settings-side actions, tracked
+   in [docs/brand/SOCIAL-REPOSITORY.md](../brand/SOCIAL-REPOSITORY.md) and the
+   release checklist.
 
-      - name: Tests (role matrix, authorization contract, service auth, crypto, audit chain)
-        run: bun test tests/
+Until a real pushed commit has a green **required** check, brand validation is
+a developer convention, not a non-bypassable repository control — do not
+describe it as CI-enforced.
 
-      # Phase B3 — brand/icon governance (plan §34/§35): brand masters,
-      # metadata identity, runtime icon color contract, icon-registry
-      # resolution (every nav view/vendor/device key).
-      - name: Brand asset validation
-        run: bun run brand:validate
-
-      - name: Icon registry validation
-        run: bun run brand:validate-icons
-
-      - name: Prisma schema validation
-        run: bunx prisma validate
-
-      - name: Schema applies to a fresh database
-        run: bun run db:push
-
-      - name: i18n parity (EN ≡ AR)
-        run: |
-          node -e '
-          const flat = (d, p = "") => {
-            const out = new Set();
-            for (const [k, v] of Object.entries(d)) {
-              const key = p ? p + "." + k : k;
-              if (v && typeof v === "object") for (const x of flat(v, key)) out.add(x);
-              else out.add(key);
-            }
-            return out;
-          };
-          const en = flat(require("./messages/en.json"));
-          const ar = flat(require("./messages/ar.json"));
-          const onlyEn = [...en].filter((k) => !ar.has(k));
-          const onlyAr = [...ar].filter((k) => !en.has(k));
-          if (en.size !== ar.size || onlyEn.length || onlyAr.length) {
-            console.error("i18n parity FAIL", { en: en.size, ar: ar.size, onlyEn, onlyAr });
-            process.exit(1);
-          }
-          console.log("i18n parity OK:", en.size, "=", ar.size, "keys");
-          '
-
-      - name: Production build (typecheck-bypassing is disabled)
-        run: bun run build
-
-  scan:
-    runs-on: ubuntu-latest
-    needs: gate
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # ── 6. P20-010 — secret scanning ──
-      - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── 7. P20-011 — SAST ──
-      - name: SAST (semgrep)
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: p/default
-          # Gate policy: any ERROR finding fails the build. Audit findings are
-          # triaged before enabling; this is the audit's required SAST gate.
-
-      # ── 8. P20-012 — dependency scan ──
-      - name: Dependency scan (osv-scanner)
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/google/osv-scanner/main/install.sh \
-            | sh -s -- -b /usr/local/bin
-          osv-scanner scan --lockfile=./bun.lock
-
-      # ── 9. P20-014 — SBOM ──
-      - name: SBOM (syft → CycloneDX)
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-            | sh -s -- -b /usr/local/bin
-          syft dir:. -o cyclonedx-json > sbom.cdx.json
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-cyclonedx
-          path: sbom.cdx.json
-
-      # ── 10. P20-013 — container scan (auto-skips until a Dockerfile exists) ──
-      - name: Container scan (trivy, conditional)
-        if: ${{ hashFiles('Dockerfile') != '' }}
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-
-      - name: Container scan skipped (no Dockerfile yet)
-        if: ${{ hashFiles('Dockerfile') == '' }}
-        run: echo "No Dockerfile yet (audit Phase 21 containerization) — trivy gate skipped by definition."
+Related: release checklist (Phase 20, `docs/audits/FayaNMS-Updated-Full-Audit-Review-2026-09-10.md`)
+· [ASSET-MANIFEST.md §5 — validation contract](../brand/ASSET-MANIFEST.md)

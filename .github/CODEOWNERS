@@ -34,3 +34,19 @@
 # Security documentation (authorization matrix, audits)
 /docs/security/           @fayafatehi
 /docs/audits/             @fayafatehi
+
+# Brand & iconography — one identity, governed (re-audit B1-017)
+/public/brand/                          @fayafatehi
+/public/icons/fayanms/                  @fayafatehi
+/public/logo.svg                        @fayafatehi
+/src/lib/brand/                         @fayafatehi
+/src/components/brand/                  @fayafatehi
+/src/lib/icons/                         @fayafatehi
+/src/components/icons/                  @fayafatehi
+/docs/brand/                            @fayafatehi
+/docs/adr/ADR-brand-icon-architecture.md @fayafatehi
+/scripts/validate-brand-assets.ts       @fayafatehi
+/scripts/validate-icon-registry.ts      @fayafatehi
+/scripts/validate-brand-consumers.ts    @fayafatehi
+/scripts/generate-brand-raster-assets.ts @fayafatehi
+/scripts/brand-raster-composition.ts    @fayafatehi

@@ -9,8 +9,10 @@ export interface DeviceVendorIconProps {
   className?: string;
   /**
    * Standalone mode: the glyph names itself ("«VendorLabel» adapter glyph")
-   * for contexts where no adjacent text labels it. Default is decorative
-   * (aria-hidden) since vendor text labels the icon in tables/cards.
+   * for contexts where no adjacent text labels it — passed to FayanmsIcon as
+   * `title`, which becomes both the primary `aria-label` (role="img") and the
+   * native hover title. Default is decorative (aria-hidden) since vendor text
+   * labels the icon in tables/cards.
    */
   standalone?: boolean;
 }

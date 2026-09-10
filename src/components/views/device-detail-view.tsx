@@ -31,6 +31,7 @@ import { StatusBadge } from "@/components/domain/status-badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { deviceRoleLabelFor } from "@/lib/icons/device-role-meta";
 import { getLifecycle } from "@/lib/firmware/lifecycle";
 import { lifecycleBadge } from "@/components/views/firmware-band";
 import { useStatusLabel } from "@/hooks/use-status-label";
@@ -90,19 +91,6 @@ function relative(iso: string | null | undefined): string {
   if (!iso) return "—";
   return formatDistanceToNow(new Date(iso), { addSuffix: true });
 }
-
-const ROLE_LABELS: Record<string, string> = {
-  CORE_ROUTER: "Core router",
-  EDGE_ROUTER: "Edge router",
-  BRANCH_ROUTER: "Branch router",
-  FIREWALL: "Firewall",
-  CORE_SWITCH: "Core switch",
-  ACCESS_SWITCH: "Access switch",
-  TOP_OF_RACK: "Top of rack",
-  WIRELESS_CONTROLLER: "Wireless controller",
-  LOAD_BALANCER: "Load balancer",
-  WAN_GATEWAY: "WAN gateway",
-};
 
 /**
  * Device detail (Phase 2): header with quick actions + lazy-loaded tabs
@@ -287,7 +275,7 @@ export function DeviceDetailView() {
               {[
                 [device.vendor.name, device.model].filter(Boolean).join(" "),
                 device.site ? `${device.site.name} (${device.site.code})` : null,
-                device.role ? ROLE_LABELS[device.role] ?? device.role : null,
+                device.role ? deviceRoleLabelFor(device.role) : null,
               ]
                 .filter(Boolean)
                 .join(" · ") || undefined}
@@ -454,7 +442,7 @@ function OverviewSection({
               value={device.firmware ?? "—"}
             />
             <RecordItem label="Serial number" mono value={device.serialNumber ?? "—"} />
-            <RecordItem label="Role" value={device.role ? ROLE_LABELS[device.role] ?? device.role : "—"} />
+            <RecordItem label="Role" value={device.role ? deviceRoleLabelFor(device.role) : "—"} />
             <RecordItem label="Site" value={device.site ? `${device.site.name} (${device.site.code})` : "—"} />
             <RecordItem label="Last seen" value={relative(device.lastSeen)} />
             <RecordItem label="Uptime" value={formatUptime(device.uptimeSeconds)} />

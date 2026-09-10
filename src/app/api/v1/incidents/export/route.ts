@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, newCorrelationId } from "../../_lib/api";
 import { computeSlaState, formatSlaCountdown } from "@/lib/incidents/lifecycle";
+import { FAYANMS_BRAND } from "@/lib/brand/identity";
 
 export const dynamic = "force-dynamic";
 
@@ -160,7 +161,7 @@ export async function GET(request: Request) {
   body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
          color: #171717; margin: 0; padding: 32px; background: #fff; font-size: 13px; line-height: 1.55; }
   .page { max-width: 900px; margin: 0 auto; }
-  header.doc { border-bottom: 3px solid #2563eb; padding-bottom: 12px; margin-bottom: 20px; }
+  header.doc { border-bottom: 3px solid ${FAYANMS_BRAND.colors.primary}; padding-bottom: 12px; margin-bottom: 20px; }
   h1 { font-size: 20px; margin: 0 0 2px; }
   .doc .sub { color: #525252; font-size: 12px; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em;

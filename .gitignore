@@ -56,14 +56,23 @@ server.log
 tool-results/
 !.env.example
 
-# ── Runtime state (P19-REP: never track live databases, pids, logs) ──
+# ── repository-size guard (2026-09-10 size audit: remote was ~88 MB) ──
+# runtime SQLite — the live database and its WAL/SHM sidecars churn on every
+# run (24 committed versions once totalled 475 MB of history). Rebuild via
+# `bun run db:push` + the seed; NEVER commit db artifacts again (P19-REP).
 /db/*.db
 /db/*.db-shm
 /db/*.db-wal
 /db/*.sqlite
 /db/*.sqlite3
-*.pid
-.zscripts/*.pid
-mini-services/**/*.log
+# user-upload scratch (release tars/zips, working docs). Canonical documents
+# live in docs/ — nothing under upload/ belongs in git.
+/upload/
+# sandbox/orchestration scratch
+.scratch/
+.initial_snapshot.json
+# mini-service build output / logs
 mini-services/**/*.out
+mini-services/**/*.log
 *.out
+*.pid

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 
+import { FAYANMS_BRAND } from "@/lib/brand/identity";
+
 export interface TokenColors {
   primary: string;
   accent: string;
@@ -18,16 +20,18 @@ export interface TokenColors {
 /**
  * Light-theme hexes matching the token defaults in globals.css; used until
  * the real CSS variable values can be read from the DOM (and as fallbacks).
+ * Brand colors are seeded from the identity SoT (re-audit B1-004) — no
+ * duplicated brand hex literals.
  */
 const FALLBACK: TokenColors = {
-  primary: "#2563eb",
-  accent: "#0891b2",
+  primary: FAYANMS_BRAND.colors.primary,
+  accent: FAYANMS_BRAND.colors.accent,
   border: "#e5e5e5",
   mutedForeground: "#525252",
   success: "#15803d",
   warning: "#b45309",
   danger: "#dc2626",
-  info: "#2563eb",
+  info: FAYANMS_BRAND.colors.primary,
   neutral: "#737373",
 };
 

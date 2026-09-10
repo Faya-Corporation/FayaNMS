@@ -16,8 +16,12 @@ export interface FayanmsIconProps {
   className?: string;
   /**
    * Accessible name. When provided the glyph becomes role="img" with this
-   * title; when omitted it is decorative (aria-hidden) — the default, since
-   * FayaNMS glyphs almost always sit next to a text label.
+   * name as BOTH the primary `aria-label` (the accessibility-name API) and
+   * the native `title` (hover affordance only — never rely on it for naming).
+   * When omitted the glyph is decorative (aria-hidden) — the default, since
+   * FayaNMS glyphs almost always sit next to a text label. Icon-only buttons
+   * must carry their own aria-label at the control level; do not depend on
+   * the icon's title to name the action.
    */
   title?: string;
   style?: CSSProperties;
@@ -44,6 +48,7 @@ export function FayanmsIcon({
       title={title}
       aria-hidden={title ? undefined : true}
       role={title ? "img" : undefined}
+      aria-label={title}
       style={{
         width: px,
         height: px,

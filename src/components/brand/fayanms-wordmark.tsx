@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { cn } from "@/lib/utils";
 import { FAYANMS_BRAND } from "@/lib/brand/identity";
 import type { BrandTone } from "@/lib/brand/types";
@@ -9,7 +11,7 @@ const WORDMARK_SIZES = {
 } as const;
 
 const WORDMARK_TONES: Record<BrandTone, string> = {
-  brand: "text-[#2563EB]",
+  brand: "text-primary", // design token — raw hex lives only in FAYANMS_BRAND (B2-018)
   current: "",
   white: "text-white",
   mono: "text-foreground",
@@ -20,6 +22,8 @@ export interface FayaNMSWordmarkProps {
   tone?: BrandTone;
   /** Render the product descriptor under/beside the name (context-dependent). */
   withDescriptor?: boolean;
+  /** Explicit descriptor override (localized subtitle via the lockup API). */
+  descriptorOverride?: ReactNode;
   className?: string;
 }
 
@@ -32,6 +36,7 @@ export function FayaNMSWordmark({
   size = "md",
   tone = "current",
   withDescriptor = false,
+  descriptorOverride,
   className,
 }: FayaNMSWordmarkProps) {
   return (
@@ -47,7 +52,7 @@ export function FayaNMSWordmark({
       </span>
       {withDescriptor ? (
         <span className="truncate text-[11px] text-muted-foreground">
-          {FAYANMS_BRAND.descriptor}
+          {descriptorOverride ?? FAYANMS_BRAND.descriptor}
         </span>
       ) : null}
     </span>

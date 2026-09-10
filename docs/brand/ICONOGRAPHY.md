@@ -20,8 +20,8 @@ naming         kebab-case, no ".svg" in the registry key
 ```
 
 - One visual weight across all 228 masters — icons are interchangeable in a row without one looking bolder.
-- No embedded fills, gradients, filters, or `<style>` blocks. Simple stroked paths only.
-- New masters must ship with a registry/catalog entry; a master without a consumer or a consumer without a master is a validation failure, not a style preference.
+- No embedded fills, gradients, filters, or `<style>` blocks. Simple stroked paths only — and no hardcoded colors anywhere: every `fill`/`stroke` on a master must be `none` or `currentColor`.
+- New masters must ship with a registry/catalog entry; a consumer referencing a master that is not on disk is a validation failure. The reverse is **not**: a disk master without a runtime consumer is allowed and reported as a **warning** (orphan policy, B1-010 — see §8).
 
 ## 2. Color contract
 
@@ -57,19 +57,21 @@ The renderer exposes a fixed scale (plus a numeric escape hatch for one-off layo
 
 Navigation icons render at a fixed 20px regardless of density — density modes change geometry (`--density-*`), never icon size. Status icons keep their own 16px/20px table/status rhythm via the untouched `status-icon.tsx` path.
 
+**14px is the documented minimum for custom glyphs** (re-audit B2-022): a calibrated 24×24 outline glyph rendered below 14px loses stroke fidelity, so the named scale stops at `xs` 14. The numeric `size={…}` escape hatch still exists for one-off optical fits, but any render below 14px is a review flag, not a sanctioned pattern (the former 12px driver-view use was normalized to `xs`).
+
 ## 4. The separation rule: what it is / who makes it / how it behaves
 
 Three orthogonal questions about a device row, answered by three different glyphs — **never collapsed into one colored logo**:
 
 | Question | Glyph | Source | Example |
 |---|---|---|---|
-| **What it is** (device type) | Device-type icon | `deviceIconFor()` → `device-router`, `device-firewall`, `device-switch`, `device-server`, `device-cloud`, else `device-generic` | A router shows `device-router` |
+| **What it is** (device type) | Device-type icon | `deviceIconFor()` — exact role codes resolve through `DEVICE_ROLE_META` first (`src/lib/icons/device-role-meta.ts`), then the case-insensitive substring families (`firewall`/`router`/`switch`/`server+appliance`/`cloud+virtual`), else `device-generic` | A router shows `device-router`; `TOP_OF_RACK` shows `device-switch` |
 | **Who makes it** (vendor) | Vendor adapter glyph | `vendorIconFor()` → `vendor-cisco`, `vendor-fortigate`, `vendor-sophos`, `vendor-hpe`, `vendor-juniper`, `vendor-palo-alto`, fallback `vendor-generic` | Cisco adapter → `vendor-cisco` (project glyph, not the Cisco logo) |
 | **How it behaves** (status) | Status badge/icon | `status.ts` + `status-icon.tsx` (Lucide-backed, untouched) | "Degraded" badge: icon **+ text label**, semantic token color |
 
 Rules:
 
-- A composite role (e.g. `TOP_OF_RACK`, `WAN_GATEWAY`) deliberately falls back to `device-generic` — no invented semantics.
+- Known composite roles keep their product semantics via `DEVICE_ROLE_META` (B1-012): `TOP_OF_RACK` → `device-switch`, `WAN_GATEWAY` → `device-router`, `WIRELESS_CONTROLLER`/`LOAD_BALANCER` → `device-server`, alongside the router/switch/firewall codes. Unknown/free-form types fall back through the substring families to `device-generic` — no invented semantics.
 - Unknown/missing vendor keys resolve to `vendor-generic`, never a broken image or layout shift.
 - Status is never expressed by recoloring the device or vendor glyph.
 
@@ -95,13 +97,22 @@ Implementation note: mirroring, where allowed, is done by the consuming componen
 Full contract in [ACCESSIBILITY.md](./ACCESSIBILITY.md); the icon-specific invariants:
 
 1. **Icons beside text are decorative** — always `aria-hidden="true"` (the renderer does this by default when no `title` is passed).
-2. **Icon-only controls are labeled** — a `title` on the icon gives `role="img"` + accessible name, and the wrapping button still needs its own label/`aria-label`.
-3. **No status by color alone** — status icons always pair with a text label via the status badge components; the glyph itself carries a status name when meaningful.
-4. **Semantics live in text, not in the icon choice** — e.g. the danger `action-delete` glyph does not *say* "delete"; the label does.
+2. **Meaningful standalone icons name themselves via `aria-label`** (re-audit B2-021): a `title` prop on `FayanmsIcon` renders `role="img"` with the `title` as the **primary accessible-name API (`aria-label`)** plus a native `title` attribute (hover affordance only — never the naming mechanism). Icon-only controls still name themselves at the **control** level (`aria-label` on the button), not via the glyph.
+3. **Standalone device glyphs get real labels** (re-audit B2-020): `NetworkDeviceIcon` in standalone mode names itself with `deviceIconLabelFor(type)` — e.g. `TOP_OF_RACK` → "Top of rack", `CORE_ROUTER` → "Core router" — from the canonical `DEVICE_ROLE_META` metadata; free-form types resolve to the family name ("Firewall", "Router", …), and unknown types to "Device".
+4. **No status by color alone** — status icons always pair with a text label via the status badge components; the glyph itself carries a status name when meaningful.
+5. **Semantics live in text, not in the icon choice** — e.g. the danger `action-delete` glyph does not *say* "delete"; the label does.
 
 ## 8. Adding or changing an icon (process)
 
 1. New master → 24×24 contract (§1) → dropped into `public/icons/fayanms/`.
-2. Registry entry added to the relevant governed map (`navigation-icons` / `vendor-icons` / `device-icons`) — `FayanmsIconName` is generated from the directory and a stale union fails `bun run brand:validate-icons`.
-3. Catalog row added to [ICON-CATALOG.md](./ICON-CATALOG.md) with one-line semantics + recommended semantic token.
-4. `bun run brand:validate-icons` green before merge. The scripts are the enforcement authority; if this document and a script disagree, fix the doc or the script — never hand-wave the check.
+2. Registry entry added to the relevant governed map (`navigation-icons` / `vendor-icons` / `device-icons`) — `FayanmsIconName` is generated from the directory and a stale union fails `bun run brand:validate-icons`. The navigation registry is also **exhaustive at the type level** (`satisfies Record<SidebarViewKey, NavIcon>`, B2-025): a missing *or extra* sidebar key is a compile error, not a runtime gap.
+3. Catalog row added to [ICON-CATALOG.md](./ICON-CATALOG.md) with one-line semantics + recommended semantic token — **catalog parity is enforced** (B1-009): a disk master without a row, a phantom row, a duplicate row, or a row-count mismatch is a hard failure.
+4. `bun run brand:validate-icons` green before merge.
+
+What the validators actually enforce today (the scripts are the authority — if this document and a script disagree, fix the doc or the script, never hand-wave the check):
+
+- **Geometry**: the exact Tier-2 root contract on all 228 masters, byte-verbatim attribute values, prohibited features (gradients/filters/styles/scripts/animation/external refs) and hardcoded colors — checked by both `brand:validate` and `brand:validate-icons`.
+- **Set parity**: disk masters ≡ `FayanmsIconName` union ≡ catalog rows (exact sets, no duplicates).
+- **Vendors**: validation is **derived from the adapter registry** (`driverCatalog` in `src/lib/vendors/drivers.ts`, B1-011) — a new adapter fails the gate until its governed glyph + label + mapping exist; unknown keys must fall back to `vendor-generic`.
+- **Device roles**: every `DEVICE_ROLE_META` entry must resolve to its declared glyph with a real label (B1-012); the previously-generic composite roles must stay specific; unknown types must still fall back to `device-generic`.
+- **Orphans** (B1-010): masters that are cataloged/registered but not yet referenced by any runtime surface are reported as **warnings**, not failures — the kit is a reusable catalog and there is no must-use list yet. Referenced-but-missing masters remain hard failures.

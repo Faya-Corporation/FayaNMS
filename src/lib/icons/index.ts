@@ -3,11 +3,13 @@
  *
  * Types: FayanmsIconName (all 228 glyphs) + NavIcon (lucide | fayanms union).
  * Mappings: navigation-icons (sidebar view keys), vendor-icons (Device.vendor.key),
- * device-icons (device role/type strings).
+ * device-icons (device role/type strings) + device-role-meta (canonical role
+ * labels/icons/families).
  */
 export type { FayanmsIconName, NavIcon } from "@/lib/icons/types";
 
 export {
+  type SidebarViewKey,
   type SidebarNavViewKey,
   NAVIGATION_ICONS,
   navIconFor,
@@ -23,4 +25,13 @@ export {
 export {
   GENERIC_DEVICE_ICON,
   deviceIconFor,
+  deviceIconLabelFor,
 } from "@/lib/icons/device-icons";
+
+export {
+  type DeviceRoleCode,
+  type DeviceRoleMeta,
+  DEVICE_ROLE_META,
+  deviceRoleMetaFor,
+  deviceRoleLabelFor,
+} from "@/lib/icons/device-role-meta";

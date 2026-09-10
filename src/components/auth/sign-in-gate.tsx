@@ -8,7 +8,7 @@ import { Eye, EyeOff, LoaderCircle, LockKeyhole } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FayaNMSMark } from "@/components/brand/fayanms-mark";
+import { FayaNMSLockup } from "@/components/brand";
 import { cn } from "@/lib/utils";
 
 /**
@@ -88,22 +88,13 @@ export function SignInGate() {
               aria-labelledby="sign-in-title"
               className="rounded-2xl border bg-card p-6 shadow-e2 md:p-8"
             >
-              <div className="flex items-center gap-3">
-                <span
-                  aria-hidden="true"
-                  className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"
-                >
-                  <FayaNMSMark size="sm" tone="white" />
-                </span>
-                <div>
-                  <h1 id="sign-in-title" className="text-lg font-semibold tracking-tight">
-                    FayaNMS
-                  </h1>
-                  <p className="text-xs text-muted-foreground">
-                    Network Operations Management
-                  </p>
-                </div>
-              </div>
+              {/* Canonical tiled lockup (re-audit B1-003): the identity is
+                  composed ONLY through the lockup — name and descriptor come
+                  from FAYANMS_BRAND, never literals. Large tile per the
+                  sign-in minimum (B2-019). */}
+              <h1 id="sign-in-title" className="contents">
+                <FayaNMSLockup showDescriptor tileSize="lg" variant="tiled" />
+              </h1>
 
               <p className="mt-6 text-sm text-muted-foreground">
                 Sign in to your account to access the platform.

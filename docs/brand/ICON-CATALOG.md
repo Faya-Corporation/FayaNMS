@@ -1,6 +1,6 @@
 # FayaNMS Enterprise — Icon Catalog
 
-**Total icons:** 216
+**Total icons:** 228 (216 kit v1 + 12 kit v2)
 
 This pack follows the FayaNMS design-system direction: Lucide-style 24×24 outline geometry, `currentColor` SVG masters, semantic status mapping, and an enterprise network-operations visual language.
 
@@ -328,5 +328,9 @@ semantics below and a governed consumer (sidebar, registry or surface component)
 
 Notes:
 
-- The "`Total icons:` 216" line at the top of this document reflects kit v1 at publication time and is preserved verbatim from the canonical kit catalog; the governed total since Phase B1 is 228.
+- Reconciled 2026-09-10 (re-audit R3-b): the `Total icons:` header previously read "216" — the kit-v1
+  publication total — while the governed catalog has been 228 since the 12 kit-v2 additions. The
+  header now states the governed total; the **row tables above remain the authoritative
+  machine-parsed inventory**, enforced row-for-row (missing/phantom/duplicate rows and count
+  mismatches are hard failures) by `bun run brand:validate-icons` (B1-009).
 - Governance for these additions (validation, registries, renderer) is specified in [ICONOGRAPHY.md](./ICONOGRAPHY.md) and [ASSET-MANIFEST.md](./ASSET-MANIFEST.md); the runtime name union (`FayanmsIconName`) is generated from the directory and must stay in sync via `bun run brand:validate-icons`.

@@ -14,9 +14,10 @@ const fayanms = (name: FayanmsIconName): NavIcon => ({ kind: "fayanms", name });
 
 /**
  * Sidebar view key → governed domain glyph.
- * Keys mirror the sidebar taxonomy (spec §16); `ViewKey` also contains
- * detail views (network.device-detail, changes.change-detail,
- * ops.incident-detail) which are NOT sidebar entries — see DETAIL_VIEW_ICONS.
+ * Keys MUST cover exactly the sidebar taxonomy (spec §16): `ViewKey` also
+ * contains the detail views (network.device-detail, changes.change-detail,
+ * ops.incident-detail) which are NOT sidebar entries — they are excluded via
+ * `SidebarViewKey` and handled by DETAIL_VIEW_ICONS.
  */
 export const NAVIGATION_ICONS = {
   dashboard: fayanms("dashboard"),
@@ -69,18 +70,30 @@ export const NAVIGATION_ICONS = {
   "admin.drivers": fayanms("device-drivers"),
   "admin.integrations": fayanms("integrations"),
   "admin.system": fayanms("system-settings"),
-} as const satisfies Record<string, NavIcon>;
+} satisfies Record<SidebarViewKey, NavIcon>;
 
-/** View keys present in the sidebar (the NAVIGATION_ICONS keys). */
-export type SidebarNavViewKey = keyof typeof NAVIGATION_ICONS;
+/**
+ * Canonical sidebar-key contract (re-audit B2-025): every `ViewKey` except
+ * the detail views. Keeping this derived from `ViewKey` means a view added to
+ * the store without a registry entry — or a registry entry without a view —
+ * is a COMPILE error (`satisfies` above), not a runtime gap.
+ */
+export type SidebarViewKey = Exclude<
+  ViewKey,
+  "network.device-detail" | "changes.change-detail" | "ops.incident-detail"
+>;
+
+/** Alias kept for existing imports (see src/lib/icons/index.ts). */
+export type SidebarNavViewKey = SidebarViewKey;
 
 /**
  * Detail views are reachable (command palette, table rows, alerts) but are
  * not sidebar entries, so they have no first-class mapping. They inherit the
  * glyph of their parent domain (documented choice — the detail view IS that
- * domain's record).
+ * domain's record). The key type is the exact complement of SidebarViewKey,
+ * so every detail view must be covered here too.
  */
-const DETAIL_VIEW_ICONS: Partial<Record<ViewKey, FayanmsIconName>> = {
+const DETAIL_VIEW_ICONS: Record<Exclude<ViewKey, SidebarViewKey>, FayanmsIconName> = {
   "network.device-detail": "devices",
   "changes.change-detail": "all-changes",
   "ops.incident-detail": "incidents",
