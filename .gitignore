@@ -22,6 +22,8 @@ node_modules
 
 # misc
 .DS_Store
+Thumbs.db
+.idea/
 *.pem
 
 # debug
@@ -56,13 +58,15 @@ server.log
 tool-results/
 !.env.example
 
-# ── repository-size guard (2026-09-10 size audit: remote was ~88 MB) ──
+# ── repository-size guard (2026-09-10 size audit: remote served 95.77 MiB before
+#    the history purge; live db + WAL snapshots were the root cause) ──
 # runtime SQLite — the live database and its WAL/SHM sidecars churn on every
 # run (24 committed versions once totalled 475 MB of history). Rebuild via
 # `bun run db:push` + the seed; NEVER commit db artifacts again (P19-REP).
 /db/*.db
 /db/*.db-shm
 /db/*.db-wal
+/db/*.db-journal
 /db/*.sqlite
 /db/*.sqlite3
 # user-upload scratch (release tars/zips, working docs). Canonical documents
