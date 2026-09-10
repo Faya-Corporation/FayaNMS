@@ -46,7 +46,7 @@ const RBAC_FORBIDDEN_BODY = {
   },
 };
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Public surfaces (bootstrap) + service-principal routes (see above —
