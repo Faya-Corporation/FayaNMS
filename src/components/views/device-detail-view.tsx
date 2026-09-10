@@ -14,6 +14,7 @@ import {
 
 import { useCreateJob } from "@/hooks/api/use-jobs";
 import { useToast } from "@/hooks/use-toast";
+import { DeviceVendorIcon, NetworkDeviceIcon } from "@/components/icons";
 import {
   useDevice,
   useDeviceAudit,
@@ -279,13 +280,19 @@ export function DeviceDetailView() {
           { label: device.hostname },
         ]}
         description={
-          [
-            [device.vendor.name, device.model].filter(Boolean).join(" "),
-            device.site ? `${device.site.name} (${device.site.code})` : null,
-            device.role ? ROLE_LABELS[device.role] ?? device.role : null,
-          ]
-            .filter(Boolean)
-            .join(" · ") || undefined
+          <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            {/* Vendor glyph (decorative — the "Vendor · Model" text follows). */}
+            <DeviceVendorIcon vendor={device.vendor.key} />
+            <span>
+              {[
+                [device.vendor.name, device.model].filter(Boolean).join(" "),
+                device.site ? `${device.site.name} (${device.site.code})` : null,
+                device.role ? ROLE_LABELS[device.role] ?? device.role : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || undefined}
+            </span>
+          </span>
         }
         primaryAction={
           <Button onClick={() => setEditOpen(true)} size="sm">
@@ -294,6 +301,7 @@ export function DeviceDetailView() {
           </Button>
         }
         title={device.hostname}
+        titleIcon={<NetworkDeviceIcon deviceType={device.role} size="lg" />}
       />
 
       <Tabs

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 64" role="img" aria-label="FayaNMS — Network Operations Management">
+  <g transform="translate(3,3) scale(2.4)">
+    <circle cx="12" cy="12" r="9" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="12" cy="8" r="1.5" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="8" cy="15" r="1.5" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="16" cy="15" r="1.5" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="12" y1="9.5" x2="12" y2="12" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="12" y1="12" x2="8.8" y2="13.8" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="12" y1="12" x2="15.2" y2="13.8" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="70" y="38" font-family="Inter, 'DejaVu Sans', sans-serif" font-size="32" font-weight="700" letter-spacing="0.4" fill="currentColor">FayaNMS</text>
+  <text x="71" y="54" font-family="Inter, 'DejaVu Sans', sans-serif" font-size="10.5" font-weight="500" letter-spacing="2.2" fill="currentColor" opacity="0.75">NETWORK OPERATIONS MANAGEMENT</text>
+</svg>

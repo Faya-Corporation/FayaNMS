@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { Eye, EyeOff, LoaderCircle, LockKeyhole, Waypoints } from "lucide-react";
+import { Eye, EyeOff, LoaderCircle, LockKeyhole } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FayaNMSMark } from "@/components/brand/fayanms-mark";
 import { cn } from "@/lib/utils";
 
 /**
@@ -92,7 +93,7 @@ export function SignInGate() {
                   aria-hidden="true"
                   className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"
                 >
-                  <Waypoints className="size-5" />
+                  <FayaNMSMark size="sm" tone="white" />
                 </span>
                 <div>
                   <h1 id="sign-in-title" className="text-lg font-semibold tracking-tight">

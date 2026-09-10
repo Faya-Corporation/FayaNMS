@@ -65,6 +65,15 @@ jobs:
       - name: Tests (role matrix, authorization contract, service auth, crypto, audit chain)
         run: bun test tests/
 
+      # Phase B3 — brand/icon governance (plan §34/§35): brand masters,
+      # metadata identity, runtime icon color contract, icon-registry
+      # resolution (every nav view/vendor/device key).
+      - name: Brand asset validation
+        run: bun run brand:validate
+
+      - name: Icon registry validation
+        run: bun run brand:validate-icons
+
       - name: Prisma schema validation
         run: bunx prisma validate
 

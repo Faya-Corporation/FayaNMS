@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
+import { DeviceVendorIcon, NetworkDeviceIcon } from "@/components/icons";
 import {
   useBulkDeviceAction,
   useDevices,
@@ -249,19 +250,23 @@ const DeviceRow = memo(function DeviceRow({
       </TableCell>
       <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
         <button
-          className="flex max-w-[24ch] flex-col items-start leading-tight hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent sm:max-w-none"
+          className="flex max-w-[24ch] items-start gap-2 leading-tight hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent sm:max-w-none"
           onClick={() => onOpenDetail(device.id)}
           title={`Open ${device.hostname}`}
           type="button"
         >
-          <span className="font-tech truncate font-medium ltr-technical">
-            {device.hostname}
-          </span>
-          {device.displayName && device.displayName !== device.hostname && (
-            <span className="max-w-[28ch] truncate text-xs text-muted-foreground">
-              {device.displayName}
+          {/* Device-type glyph (decorative — hostname labels the row). */}
+          <NetworkDeviceIcon className="mt-0.5" deviceType={device.role} />
+          <span className="flex min-w-0 flex-col items-start">
+            <span className="font-tech truncate font-medium ltr-technical">
+              {device.hostname}
             </span>
-          )}
+            {device.displayName && device.displayName !== device.hostname && (
+              <span className="max-w-[28ch] truncate text-xs text-muted-foreground">
+                {device.displayName}
+              </span>
+            )}
+          </span>
         </button>
       </TableCell>
       {columns.status && (
@@ -276,7 +281,11 @@ const DeviceRow = memo(function DeviceRow({
       )}
       {columns.vendor && (
         <TableCell className="h-(--density-row-h) whitespace-nowrap px-(--density-cell-x)">
-          {device.vendor?.name ?? "—"}
+          <span className="flex items-center gap-1.5">
+            {/* Vendor glyph (decorative — vendor name labels the cell). */}
+            <DeviceVendorIcon vendor={device.vendor?.key} />
+            <span>{device.vendor?.name ?? "—"}</span>
+          </span>
         </TableCell>
       )}
       {columns.model && (

@@ -1,4 +1,16 @@
-# FayaNMS — Network Operations Management
+<div align="center">
+  <img src="public/brand/fayanms-mark.svg" width="56" alt="FayaNMS mark" />
+  <h1>FayaNMS</h1>
+  <p><strong>Enterprise Network Operations Management</strong></p>
+  <p>
+    <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square" alt="Next.js 16">
+    <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square" alt="TypeScript 5">
+    <img src="https://img.shields.io/badge/Bun-%E2%89%A51.1-525252?style=flat-square" alt="Bun ≥ 1.1">
+    <img src="https://img.shields.io/badge/Prisma-6-2D3748?style=flat-square" alt="Prisma 6">
+    <img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square" alt="Tailwind CSS 4">
+    <img src="https://img.shields.io/badge/next--intl-EN%20%C2%B7%20AR-475569?style=flat-square" alt="next-intl — English + Arabic">
+  </p>
+</div>
 
 A full-stack network management system (NMS) demo platform: device inventory, configuration management, change execution, operations (alerts/incidents/NOC), performance analytics with ML-assisted capacity forecasting, reporting, and administration — with first-class English/Arabic (RTL) localization and an audit trail behind every write.
 
@@ -147,3 +159,19 @@ scripts/            tracked ops scripts (snapshot encryption/AAD migration, role
 messages/           en.json / ar.json dictionaries
 docs/               design-governance.md + audits/ (external review reports)
 ```
+
+## Brand & iconography
+
+FayaNMS ships a governed three-tier identity: **Tier 1** brand assets (the protected-network mark, wordmark, lockups — masters under `public/brand/`, sourced from `src/lib/brand/identity.ts`), **Tier 2** a 228-master custom icon kit for NMS domain/device/vendor semantics (`public/icons/fayanms/`, rendered via CSS-mask + `currentColor`), and **Tier 3** Lucide for generic controls and the semantic status system. Vendor glyphs are FayaNMS project adapter glyphs, not official vendor trademarks; all masters are original project assets validated by `bun run brand:validate` / `brand:validate-icons` and rasterized by `brand:raster`.
+
+Full documentation:
+
+- [Brand guidelines](docs/brand/BRAND-GUIDELINES.md) — positioning, logo variants, color rules
+- [Iconography](docs/brand/ICONOGRAPHY.md) — geometry/color contract, renderer, sizing, RTL
+- [Icon catalog](docs/brand/ICON-CATALOG.md) — all 228 governed icons with semantics
+- [Asset manifest](docs/brand/ASSET-MANIFEST.md) — governance inventory + validation contract
+- [Vendor glyphs](docs/brand/VENDOR-GLYPHS.md) — the adapter-glyph legal/brand policy
+- [Repository & social](docs/brand/SOCIAL-REPOSITORY.md) — topics, social preview, badge policy
+- [Accessibility](docs/brand/ACCESSIBILITY.md) — brand/icon a11y contract
+- [ADR](docs/adr/ADR-brand-icon-architecture.md) — why this architecture
+

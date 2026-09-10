@@ -1,0 +1,78 @@
+# ADR — Brand & Icon Architecture (Three-Tier System, Governed Masters, Mask Renderer)
+
+**Status:** Accepted (Phase B0/B1 implementation, Phase B2 documentation)
+**Date:** 2026-09-10 (audit) → Phase B0/B1/B2 (implementation/docs)
+**Deciders:** FayaNMS project (Phase B plan `upload/faya-package/FayaNMS-Icons-Brand-Full-Audit-Enhancement-Plan-2026-09-10.md`)
+**Scope:** product brand identity, icon system, app metadata, asset governance
+
+---
+
+## Context
+
+The 2026-09-10 repository brand/iconography audit (`docs/audits/`, plan scorecard) graded
+FayaNMS **52/100 — "coherent design system, fragmented product identity"**, with three
+specific failures:
+
+1. **Three conflicting identities at the audited commit:**
+   - the browser favicon pointed to an **external ChatGLM/Z-AI logo** (audit BRAND-001 — an unrelated third-party identity fetched on every load);
+   - the sidebar and sign-in screen used the Lucide **`Waypoints`** glyph as a temporary product mark;
+   - `public/logo.svg` was a separate dark **animated Z-style template mark** unrelated to the blue/cyan network-operations identity.
+2. **A 216-icon FayaNMS Enterprise custom icon kit existed under `upload/` but was unintegrated** — "Custom domain icon integration: 20/100", "Device-type iconography: 45/100", "Vendor/adapter iconography: 30/100". Device/vendor surfaces were text-only or generic.
+3. **No governance loop** — no canonical manifest, no validation pipeline, no raster derivatives (favicon ICO, PWA app icons, social preview); GitHub/repository brand presence scored 30/100.
+
+Two things were already strong and had to be preserved: the Lucide discipline for generic UI
+(88/100) and the centralized, semantic status system (`src/lib/domain/status.ts` +
+`status-icon.tsx`, 92/100).
+
+## Decision
+
+1. **Three-tier icon architecture.**
+   - **Tier 1 — Brand assets:** canonical mark, mono/white marks, wordmark, lockups (horizontal / horizontal-white / stacked), NOC mark (sub-brand), network-shield (secondary symbol), favicon/app icon, social cards. Masters live in `public/brand/`; runtime rendering via `src/components/brand/*` components; the wordmark is **real text**, never an image.
+   - **Tier 2 — FayaNMS domain/device/vendor icons:** the custom kit's masters govern NMS-specific concepts (domain views, device types, vendor adapter glyphs, protocols, change/ops/perf/report surfaces, actions, statuses-as-glyphs). Masters live in `public/icons/fayanms/`; consumption is only through the governed registries (`src/lib/icons/{navigation-icons,vendor-icons,device-icons}.ts`).
+   - **Tier 3 — Lucide generic UI + status:** Lucide is **retained** for generic controls (chevrons, close, search, theme, user) and the existing status registry. Replacing all Lucide icons was rejected (see Alternatives).
+2. **Brand single source of truth in code:** `src/lib/brand/identity.ts` (`FAYANMS_BRAND`) — name, descriptor, edition, colors (`#2563EB` / `#1D4ED8` / `#0891B2`), asset paths, repository URL. No surface constructs brand strings by hand.
+3. **Mask-based custom icon renderer:** `src/components/icons/fayanms-icon.tsx` renders masters via CSS `mask` + `currentColor` (server-safe, isomorphic) instead of inlining SVG or bundling an icon font. Masters stay colorless; semantic color is applied by consuming tokens; dark mode is free.
+4. **File-based Next.js metadata:** the external Z-AI favicon was removed; `src/app/icon.svg` (file-based), `manifest.ts` (theme `#2563EB`, white background, 192/512 + maskable icons), viewport `themeColor: #2563EB`, and `ImageResponse`-generated apple-icon / opengraph-image / twitter-image supply all browser/OS/social identity locally.
+5. **Governance by scripts, not prose:** `brand:validate` (brand masters: presence, geometry, tone), `brand:validate-icons` (228-master geometry contract + registry/catalog sync), `brand:raster` (sharp-generated app icons, maskable variants, favicon ICO fallback, `github-social-preview.png` 1280×640). Raster derivatives follow a **regenerate-not-hand-edit** policy.
+6. **Vendor glyphs are project adapter glyphs** — explicitly *not* official vendor trademarks, with the naming/mapping/upgrade policy recorded in `docs/brand/VENDOR-GLYPHS.md`.
+
+## Consequences
+
+- **228 governed masters** (216 kit v1 + 12 kit v2: `firmware`, `zero-touch-provisioning`, `cmdb`, `flow-analytics`, `predictive-health`, `vendor-juniper`, `vendor-palo-alto`, `ask-network`, `ai-rca`, `collector-rebalance`, `failover-test`, `configuration-encrypted`), one geometry contract (24×24, `fill:none`, `stroke:currentColor`, width 2, round caps/joins).
+- **Validation scripts gate the system** — a master without registry/catalog coverage, a registry key without a master, geometry drift, or tone drift (status colors inside brand masters) fails CI-local checks. The scripts are the enforcement authority; docs follow them.
+- **Raster derivatives are build output:** PNG/ICO files under `public/brand/` are regenerated by `brand:raster` from the Tier 1 masters; hand edits are overwritten and forbidden.
+- **Zero icon bundle cost / theme-adaptive rendering** — icons are cached static files painted with inherited text color; the trade-off is no multi-color Tier 2 icons (accepted: only Tier 1 artwork is brand-colored, rendered via `<img>`/components).
+- **The pre-B0 identities are dead ends:** the external Z-AI favicon, the `Waypoints`-as-mark usage, and `public/logo.svg` are removed from the identity and must not return (do-not list in `docs/brand/BRAND-GUIDELINES.md`).
+- **Audit target:** the plan's stated goal is lifting the brand scorecard from 52/100 to 90+/100; the remaining manual steps are repository-settings actions (GitHub topics, social-preview upload, Website URL — see `docs/brand/SOCIAL-REPOSITORY.md`).
+
+## Alternatives considered
+
+### A. Replace all Lucide icons with the custom kit
+Rejected. The audit scored generic-UI icon consistency 88/100 and status 92/100 precisely
+because Lucide + the centralized status registry already work. A wholesale replacement would
+have traded a proven, accessible, familiar control language for 1:1 redraws of generic glyphs
+(edit, delete, search, chevrons), multiplied maintenance, and broken zero third-party-code
+assumptions for no identity gain. The kit's value is **NMS-specific semantics**, which is what
+Tier 2 now carries.
+
+### B. Use official vendor logos
+Rejected. Official logos bring trademark/brand-policy obligations (permitted use, colors,
+clear space, review cycles) the project cannot satisfy today, would visually privilege
+individual vendors in a multi-vendor product, and would contradict the honest "adapter
+certification pending" status. Uniform project adapter glyphs keep the adapter registry
+legible and legally clean. The future-upgrade path remains documented in
+`docs/brand/VENDOR-GLYPHS.md` §3 if this is ever revisited.
+
+### C. Bitmap icon fonts / bundling icons into JS
+Rejected. Icon fonts binary-encode glyphs (ungreppable masters, poor diffing, licensing
+ambiguity in rebuilds), lose `currentColor` mask fidelity, and bundling per-icon React/SVG
+trees costs bundle bytes for no benefit over cached static files. CSS `mask` + `currentColor`
+over static masters achieves theme adaptivity with zero bundle cost and keeps the master file
+as the single source for runtime, catalog, and raster pipeline.
+
+## References
+
+- `docs/brand/` — BRAND-GUIDELINES, ICONOGRAPHY, ICON-CATALOG, ASSET-MANIFEST, VENDOR-GLYPHS, SOCIAL-REPOSITORY, ACCESSIBILITY
+- `src/lib/brand/identity.ts` · `src/components/brand/*` · `src/components/icons/*` · `src/lib/icons/*`
+- `public/brand/README.md` (asset table) · `docs/design-governance.md` (tokens, accessibility baseline)
+- Audit: `upload/faya-package/FayaNMS-Icons-Brand-Full-Audit-Enhancement-Plan-2026-09-10.md` (scorecard 52/100; three-identity finding)

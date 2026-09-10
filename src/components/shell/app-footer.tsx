@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { format } from "date-fns";
 
 import { StatusDot } from "@/components/domain/status-dot";
+import { FayaNMSMark } from "@/components/brand/fayanms-mark";
 
 interface AppFooterProps {
   /** Timestamp (ms) of the last successful dashboard refresh. */
@@ -25,7 +26,8 @@ export function AppFooter({ lastRefreshAt }: AppFooterProps) {
           <StatusDot label={tFooter("systemOperational")} pulse token="success" />
           {tFooter("systemOperational")}
         </span>
-        <span className="hidden md:block">
+        <span className="hidden items-center gap-1.5 md:flex">
+          <FayaNMSMark size="xs" tone="current" />
           {tFooter("version")}
         </span>
         <span className="tabular-nums">

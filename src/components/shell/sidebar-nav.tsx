@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { ChevronDown, LayoutDashboard } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,7 +11,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { DomainIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import type { NavIcon } from "@/lib/icons";
+import { NAVIGATION_ICONS } from "@/lib/icons";
 import {
   SIDEBAR_GROUPS,
   type SidebarBadgeKey,
@@ -89,7 +92,7 @@ export function SidebarNav({
         <NavItem
           active={activeView === "dashboard"}
           collapsed={collapsed}
-          icon={LayoutDashboard}
+          icon={NAVIGATION_ICONS.dashboard}
           label={localizedViewMeta("dashboard").title}
           onClick={() => navigate("dashboard")}
         />
@@ -178,7 +181,7 @@ export function SidebarNav({
 interface NavItemProps {
   active: boolean;
   collapsed: boolean;
-  icon: LucideIconType;
+  icon: NavIcon;
   label: string;
   badgeCount?: number;
   badgeTone?: string;
@@ -186,12 +189,10 @@ interface NavItemProps {
   onClick: () => void;
 }
 
-type LucideIconType = React.ComponentType<{ className?: string }>;
-
 function NavItem({
   active,
   collapsed,
-  icon: Icon,
+  icon,
   label,
   badgeCount = 0,
   badgeTone,
@@ -219,7 +220,7 @@ function NavItem({
           className="absolute inset-y-1.5 start-0 w-0.5 rounded-full bg-primary"
         />
       )}
-      <Icon className="size-5 shrink-0" />
+      <DomainIcon icon={icon} />
       {!collapsed && <span className="truncate">{label}</span>}
       {!collapsed && badgeCount > 0 && (
         <span

@@ -16,7 +16,11 @@ export interface PageHeaderBreadcrumb {
 
 interface PageHeaderProps {
   title: string;
-  description?: string;
+  /** Optional decorative glyph rendered before the title text (e.g. a
+   * device-type icon on detail pages). When omitted the header renders
+   * exactly as before. */
+  titleIcon?: React.ReactNode;
+  description?: React.ReactNode;
   breadcrumbs?: PageHeaderBreadcrumb[];
   /** Secondary actions (2–3 max per design spec). */
   actions?: React.ReactNode;
@@ -32,6 +36,7 @@ interface PageHeaderProps {
  */
 export function PageHeader({
   title,
+  titleIcon,
   description,
   breadcrumbs,
   actions,
@@ -69,8 +74,14 @@ export function PageHeader({
       )}
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0 space-y-1">
-          <h1 className="truncate text-xl font-semibold tracking-tight md:text-2xl">
-            {title}
+          <h1
+            className={cn(
+              "truncate text-xl font-semibold tracking-tight md:text-2xl",
+              titleIcon && "flex items-center gap-2.5"
+            )}
+          >
+            {titleIcon}
+            {titleIcon ? <span className="min-w-0 truncate">{title}</span> : title}
           </h1>
           {description && (
             <p className="max-w-3xl text-sm text-muted-foreground">

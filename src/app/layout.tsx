@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -7,6 +7,7 @@ import { MotionProvider } from "@/components/providers/motion-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
 import { LocaleProvider } from "@/i18n/locale-provider";
+import { FAYANMS_BRAND, siteUrl } from "@/lib/brand/identity";
 
 const fontSans = Inter({
   variable: "--font-sans",
@@ -21,9 +22,12 @@ const fontMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FayaNMS — Network Operations Management",
-  description:
-    "Enterprise network operations platform for multi-vendor device inventory, configuration backup and drift detection, controlled change management, and incident & performance monitoring.",
+  metadataBase: new URL(siteUrl()),
+  title: {
+    default: "FayaNMS — Network Operations Management",
+    template: "%s · FayaNMS",
+  },
+  description: FAYANMS_BRAND.description,
   keywords: [
     "FayaNMS",
     "network management",
@@ -34,9 +38,38 @@ export const metadata: Metadata = {
     "incident management",
     "network monitoring",
   ],
-  icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+  applicationName: FAYANMS_BRAND.name,
+  creator: "FayaNMS",
+  publisher: "FayaNMS",
+  // Phase B0 (BRAND-001): the external Z-AI/ChatGLM favicon was removed.
+  // Local file-based metadata (src/app/icon.svg, apple-icon, opengraph-image)
+  // now supplies every browser/app icon — no third-party identity fetches.
+  openGraph: {
+    type: "website",
+    siteName: FAYANMS_BRAND.name,
+    title: "FayaNMS — Network Operations Management",
+    description: FAYANMS_BRAND.description,
+    locale: "en_US",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "FayaNMS — Network Operations Management",
+    description: FAYANMS_BRAND.description,
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: FAYANMS_BRAND.shortName,
+    statusBarStyle: "black-translucent",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2563EB",
 };
 
 export default function RootLayout({

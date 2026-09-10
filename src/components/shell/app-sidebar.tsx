@@ -1,9 +1,9 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { Waypoints } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { FayaNMSMark } from "@/components/brand/fayanms-mark";
 import { SidebarNav, type SidebarCounts } from "./sidebar-nav";
 import { Button } from "@/components/ui/button";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
@@ -46,7 +46,7 @@ export function AppSidebar({
           aria-hidden="true"
           className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"
         >
-          <Waypoints className="size-4.5" />
+          <FayaNMSMark size="sm" tone="white" />
         </span>
         {!collapsed && (
           <span className="min-w-0">
