@@ -467,30 +467,49 @@ export function DevicesView() {
   }, [searchInput]);
 
   // Keep the search box in sync when filters change via saved views / reset.
-  useEffect(() => {
+  // Render-time adjustment (React docs: "adjusting state when props change") —
+  // eslint-plugin-react-hooks v7 forbids synchronous setState inside effects.
+  const [syncedQ, setSyncedQ] = useState(filters.q);
+  if (syncedQ !== filters.q) {
+    setSyncedQ(filters.q);
     setSearchInput((current) => (current.trim() === filters.q ? current : filters.q));
-  }, [filters.q]);
+  }
 
   // Selection is page-scoped: drop it whenever the result set changes.
-  useEffect(() => {
+  // Render-time adjustment (same pattern as above — no sync setState in effects).
+  const [selEpoch, setSelEpoch] = useState({ page, pageSize, filters });
+  if (
+    selEpoch.page !== page ||
+    selEpoch.pageSize !== pageSize ||
+    selEpoch.filters !== filters
+  ) {
+    setSelEpoch({ page, pageSize, filters });
     setSelected(new Set());
-  }, [page, pageSize, filters]);
+  }
 
   // Command palette routes device results straight to the detail view.
   useEffect(() => {
     const selectedId = params?.selectedId;
-    if (selectedId) {
+    if (!selectedId) return;
+    // Deferred navigation: no synchronous store update inside the effect body
+    // (eslint-plugin-react-hooks v7 set-state-in-effect).
+    const t = setTimeout(() => {
       setActiveView("network.device-detail", { deviceId: selectedId });
-    }
+    }, 0);
+    return () => clearTimeout(t);
   }, [params?.selectedId, setActiveView]);
 
   // Sites view drill-down: apply the site filter from navigation params.
   useEffect(() => {
     const siteId = params?.siteId;
-    if (siteId) {
+    if (!siteId) return;
+    // Deferred store update: no synchronous setState inside the effect body
+    // (eslint-plugin-react-hooks v7 set-state-in-effect).
+    const t = setTimeout(() => {
       setFilter("siteId", siteId);
       setPage(1);
-    }
+    }, 0);
+    return () => clearTimeout(t);
   }, [params?.siteId, setFilter]);
 
   const activeFilterChips = useMemo(() => {

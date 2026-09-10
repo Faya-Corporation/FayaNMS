@@ -95,6 +95,7 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- vendored shadcn/ui canonical implementation: onSelect derives canScrollPrev/canScrollNext state from the embla instance; the setState happens inside the callback and there is no event boundary at effect time. Re-check on upstream shadcn updates.
     onSelect(api)
     api.on("reInit", onSelect)
     api.on("select", onSelect)
