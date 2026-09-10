@@ -1695,3 +1695,26 @@ Stage Summary:
 - Remote main = 810f4d0: complete brand/governance state, honest B0-002 status (CI committed locally, activation pending scoped-token push + settings), .gitignore size-guard complete, tracked payload 6.8 MB.
 - Remote SIZE remains ~88 MB until the consented history purge + force-push (GitHub keeps all history); forward growth is now impossible for the audited classes (db/wal/tar/zips/scratch/build-output all ignored AND untracked).
 - Open items: (1) history purge force-push [awaiting consent]; (2) ci.yml push with workflow-scope token [user-side token grant]; (3) GitHub settings-side activation steps (unchanged from R4); (4) B3-030 signed commits optional.
+
+---
+Task ID: R7-orch
+Agent: Orchestrator (Z.ai Code)
+Task: Review .gitignore + fix remote repo size (>10 MB — measured 95.77 MiB served); history purge executed, push blocked by dead PAT
+
+Work Log:
+- Verified true state: remote main = 7c282cd (R6 pushes HAD landed; the stale local origin/main ref caused a misleading "ahead 4"). Only unpushed commit was fc6cd08 (auto-snapshot: 7 agent-ctx verification PNGs, ~445 KB, legitimate evidence — kept).
+- .gitignore REVIEW: R6 size-guard verified to cover every audited bloat class (db/WAL, upload/, .scratch/, worker.out, *.out, *.pid, logs, .env). Closed one real gap: `/db/*.db-journal` (SQLite journal — never committed yet, churn-prone) + misc hygiene (Thumbs.db, .idea/); guard comment updated with measured figures. Commit 0a25870.
+- History census (main, full graph): 773.8 MB of blob bytes total — db/custom.db ×26 versions = 547.2 MB; db/custom.db-wal ×29 = 166.4 MB; upload/FAYA-NMS.tar = 18.4 MB; mini-services/worker/worker.out ×14 = 11.5 MB; upload tar.zst = 5.3 MB; upload icon-kit zips = 3.5 MB. Removable ≈ 752 MB; genuine content ≈ 20 MB. Current tracked tree: 5.3 MB / 758 files. Root cause of churn remains the sandbox auto-snapshot commits capturing the LIVE SQLite db/WAL.
+- Measured remote truth: probe bare clone (unauthenticated OK → repo is public; REST API rate-limited 0/60, unusable) → remote pack = 95.77 MiB / 96 MB on disk. That is the "why >10 MB" number.
+- SAFETY first: full bundle backup of ALL refs pre-purge → /tmp/fayanms-pre-purge-backup.bundle (80 MB); origin URL (with token) saved → /tmp/fayanms-origin-url (chmod 600) because filter-repo removes the origin remote.
+- PURGE EXECUTED (user "go" = consent): git-filter-repo 31ebad4 (single-file script → ~/.local/bin; pip install blocked by PEP 668) with --invert-paths dropping db/*.db*, upload/, .scratch/, .initial_snapshot.json, mini-services/worker/worker.out from all 62 commits (0.67 s). LOCAL RESULT: .git 236 MB → 3.1 MB; pack 2.68 MiB; junk-path grep across rev-list --objects --all = 0; git fsck --full clean. Refs rewritten: main → cf55bae, local/ci-workflow-activation → 6a90ccc (ci.yml preserved for the future scoped-token push).
+- PUSH BLOCKED — credentials: `git push --force origin main` → GitHub "Invalid username or token". API confirms the stored fine-grained PAT (github_pat_11C…) returns 401 on BOTH /user and /repos — it drove R6's successful pushes, so it has since expired/been revoked. No gh CLI, no SSH keys, no env/global credential helpers, no other stored PAT. Remote therefore still serves the OLD bloated history at 7c282cd (95.77 MiB).
+
+Stage Summary:
+- ANSWER to "why is the repo >10 MB": the current checkout is only 5.3 MB — the size lives entirely in git HISTORY: 26 snapshot-committed versions of the live SQLite database (547 MB) + 29 WAL versions (166 MB) + upload tars/zips (≈27 MB) + worker logs (11.5 MB), which GitHub packs to ~96 MB.
+- LOCAL REMEDIATION 100% COMPLETE: junk purged from all 62 commits (752 MB of blobs removed), .gitignore hardened + gap closed, integrity fsck-clean, bundle backup retained at /tmp/fayanms-pre-purge-backup.bundle. The rewritten history packs to 2.68 MiB — the remote will drop from ~96 MB to ≈3 MB the moment it is pushed.
+- TO FINISH (needs a fresh fine-grained PAT with Contents: read/write on fayafatehi/FayaNMS — the old one is dead):
+  1. `git remote set-url origin https://x-access-token:<NEWTOKEN>@github.com/fayafatehi/FayaNMS.git`
+  2. `git push --force origin main`
+  3. (GitHub's API "size" field lags until server-side gc; the served pack is immediately small on fresh clones.)
+- Unchanged from R6: ci.yml rides only on local/ci-workflow-activation (now 6a90ccc) pending a workflow-scope token; GitHub settings-side activation steps remain manual.
