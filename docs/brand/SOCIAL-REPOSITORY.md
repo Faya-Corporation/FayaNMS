@@ -66,7 +66,8 @@ The README badge row carries **factual stack badges only** — technologies the 
 uses, verified against `package.json` / the getting-started docs:
 
 - ✅ Allowed: Next.js 16 · TypeScript 5 · Bun · Prisma · Tailwind CSS 4 · next-intl (EN·AR) — static `img.shields.io` badges, `style=flat-square`.
-- ❌ Not allowed until real: **license badge** (no license file is selected yet — a badge would fabricate a licensing claim), **CI badge** (the active gate at `.github/workflows/ci.yml` is committed but not yet CI-enforced — a green **required** run on `main` is still pending the `workflow`-scope push and settings-side branch protection; see §6 below and the README's honest-status section), **coverage**, **security-certification**, **"production ready"**, **Discord/community**, and any **vendor endorsement** badges.
+- ❌ Not allowed until real: **license badge** (no license file is selected yet — a badge would fabricate a licensing claim), **coverage**, **security-certification**, **"production ready"**, **Discord/community**, and any **vendor endorsement** badges.
+- ✅ **CI badge (allowed since 2026-09-10):** the underlying fact became true — the workflow is pushed (task R8), `gate` + `scan` run green on `main`, and both are **required** status checks on the protected `main` branch (§6). The README badge row therefore carries `img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml?style=flat-square&branch=main&label=CI`.
 - When a badge's underlying fact becomes true (e.g. a license is chosen, CI runs green on `main`), add the badge **and** keep the honest-status prose consistent with it.
 
 ## 5. About (sidebar) description
@@ -79,29 +80,41 @@ Keep the demo semantics visible in the one-liner; the README body carries the fu
 
 ## 6. Governance activation status
 
-**Dated 2026-09-10** (task R2-c, re-audit findings B0-002 / B1-017 / B2-028).
+**Dated 2026-09-10 — ACTIVATION COMPLETE (tasks R8 + R9).**
 
-`.github/workflows/ci.yml` is now **committed** — the active gate definition. It runs two jobs:
+`.github/workflows/ci.yml` is committed **and live on GitHub Actions**. It runs two jobs:
 
 - **`gate`**: lint · typecheck (tsc `--noEmit`, enforcing the documented **src/ zero-error policy** — known pre-existing errors in the legacy `examples/` and `skills/` directories do not block, but any error under `src/` or `scripts/` fails the job) · `bun test tests/` · Prisma schema validation (`prisma validate` + `db push` to a fresh `ci-gate.db`) · i18n parity (`messages/en.json` ≡ `messages/ar.json`) · production build via `bun run build:gate` (the reserved `https://fayanms.invalid` build-only placeholder — `siteUrl()` fails fast on a missing or localhost origin in production per re-audit B3-029; real deploys must set the real origin) · `brand:validate` · `brand:validate-icons` · `brand:validate-consumers`.
 - **`scan`** (hard gate, `continue-on-error: false`): gitleaks secret scan · semgrep SAST (`p/default`) · osv-scanner dependency scan (`bun.lock`) · syft SBOM (CycloneDX artifact) · trivy container scan (auto-skips until a Dockerfile exists).
 
-**Committed ≠ enforced.** Until a real pushed commit has a green **required** check, brand
-governance is a developer convention, not a non-bypassable repository control (B0-002) —
-do not describe it as CI-enforced, and keep the README honest-status section and §4 above
-(no CI badge) consistent with that fact. The remaining actions are **manual, settings-side**
-and must be done in this order:
+**Activation record (in execution order):**
 
-1. **Push the workflow commit with a token carrying the `workflow` scope.** The repository
-   PAT lacks that scope (historical blocker: P19-10 and Phase 19-C); the earlier
-   ready-to-push commit is preserved on the local branch `local/ci-workflow-activation`.
-2. **Verify a green run on a real pushed commit** (both `gate` and `scan`).
-3. **Protect `main`:** pull requests required · 1 approval · CODEOWNERS review required ·
-   required status checks `gate` and `scan` · conversation resolution required ·
-   no force push · no deletion.
-4. **Populate the 15 recommended topics** (§1 above).
-5. **Align the About description** with the demo-truthfulness wording (§5 above).
-6. **Upload `public/brand/github-social-preview.png`** as the repository social preview (§2 above).
+1. ✅ **Workflow push** — task R8 (2026-09-10): the fresh fine-grained PAT did carry the
+   `workflow` scope (the R6/P19-10 blocker no longer applied); ci.yml landed on `main`
+   and triggers on push.
+2. ✅ **Green run on a real pushed commit** — runs [#8](https://github.com/fayafatehi/FayaNMS/actions/runs/34540067242)
+   (`3e97d3b`) and [#7](https://github.com/fayafatehi/FayaNMS/actions/runs/34539971028)
+   (`d68e47a`): both jobs `gate` and `scan` concluded `success` with zero failed steps
+   (verified via the Actions API).
+3. ✅ **Protect `main`** — task R9 (2026-09-10 23:2x UTC), via the branch-protection REST
+   API with the Administration:write token: required status checks **`gate` + `scan`** ·
+   pull requests required with **1 approval** + **CODEOWNERS review** · **conversation
+   resolution required** · **no force pushes · no deletions**. `enforce_admins` is left
+   OFF so the owner's direct-push workflow (including sandbox commits) keeps working —
+   the required checks still gate every PR and are the repository's non-bypassable
+   record for external contributors.
+4. ✅ **15 recommended topics populated** (§1) — task R9, `PUT /repos/.../topics`, 200,
+   read-back verified set-equal.
+5. ✅ **About description aligned** (§5) — task R9, `PATCH /repos/...`, 200, read-back
+   byte-exact.
+6. ⬜ **Upload `public/brand/github-social-preview.png`** as the repository social preview
+   (§2 above) — the GitHub REST API has **no endpoint** for the social preview image;
+   this remains the single manual web-UI action (Settings → General → Social preview).
 
-CODEOWNERS now also covers the brand & iconography paths (re-audit B1-017) — enforceable
-once step 3 requires CODEOWNERS review.
+**CI badge:** with steps 1–3 complete, the CI badge became factual and is now on the
+README badge row (§4).
+
+**Historical note (the rule this section superseded):** while the workflow push was
+pending, the governance rule was "committed ≠ enforced" — docs had to keep describing the
+gate as not CI-enforced. That window closed on 2026-09-10; the enforcement claim is now
+backed by the branch-protection record above and pinned by the brand test suite.

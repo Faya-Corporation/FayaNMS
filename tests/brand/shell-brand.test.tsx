@@ -166,12 +166,11 @@ describe("favicon micro-mark policy (B1-014)", () => {
 });
 
 describe("CI gate wires the brand governance (B0-002)", () => {
-  // The gate definition lives at .github/workflows/ci.yml, but GitHub rejects
-  // pushes that create/update workflow files unless the token carries the
-  // `workflow` scope (re-audit B0-002 blocker; fine-grained PAT included).
-  // Until a scoped token lands the file on the remote, skip LOUDLY instead of
-  // failing the whole suite on checkouts that legitimately lack it — the
-  // assertions below re-activate automatically the moment ci.yml exists.
+  // The gate definition lives at .github/workflows/ci.yml and IS live on
+  // GitHub Actions since 2026-09-10 (task R8 pushed it; task R9 set gate+scan
+  // as required status checks on the protected main branch). The skipIf gate
+  // below is retained so fresh checkouts without the file still report a
+  // loud, explicit skip instead of a confusing pass-over.
   const workflowPath = join(ROOT, ".github", "workflows", "ci.yml");
   const workflowLanded = existsSync(workflowPath);
   test.skipIf(!workflowLanded)(
@@ -185,14 +184,27 @@ describe("CI gate wires the brand governance (B0-002)", () => {
       expect(source).toContain("bun test tests/");
     },
   );
-  test("CI activation status stays honest (B0-002: committed ≠ enforced)", () => {
-    // docs must keep describing the gate as NOT CI-enforced while the
-    // workflow-scope push is pending — this is the B0-002 acceptance rule.
+  test("CI activation status stays honest (B0-002: enforced since 2026-09-10)", () => {
+    // The activation window closed on 2026-09-10 (tasks R8 + R9): the workflow
+    // push landed, gate + scan ran green on main, and both were set as required
+    // status checks on the protected branch. Docs must now assert the
+    // ENFORCED state with the activation record — the old "committed ≠
+    // enforced" rule applied only while the workflow-scope push was pending.
     const social = readFileSync(
       join(ROOT, "docs", "brand", "SOCIAL-REPOSITORY.md"),
       "utf8",
     );
-    expect(social).toMatch(/Committed ≠ enforced|committed ≠ enforced/);
+    // The activation record must exist, be dated, and name the required checks.
+    expect(social).toMatch(/ACTIVATION COMPLETE/);
+    expect(social).toMatch(/2026-09-10/);
+    expect(social).toMatch(/required status checks/i);
+    // The README must carry the factual CI badge (badge policy §4) and the
+    // honest-status section must describe the gate as CI-enforced.
+    const readme = read("README.md");
+    expect(readme).toContain(
+      "img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml",
+    );
+    expect(readme).toMatch(/CI-enforced/i);
   });
 });
 

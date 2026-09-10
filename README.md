@@ -12,6 +12,7 @@
     <img src="https://img.shields.io/badge/Prisma-6-2D3748?style=flat-square" alt="Prisma 6">
     <img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square" alt="Tailwind CSS 4">
     <img src="https://img.shields.io/badge/next--intl-EN%20%C2%B7%20AR-475569?style=flat-square" alt="next-intl — English + Arabic">
+    <img src="https://img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml?style=flat-square&branch=main&label=CI" alt="CI — gate + scan required on main">
   </p>
 </div>
 
@@ -132,18 +133,21 @@ inventory, service-auth, crypto, audit chain).
 **Production readiness statement:** FayaNMS is an advanced, security-hardened
 demo/control-plane prototype. Core identity, mutation-level RBAC authorization, service
 authentication, configuration encryption and audit verification are substantially remediated,
-but production deployment remains blocked pending CI enforcement on a protected `main`
-branch, production persistence infrastructure (PostgreSQL/Redis/KMS) and real vendor-device
-adapter certification.
+but production deployment remains blocked pending production persistence infrastructure
+(PostgreSQL/Redis/KMS) and real vendor-device adapter certification. (CI enforcement on a
+protected `main` — one of the three original blockers — was completed on 2026-09-10, see
+below.)
 
 Known limitations (not production claims): the device data plane remains a deterministic
 SIMULATOR; SQLite is single-writer and the demo db is no longer committed (rebuild via the
-seed above); the CI gate is now committed at `.github/workflows/ci.yml` (lint, src-zero-error
+seed above); the CI gate is live at `.github/workflows/ci.yml` (lint, src-zero-error
 typecheck, `bun test tests/`, Prisma schema, i18n parity, production build, brand
-validators and a security scan job) — activation still requires pushing that workflow with a
-token carrying the `workflow` scope and a green run on a real commit before any gate may be
-described as CI-enforced, plus branch protection + required status checks in GitHub settings
-(repository-settings actions, not commits; see docs/brand/SOCIAL-REPOSITORY.md §6);
+validators and a security scan job) and is now CI-enforced: activated on GitHub Actions on
+2026-09-10 with green `gate` + `scan` runs on `main`, and `main` is protected — the `gate`
+and `scan` status checks are required, pull requests require 1 approval incl. CODEOWNERS
+review, conversation resolution is required, force pushes and deletions are blocked
+(activated via the settings REST API with an Administration:write token; activation record
+in docs/brand/SOCIAL-REPOSITORY.md §6);
 approval-quorum (CAB ≥2 distinct approvers) and approval-expiry fingerprints are Phase-21
 policy work;
 service JWTs remain symmetric-secret (per-service keys / asymmetric signing = Phase 21); the
