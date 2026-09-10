@@ -61,10 +61,19 @@ export function authErrorToFail(error: unknown): ReturnType<typeof fail> | null 
 export async function getSessionUser(
   req: Request & { cookies?: unknown }
 ): Promise<SessionUser | null> {
-  const token = await getToken({
-    req: req as Parameters<typeof getToken>[0]["req"],
-    secret: process.env.NEXTAUTH_SECRET,
-  });
+  // GHSA-xmf8-cvqr-rfgj (next-auth v4): getToken() throws an uncaught
+  // exception on a malformed Bearer authorization header. The library fix
+  // only lands in the v5 line; until that migration, the crash path is
+  // neutralized here — malformed tokens degrade to "no session" (401).
+  let token: Awaited<ReturnType<typeof getToken>> = null;
+  try {
+    token = await getToken({
+      req: req as Parameters<typeof getToken>[0]["req"],
+      secret: process.env.NEXTAUTH_SECRET,
+    });
+  } catch {
+    return null;
+  }
   if (!token) return null;
   const id = token.id;
   const email = token.email;

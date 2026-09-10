@@ -1,0 +1,30 @@
+# osv-scanner triage policy (P20-012 gate) — committed at the repository root
+# so the CI scan job and local runs share one accepted-risk ledger.
+#
+# Rules for this file:
+#   - Only findings whose fix requires a MAJOR framework migration (no stable
+#     in-line patch exists) may be ignored, and each entry must state (a) why
+#     the vulnerable path is not reachable in this deployment or how it is
+#     neutralized at the application boundary, and (b) the real fix path.
+#   - Re-evaluate every entry on each dependency refresh; drop entries the
+#     moment the underlying upgrade lands.
+# Established 2026-09-10 (R8) — initial triage of the next-auth v4 line.
+
+# next-auth v4 — all three advisories below are fixed only in the v5 (beta)
+# line; v4 -> v5 is an API-breaking migration (auth() pattern, provider config,
+# JWT decoding), tracked as future work, not a patch bump.
+[[IgnoredVulns]]
+id = "GHSA-7rqj-j65f-68wh"
+reason = "next-auth v4: email normalizer homoglyph @ bypass (CRITICAL). Reachability: this deployment configures ONLY the credentials provider (src/lib/auth/options.ts) against local accounts — the affected email-identity-merge path for OAuth/email providers is never constructed. Real fix: next-auth v5 migration."
+
+[[IgnoredVulns]]
+id = "GHSA-x445-f3h2-j279"
+reason = "next-auth v4: OAuth state/nonce/PKCE cookies not bound to their provider (MODERATE). Reachability: no OAuth providers are configured (credentials-only), so no state/nonce/PKCE cookies are ever issued. Real fix: next-auth v5 migration."
+
+[[IgnoredVulns]]
+id = "GHSA-xmf8-cvqr-rfgj"
+reason = "next-auth v4: getToken() throws on malformed Bearer headers (HIGH). Neutralized at the application boundary: both call sites (src/middleware.ts, src/lib/auth/session.ts) wrap getToken in try/catch — malformed tokens yield 401/null instead of an uncaught exception. Residual risk accepted pending the v5 migration."
+
+[[IgnoredVulns]]
+id = "GHSA-w5hq-g745-h8pq"
+reason = "uuid v3/v5/v6 buffer bounds issue (MODERATE) via next-auth v4's uuid@8.3.2 pin. Reachability: next-auth v4 uses uuid only for v4 (random) generation — the affected v3/v5/v6 code paths are never invoked; the application does not call uuid directly. Real fix: next-auth v5 migration (which moves off uuid@8)."

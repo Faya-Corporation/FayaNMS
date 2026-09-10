@@ -69,10 +69,19 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = await getToken({
-    req,
-    secret: process.env.NEXTAUTH_SECRET,
-  });
+  // GHSA-xmf8-cvqr-rfgj (next-auth v4): getToken() throws an uncaught
+  // exception on a malformed Bearer authorization header. Library fix only
+  // exists in the v5 line; until that migration, malformed tokens are
+  // rejected here as 401 instead of crashing the middleware.
+  let token: Awaited<ReturnType<typeof getToken>> = null;
+  try {
+    token = await getToken({
+      req,
+      secret: process.env.NEXTAUTH_SECRET,
+    });
+  } catch {
+    return NextResponse.json(UNAUTHENTICATED_BODY, { status: 401 });
+  }
 
   if (!token || typeof token.id !== "string" || token.id.length === 0) {
     return NextResponse.json(UNAUTHENTICATED_BODY, { status: 401 });
