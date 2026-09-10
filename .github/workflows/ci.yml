@@ -164,10 +164,13 @@ jobs:
           # triaged before enabling; this is the audit's required SAST gate.
 
       # ── 10. P20-012 — dependency scan ──
+      # Note: the upstream raw install.sh (main branch) was removed — 404 in run
+      # 34532398506 — so the release binary is pinned and downloaded directly.
       - name: Dependency scan (osv-scanner)
         run: |
-          curl -sSfL https://raw.githubusercontent.com/google/osv-scanner/main/install.sh \
-            | sh -s -- -b /usr/local/bin
+          curl -sSfL -o /usr/local/bin/osv-scanner \
+            https://github.com/google/osv-scanner/releases/download/v2.5.1/osv-scanner_linux_amd64
+          chmod +x /usr/local/bin/osv-scanner
           osv-scanner scan --lockfile=./bun.lock
 
       # ── 11. P20-014 — SBOM ──
