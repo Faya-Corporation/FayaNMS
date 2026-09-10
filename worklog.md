@@ -1718,3 +1718,16 @@ Stage Summary:
   2. `git push --force origin main`
   3. (GitHub's API "size" field lags until server-side gc; the served pack is immediately small on fresh clones.)
 - Unchanged from R6: ci.yml rides only on local/ci-workflow-activation (now 6a90ccc) pending a workflow-scope token; GitHub settings-side activation steps remain manual.
+
+---
+Task ID: R7-orch (addendum — push completed)
+Agent: Orchestrator (Z.ai Code)
+Task: Complete the blocked force-push with the user's fresh PAT; verify post-purge remote size
+
+Work Log:
+- New fine-grained PAT delivered by user; validated via API (200 on /user and /repos), saved to /tmp/fayanms-origin-url (600) and set as origin URL.
+- `git push --force origin main` SUCCEEDED: 7c282cd...6c2bca7 main -> main (forced update). No workflow-scope rejection (main history contains no .github/workflows files — the split-push design held).
+- Verification: ls-remote main = 6c2bca7 ✓; fresh bare probe clone → served pack 3.57 MiB / 3.8 MB on disk (was 95.77 MiB / 96 MB) = 96% reduction; GitHub API size field still reads the stale 90,433 KB pre-purge stat (server-side gc lag — decays to the real ~3.5 MB over time; fresh clones get the true small pack immediately).
+
+Stage Summary:
+- REMOTE SIZE ISSUE FULLY RESOLVED: fayafatehi/FayaNMS now serves the purged history (~3.6 MiB pack) with the complete brand/governance tree, .gitignore hardening (0a25870 → 6c2bca7), and zero db/WAL/upload/scratch/log junk in any of the 63 commits. Backup bundle retained at /tmp/fayanms-pre-purge-backup.bundle. Remaining GitHub-side items unchanged: ci.yml workflow-scope push, branch protection, topics, About, social preview.
