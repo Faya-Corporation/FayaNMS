@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { workerControlHeaders } from "@/lib/worker/control-client";
+import { WORKER_BASE_URL } from "@/lib/worker/worker-url";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -9,8 +10,8 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/v1/devices/test-connection — body: { deviceId }.
  *
- * Proxies a connectivity probe to the simulation worker mini-service
- * (bun :3030, roadmap 2-b) via an internal server-side fetch. The worker
+ * Probes are sent to `${WORKER_BASE_URL}/simulate/connect` (runbook T5 —
+ * env-configurable, default http://localhost:3030). The worker
  * may not be running (2-b lands in parallel) — the route is defensive:
  *   - any fetch/parse failure answers 200 with { reachable: false } so the
  *     UI can show a graceful "Worker service unreachable" message instead
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
  *     worker reports a known device status) and the result is audited.
  */
 
-const WORKER_URL = "http://localhost:3030/simulate/connect";
+const WORKER_URL = `${WORKER_BASE_URL}/simulate/connect`;
 
 const KNOWN_DEVICE_STATUSES = new Set([
   "ONLINE",

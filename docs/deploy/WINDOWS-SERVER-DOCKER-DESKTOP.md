@@ -25,8 +25,8 @@ execute and tick.
 | `next.config.ts` has `output: "standalone"` | next.config.ts | Container image is small; the build script already copies `static` + `public` into the standalone dir |
 | Prisma datasource is **SQLite**, schema has **no enums / no Json** (SQLite-safety rules, 900-line schema) | prisma/schema.prisma | SQLite runs fine in a container **on a named volume**; PostgreSQL migration stays a separate Phase-21 task |
 | Build/start scripts use POSIX `cp`/`tee` (`next build && cp -r …`, `bun … \| tee server.log`) | package.json | **Never run these natively in Windows PowerShell/cmd** — containers (Linux) are mandatory, not stylistic |
-| App → worker calls are **hardcoded `http://localhost:3030`** in 4+ route files (`devices/test-connection`, `worker/change-step`, `worker/status`, `admin/collectors`) | src/app/api/v1/** | Worker and app must share a network namespace (see T3) or the URLs must be refactored (T5) |
-| Worker → app calls are **hardcoded `http://localhost:3000`** (`NEXT_BASE_URL`) | mini-services/worker/next-client.ts:18 | Same constraint, other direction |
+| App → worker calls go through `WORKER_BASE_URL` (env-configurable, runbook T5 as landed 2026-09-13; default preserves the historical `http://localhost:3030` loopback) in 4 route files (`devices/test-connection`, `worker/change-step`, `worker/status`, `admin/collectors`) | src/lib/worker/worker-url.ts + src/app/api/v1/** | Bare-metal dev needs NO env var; compose sets `WORKER_BASE_URL=http://worker:3030` on a normal bridge network (T3/T5) |
+| Worker → app calls go through `NEXT_BASE_URL` (env-configurable, T5; default preserves `http://localhost:3000`) | mini-services/worker/next-client.ts | Same — compose sets `NEXT_BASE_URL=http://app:3000`; the worker's loopback self-calls stay container-local (`SELF_BASE_URL`) |
 | Worker port **hardcoded 3030**, "do not read PORT env" (Task 2-b contract) | mini-services/worker/index.ts | The stack exposes exactly **one** port (3000); 3030 stays internal — same model as the sandbox gateway |
 | `siteUrl()` **throws** in production without `NEXT_PUBLIC_SITE_URL`, and **rejects `localhost` / `127.0.0.1` / `0.0.0.0` / `*.local` hostnames** in production | src/lib/brand/identity.ts (B3-029) | You need a real DNS name (or a raw LAN IP — IPs pass the guard) baked at **build time** |
 | Startup security policy (production) **aborts** unless: `NEXTAUTH_SECRET` ≥ 32 chars, `FAYANMS_SERVICE_SECRET` 64-hex, `FAYANMS_CONFIG_ENC_KEY` 64-hex, and `FAYANMS_DEMO_MODE ≠ true` | src/lib/startup/security-policy.ts, .env.example | Secrets must be generated per environment; demo seeding is a separate, non-production step |
@@ -189,13 +189,17 @@ USER bun
 CMD ["bun", "index.ts"]
 ```
 
-Acceptance: `GET /health` (inside the shared netns) returns `ok:true` with adapter names;
+Acceptance: `GET /health` returns `ok:true` with adapter names (from inside the
+worker container, and from the app container via the bridge network since T5);
 no port published (3030 is internal by contract).
 
-### T3 — `compose.yml` — the topology that makes the hardcoded localhost contracts work — **LANDED 2026-09-12 (R12)**
+### T3 — `compose.yml` — the topology that makes the service contracts work — **LANDED 2026-09-12 (R12)**, topology updated by T5 (2026-09-13)
 
-The worker must reach `localhost:3000` **and** the app must reach `localhost:3030`.
-Zero-code-change solution: give the worker the **app's network namespace**.
+The worker must reach the app **and** the app must reach the worker. R12 landed
+the zero-code-change solution (worker shares the app's network namespace);
+T5 (below) replaced it on 2026-09-13 with the proper two-container bridge
+network once both directions became env-configurable. The reference snippet
+below reflects the CURRENT as-landed topology:
 
 ```yaml
 name: fayanms
@@ -211,6 +215,7 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: file:/data/fayanms/custom.db
+      WORKER_BASE_URL: "${WORKER_BASE_URL:-http://worker:3030}"   # T5: app → worker hop
     volumes:
       - fayanms-db:/data
     ports:
@@ -221,8 +226,9 @@ services:
     build: { context: ., dockerfile: Dockerfile.worker }
     image: fayanms-worker:latest
     restart: unless-stopped
-    network_mode: "service:app"     # ← shares the app's loopback: localhost:3000/3030 both hold
     env_file: .env.production
+    environment:
+      NEXT_BASE_URL: "${NEXT_BASE_URL:-http://app:3000}"   # T5: worker → app hop
     depends_on: [app]
     logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
 
@@ -263,12 +269,27 @@ First real container-scan run in the repo's history = the CI run on the R12 comm
 next-auth v5 migration remains desirable for platform reasons but is NO LONGER
 security-forced.
 
-### T5 — (optional, Phase-21 proper) configurable service URLs — *open*
+### T5 — configurable service URLs — **LANDED 2026-09-13 (R13)**
 
-Refactor `mini-services/worker/next-client.ts` (`NEXT_BASE_URL` → `process.env.NEXT_BASE_URL ?? "http://localhost:3000"`)
-and the four app-side `http://localhost:3030` literals → `process.env.WORKER_BASE_URL ?? "http://localhost:3030"`,
-then switch compose to a normal bridge network. Do **not** block the first deployment on
-this — T3's `network_mode` ships today with zero behavioral change.
+As specified: `mini-services/worker/next-client.ts` now resolves `NEXT_BASE_URL`
+(`process.env` with fallback `http://localhost:3000`), the four app-side literals
+resolve `WORKER_BASE_URL` (fallback `http://localhost:3030`) via the new
+`src/lib/worker/worker-url.ts` single source of truth, and compose switched to a
+normal bridge network. As-landed details:
+
+- **Env vars:** `WORKER_BASE_URL` (app → worker), `NEXT_BASE_URL` (worker → app),
+  `SELF_BASE_URL` (worker → itself, container-local loopback). All three trim,
+  fall back to the loopback default when unset/blank, and **fail fast at module
+  load** on a malformed value (same philosophy as `siteUrl()`).
+- **Display strings follow the config:** the collectors registry `host` field now
+  derives from the resolved URL (`WORKER_HOST`) instead of the hardcoded
+  `"localhost:3030"`.
+- **compose.yml:** `network_mode: "service:app"` removed; `WORKER_BASE_URL:
+  "${WORKER_BASE_URL:-http://worker:3030}"` on the app, `NEXT_BASE_URL:
+  "${NEXT_BASE_URL:-http://app:3000}"` on the worker — `${VAR:-default}` form so
+  a custom topology can still override via the `--env-file`.
+- **Bare-metal dev unchanged:** no env var needed anywhere; loopback defaults
+  preserve the Task 2-b contracts byte-for-byte.
 
 ### T6 — `.env.production` template + secrets — **LANDED 2026-09-12 (R12)**: `docs/deploy/env.production.example`
 
@@ -399,7 +420,8 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 | Startup abort: `NEXT_PUBLIC_SITE_URL is required/… localhost/.local` | B3-029 guard | Real DNS name or LAN IP; **rebuild** the image (build-time ARG), not just env |
 | Startup abort: security policy (secret too short / demo mode) | policy contract | Regenerate secrets per T6; run app without `FAYANMS_DEMO_MODE` |
 | SQLite `database is locked` / silent corruption | DB on `/mnt/c` (9p) or two app replicas | Named volume only (T3); keep exactly one app instance (single-writer by design) |
-| Worker logs "backend unreachable" loops | worker not in app's netns | `network_mode: "service:app"` (T3); it self-heals with backoff once reachable |
+| Worker logs "backend unreachable" loops | app not reachable at `NEXT_BASE_URL` (e.g. typo'd env override) | compose default `http://app:3000` (T5) is correct for the shipped stack — verify `WORKER_BASE_URL`/`NEXT_BASE_URL` overrides in the `--env-file`; the worker self-heals with backoff once reachable |
+| App routes report "Worker service unreachable" | worker not reachable at `WORKER_BASE_URL` | compose default `http://worker:3030` (T5); check `docker compose ps`/worker `HEALTHCHECK`, and that 3030 was never published/firewalled |
 | `docker: command not found` after reboot | boot persistence missing | A5 (systemd in wsl.conf or Task Scheduler task) |
 | WSL2 fails to start | virtualization disabled | BIOS VT-x/AMD-V + `VirtualMachinePlatform` feature |
 | Everything slow, image builds minutes | repo on `/mnt/c` | A6 — clone into WSL ext4 |
@@ -429,8 +451,9 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 ## Explicitly NOT covered here (tracked elsewhere)
 
 - PostgreSQL/Redis/KMS/object storage, migrations, distributed locks — audit Phase 21
-  (this runbook's T5 + D2 are its containerization slice; the persistence swap is its own
-  migration project given the SQLite-typed schema: 900 lines, no enums/Json by design).
+  (this runbook's T3 + T5 + D2 are its containerization slice — now fully landed,
+  two-container bridge topology; the persistence swap is its own migration project
+  given the SQLite-typed schema: 900 lines, no enums/Json by design).
 - Real vendor adapters (Phase 22) and controlled change execution (Phase 23).
 - HA/multi-node (the architecture is deliberately single-node SQLite today).
 

@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { ok, requestContext } from "../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail } from "@/lib/auth/session";
+import { WORKER_BASE_URL, WORKER_HOST } from "@/lib/worker/worker-url";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +10,9 @@ export const dynamic = "force-dynamic";
  * /api/v1/admin/collectors (Task 7-b)
  *
  * Live collector registry. The FayaNMS "collectors" are the in-sandbox
- * workers: the bun mini-service on :3030 plus the logical engines that run
- * inside it / the Next.js API (alert evaluation, metric retention, backup).
+ * workers: the bun mini-service (runbook T5 — WORKER_BASE_URL, default
+ * loopback :3030) plus the logical engines that run inside it / the Next.js
+ * API (alert evaluation, metric retention, backup).
  *
  * GET — server-side:
  *   1. fetch worker /health (3 s timeout; unreachable → OFFLINE row),
@@ -21,7 +23,7 @@ export const dynamic = "force-dynamic";
  *      even when the worker is down).
  */
 
-const WORKER_HEALTH_URL = "http://localhost:3030/health";
+const WORKER_HEALTH_URL = `${WORKER_BASE_URL}/health`;
 
 const KIND_BY_JOB_TYPE: Record<string, string> = {
   CONFIG_BACKUP: "CONFIG_COLLECTOR",
@@ -95,7 +97,7 @@ export async function GET(request: Request) {
       kind: "POLLER",
       status: health ? "ONLINE" : "OFFLINE",
       capabilitiesJson: JSON.stringify(capabilitiesFor(jobTypes)),
-      host: "localhost:3030",
+      host: WORKER_HOST,
       lastSeenAt: health ? now : null,
       statsJson: JSON.stringify({
         uptimeSec: health?.uptimeSec ?? null,
@@ -116,7 +118,7 @@ export async function GET(request: Request) {
         kind,
         status: health ? "ONLINE" : "OFFLINE",
         capabilitiesJson: JSON.stringify(types),
-        host: kind === "ALERT_ENGINE" ? "next-api (evaluate-in-Next)" : "localhost:3030",
+        host: kind === "ALERT_ENGINE" ? "next-api (evaluate-in-Next)" : WORKER_HOST,
         lastSeenAt: health ? now : null,
         statsJson: JSON.stringify({ jobsCompleted: count }),
       });

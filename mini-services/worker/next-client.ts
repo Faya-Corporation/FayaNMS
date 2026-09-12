@@ -4,8 +4,9 @@
  * ARCHITECTURE (binding, see worklog Task 2-b): the worker NEVER opens the
  * SQLite database. SQLite is single-writer and the Next.js process owns all
  * persistence. Every state change goes through Next.js HTTP on
- * http://localhost:3000 (backend-to-backend, same host). The gateway's
- * browser-only XTransformPort rule does not apply here.
+ * NEXT_BASE_URL (runbook T5 — env-configurable; default
+ * http://localhost:3000 preserves the original same-host loopback contract).
+ * The gateway's browser-only XTransformPort rule does not apply here.
  *
  * Zero external dependencies: fetch + AbortSignal.timeout are bun built-ins.
  */
@@ -15,8 +16,33 @@ import { join } from "node:path";
 
 import { serviceAuthHeader } from "./service-token";
 
-export const NEXT_BASE_URL = "http://localhost:3000";
-export const SELF_BASE_URL = "http://localhost:3030";
+/**
+ * Resolve a base URL from the environment (runbook T5). Trims whitespace,
+ * falls back to the loopback default when unset/blank, and fail-fasts on a
+ * malformed value — the same philosophy as the app's siteUrl() guard.
+ */
+function envBaseUrl(name: string, fallback: string): string {
+  const trimmed = process.env[name]?.trim();
+  if (!trimmed) return fallback;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error(
+      `${name}="${trimmed}" is not a valid absolute http(s) URL — fix the value or remove the variable to fall back to ${fallback} (runbook T5).`
+    );
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(
+      `${name} must be an http(s) URL — got protocol "${url.protocol}" (runbook T5).`
+    );
+  }
+  const path = url.pathname.replace(/\/+$/, "");
+  return path === "" ? url.origin : url.origin + path;
+}
+
+export const NEXT_BASE_URL = envBaseUrl("NEXT_BASE_URL", "http://localhost:3000");
+export const SELF_BASE_URL = envBaseUrl("SELF_BASE_URL", "http://localhost:3030");
 
 const LOG_FILE = join(import.meta.dir, "worker.log");
 

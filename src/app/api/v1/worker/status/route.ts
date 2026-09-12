@@ -1,13 +1,15 @@
 import { db } from "@/lib/db";
 import { ok } from "../../_lib/api";
+import { WORKER_BASE_URL } from "@/lib/worker/worker-url";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/v1/worker/status — worker reachability + last claim time.
  *
- * Proxies GET http://localhost:3030/health with a 2 s timeout (backend-to-
- * backend, same host). Never throws: when the worker is down the response is
+ * Proxies GET ${WORKER_BASE_URL}/health with a 2 s timeout (backend-to-
+ * backend; runbook T5 — env-configurable, default http://localhost:3030).
+ * Never throws: when the worker is down the response is
  * { workerReachable: false, workerHealth: null, lastClaimAt }.
  *
  * lastClaimAt is stored in the Setting table under key "worker.lastClaimAt"
@@ -16,7 +18,7 @@ export const dynamic = "force-dynamic";
  * CONFIG_BACKUP job.
  */
 
-const WORKER_HEALTH_URL = "http://localhost:3030/health";
+const WORKER_HEALTH_URL = `${WORKER_BASE_URL}/health`;
 
 export async function GET() {
   let workerReachable = false;

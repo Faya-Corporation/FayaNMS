@@ -1,13 +1,16 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# FayaNMS — single-host production compose stack (T3 of
+# FayaNMS — single-host production compose stack (T3 + T5 of
 # docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md).
 #
-# Topology contract (zero code changes): the worker joins the APP's network
-# namespace, because both service directions are hardcoded to loopback:
-#   app → http://localhost:3030 (worker) · worker → http://localhost:3000 (app).
-# Exactly ONE published port exists; 3030 stays internal (service-JWT-protected).
-# The refactoring that removes the network_mode workaround is runbook T5
-# (Phase-21 proper) — do not publish 3030 in the meantime.
+# Topology (T5 as landed 2026-09-13): app and worker are SEPARATE containers
+# on a normal compose bridge network (service DNS names), wired by two env
+# vars with loopback defaults preserved for bare-metal dev:
+#   app    → WORKER_BASE_URL=http://worker:3030   (worker HTTP surface)
+#   worker → NEXT_BASE_URL=http://app:3000        (Next.js persistence API)
+# The worker's loopback self-calls stay container-local (SELF_BASE_URL default
+# http://localhost:3030). Exactly ONE published port exists; 3030 stays
+# internal (service-JWT-protected) — never publish it.
+# ─────────────────────────────────────────────────────────────────────────────
 #
 # Build / provision / run (inside WSL2, repo root — demo-seed path, runbook T7):
 #   docker compose --env-file .env.production build
@@ -16,7 +19,6 @@
 #     sh -c 'bunx prisma db push && bun prisma/seed.ts && chown -R 10001:10001 /data/fayanms'
 #   docker compose --env-file .env.production up -d
 # (pristine instead of demo: same db push WITHOUT the seed run and the -e flags)
-# ─────────────────────────────────────────────────────────────────────────────
 
 name: fayanms
 
@@ -35,6 +37,9 @@ services:
       NODE_ENV: production
       # Absolute path into the named volume — overrides anything from env_file.
       DATABASE_URL: file:/data/fayanms/custom.db
+      # Backend→worker hop (T5). Bridge DNS by default; the ${VAR:-default}
+      # form lets the --env-file override it if a custom topology needs to.
+      WORKER_BASE_URL: "${WORKER_BASE_URL:-http://worker:3030}"
     volumes:
       - fayanms-db:/data/fayanms
     ports:
@@ -54,9 +59,12 @@ services:
       dockerfile: Dockerfile.worker
     image: fayanms-worker:latest
     restart: unless-stopped
-    # Shares the app's network namespace → both loopback contracts hold.
-    network_mode: "service:app"
+    # Own container on the compose bridge network (T5) — service DNS name
+    # "worker" is how the app reaches it; "app" is how it reaches Next.js.
     env_file: .env.production
+    environment:
+      # Worker→app persistence hop (T5). The worker NEVER touches SQLite.
+      NEXT_BASE_URL: "${NEXT_BASE_URL:-http://app:3000}"
     depends_on:
       - app
     logging:

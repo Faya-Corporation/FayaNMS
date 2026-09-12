@@ -10,6 +10,7 @@ import {
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import { authenticateServiceRequest } from "@/lib/auth/service-auth";
 import { workerControlHeaders } from "@/lib/worker/control-client";
+import { WORKER_BASE_URL } from "@/lib/worker/worker-url";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -89,8 +90,6 @@ const EXECUTABLE_CHANGE_STATUSES = [
   "VALIDATING",
   "ROLLBACK",
 ];
-
-const WORKER_BASE_URL = "http://localhost:3030";
 
 const ROLLBACK_STEP_TEMPLATES = [
   { name: "Restore pre-change configuration", type: "ROLLBACK" },

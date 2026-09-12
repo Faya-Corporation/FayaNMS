@@ -107,7 +107,7 @@ The worker claims jobs (`CONFIG_BACKUP`, `DISCOVERY`, `DRIFT_CHECK`, `CHANGE_EXE
 
 ### Docker / Windows Server deployment
 
-The container stack ships in-repo: `Dockerfile` (multi-stage bun → Next standalone, non-root, SQLite on a named volume), `Dockerfile.worker`, `compose.yml` (app + worker + one-off `provision` service; the worker shares the app's network namespace so the hardcoded loopback contracts hold with zero code changes), and `.dockerignore`. The full host runbook — Windows Server + WSL2 prep, secrets, first deployment, backups, upgrades, troubleshooting — is [docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md](docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md); the env template is [docs/deploy/env.production.example](docs/deploy/env.production.example).
+The container stack ships in-repo: `Dockerfile` (multi-stage bun → Next standalone, non-root, SQLite on a named volume), `Dockerfile.worker`, `compose.yml` (app + worker as separate bridge-network containers + one-off `provision` service; both service hops are env-configurable — `WORKER_BASE_URL` / `NEXT_BASE_URL`, runbook T5 — with loopback defaults for bare-metal dev), and `.dockerignore`. The full host runbook — Windows Server + WSL2 prep, secrets, first deployment, backups, upgrades, troubleshooting — is [docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md](docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md); the env template is [docs/deploy/env.production.example](docs/deploy/env.production.example).
 
 ## Conventions
 
