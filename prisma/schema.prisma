@@ -1,24 +1,31 @@
-// FayaNMS — Prisma schema (SQLite)
+// FayaNMS — Prisma schema (PostgreSQL)
 //
-// SQLite-safety rules applied throughout (see worklog Task 0 / ADR-01):
-//   1. NO Prisma `enum` types — unsupported on SQLite. Every enumeration is a
-//      `String` column whose allowed values are documented in the comment above it.
-//      Application-side constant maps live in `src/lib/domain/status.ts` (Task 1-b).
-//   2. NO Prisma `Json` type — unreliable on SQLite. Serialized JSON lives in
-//      `String` columns suffixed with `Json` (e.g. `tagsJson`, `payloadJson`).
+// PROVIDER HISTORY (Phase 21, slice 1 — landed 2026-09-13): the datasource was
+// migrated SQLite → PostgreSQL. The deployment contract (compose.yml) ships a
+// `postgres` service; the production startup security policy REJECTS non-
+// postgres DATABASE_URL values (src/lib/startup/security-policy.ts).
+//
+// SQLite-safety rules RETAINED as portability discipline (see worklog Task 0 /
+// ADR-01 — written for SQLite, kept deliberately even though PostgreSQL would
+// accept enums/Json, so the schema stays uniform and honest):
+//   1. NO Prisma `enum` types. Every enumeration is a `String` column whose
+//      allowed values are documented in the comment above it. Application-side
+//      constant maps live in `src/lib/domain/status.ts` (Task 1-b).
+//   2. NO Prisma `Json` type. Serialized JSON lives in `String` columns
+//      suffixed with `Json` (e.g. `tagsJson`, `payloadJson`).
 //   3. Composite indexes on every hot query path (status filters, time series,
-//      per-device ordering). SQLite can scan an ASC index backwards for DESC
-//      ordering, so no sort attributes are needed.
-//   4. Relations declare explicit `onDelete`: Cascade where the child is owned by
-//      its parent, SetNull for optional references, Restrict where deletion of the
-//      parent would silently destroy important history.
+//      per-device ordering). PostgreSQL enforces the declared order, so these
+//      indexes now serve both ASC and DESC ORDER BY paths directly.
+//   4. Relations declare explicit `onDelete`: Cascade where the child is owned
+//      by its parent, SetNull for optional references, Restrict where deletion
+//      of the parent would silently destroy important history.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

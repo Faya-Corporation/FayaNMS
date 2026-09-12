@@ -9,6 +9,9 @@
  *   - FAYANMS_SERVICE_SECRET missing or not 64 hex chars (internal service JWTs)
  *   - FAYANMS_CONFIG_ENC_KEY missing or not 64 hex chars (config encryption KEK)
  *   - FAYANMS_DEMO_MODE=true (seeded shared-credential users are forbidden)
+ *   - DATABASE_URL missing or not a postgres(ql):// URL (Phase 21 slice 1:
+ *     production persistence is PostgreSQL — compose ships the `postgres`
+ *     service; a stray SQLite file: URL must never serve production traffic)
  *
  * Development never aborts: it warns when the session secret is missing or a
  * known-bad value, so local iteration stays friction-free while keeping the
@@ -35,6 +38,9 @@ const KNOWN_BAD_SECRETS: readonly string[] = [
 ];
 
 const HEX_64 = /^[0-9a-f]{64}$/;
+
+/** Production persistence contract (Phase 21 slice 1): PostgreSQL only. */
+const POSTGRES_URL = /^postgres(ql)?:\/\//;
 
 function isKnownBad(value: string): boolean {
   return KNOWN_BAD_SECRETS.includes(value.trim().toLowerCase());
@@ -89,6 +95,21 @@ export function findProductionPolicyViolations(
     violations.push({
       variable: "FAYANMS_DEMO_MODE",
       reason: "demo mode (shared-credential seeded users) is forbidden in production",
+    });
+  }
+
+  const databaseUrl = env.DATABASE_URL?.trim() ?? "";
+  if (databaseUrl.length === 0) {
+    violations.push({
+      variable: "DATABASE_URL",
+      reason:
+        "missing — production persistence is PostgreSQL (compose.yml ships the `postgres` service and composes the URL from POSTGRES_PASSWORD)",
+    });
+  } else if (!POSTGRES_URL.test(databaseUrl)) {
+    violations.push({
+      variable: "DATABASE_URL",
+      reason:
+        "must start with postgresql:// or postgres:// — the SQLite provider was retired in Phase 21 slice 1 (2026-09-13)",
     });
   }
 

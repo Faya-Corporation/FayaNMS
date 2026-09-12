@@ -26,7 +26,7 @@ A full-stack network management system (NMS) demo platform: device inventory, co
 |---|---|
 | Framework | Next.js 16 (App Router) + TypeScript 5, Bun runtime |
 | UI | Tailwind CSS 4 + shadcn/ui (New York) + Lucide icons, next-themes (light/dark) |
-| Data | Prisma 6 + SQLite (single file, WAL), TanStack Query/Table, Zustand |
+| Data | Prisma 6 + PostgreSQL (Phase 21 slice 1, 2026-09-13), TanStack Query/Table, Zustand |
 | i18n | next-intl — English + Arabic with direction-aware RTL layout |
 | Auth | NextAuth v4 (credentials) + RBAC (admin / operator / engineer / manager / auditor read-only / viewer) + permission-engine checks on sensitive paths |
 | AI | z-ai-web-dev-sdk (backend-only) — NL change drafting, "Ask the network" queries, RCA drafting; clean `AI_UNAVAILABLE` envelopes when unavailable |
@@ -35,7 +35,7 @@ A full-stack network management system (NMS) demo platform: device inventory, co
 ## Architecture in brief
 
 - **Single-route SPA shell** (`/`) with a client-side view router — 30+ registered views across seven domain groups.
-- **Evaluate-in-Next pattern**: the worker never opens SQLite. It claims `JobExecution` rows over HTTP, drives staged progress, and calls `/api/v1/worker/*` completion endpoints where all database logic lives.
+- **Evaluate-in-Next pattern**: the worker never opens the database. It claims `JobExecution` rows over HTTP, drives staged progress, and calls `/api/v1/worker/*` completion endpoints where all database logic lives.
 - **Audit-as-event-store**: every guarded write lands in a hash-chained `AuditEvent` chain (SHA-256, GENESIS root) with **DB-level fork protection** — a unique `prevHash` index + retry-with-restamp makes concurrent forks physically impossible; derived state (e.g. HA failover results) is reconstructed from audit rows by correlation ID.
 - **Deterministic simulations**: seeded PRNG + fixed-point arithmetic so dashboards, forecasts and simulations don't flicker under polling.
 - **Secrets hygiene (P19)**: config snapshots encrypted at rest — per-snapshot random DEK, AES-256-GCM text + DEK wrap under an env-configured master key (keystore path is a Phase 21 upgrade), sha256-of-plaintext integrity column, zero plaintext rows (migration enforced); masked viewer; raw downloads are permission-gated (`config.download`), audited with the real session actor, `no-store`.
@@ -73,7 +73,11 @@ cp .env.example .env
 #   FAYANMS_SERVICE_SECRET=$(openssl rand -hex 32)   # worker <-> app service JWTs
 #   FAYANMS_CONFIG_ENC_KEY=$(openssl rand -hex 32)   # snapshot encryption KEK
 
-# Database (SQLite at db/custom.db — NOT tracked in git)
+# Database — PostgreSQL (Phase 21 slice 1). Point DATABASE_URL at any reachable
+# instance; the sandbox uses an embedded PG 16 on :5433, Docker users:
+#   docker run -d --name fayanms-pg -p 5432:5432 \
+#     -e POSTGRES_USER=fayanms -e POSTGRES_PASSWORD=fayanms -e POSTGRES_DB=fayanms \
+#     postgres:16-alpine
 bun run db:push                    # create schema
 bun prisma/seed.ts                 # pristine demo dataset (30 devices / 7 vendors, jobs, incidents, CIs, …)
 bun scripts/migrate-encrypt-snapshots.ts   # encrypt the seeded snapshots at rest (idempotent)
@@ -97,7 +101,7 @@ and the seed refuses to wipe a production database).
 | `bun run dev` | Next dev server on port 3000 (logs to `dev.log`) |
 | `bun run lint` | ESLint |
 | `bunx tsc --noEmit` | Type check |
-| `bun run db:push` | Push `prisma/schema.prisma` to SQLite |
+| `bun run db:push` | Push `prisma/schema.prisma` to the configured PostgreSQL |
 | `bun prisma/seed.ts` | Rebuild the pristine demo dataset |
 | `bun scripts/migrate-encrypt-snapshots.ts` | Encrypt legacy plaintext snapshots (idempotent; also the KEK-rotation path) |
 
@@ -107,7 +111,7 @@ The worker claims jobs (`CONFIG_BACKUP`, `DISCOVERY`, `DRIFT_CHECK`, `CHANGE_EXE
 
 ### Docker / Windows Server deployment
 
-The container stack ships in-repo: `Dockerfile` (multi-stage bun → Next standalone, non-root, SQLite on a named volume), `Dockerfile.worker`, `compose.yml` (app + worker as separate bridge-network containers + one-off `provision` service; both service hops are env-configurable — `WORKER_BASE_URL` / `NEXT_BASE_URL`, runbook T5 — with loopback defaults for bare-metal dev), and `.dockerignore`. The full host runbook — Windows Server + WSL2 prep, secrets, first deployment, backups, upgrades, troubleshooting — is [docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md](docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md); the env template is [docs/deploy/env.production.example](docs/deploy/env.production.example).
+The container stack ships in-repo: `Dockerfile` (multi-stage bun → Next standalone, non-root, stateless — persistence is PostgreSQL), `Dockerfile.worker`, `compose.yml` (app + worker + `postgres:16-alpine` on a bridge network + one-off `provision` service; both service hops are env-configurable — `WORKER_BASE_URL` / `NEXT_BASE_URL`, runbook T5 — and the app URL is composed from `POSTGRES_PASSWORD`), and `.dockerignore`. The full host runbook — Windows Server + WSL2 prep, secrets, first deployment, backups, upgrades, troubleshooting — is [docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md](docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md); the env template is [docs/deploy/env.production.example](docs/deploy/env.production.example).
 
 ## Conventions
 
@@ -137,14 +141,15 @@ inventory, service-auth, crypto, audit chain).
 **Production readiness statement:** FayaNMS is an advanced, security-hardened
 demo/control-plane prototype. Core identity, mutation-level RBAC authorization, service
 authentication, configuration encryption and audit verification are substantially remediated,
-but production deployment remains blocked pending production persistence infrastructure
-(PostgreSQL/Redis/KMS) and real vendor-device adapter certification. (CI enforcement on a
-protected `main` — one of the three original blockers — was completed on 2026-09-10, see
-below.)
+and production persistence is now PostgreSQL (Phase 21 slice 1, 2026-09-13: schema,
+compose `postgres` service, CI service-container gates). Remaining before a production
+claim: real vendor-device adapter certification (Phase 22) and the optional Phase 21
+components (Redis/KMS/object storage/distributed locks). (CI enforcement on a protected
+`main` — one of the three original blockers — was completed on 2026-09-10, see below.)
 
 Known limitations (not production claims): the device data plane remains a deterministic
-SIMULATOR; SQLite is single-writer and the demo db is no longer committed (rebuild via the
-seed above); the CI gate is live at `.github/workflows/ci.yml` (lint, src-zero-error
+SIMULATOR; the demo dataset is never committed (rebuild via the seed above — it runs
+against any reachable PostgreSQL); the CI gate is live at `.github/workflows/ci.yml` (lint, src-zero-error
 typecheck, `bun test tests/`, Prisma schema, i18n parity, production build, brand
 validators and a security scan job) and is now CI-enforced: activated on GitHub Actions on
 2026-09-10 with green `gate` + `scan` runs on `main`, and `main` is protected — the `gate`

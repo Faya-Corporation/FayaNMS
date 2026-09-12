@@ -23,7 +23,7 @@ execute and tick.
 | Fact | Source | Consequence |
 |---|---|---|
 | `next.config.ts` has `output: "standalone"` | next.config.ts | Container image is small; the build script already copies `static` + `public` into the standalone dir |
-| Prisma datasource is **SQLite**, schema has **no enums / no Json** (SQLite-safety rules, 900-line schema) | prisma/schema.prisma | SQLite runs fine in a container **on a named volume**; PostgreSQL migration stays a separate Phase-21 task |
+| Prisma datasource is **PostgreSQL** (Phase 21 slice 1, 2026-09-13); the SQLite-safety rules are RETAINED as portability discipline — no enums / no Json (String+`*Json` columns), 900-line schema | prisma/schema.prisma | compose ships a `postgres:16-alpine` service with its own named volume; the startup security policy REJECTS missing/non-postgres `DATABASE_URL` in production |
 | Build/start scripts use POSIX `cp`/`tee` (`next build && cp -r …`, `bun … \| tee server.log`) | package.json | **Never run these natively in Windows PowerShell/cmd** — containers (Linux) are mandatory, not stylistic |
 | App → worker calls go through `WORKER_BASE_URL` (env-configurable, runbook T5 as landed 2026-09-13; default preserves the historical `http://localhost:3030` loopback) in 4 route files (`devices/test-connection`, `worker/change-step`, `worker/status`, `admin/collectors`) | src/lib/worker/worker-url.ts + src/app/api/v1/** | Bare-metal dev needs NO env var; compose sets `WORKER_BASE_URL=http://worker:3030` on a normal bridge network (T3/T5) |
 | Worker → app calls go through `NEXT_BASE_URL` (env-configurable, T5; default preserves `http://localhost:3000`) | mini-services/worker/next-client.ts | Same — compose sets `NEXT_BASE_URL=http://app:3000`; the worker's loopback self-calls stay container-local (`SELF_BASE_URL`) |
@@ -90,7 +90,8 @@ Everything in Phases B–D is host-agnostic after this choice: the stack is Linu
     `wsl.exe -d Ubuntu-22.04 -u root service docker start`.
 - [ ] **A6. Keep the stack OUT of `/mnt/c`.** Clone the repo and keep compose state under
   the WSL2 ext4 home (`~/fayanms`). Bind-mounts from `/mnt/c` are 9p-slow and
-  **SQLite on 9p risks lock corruption** — this is the #1 Windows-specific footgun.
+  **database volumes on 9p risk corruption/fsync breakage** — the #1 Windows-specific
+  footgun (applies equally to the PostgreSQL data volume).
 - [ ] **A7. Windows Defender Firewall inbound rules** (PowerShell as admin) — open only
   what you publish (80/443 with the proxy in D2; add 3000 only if you skip the proxy):
 
@@ -139,8 +140,8 @@ COPY --from=build --chown=faya:faya /app/prisma ./prisma
 COPY --from=build --chown=faya:faya /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build --chown=faya:faya /app/node_modules/@prisma  ./node_modules/@prisma
 USER faya
-ENV DATABASE_URL=file:/data/fayanms/custom.db
-VOLUME /data
+# No DATABASE_URL in the image (Phase 21): compose composes the PostgreSQL URL
+# from POSTGRES_PASSWORD; the startup policy aborts without a postgres URL.
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD bun -e 'const r = await fetch("http://127.0.0.1:3000/"); process.exit(r.ok ? 0 : 1)'
@@ -151,8 +152,9 @@ Acceptance criteria:
 - [ ] Image builds from a clean clone; `docker run` serves the sign-in gate on :3000.
 - [ ] `NEXT_PUBLIC_SITE_URL` is a **build ARG carrying the real origin** — NOT the CI
       `.invalid` placeholder (OG/metadata are baked into the bundle at build time).
-- [ ] `DATABASE_URL` is an **absolute** `file:/data/...` path (kills all relative-path
-      ambiguity between Prisma CLI conventions and the standalone runtime).
+- [ ] No `DATABASE_URL` baked into the image — it arrives from compose
+      (`postgresql://fayanms:<POSTGRES_PASSWORD>@postgres:5432/fayanms`); a container
+      started without it aborts at the startup security policy.
 - [ ] Runs as non-root; `.prisma`/`@prisma` engine dirs verified present (boot fails fast
       without them — test on a clean machine, not just the build host).
 - [ ] Container `HEALTHCHECK` green; `docker inspect --format='{{.State.Health.Status}}'` → `healthy`.
@@ -160,10 +162,10 @@ Acceptance criteria:
 As-landed deviations from the reference above (deliberate, recorded for honesty):
 - Runtime base is `oven/bun:1.3.14-slim` (debian), **not** `-alpine` — the Prisma query
   engine and sharp prebuilds are produced in the glibc build stage; musl would mismatch.
-- The non-root uid is PINNED (`10001`) and `/data/fayanms` is pre-created + chowned in
-  the image, so the named volume seeds with correct ownership no matter which container
-  mounts it first (provision runs as root and hands ownership back with an explicit
-  `chown -R 10001:10001`).
+- The non-root uid is PINNED (`10001`). Phase 21 note: with persistence moved to
+  PostgreSQL the app container is STATELESS — the original `/data/fayanms` volume, its
+  chown, and the provision-time ownership handback are all GONE; the uid remains as
+  defense-in-depth.
 - A fail-fast `RUN test -n "$NEXT_PUBLIC_SITE_URL"` guard turns a missing build arg into
   a human-readable error instead of a deep `siteUrl()` throw during prerender.
 - `PORT=3000` / `HOSTNAME=0.0.0.0` pinned explicitly for the standalone server binding.
@@ -205,6 +207,22 @@ below reflects the CURRENT as-landed topology:
 name: fayanms
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fayanms
+      POSTGRES_DB: fayanms
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?required}"   # Phase 21 slice 1
+    volumes:
+      - fayanms-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fayanms -d fayanms"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
+
   app:
     build:
       context: .
@@ -214,10 +232,11 @@ services:
     env_file: .env.production
     environment:
       NODE_ENV: production
-      DATABASE_URL: file:/data/fayanms/custom.db
       WORKER_BASE_URL: "${WORKER_BASE_URL:-http://worker:3030}"   # T5: app → worker hop
-    volumes:
-      - fayanms-db:/data
+      DATABASE_URL: "postgresql://fayanms:${POSTGRES_PASSWORD}@postgres:5432/fayanms"
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "80:3000"        # or via reverse proxy (D2) — then publish nothing here
     logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
@@ -233,7 +252,7 @@ services:
     logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
 
 volumes:
-  fayanms-db:
+  fayanms-pgdata:
 ```
 
 As landed, `compose.yml` additionally ships a **`provision` service** (compose profile
@@ -246,8 +265,8 @@ Acceptance criteria:
       Job Center shows runner claims (worker→app hop); scheduler tick visible in
       `POST /api/v1/worker/tick` audit rows.
 - [ ] `restart: unless-stopped` + host reboot → stack returns automatically.
-- [ ] `docker compose down && up` against the same volume **preserves data** (SQLite
-      survives redeploys; this is the regression that matters most).
+- [ ] `docker compose down && up` against the same `fayanms-pgdata` volume **preserves
+      data** (PostgreSQL survives redeploys; this is the regression that matters most).
 
 ### T4 — CI pre-work BEFORE the Dockerfile lands: `.trivyignore` — **SUPERSEDED by a dependency fix, 2026-09-12 (R12)**
 
@@ -294,8 +313,9 @@ normal bridge network. As-landed details:
 ### T6 — `.env.production` template + secrets — **LANDED 2026-09-12 (R12)**: `docs/deploy/env.production.example`
 
 Add `docs/deploy/env.production.example` mirroring `.env.example` with the container
-values (`DATABASE_URL=file:/data/fayanms/custom.db`, canonical URLs). Never commit real
-values (`.env*` is gitignored — gitleaks in CI also watches this).
+values (canonical URLs; `POSTGRES_PASSWORD` — compose composes `DATABASE_URL` from it,
+Phase 21). Never commit real values (`.env*` is gitignored — gitleaks in CI also watches
+this).
 
 Generation (inside WSL2):
 
@@ -304,6 +324,9 @@ openssl rand -hex 32   # NEXTAUTH_SECRET          (≥32 chars)
 openssl rand -hex 32   # FAYANMS_SERVICE_SECRET   (64 hex)
 openssl rand -hex 32   # FAYANMS_CONFIG_ENC_KEY   (64 hex) — this is the KEK that
                        # encrypts all config snapshots; LOSING IT = losing backups
+openssl rand -hex 32   # POSTGRES_PASSWORD        (64 hex) — compose composes the
+                       # app's DATABASE_URL from it; changing it later requires
+                       # an ALTER USER + volume plan (see troubleshooting)
 ```
 
 `FAYANMS_CONFIG_ENC_KEY_ID=k1`. If you ever rotate the KEK, the old key must remain
@@ -313,7 +336,8 @@ available to decrypt historical snapshots — document the rotation before doing
 
 Two mutually exclusive paths, chosen at first deploy. Both use the `provision` service
 (the Dockerfile **build** stage — the slim runtime deliberately does not carry the prisma
-CLI) and both finish with the ownership handback to the runtime uid:
+CLI) and both target the `postgres` service directly. Since Phase 21 there is NO
+ownership handback — the database lives in PostgreSQL, not on a file volume:
 
 - **Demo dataset (matches everything the demo surfaces expect):** one-off **`provision`
   container** **without** `NODE_ENV=production` **with** `FAYANMS_DEMO_MODE=true`:
@@ -321,7 +345,7 @@ CLI) and both finish with the ownership handback to the runtime uid:
   ```bash
   docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
     -e FAYANMS_DEMO_MODE=true provision \
-    sh -c 'bunx prisma db push && bun prisma/seed.ts && chown -R 10001:10001 /data/fayanms'
+    sh -c 'bunx prisma db push && bun prisma/seed.ts'
   ```
 
 - **Pristine:** same db push, no seed — then create your real admin through the app's own
@@ -330,7 +354,7 @@ CLI) and both finish with the ownership handback to the runtime uid:
 
   ```bash
   docker compose --env-file .env.production run --rm --no-deps provision \
-    sh -c 'bunx prisma db push && chown -R 10001:10001 /data/fayanms'
+    sh -c 'bunx prisma db push'
   ```
 
   Then start the stack **without** `FAYANMS_DEMO_MODE` (the startup policy forbids it in
@@ -355,8 +379,8 @@ cp docs/deploy/env.production.example .env.production   # then edit: 3 secrets +
 docker compose --env-file .env.production build          # build args need the env-file
 docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
   -e FAYANMS_DEMO_MODE=true provision \
-  sh -c 'bunx prisma db push && bun prisma/seed.ts && chown -R 10001:10001 /data/fayanms'
-                                                         # T7 demo path (pristine: db push + chown only)
+  sh -c 'bunx prisma db push && bun prisma/seed.ts'
+                                                       # T7 demo path (pristine: db push only)
 docker compose --env-file .env.production up -d
 docker compose ps && docker compose logs -f app          # watch the startup policy pass
 ```
@@ -373,20 +397,18 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 
 ## Phase D — day-2 operations
 
-- [ ] **D1. Backups (Task-Scheduler-driven, weekly minimum):** SQLite is single-writer —
-  stop, copy, start:
+- [ ] **D1. Backups (Task-Scheduler-driven, weekly minimum):** consistent live dumps via
+  `pg_dump` — no stop/start needed (Phase 21: the database is PostgreSQL):
 
   ```bash
-  docker compose stop app worker
-  docker run --rm -v fayanms_fayanms-db:/data -v ~/backups:/backup alpine \
-    tar czf /backup/fayanms-$(date +%F).tar.gz -C /data .
-  docker compose start
+  docker compose exec -T postgres pg_dump -U fayanms -d fayanms -Fc \
+    > ~/backups/fayanms-$(date +%F).dump
   ```
 
   Trigger from Windows: `wsl.exe -d Ubuntu-22.04 -u root bash -lc 'cd ~/fayanms && ./backup.sh'`.
-  Keep N weekly + 4 daily off-box copies. (Litestream sidecar = continuous S3-style
-  replication — optional upgrade, do NOT run it against the same volume without reading
-  its SQLite-consistency notes.)
+  Keep N weekly + 4 daily off-box copies. Restore drill: create a throwaway postgres
+  container, `pg_restore` into it, point the app at it once, then delete. Custom format
+  (`-Fc`) is compressed and supports selective restore.
 - [ ] **D2. TLS/reverse proxy (recommended before any non-LAN exposure):** Caddy sidecar
   with a mounted volume for its CA/certs, proxying to `app:3000`; flip compose to publish
   80/443 only. If a corporate cert exists, mount it instead. `NEXTAUTH_URL` /
@@ -398,7 +420,7 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
   cd ~/fayanms && git pull
   docker compose --env-file .env.production build
   docker compose --env-file .env.production run --rm --no-deps provision \
-    sh -c 'bunx prisma db push && chown -R 10001:10001 /data/fayanms'   # schema sync; read the diff output!
+    sh -c 'bunx prisma db push'   # schema sync against postgres; read the diff output!
   docker compose --env-file .env.production up -d
   ```
 
@@ -418,8 +440,9 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 | Symptom | Root cause | Fix |
 |---|---|---|
 | Startup abort: `NEXT_PUBLIC_SITE_URL is required/… localhost/.local` | B3-029 guard | Real DNS name or LAN IP; **rebuild** the image (build-time ARG), not just env |
-| Startup abort: security policy (secret too short / demo mode) | policy contract | Regenerate secrets per T6; run app without `FAYANMS_DEMO_MODE` |
-| SQLite `database is locked` / silent corruption | DB on `/mnt/c` (9p) or two app replicas | Named volume only (T3); keep exactly one app instance (single-writer by design) |
+| Startup abort: security policy (secret too short / demo mode / non-postgres DATABASE_URL) | policy contract | Regenerate secrets per T6 (incl. POSTGRES_PASSWORD); run app without `FAYANMS_DEMO_MODE`; keep `DATABASE_URL` as the compose-composed postgres URL |
+| `postgres: password authentication failed` | stale `fayanms-pgdata` volume created under an earlier POSTGRES_PASSWORD | `docker compose down -v` DESTROYS data — take a D1 dump first — or `ALTER USER fayanms WITH PASSWORD` inside the container; then keep POSTGRES_PASSWORD stable |
+| App can't reach postgres / connection refused | postgres not healthy yet, or topology override broke DNS | `docker compose ps` (health check), `docker compose logs postgres`; app retries are NOT automatic — `docker compose restart app` after postgres is healthy |
 | Worker logs "backend unreachable" loops | app not reachable at `NEXT_BASE_URL` (e.g. typo'd env override) | compose default `http://app:3000` (T5) is correct for the shipped stack — verify `WORKER_BASE_URL`/`NEXT_BASE_URL` overrides in the `--env-file`; the worker self-heals with backoff once reachable |
 | App routes report "Worker service unreachable" | worker not reachable at `WORKER_BASE_URL` | compose default `http://worker:3030` (T5); check `docker compose ps`/worker `HEALTHCHECK`, and that 3030 was never published/firewalled |
 | `docker: command not found` after reboot | boot persistence missing | A5 (systemd in wsl.conf or Task Scheduler task) |
@@ -450,12 +473,13 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 
 ## Explicitly NOT covered here (tracked elsewhere)
 
-- PostgreSQL/Redis/KMS/object storage, migrations, distributed locks — audit Phase 21
-  (this runbook's T3 + T5 + D2 are its containerization slice — now fully landed,
-  two-container bridge topology; the persistence swap is its own migration project
-  given the SQLite-typed schema: 900 lines, no enums/Json by design).
+- Redis/KMS/object storage/distributed locks and a `prisma migrate` history — the REST
+  of audit Phase 21. Slice 1 (the PostgreSQL swap: schema provider, compose `postgres`
+  service, startup-policy enforcement, CI service-container gates) LANDED 2026-09-13;
+  the remaining components are optional hardening, not prerequisites for this single-host
+  deployment.
 - Real vendor adapters (Phase 22) and controlled change execution (Phase 23).
-- HA/multi-node (the architecture is deliberately single-node SQLite today).
+- HA/multi-node (the architecture is deliberately single-node PostgreSQL today).
 
 ---
 

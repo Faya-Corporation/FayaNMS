@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # FayaNMS — single-host production compose stack (T3 + T5 of
-# docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md).
+# docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md; Phase 21 slice 1 = PostgreSQL).
 #
 # Topology (T5 as landed 2026-09-13): app and worker are SEPARATE containers
 # on a normal compose bridge network (service DNS names), wired by two env
@@ -8,21 +8,49 @@
 #   app    → WORKER_BASE_URL=http://worker:3030   (worker HTTP surface)
 #   worker → NEXT_BASE_URL=http://app:3000        (Next.js persistence API)
 # The worker's loopback self-calls stay container-local (SELF_BASE_URL default
-# http://localhost:3030). Exactly ONE published port exists; 3030 stays
-# internal (service-JWT-protected) — never publish it.
+# http://localhost:3030). The worker NEVER touches the database. Exactly ONE
+# published port exists; 3030 and 5432 stay internal — never publish them.
+#
+# Persistence (Phase 21 slice 1, 2026-09-13): PostgreSQL 16 ships as the
+# `postgres` service with its own named volume. The app URL is composed from
+# POSTGRES_PASSWORD (REQUIRED in the --env-file — generate with
+# `openssl rand -hex 32`, never commit it). The startup security policy
+# rejects non-postgres DATABASE_URL values, so an app container can never
+# boot against a stray SQLite file.
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Build / provision / run (inside WSL2, repo root — demo-seed path, runbook T7):
 #   docker compose --env-file .env.production build
 #   docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
 #     -e FAYANMS_DEMO_MODE=true provision \
-#     sh -c 'bunx prisma db push && bun prisma/seed.ts && chown -R 10001:10001 /data/fayanms'
+#     sh -c 'bunx prisma db push && bun prisma/seed.ts'
 #   docker compose --env-file .env.production up -d
 # (pristine instead of demo: same db push WITHOUT the seed run and the -e flags)
 
 name: fayanms
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fayanms
+      POSTGRES_DB: fayanms
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the --env-file (openssl rand -hex 32; never commit it)}"
+    volumes:
+      - fayanms-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fayanms -d fayanms"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
   app:
     build:
       context: .
@@ -35,13 +63,15 @@ services:
     env_file: .env.production
     environment:
       NODE_ENV: production
-      # Absolute path into the named volume — overrides anything from env_file.
-      DATABASE_URL: file:/data/fayanms/custom.db
       # Backend→worker hop (T5). Bridge DNS by default; the ${VAR:-default}
       # form lets the --env-file override it if a custom topology needs to.
       WORKER_BASE_URL: "${WORKER_BASE_URL:-http://worker:3030}"
-    volumes:
-      - fayanms-db:/data/fayanms
+      # PostgreSQL persistence (Phase 21 slice 1) — composed from the required
+      # POSTGRES_PASSWORD; overrides only if the operator changes the topology.
+      DATABASE_URL: "${DATABASE_URL:-postgresql://fayanms:${POSTGRES_PASSWORD}@postgres:5432/fayanms}"
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       # Front port only. Behind a TLS proxy (runbook D2) publish 80/443 there and
       # remove this. Move the host side via FAYANMS_HTTP_PORT if 80 is taken
@@ -61,9 +91,10 @@ services:
     restart: unless-stopped
     # Own container on the compose bridge network (T5) — service DNS name
     # "worker" is how the app reaches it; "app" is how it reaches Next.js.
+    # The worker NEVER touches PostgreSQL (all persistence via the app API).
     env_file: .env.production
     environment:
-      # Worker→app persistence hop (T5). The worker NEVER touches SQLite.
+      # Worker→app persistence hop (T5).
       NEXT_BASE_URL: "${NEXT_BASE_URL:-http://app:3000}"
     depends_on:
       - app
@@ -75,8 +106,8 @@ services:
 
   # One-off schema/seed container (T7). Uses the Dockerfile BUILD stage (full
   # node_modules incl. the prisma CLI — the slim runtime does not carry it).
-  # Always run with --no-deps; finish with the chown so the faya (uid 10001)
-  # runtime can write the volume. Not started by `docker compose up`.
+  # Waits for postgres health via depends_on; run with --no-deps ONLY for a
+  # schema re-push when postgres is already up. Not started by `docker compose up`.
   provision:
     build:
       context: .
@@ -88,9 +119,10 @@ services:
     restart: "no"
     env_file: .env.production
     environment:
-      DATABASE_URL: file:/data/fayanms/custom.db
-    volumes:
-      - fayanms-db:/data/fayanms
+      DATABASE_URL: "${DATABASE_URL:-postgresql://fayanms:${POSTGRES_PASSWORD}@postgres:5432/fayanms}"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
-  fayanms-db:
+  fayanms-pgdata:

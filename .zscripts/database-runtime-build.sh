@@ -1,33 +1,36 @@
 #!/bin/bash
+# Schema sync for the packaged-deployment flow — Phase 21 (PostgreSQL) contract.
+#
+# HISTORY: this helper used to copy a SQLite file into the build artifact and
+# run `prisma db push` against that file URL. Phase 21 slice 1 (2026-09-13)
+# retired the SQLite provider: production persistence is PostgreSQL, the
+# startup security policy rejects non-postgres URLs, and there is no database
+# file to package anymore.
+#
+# New contract:
+#   - DATABASE_URL unset  → packaging continues; schema sync is DEFERRED to
+#     deploy/start time (the build host must not require a reachable DB).
+#   - DATABASE_URL postgres(ql):// → sync the schema now against that server.
+#   - DATABASE_URL anything else (e.g. a leftover file: URL) → hard fail;
+#     the startup security policy would refuse it anyway.
 
 set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-/home/z/my-project}"
-BUILD_DIR="${BUILD_DIR:?BUILD_DIR is required}"
-SOURCE_DB_DIR="$PROJECT_DIR/db"
-SOURCE_DB_PATH="$SOURCE_DB_DIR/custom.db"
-TARGET_DB_DIR="$BUILD_DIR/db"
-TARGET_DB_PATH="$TARGET_DB_DIR/custom.db"
 
-mkdir -p "$TARGET_DB_DIR"
-
-if [ -f "$SOURCE_DB_PATH" ]; then
-    echo "🗄️  复制 Preview 数据库到构建产物..."
-    cp -a "$SOURCE_DB_DIR/." "$TARGET_DB_DIR/"
-else
-    echo "ℹ️  未找到 Preview 数据库 db/custom.db，将初始化空的生产数据库"
-fi
-
-echo "🗄️  同步构建产物中的数据库结构..."
-(
-    cd "$PROJECT_DIR"
-    DATABASE_URL="file:$TARGET_DB_PATH" bun run db:push
-)
-
-if [ ! -f "$TARGET_DB_PATH" ]; then
-    echo "❌ 数据库初始化命令执行成功，但未生成 $TARGET_DB_PATH"
-    exit 1
-fi
-
-echo "✅ 构建产物数据库已准备完成"
-ls -lah "$TARGET_DB_DIR"
+case "${DATABASE_URL:-}" in
+    "")
+        echo "ℹ️  DATABASE_URL 未设置 — 跳过打包期 schema 同步（部署/启动时执行 prisma db push）"
+        exit 0
+        ;;
+    postgres://* | postgresql://*)
+        echo "🗄️  对目标 PostgreSQL 同步 schema..."
+        cd "$PROJECT_DIR"
+        bun run db:push
+        echo "✅ schema 已同步到目标 PostgreSQL"
+        ;;
+    *)
+        echo "❌ DATABASE_URL 必须是 postgresql:// URL（Phase 21 已退役 SQLite provider），当前值被拒绝" >&2
+        exit 1
+        ;;
+esac

@@ -33,7 +33,9 @@
 #                                     inventory, service auth, crypto, audit chain)
 #     4. brand validation              (brand:validate, brand:validate-icons,
 #                                     validate-brand-consumers)
-#     5. schema validation             (prisma validate + db push to a fresh DB)
+#     5. schema validation             (prisma validate + db push + demo-seed
+#                                     smoke against a PostgreSQL 16 service
+#                                     container — Phase 21 slice 1, 2026-09-13)
 #     6. i18n parity                   (messages/en.json ≡ messages/ar.json)
 #     7. production build              (next build with ignoreBuildErrors:false)
 #   job `scan` (audit Phase 20 security gates — definitions, executed in CI):
@@ -56,8 +58,26 @@ on:
 jobs:
   gate:
     runs-on: ubuntu-latest
+    # Phase 21 slice 1: production persistence is PostgreSQL — the schema/seed
+    # gates run against a REAL PostgreSQL 16 service container (same major
+    # version the compose stack ships). The credentials below are throwaway
+    # CI-only values on an ephemeral runner.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fayanms
+          POSTGRES_DB: fayanms
+          POSTGRES_PASSWORD: fayanms-ci-only
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U fayanms -d fayanms"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     env:
-      DATABASE_URL: "file:./ci-gate.db"
+      DATABASE_URL: "postgresql://fayanms:fayanms-ci-only@localhost:5433/fayanms"
       NEXTAUTH_URL: "http://localhost:3000"
       NEXTAUTH_SECRET: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
       FAYANMS_SERVICE_SECRET: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
@@ -106,8 +126,17 @@ jobs:
       - name: Prisma schema validation
         run: bunx prisma validate
 
-      - name: Schema applies to a fresh database (ci-gate.db)
+      - name: Schema applies to a fresh PostgreSQL (service container)
         run: bunx prisma db push --skip-generate --accept-data-loss
+
+      # T7 provisioning path proven on every push: the demo seed is idempotent,
+      # refuses production NODE_ENV (unset here), and requires the demo gate —
+      # set at STEP level so no other step (in particular the production build)
+      # ever sees FAYANMS_DEMO_MODE=true.
+      - name: Demo seed smoke (T7 provisioning path on PostgreSQL)
+        env:
+          FAYANMS_DEMO_MODE: "true"
+        run: bun prisma/seed.ts
 
       - name: i18n parity (EN ≡ AR)
         run: |

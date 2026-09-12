@@ -69,6 +69,11 @@ tool-results/
 /db/*.db-journal
 /db/*.sqlite
 /db/*.sqlite3
+
+# Embedded PostgreSQL (Phase 21 sandbox dev database — binaries + cluster).
+# NEVER tracked: portable engine binaries and the dev cluster's data files.
+/db/pg-embed/
+/db/pgdata/
 # user-upload scratch (release tars/zips, working docs). Canonical documents
 # live in docs/ — nothing under upload/ belongs in git.
 /upload/

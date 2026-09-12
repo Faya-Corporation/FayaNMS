@@ -9,11 +9,15 @@
 #     origin. It is baked into the client bundle (metadataBase / OG absolutes)
 #     and siteUrl() throws in production without it (B3-029). Never build with
 #     a placeholder — it is a public hostname, not a secret.
-#   * DATABASE_URL is pinned to an absolute path under /data/fayanms so the
-#     SQLite file lives on the compose named volume, never inside a container
-#     filesystem.
-#   * Runtime is non-root with a PINNED uid (10001) — the provision flow
-#     (compose.yml `provision` service) chowns the volume to the same uid.
+#   * DATABASE_URL is NOT baked into the image: production persistence is
+#     PostgreSQL (Phase 21 slice 1) and the URL is composed by compose.yml from
+#     POSTGRES_PASSWORD (postgresql://fayanms:…@postgres:5432/fayanms). The
+#     startup security policy aborts boot when DATABASE_URL is missing or not a
+#     postgres URL — a misconfigured container can never serve traffic.
+#   * Runtime is non-root with a PINNED uid (10001). With no local state
+#     (Phase 21 moved persistence to PostgreSQL) the uid is defense-in-depth:
+#     a compromised process cannot write outside tmp. The provision flow no
+#     longer needs any chown handback.
 #   * Runtime base is debian-slim (NOT alpine): the Prisma query engine and the
 #     sharp prebuilt binaries are produced in the glibc build stage and are
 #     incompatible with musl. Keep libc/openssl consistent across stages.
@@ -40,16 +44,11 @@ FROM oven/bun:1.3.14-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \
-    HOSTNAME=0.0.0.0 \
-    DATABASE_URL=file:/data/fayanms/custom.db
+    HOSTNAME=0.0.0.0
 
-# Non-root runtime user with a pinned uid: the named volume is chowned to this
-# uid both here and by the provision service, so whichever container seeds the
-# volume first, the other can still write (SQLite single-writer by design).
+# Non-root runtime user with a pinned uid (see header note).
 RUN addgroup --system faya \
- && adduser --system --uid 10001 --ingroup faya faya \
- && mkdir -p /data/fayanms \
- && chown -R faya:faya /data/fayanms
+ && adduser --system --uid 10001 --ingroup faya faya
 
 COPY --from=build --chown=faya:faya /app/.next/standalone ./
 # Prisma client + query engine: explicit copy as a standalone-tracing safety
@@ -57,12 +56,12 @@ COPY --from=build --chown=faya:faya /app/.next/standalone ./
 # not just the build host (runbook T1 acceptance criteria).
 COPY --from=build --chown=faya:faya /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build --chown=faya:faya /app/node_modules/@prisma  ./node_modules/@prisma
-# Schema ships with the image so one-off provisioning (prisma db push) can run
-# from the build stage via the compose `provision` service.
+# Schema ships with the image so one-off provisioning (prisma db push against
+# the PostgreSQL service) can run from the build stage via the compose
+# `provision` service.
 COPY --from=build --chown=faya:faya /app/prisma ./prisma
 
 USER faya
-VOLUME /data/fayanms
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD bun -e 'const r = await fetch("http://127.0.0.1:3000/"); process.exit(r.ok ? 0 : 1)'
