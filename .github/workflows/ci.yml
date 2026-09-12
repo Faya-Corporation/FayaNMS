@@ -41,7 +41,8 @@
 #     9. SAST                          (semgrep p/default)
 #    10. dependency scan               (osv-scanner against bun.lock)
 #    11. SBOM                          (syft → CycloneDX JSON artifact)
-#    12. container scan                (trivy — auto-skips until a Dockerfile exists)
+#    12. container scan                (trivy fs — ACTIVE since the Dockerfile
+#                                          landed 2026-09-12, R12; first scans clean)
 # Secrets: CI uses well-formed THROWAWAY hex values — the startup security policy
 # validates the shape, and no real secret ever lives in this repo.
 
@@ -201,8 +202,16 @@ jobs:
           name: sbom-cyclonedx
           path: sbom.cdx.json
 
-      # ── 12. P20-013 — container scan (auto-skips until a Dockerfile exists) ──
-      - name: Container scan (trivy, conditional)
+      # ── 12. P20-013 — container scan (ACTIVE: Dockerfile landed 2026-09-12) ──
+      # The auto-skip era ended with the R12 containerization push (runbook T1–T3
+      # of docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md). First verified scans:
+      # 0 HIGH/CRITICAL vulnerabilities (bun.lock), 0 misconfigurations (both
+      # Dockerfiles), 0 secrets. The planned .trivyignore mirror never had to
+      # land — the next-auth 4.24.15 patch release fixed the four triaged
+      # advisories instead, and the osv-scanner.toml entries were dropped per
+      # that ledger's own rules (retirement note of 2026-09-12). The hashFiles
+      # guard below remains as a correctness guard for exotic checkouts.
+      - name: Container scan (trivy)
         if: ${{ hashFiles('Dockerfile') != '' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA-pinned 2026-09-11)
         with:
@@ -211,6 +220,6 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
 
-      - name: Container scan skipped (no Dockerfile yet)
+      - name: Container scan skipped (guard — no Dockerfile in checkout)
         if: ${{ hashFiles('Dockerfile') == '' }}
-        run: echo "No Dockerfile yet (audit Phase 21 containerization) — trivy gate skipped by definition."
+        run: echo "Guard branch — no Dockerfile present in this checkout, so the trivy gate is skipped by definition (the Dockerfile landed 2026-09-12; this branch only fires for exotic or partial checkouts)."

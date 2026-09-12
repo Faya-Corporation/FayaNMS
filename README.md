@@ -105,6 +105,10 @@ and the seed refuses to wipe a production database).
 
 The worker claims jobs (`CONFIG_BACKUP`, `DISCOVERY`, `DRIFT_CHECK`, `CHANGE_EXECUTE`, `ALERT_EVALUATION`, `METRIC_RETENTION`, `REPORT_RUN`, `FIRMWARE_UPGRADE`, `ZTP_PROVISION`) with concurrency 3, per-job timeouts, exponential backoff on backend outages, and `GET :3030/health` observability. A scheduler tick (`POST /api/v1/worker/tick`, every ~30 s) enqueues scheduled work, prunes metric/snapshot retention, and **reaps orphaned RUNNING jobs** (10 min threshold; 15 min for change execution) — flipped to FAILED with a `JOB_ORPHAN_REAPED` audit row and an "Orphaned" marker in the Job Center, recoverable via the built-in retry.
 
+### Docker / Windows Server deployment
+
+The container stack ships in-repo: `Dockerfile` (multi-stage bun → Next standalone, non-root, SQLite on a named volume), `Dockerfile.worker`, `compose.yml` (app + worker + one-off `provision` service; the worker shares the app's network namespace so the hardcoded loopback contracts hold with zero code changes), and `.dockerignore`. The full host runbook — Windows Server + WSL2 prep, secrets, first deployment, backups, upgrades, troubleshooting — is [docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md](docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md); the env template is [docs/deploy/env.production.example](docs/deploy/env.production.example).
+
 ## Conventions
 
 - Every list/detail surface uses the envelope `{ success, data, meta, requestContext }` with Zod-validated inputs and machine-readable error codes.

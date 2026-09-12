@@ -1,0 +1,54 @@
+# FayaNMS Docker build context guard (T1b of
+# docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md).
+#
+# Goal: context stays in the tens-of-MB range and NOTHING secret or volatile
+# ever enters an image layer (docker history / image export must show no .env*,
+# no database, no logs). Both the app build (Dockerfile) and the worker build
+# (Dockerfile.worker) share this context root.
+
+# dependencies / build output (installed fresh inside the stages)
+node_modules
+.next
+out
+build
+
+# VCS + CI
+.git
+.github
+
+# runtime state — NEVER bake these into an image (P19-REP lesson: the live DB
+# churned 475 MB of git history once; it does not get to poison images too)
+db
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# secrets + env — env comes ONLY from compose env_file / --env-file
+.env*
+!.env.example
+
+# logs / scratch / session artifacts
+*.log
+*.out
+*.pid
+dev.log
+server.log
+upload
+download
+.scratch
+agent-ctx
+tool-results
+.zscripts
+.z-ai-config
+.claude
+
+# docs / tests / examples — not needed by any build stage (the seed ships via
+# prisma/, the worker via mini-services/worker/)
+docs
+tests
+examples
+skills
+worklog.md

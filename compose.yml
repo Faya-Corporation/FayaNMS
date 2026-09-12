@@ -1,0 +1,88 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# FayaNMS — single-host production compose stack (T3 of
+# docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md).
+#
+# Topology contract (zero code changes): the worker joins the APP's network
+# namespace, because both service directions are hardcoded to loopback:
+#   app → http://localhost:3030 (worker) · worker → http://localhost:3000 (app).
+# Exactly ONE published port exists; 3030 stays internal (service-JWT-protected).
+# The refactoring that removes the network_mode workaround is runbook T5
+# (Phase-21 proper) — do not publish 3030 in the meantime.
+#
+# Build / provision / run (inside WSL2, repo root — demo-seed path, runbook T7):
+#   docker compose --env-file .env.production build
+#   docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
+#     -e FAYANMS_DEMO_MODE=true provision \
+#     sh -c 'bunx prisma db push && bun prisma/seed.ts && chown -R 10001:10001 /data/fayanms'
+#   docker compose --env-file .env.production up -d
+# (pristine instead of demo: same db push WITHOUT the seed run and the -e flags)
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: fayanms
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Interpolated from the --env-file (e.g. .env.production). Public origin,
+        # NOT a secret; baked into the client bundle at build time (Dockerfile T1).
+        NEXT_PUBLIC_SITE_URL: "${NEXT_PUBLIC_SITE_URL:?Set NEXT_PUBLIC_SITE_URL in the --env-file — the real canonical origin; localhost and *.local are rejected in production}"
+    image: fayanms-app:latest
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      NODE_ENV: production
+      # Absolute path into the named volume — overrides anything from env_file.
+      DATABASE_URL: file:/data/fayanms/custom.db
+    volumes:
+      - fayanms-db:/data/fayanms
+    ports:
+      # Front port only. Behind a TLS proxy (runbook D2) publish 80/443 there and
+      # remove this. Move the host side via FAYANMS_HTTP_PORT if 80 is taken
+      # (e.g. IIS); the INTERNAL port 3000 is a hardcoded contract — keep it.
+      - "${FAYANMS_HTTP_PORT:-80}:3000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: fayanms-worker:latest
+    restart: unless-stopped
+    # Shares the app's network namespace → both loopback contracts hold.
+    network_mode: "service:app"
+    env_file: .env.production
+    depends_on:
+      - app
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # One-off schema/seed container (T7). Uses the Dockerfile BUILD stage (full
+  # node_modules incl. the prisma CLI — the slim runtime does not carry it).
+  # Always run with --no-deps; finish with the chown so the faya (uid 10001)
+  # runtime can write the volume. Not started by `docker compose up`.
+  provision:
+    build:
+      context: .
+      target: build
+      args:
+        NEXT_PUBLIC_SITE_URL: "${NEXT_PUBLIC_SITE_URL:?Set NEXT_PUBLIC_SITE_URL in the --env-file}"
+    image: fayanms-provision:latest
+    profiles: ["provision"]
+    restart: "no"
+    env_file: .env.production
+    environment:
+      DATABASE_URL: file:/data/fayanms/custom.db
+    volumes:
+      - fayanms-db:/data/fayanms
+
+volumes:
+  fayanms-db:

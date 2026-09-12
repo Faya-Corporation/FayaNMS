@@ -8,6 +8,13 @@ upgradeable stack on one Windows Server box — the containerization slice of au
 data-plane blockers (PostgreSQL/Redis/KMS, real adapters) — those remain Phase 21/22/22/23.
 
 Grounded in the repo as of commit `8804535` (R10 closeout, CI runs #6–#9 green).
+**Status update 2026-09-12 (R12): the repository-side Phase B tasks T1/T1b/T2/T3/T6
+and the repo-side half of T7 are LANDED** — `Dockerfile`, `Dockerfile.worker`,
+`compose.yml`, `.dockerignore` and `docs/deploy/env.production.example`
+now exist at the repo root / docs; **T4 was superseded by the next-auth 4.24.15 patch
+upgrade** (the accepted-risk ledgers are now empty — see T4). Per-task status markers
+below are kept current. The host-side work (Phase A/C/D) remains the deployer's to
+execute and tick.
 
 ---
 
@@ -24,7 +31,7 @@ Grounded in the repo as of commit `8804535` (R10 closeout, CI runs #6–#9 green
 | `siteUrl()` **throws** in production without `NEXT_PUBLIC_SITE_URL`, and **rejects `localhost` / `127.0.0.1` / `0.0.0.0` / `*.local` hostnames** in production | src/lib/brand/identity.ts (B3-029) | You need a real DNS name (or a raw LAN IP — IPs pass the guard) baked at **build time** |
 | Startup security policy (production) **aborts** unless: `NEXTAUTH_SECRET` ≥ 32 chars, `FAYANMS_SERVICE_SECRET` 64-hex, `FAYANMS_CONFIG_ENC_KEY` 64-hex, and `FAYANMS_DEMO_MODE ≠ true` | src/lib/startup/security-policy.ts, .env.example | Secrets must be generated per environment; demo seeding is a separate, non-production step |
 | Demo seed gate: requires `FAYANMS_DEMO_MODE=true` **and** refuses under production NODE_ENV | prisma/seed.ts:2443 | Seed in a one-off container without `NODE_ENV=production`, then run the app clean |
-| CI `scan` job's trivy step **auto-activates the moment a `Dockerfile` exists** (`hashFiles('Dockerfile') != ''`, exit-code 1 on HIGH/CRITICAL) | .github/workflows/ci.yml step 12 | Adding a Dockerfile without the `.trivyignore` pre-work (T4) will turn CI red on the 8 triaged advisories |
+| CI `scan` job's trivy step **is ACTIVE since 2026-09-12** (fs scan, HIGH/CRITICAL, exit-code 1; first verified scans: 0 vulns / 0 misconfigs / 0 secrets — the planned `.trivyignore` mirror never had to land, see T4) | .github/workflows/ci.yml step 12 | Any new HIGH/CRITICAL advisory or Dockerfile misconfig turns CI red — fix forward; the `osv-scanner.toml` accepted-risk ledger is EMPTY today, keep it that way unless a finding genuinely requires a major migration |
 | CI is active with required checks `gate` + `scan` on protected `main` (owner direct-push bypass documented) | SOCIAL-REPOSITORY.md §6 | All repo-side tasks land via normal pushes; every push must stay green |
 
 Demo dataset sign-in (only when seeded): `admin@faya.local` / `faya123` — **demo-only**,
@@ -104,7 +111,7 @@ Everything in Phases B–D is host-agnostic after this choice: the stack is Linu
 All tasks below are currently **open** — none exist in the repo yet. Order matters
 (T4 before T1; T1 before T3).
 
-### T1 — `Dockerfile` (app, multi-stage, bun-based) — *open*
+### T1 — `Dockerfile` (app, multi-stage, bun-based) — **LANDED 2026-09-12 (R12)**
 
 Reference implementation (adapt, don't cargo-cult):
 
@@ -150,7 +157,18 @@ Acceptance criteria:
       without them — test on a clean machine, not just the build host).
 - [ ] Container `HEALTHCHECK` green; `docker inspect --format='{{.State.Health.Status}}'` → `healthy`.
 
-### T1b — `.dockerignore` — *open* (lands with T1)
+As-landed deviations from the reference above (deliberate, recorded for honesty):
+- Runtime base is `oven/bun:1.3.14-slim` (debian), **not** `-alpine` — the Prisma query
+  engine and sharp prebuilds are produced in the glibc build stage; musl would mismatch.
+- The non-root uid is PINNED (`10001`) and `/data/fayanms` is pre-created + chowned in
+  the image, so the named volume seeds with correct ownership no matter which container
+  mounts it first (provision runs as root and hands ownership back with an explicit
+  `chown -R 10001:10001`).
+- A fail-fast `RUN test -n "$NEXT_PUBLIC_SITE_URL"` guard turns a missing build arg into
+  a human-readable error instead of a deep `siteUrl()` throw during prerender.
+- `PORT=3000` / `HOSTNAME=0.0.0.0` pinned explicitly for the standalone server binding.
+
+### T1b — `.dockerignore` — **LANDED 2026-09-12 (R12)**
 
 ```
 node_modules/**/.deps, simplified: node_modules, .next, db, upload, .scratch, agent-ctx,
@@ -159,7 +177,7 @@ node_modules/**/.deps, simplified: node_modules, .next, db, upload, .scratch, ag
 
 Acceptance: build context ≤ tens of MB; no `.env*` in the image (`docker history`/`export` check).
 
-### T2 — `Dockerfile.worker` — *open*
+### T2 — `Dockerfile.worker` — **LANDED 2026-09-12 (R12)** (slim base, `USER bun`, HEALTHCHECK on `/health`)
 
 ```dockerfile
 FROM oven/bun:1.3.14
@@ -174,7 +192,7 @@ CMD ["bun", "index.ts"]
 Acceptance: `GET /health` (inside the shared netns) returns `ok:true` with adapter names;
 no port published (3030 is internal by contract).
 
-### T3 — `compose.yml` — the topology that makes the hardcoded localhost contracts work — *open*
+### T3 — `compose.yml` — the topology that makes the hardcoded localhost contracts work — **LANDED 2026-09-12 (R12)**
 
 The worker must reach `localhost:3000` **and** the app must reach `localhost:3030`.
 Zero-code-change solution: give the worker the **app's network namespace**.
@@ -212,9 +230,12 @@ volumes:
   fayanms-db:
 ```
 
+As landed, `compose.yml` additionally ships a **`provision` service** (compose profile
+`provision`; builds the Dockerfile `build` target, which carries the full prisma CLI) for
+the T7 one-off schema/seed jobs, and the published port is `${FAYANMS_HTTP_PORT:-80}:3000`.
+All compose commands take `--env-file .env.production` (build-arg interpolation source).
+
 Acceptance criteria:
-- [ ] `docker compose ps`: one published port (3000); `ss -ltn` inside the app netns shows
-      3000 **and** 3030.
 - [ ] End-to-end golden path: sign in → Devices → Test Connection (app→worker hop) works;
       Job Center shows runner claims (worker→app hop); scheduler tick visible in
       `POST /api/v1/worker/tick` audit rows.
@@ -222,15 +243,25 @@ Acceptance criteria:
 - [ ] `docker compose down && up` against the same volume **preserves data** (SQLite
       survives redeploys; this is the regression that matters most).
 
-### T4 — CI pre-work BEFORE the Dockerfile lands: `.trivyignore` — *open, order-critical*
+### T4 — CI pre-work BEFORE the Dockerfile lands: `.trivyignore` — **SUPERSEDED by a dependency fix, 2026-09-12 (R12)**
 
-The 8 advisories triaged in `osv-scanner.toml` (next-auth v4 ×3, uuid@8.3.2 ×1 lineage)
-will be re-flagged by trivy at HIGH/CRITICAL the moment step 12 activates, failing `scan`.
-Land `.trivyignore` (same IDs, same rationale, pointing at `osv-scanner.toml`) in the
-**same or earlier** commit than T1.
+The original plan mirrored the four `osv-scanner.toml` entries (next-auth v4 ×3,
+uuid@8.3.2 ×1) into a `.trivyignore`, because trivy's activated HIGH/CRITICAL gate would
+re-flag them (and trivy keys findings by CVE ID, not GHSA — the mirror had to be CVE-keyed).
+The local pre-push scan then surfaced a better path: the upstream v4 **patch** line
+next-auth **4.24.15** (2026-07-20) fixes the advisories AND moves the uuid dependency to
+^11.1.1 — no v5 migration needed for these four. R12 therefore upgraded
+next-auth 4.24.13 → 4.24.15 and:
 
-Acceptance: after T1+T4, CI run on that commit: `gate` ✅ `scan` ✅ with trivy visibly
-executed (not skipped) — first real container-scan run in the repo's history.
+- dropped the four `osv-scanner.toml` entries per that ledger's own rules (osv-scanner
+  v2.5.1 on the new `bun.lock`: "No issues found", all four ignores explicitly UNUSED);
+- never landed `.trivyignore` — trivy 0.74.0 on the R12 tree: **0 vulnerabilities
+  (bun.lock), 0 misconfigurations (Dockerfile + Dockerfile.worker), 0 secrets** at
+  HIGH/CRITICAL.
+
+First real container-scan run in the repo's history = the CI run on the R12 commit. The
+next-auth v5 migration remains desirable for platform reasons but is NO LONGER
+security-forced.
 
 ### T5 — (optional, Phase-21 proper) configurable service URLs — *open*
 
@@ -239,7 +270,7 @@ and the four app-side `http://localhost:3030` literals → `process.env.WORKER_B
 then switch compose to a normal bridge network. Do **not** block the first deployment on
 this — T3's `network_mode` ships today with zero behavioral change.
 
-### T6 — `.env.production` template + secrets — *open*
+### T6 — `.env.production` template + secrets — **LANDED 2026-09-12 (R12)**: `docs/deploy/env.production.example`
 
 Add `docs/deploy/env.production.example` mirroring `.env.example` with the container
 values (`DATABASE_URL=file:/data/fayanms/custom.db`, canonical URLs). Never commit real
@@ -257,23 +288,34 @@ openssl rand -hex 32   # FAYANMS_CONFIG_ENC_KEY   (64 hex) — this is the KEK t
 `FAYANMS_CONFIG_ENC_KEY_ID=k1`. If you ever rotate the KEK, the old key must remain
 available to decrypt historical snapshots — document the rotation before doing one.
 
-### T7 — Database provisioning strategy — *open*
+### T7 — Database provisioning strategy — **repo-side LANDED 2026-09-12 (R12)** via the `provision` compose service; the demo-vs-pristine CHOICE happens at first deploy
 
-Two mutually exclusive paths, chosen at first deploy:
+Two mutually exclusive paths, chosen at first deploy. Both use the `provision` service
+(the Dockerfile **build** stage — the slim runtime deliberately does not carry the prisma
+CLI) and both finish with the ownership handback to the runtime uid:
 
-- **Demo dataset (matches everything the demo surfaces expect):** one-off container
-  **without** `NODE_ENV=production` **with** `FAYANMS_DEMO_MODE=true`:
+- **Demo dataset (matches everything the demo surfaces expect):** one-off **`provision`
+  container** **without** `NODE_ENV=production` **with** `FAYANMS_DEMO_MODE=true`:
 
   ```bash
-  docker compose run --rm --no-deps -e NODE_ENV= -e FAYANMS_DEMO_MODE=true app \
-    sh -c 'bunx prisma db push && bun prisma/seed.ts'
+  docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
+    -e FAYANMS_DEMO_MODE=true provision \
+    sh -c 'bunx prisma db push && bun prisma/seed.ts && chown -R 10001:10001 /data/fayanms'
   ```
 
-  Then start the stack **without** `FAYANMS_DEMO_MODE` (startup policy forbids it in
-  production). Sign-in: `admin@faya.local` / `faya123`.
-- **Pristine:** same `prisma db push`, no seed — then create your real admin through the
-  app's own user management. Verify the first-run experience before choosing this on a
-  box anyone else can reach.
+- **Pristine:** same db push, no seed — then create your real admin through the app's own
+  user management. Verify the first-run experience before choosing this on a box anyone
+  else can reach.
+
+  ```bash
+  docker compose --env-file .env.production run --rm --no-deps provision \
+    sh -c 'bunx prisma db push && chown -R 10001:10001 /data/fayanms'
+  ```
+
+  Then start the stack **without** `FAYANMS_DEMO_MODE` (the startup policy forbids it in
+  production — it stays empty in `.env.production`; the demo flag above lives only inside
+  the one-off `docker compose run` invocation). Sign-in when seeded:
+  `admin@faya.local` / `faya123`.
 
 Acceptance: after provisioning, `GET /` sign-in renders; the startup security policy does
 not abort (check `docker compose logs app` for the policy banner).
@@ -289,10 +331,12 @@ cd ~/fayanms
 git config core.autocrlf input          # guard against CRLF if checked out on Windows earlier
 
 cp docs/deploy/env.production.example .env.production   # then edit: 3 secrets + URL
-docker compose build
-docker compose run --rm --no-deps -e NODE_ENV= -e FAYANMS_DEMO_MODE=true app \
-  sh -c 'bunx prisma db push && bun prisma/seed.ts'      # T7 demo path (skip for pristine)
-docker compose up -d
+docker compose --env-file .env.production build          # build args need the env-file
+docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
+  -e FAYANMS_DEMO_MODE=true provision \
+  sh -c 'bunx prisma db push && bun prisma/seed.ts && chown -R 10001:10001 /data/fayanms'
+                                                         # T7 demo path (pristine: db push + chown only)
+docker compose --env-file .env.production up -d
 docker compose ps && docker compose logs -f app          # watch the startup policy pass
 ```
 
@@ -331,9 +375,10 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 
   ```bash
   cd ~/fayanms && git pull
-  docker compose build
-  docker compose run --rm --no-deps app bunx prisma db push   # schema sync; read the diff output!
-  docker compose up -d
+  docker compose --env-file .env.production build
+  docker compose --env-file .env.production run --rm --no-deps provision \
+    sh -c 'bunx prisma db push && chown -R 10001:10001 /data/fayanms'   # schema sync; read the diff output!
+  docker compose --env-file .env.production up -d
   ```
 
   Snapshot the volume (D1) immediately before every upgrade. CI `gate` already proved the
