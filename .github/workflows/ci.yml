@@ -33,9 +33,11 @@
 #                                     inventory, service auth, crypto, audit chain)
 #     4. brand validation              (brand:validate, brand:validate-icons,
 #                                     validate-brand-consumers)
-#     5. schema validation             (prisma validate + db push + demo-seed
-#                                     smoke against a PostgreSQL 16 service
-#                                     container — Phase 21 slice 1, 2026-09-13)
+#     5. schema validation             (prisma validate + MIGRATION HISTORY
+#                                     apply on a fresh PostgreSQL + migrations≡
+#                                     schema drift guard + demo-seed smoke —
+#                                     PostgreSQL 16 service container; slice 1
+#                                     2026-09-13, migrate history slice 2 2026-09-13)
 #     6. i18n parity                   (messages/en.json ≡ messages/ar.json)
 #     7. production build              (next build with ignoreBuildErrors:false)
 #   job `scan` (audit Phase 20 security gates — definitions, executed in CI):
@@ -126,13 +128,36 @@ jobs:
       - name: Prisma schema validation
         run: bunx prisma validate
 
-      - name: Schema applies to a fresh PostgreSQL (service container)
-        run: bunx prisma db push --skip-generate --accept-data-loss
+      # Phase 21 slice 2 (2026-09-13): provisioning goes through the COMMITTED
+      # migration history (prisma/migrations), not db push. This proves on every
+      # push that a fresh database reaches the current schema by replaying the
+      # history alone — exactly what the compose `provision` service does (T7).
+      - name: Migration history applies to a fresh PostgreSQL (service container)
+        run: bunx prisma migrate deploy
 
-      # T7 provisioning path proven on every push: the demo seed is idempotent,
-      # refuses production NODE_ENV (unset here), and requires the demo gate —
-      # set at STEP level so no other step (in particular the production build)
-      # ever sees FAYANMS_DEMO_MODE=true.
+      # Drift guard: the committed history must reproduce prisma/schema.prisma
+      # EXACTLY. `migrate diff --exit-code` exits 2 on any difference (0 on
+      # parity), so editing the schema without landing a migration fails the
+      # gate. The shadow database is a throwaway on the same ephemeral service
+      # container; Bun's built-in PostgreSQL client creates it (no psql
+      # dependency on the runner).
+      - name: Create shadow database (drift-guard target)
+        run: bun -e '
+          import { SQL } from "bun";
+          const sql = new SQL("postgresql://fayanms:fayanms-ci-only@localhost:5433/fayanms");
+          await sql.unsafe(`DROP DATABASE IF EXISTS "fayanms_shadow"`);
+          await sql.unsafe(`CREATE DATABASE "fayanms_shadow"`);
+          console.log("shadow database ready");
+          await sql.end();
+          '
+
+      - name: Migrations ≡ schema (drift guard)
+        run: bunx prisma migrate diff --from-migrations prisma/migrations --shadow-database-url postgresql://fayanms:fayanms-ci-only@localhost:5433/fayanms_shadow --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      # T7 provisioning path proven on every push (now migrate deploy + seed):
+      # the demo seed is idempotent, refuses production NODE_ENV (unset here),
+      # and requires the demo gate — set at STEP level so no other step (in
+      # particular the production build) ever sees FAYANMS_DEMO_MODE=true.
       - name: Demo seed smoke (T7 provisioning path on PostgreSQL)
         env:
           FAYANMS_DEMO_MODE: "true"

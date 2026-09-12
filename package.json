@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "test": "bun test tests/",
     "db:push": "prisma db push --accept-data-loss",
+    "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",

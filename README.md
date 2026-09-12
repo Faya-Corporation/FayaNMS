@@ -78,7 +78,7 @@ cp .env.example .env
 #   docker run -d --name fayanms-pg -p 5432:5432 \
 #     -e POSTGRES_USER=fayanms -e POSTGRES_PASSWORD=fayanms -e POSTGRES_DB=fayanms \
 #     postgres:16-alpine
-bun run db:push                    # create schema
+bun run db:deploy                  # create schema from the committed migration history (prisma/migrations)
 bun prisma/seed.ts                 # pristine demo dataset (30 devices / 7 vendors, jobs, incidents, CIs, …)
 bun scripts/migrate-encrypt-snapshots.ts   # encrypt the seeded snapshots at rest (idempotent)
 
@@ -101,7 +101,9 @@ and the seed refuses to wipe a production database).
 | `bun run dev` | Next dev server on port 3000 (logs to `dev.log`) |
 | `bun run lint` | ESLint |
 | `bunx tsc --noEmit` | Type check |
-| `bun run db:push` | Push `prisma/schema.prisma` to the configured PostgreSQL |
+| `bun run db:deploy` | Apply the committed migration history (`prisma/migrations`, `prisma migrate deploy`) — the production provisioning path |
+| `bun run db:migrate` | Land a migration: schema edits → a new timestamped entry in `prisma/migrations` (`prisma migrate dev`) |
+| `bun run db:push` | Dev-only scratch: sync the schema WITHOUT history (never in production — use `db:migrate`) |
 | `bun prisma/seed.ts` | Rebuild the pristine demo dataset |
 | `bun scripts/migrate-encrypt-snapshots.ts` | Encrypt legacy plaintext snapshots (idempotent; also the KEK-rotation path) |
 
@@ -142,7 +144,9 @@ inventory, service-auth, crypto, audit chain).
 demo/control-plane prototype. Core identity, mutation-level RBAC authorization, service
 authentication, configuration encryption and audit verification are substantially remediated,
 and production persistence is now PostgreSQL (Phase 21 slice 1, 2026-09-13: schema,
-compose `postgres` service, CI service-container gates). Remaining before a production
+compose `postgres` service, CI service-container gates; slice 2 the same day: a committed
+`prisma/migrations` history with fresh-database `migrate deploy` and a migrations≡schema
+drift guard enforced in CI). Remaining before a production
 claim: real vendor-device adapter certification (Phase 22) and the optional Phase 21
 components (Redis/KMS/object storage/distributed locks). (CI enforcement on a protected
 `main` — one of the three original blockers — was completed on 2026-09-10, see below.)

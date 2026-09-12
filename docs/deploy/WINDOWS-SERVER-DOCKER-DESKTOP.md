@@ -332,12 +332,14 @@ openssl rand -hex 32   # POSTGRES_PASSWORD        (64 hex) — compose composes 
 `FAYANMS_CONFIG_ENC_KEY_ID=k1`. If you ever rotate the KEK, the old key must remain
 available to decrypt historical snapshots — document the rotation before doing one.
 
-### T7 — Database provisioning strategy — **repo-side LANDED 2026-09-12 (R12)** via the `provision` compose service; the demo-vs-pristine CHOICE happens at first deploy
+### T7 — Database provisioning strategy — **repo-side LANDED 2026-09-12 (R12)** via the `provision` compose service; **migrate-deploy path since Phase 21 slice 2 (2026-09-13)**; the demo-vs-pristine CHOICE happens at first deploy
 
 Two mutually exclusive paths, chosen at first deploy. Both use the `provision` service
 (the Dockerfile **build** stage — the slim runtime deliberately does not carry the prisma
 CLI) and both target the `postgres` service directly. Since Phase 21 there is NO
-ownership handback — the database lives in PostgreSQL, not on a file volume:
+ownership handback — the database lives in PostgreSQL, not on a file volume. Both paths
+replay the COMMITTED migration history (`prisma/migrations`) via `prisma migrate deploy`
+— `db:push` is a dev-only scratch tool and must never touch this database:
 
 - **Demo dataset (matches everything the demo surfaces expect):** one-off **`provision`
   container** **without** `NODE_ENV=production` **with** `FAYANMS_DEMO_MODE=true`:
@@ -345,16 +347,16 @@ ownership handback — the database lives in PostgreSQL, not on a file volume:
   ```bash
   docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
     -e FAYANMS_DEMO_MODE=true provision \
-    sh -c 'bunx prisma db push && bun prisma/seed.ts'
+    sh -c 'bunx prisma migrate deploy && bun prisma/seed.ts'
   ```
 
-- **Pristine:** same db push, no seed — then create your real admin through the app's own
-  user management. Verify the first-run experience before choosing this on a box anyone
-  else can reach.
+- **Pristine:** same migrate deploy, no seed — then create your real admin through the
+  app's own user management. Verify the first-run experience before choosing this on a box
+  anyone else can reach.
 
   ```bash
   docker compose --env-file .env.production run --rm --no-deps provision \
-    sh -c 'bunx prisma db push'
+    sh -c 'bunx prisma migrate deploy'
   ```
 
   Then start the stack **without** `FAYANMS_DEMO_MODE` (the startup policy forbids it in
@@ -379,8 +381,8 @@ cp docs/deploy/env.production.example .env.production   # then edit: 3 secrets +
 docker compose --env-file .env.production build          # build args need the env-file
 docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
   -e FAYANMS_DEMO_MODE=true provision \
-  sh -c 'bunx prisma db push && bun prisma/seed.ts'
-                                                       # T7 demo path (pristine: db push only)
+  sh -c 'bunx prisma migrate deploy && bun prisma/seed.ts'
+                                                       # T7 demo path (pristine: migrate deploy only)
 docker compose --env-file .env.production up -d
 docker compose ps && docker compose logs -f app          # watch the startup policy pass
 ```
@@ -414,18 +416,23 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
   80/443 only. If a corporate cert exists, mount it instead. `NEXTAUTH_URL` /
   `NEXT_PUBLIC_SITE_URL` become `https://…` and the images must be **rebuilt** (the URL is
   a build-time ARG — T1).
-- [ ] **D3. Upgrade procedure** (the repo ships `db:push`, not migrations):
+- [ ] **D3. Upgrade procedure** (the repo ships a COMMITTED migration history —
+  `prisma/migrations` — applied via `prisma migrate deploy`):
 
   ```bash
   cd ~/fayanms && git pull
   docker compose --env-file .env.production build
   docker compose --env-file .env.production run --rm --no-deps provision \
-    sh -c 'bunx prisma db push'   # schema sync against postgres; read the diff output!
+    sh -c 'bunx prisma migrate deploy'   # applies any NEW migrations; no-op when current
   docker compose --env-file .env.production up -d
   ```
 
-  Snapshot the volume (D1) immediately before every upgrade. CI `gate` already proved the
-  commit builds green — trust but verify the seed/schema diff.
+  Take a D1 `pg_dump` snapshot immediately before every upgrade. Migrations are
+  forward-only, and CI proves on every push that (a) the committed history applies to a
+  fresh database and (b) the history reproduces `prisma/schema.prisma` exactly (drift
+  guard) — so `migrate deploy` is deterministic. `db:push` is a dev-only scratch tool;
+  never point it at this database (a schema change must land as a migration, or CI's
+  drift guard fails the push).
 - [ ] **D4. Monitoring:** external uptime probe against `/` (sign-in gate is public);
   worker liveness is already modeled — `GET /api/v1/worker/status` (app-authenticated)
   proxies `/health` with job counters + scheduler state. `docker events` → optional
@@ -473,11 +480,12 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 
 ## Explicitly NOT covered here (tracked elsewhere)
 
-- Redis/KMS/object storage/distributed locks and a `prisma migrate` history — the REST
-  of audit Phase 21. Slice 1 (the PostgreSQL swap: schema provider, compose `postgres`
-  service, startup-policy enforcement, CI service-container gates) LANDED 2026-09-13;
-  the remaining components are optional hardening, not prerequisites for this single-host
-  deployment.
+- Redis/KMS/object storage/distributed locks — the REST of audit Phase 21. Slice 1 (the
+  PostgreSQL swap: schema provider, compose `postgres` service, startup-policy
+  enforcement, CI service-container gates) LANDED 2026-09-13; slice 2 (the committed
+  `prisma/migrations` history, fresh-database `migrate deploy` + migrations≡schema drift
+  guard in CI, `migrate deploy` as the T7/D3 path) LANDED the same day. The remaining
+  components are optional hardening, not prerequisites for this single-host deployment.
 - Real vendor adapters (Phase 22) and controlled change execution (Phase 23).
 - HA/multi-node (the architecture is deliberately single-node PostgreSQL today).
 

@@ -23,9 +23,11 @@
 #   docker compose --env-file .env.production build
 #   docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
 #     -e FAYANMS_DEMO_MODE=true provision \
-#     sh -c 'bunx prisma db push && bun prisma/seed.ts'
+#     sh -c 'bunx prisma migrate deploy && bun prisma/seed.ts'
 #   docker compose --env-file .env.production up -d
-# (pristine instead of demo: same db push WITHOUT the seed run and the -e flags)
+# (pristine instead of demo: same migrate deploy WITHOUT the seed run and the
+# -e flags. Provisioning replays the committed migration history —
+# prisma/migrations — NOT db push; slice 2, 2026-09-13.)
 
 name: fayanms
 
@@ -107,7 +109,8 @@ services:
   # One-off schema/seed container (T7). Uses the Dockerfile BUILD stage (full
   # node_modules incl. the prisma CLI — the slim runtime does not carry it).
   # Waits for postgres health via depends_on; run with --no-deps ONLY for a
-  # schema re-push when postgres is already up. Not started by `docker compose up`.
+  # schema re-apply (migrate deploy) when postgres is already up. Not started
+  # by `docker compose up`.
   provision:
     build:
       context: .

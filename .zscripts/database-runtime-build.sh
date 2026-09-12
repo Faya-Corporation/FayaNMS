@@ -3,14 +3,17 @@
 #
 # HISTORY: this helper used to copy a SQLite file into the build artifact and
 # run `prisma db push` against that file URL. Phase 21 slice 1 (2026-09-13)
-# retired the SQLite provider: production persistence is PostgreSQL, the
-# startup security policy rejects non-postgres URLs, and there is no database
-# file to package anymore.
+# retired the SQLite provider. Phase 21 slice 2 (2026-09-13) moved provisioning
+# onto the COMMITTED migration history: the production path is
+# `prisma migrate deploy` (script `db:deploy`), while `db:push` survives only
+# as a dev-only scratch tool.
 #
-# New contract:
-#   - DATABASE_URL unset  → packaging continues; schema sync is DEFERRED to
-#     deploy/start time (the build host must not require a reachable DB).
-#   - DATABASE_URL postgres(ql):// → sync the schema now against that server.
+# Contract:
+#   - DATABASE_URL unset            → packaging continues; schema sync is
+#     DEFERRED to deploy/start time (the build host must not require a
+#     reachable database).
+#   - DATABASE_URL postgres(ql)://  → apply the committed migration history
+#     now (`bun run db:deploy`) against that server.
 #   - DATABASE_URL anything else (e.g. a leftover file: URL) → hard fail;
 #     the startup security policy would refuse it anyway.
 
@@ -20,17 +23,17 @@ PROJECT_DIR="${PROJECT_DIR:-/home/z/my-project}"
 
 case "${DATABASE_URL:-}" in
     "")
-        echo "ℹ️  DATABASE_URL 未设置 — 跳过打包期 schema 同步（部署/启动时执行 prisma db push）"
+        echo "ℹ️  DATABASE_URL is not set — skipping build-time schema sync (applied at deploy time via prisma migrate deploy)"
         exit 0
         ;;
     postgres://* | postgresql://*)
-        echo "🗄️  对目标 PostgreSQL 同步 schema..."
+        echo "🗄️  Applying the committed migration history to the target PostgreSQL..."
         cd "$PROJECT_DIR"
-        bun run db:push
-        echo "✅ schema 已同步到目标 PostgreSQL"
+        bun run db:deploy
+        echo "✅ Migration history applied to the target PostgreSQL"
         ;;
     *)
-        echo "❌ DATABASE_URL 必须是 postgresql:// URL（Phase 21 已退役 SQLite provider），当前值被拒绝" >&2
+        echo "❌ DATABASE_URL must be a postgresql:// URL (Phase 21 retired the SQLite provider); the given value is rejected" >&2
         exit 1
         ;;
 esac
