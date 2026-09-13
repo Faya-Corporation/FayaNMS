@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { currentRequestIsServiceAuth } from "@/lib/auth/service-auth";
 
 /**
  * Shared helpers for /api/v1 route handlers.
@@ -14,26 +12,19 @@ import { currentRequestIsServiceAuth } from "@/lib/auth/service-auth";
  * List endpoints use server-side pagination and return
  * meta: { page, pageSize, total, totalPages }.
  *
- * API GOVERNANCE (Task 7-b — inherited by every route through ok()/fail()):
+ * API GOVERNANCE (SAFE-002 — external ULTRA audit P0-002 remediation):
  *   - X-Request-Id header on every response (crypto.randomUUID), also echoed
  *     as `requestId` in the envelope meta.
- *   - In-memory sliding-window rate limiting per request-IP
- *     (Map<string, number[]>): 300 req/min for GET/HEAD, 120 req/min for
- *     mutations (unknown method → the stricter mutation budget). When the
- *     window is exceeded the response becomes
- *     429 { error: { code: "RATE_LIMITED" } } with a Retry-After header.
- *     The window Map is bounded (stale-key sweep) and dependency-free.
- *
- * Routes that hold the Request object should pass `{ method }` via
- * `requestContext(request)` as the last ok()/fail() argument so the correct
- * budget applies (legacy call sites fall back to headers()-derived IP and
- * the stricter budget).
- *
- * MACHINE-PLANE EXEMPTION (Phase 23): requests carrying a VERIFIED service
- * JWT (the worker's claim/step/progress loops) skip the user-facing
- * budget — the loops share the loopback bucket with human traffic, and a
- * live change must never self-throttle mid-run. The exemption requires a
- * valid token (signature + audience + expiry), never merely its presence.
+ *   - Rate limiting does NOT live here anymore. It used to run inside these
+ *     response builders — i.e. AFTER a handler had already committed its
+ *     side effects (a rate-limited mutation still executed, answered 429,
+ *     and invited a duplicate-effect retry) — with a first-entry
+ *     X-Forwarded-For client key that callers could rotate freely. The gate
+ *     now runs BEFORE handler execution in the proxy plane
+ *     (src/proxy.ts → src/lib/api/rate-gate.ts): 300 req/min for GET/HEAD,
+ *     120 req/min for mutations, per spoof-resistant client key, with a
+ *     VERIFIED service JWT (worker claim/step/progress loops) exempt.
+ *     These helpers are therefore synchronous and pure envelope builders.
  */
 
 export interface PageMeta {
@@ -43,141 +34,38 @@ export interface PageMeta {
   totalPages: number;
 }
 
-/* ───────────────────────── governance core ───────────────────────── */
+/* ───────────────────────── envelope core ───────────────────────── */
 
-/** Optional per-call request context — lets a route state its HTTP method. */
+/**
+ * @deprecated SAFE-002: request context used to feed the response-build
+ * rate limiter (method budget + client IP). The gate now runs pre-handler
+ * in the proxy plane (src/proxy.ts → src/lib/api/rate-gate.ts), which
+ * derives the method from the real request and the client key from the
+ * spoof-resistant rightmost-trusted-hop policy. The type and helper are
+ * kept ONLY so existing call sites compile; the value is ignored.
+ * Mechanical removal of the ~50 call sites is tracked as backlog.
+ */
 export interface RequestContext {
   method?: string;
   ip?: string;
 }
 
-/** Build the context from the handler's Request (sync — no await needed). */
-export function requestContext(request: Request): RequestContext {
-  const ip =
-    (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() ||
-    request.headers.get("x-real-ip") ||
-    undefined;
-  return { method: request.method, ip };
+/**
+ * @deprecated SAFE-002 — see RequestContext. Returns an empty context;
+ * the proxy plane no longer needs any per-call context from routes.
+ */
+export function requestContext(_request?: Request): RequestContext {
+  return {};
 }
 
-const RATE_WINDOW_MS = 60_000;
-const RATE_LIMIT_GET = 300;
-const RATE_LIMIT_MUTATION = 120;
-const MAX_RATE_BUCKETS = 5_000;
-
-type RateKind = "get" | "mutation";
-
-const rateBuckets = new Map<string, number[]>();
-
-function rateKind(method?: string): RateKind {
-  const normalized = (method ?? "").toUpperCase();
-  if (normalized === "GET" || normalized === "HEAD") return "get";
-  // Mutations — and any call site that could not state its method — get the
-  // stricter budget (fail closed).
-  return "mutation";
-}
-
-function takeRateSlot(
-  ip: string,
-  kind: RateKind
-): { limited: boolean; retryAfterSec: number } {
-  const now = Date.now();
-
-  // Bounded map: sweep stale keys when the bucket count grows past the cap.
-  if (rateBuckets.size > MAX_RATE_BUCKETS) {
-    for (const [key, stamps] of rateBuckets) {
-      const newest = stamps[stamps.length - 1];
-      if (newest === undefined || now - newest > RATE_WINDOW_MS) {
-        rateBuckets.delete(key);
-      }
-      if (rateBuckets.size <= MAX_RATE_BUCKETS / 2) break;
-    }
-  }
-
-  const key = `${ip}:${kind}`;
-  const limit = kind === "get" ? RATE_LIMIT_GET : RATE_LIMIT_MUTATION;
-  const stamps = (rateBuckets.get(key) ?? []).filter(
-    (stamp) => now - stamp < RATE_WINDOW_MS
-  );
-
-  if (stamps.length >= limit) {
-    const retryAfterSec = Math.max(
-      1,
-      Math.ceil((stamps[0] + RATE_WINDOW_MS - now) / 1000)
-    );
-    rateBuckets.set(key, stamps);
-    return { limited: true, retryAfterSec };
-  }
-
-  stamps.push(now);
-  rateBuckets.set(key, stamps);
-  return { limited: false, retryAfterSec: 0 };
-}
-
-/** Best-effort client IP from the request-scoped headers (null outside). */
-async function resolveIp(fallback?: string): Promise<string | null> {
-  if (fallback) return fallback;
-  try {
-    const h = await headers();
-    const forwarded = (h.get("x-forwarded-for") ?? "").split(",")[0].trim();
-    if (forwarded) return forwarded;
-    return h.get("x-real-ip") ?? "local";
-  } catch {
-    // No request scope (e.g. helper called from a non-HTTP context) —
-    // skip counting entirely rather than polluting a shared bucket.
-    return null;
-  }
-}
-
-interface Governance {
-  requestId: string;
-  /** false = allowed; number = Retry-After seconds. */
-  limited: false | number;
-}
-
-async function govern(ctx?: RequestContext): Promise<Governance> {
-  const requestId = randomUUID();
-  // Machine plane first — a verified service JWT is exempt from the
-  // user-facing budget (Phase 23; see the header contract above).
-  if (await currentRequestIsServiceAuth()) {
-    return { requestId, limited: false };
-  }
-  const ip = await resolveIp(ctx?.ip);
-  if (ip === null) return { requestId, limited: false };
-  const { limited, retryAfterSec } = takeRateSlot(ip, rateKind(ctx?.method));
-  return { requestId, limited: limited ? retryAfterSec : false };
-}
-
-function rateLimitedResponse(requestId: string, retryAfterSec: number): NextResponse {
-  return NextResponse.json(
-    {
-      success: false as const,
-      error: {
-        code: "RATE_LIMITED",
-        message: `Too many requests — retry in ${retryAfterSec}s.`,
-      },
-      meta: { requestId },
-    },
-    {
-      status: 429,
-      headers: {
-        "X-Request-Id": requestId,
-        "Retry-After": String(retryAfterSec),
-      },
-    }
-  );
-}
-
-/* ───────────────────────── envelope helpers ───────────────────────── */
-
-export async function ok<T>(
+export function ok<T>(
   data: T,
   meta?: object,
   status = 200,
-  ctx?: RequestContext
-): Promise<NextResponse> {
-  const { requestId, limited } = await govern(ctx);
-  if (limited) return rateLimitedResponse(requestId, limited);
+  /** @deprecated ignored since SAFE-002 (proxy-plane rate gate). */
+  _ctx?: RequestContext
+): NextResponse {
+  const requestId = randomUUID();
   const mergedMeta = { ...(meta ?? {}), requestId };
   return NextResponse.json(
     { success: true as const, data, meta: mergedMeta },
@@ -185,14 +73,14 @@ export async function ok<T>(
   );
 }
 
-export async function fail(
+export function fail(
   code: string,
   message: string,
   status = 400,
-  ctx?: RequestContext
-): Promise<NextResponse> {
-  const { requestId, limited } = await govern(ctx);
-  if (limited) return rateLimitedResponse(requestId, limited);
+  /** @deprecated ignored since SAFE-002 (proxy-plane rate gate). */
+  _ctx?: RequestContext
+): NextResponse {
+  const requestId = randomUUID();
   return NextResponse.json(
     { success: false as const, error: { code, message }, meta: { requestId } },
     { status, headers: { "X-Request-Id": requestId } }
@@ -205,15 +93,15 @@ export async function fail(
  * unparseable LLM output alongside the AI_BAD_RESPONSE code. Callers that
  * need no detail keep using fail().
  */
-export async function failWithDetail(
+export function failWithDetail(
   code: string,
   message: string,
   status = 400,
   detail?: unknown,
-  ctx?: RequestContext
-): Promise<NextResponse> {
-  const { requestId, limited } = await govern(ctx);
-  if (limited) return rateLimitedResponse(requestId, limited);
+  /** @deprecated ignored since SAFE-002 (proxy-plane rate gate). */
+  _ctx?: RequestContext
+): NextResponse {
+  const requestId = randomUUID();
   return NextResponse.json(
     {
       success: false as const,

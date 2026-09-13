@@ -208,7 +208,6 @@ end-to-end production-readiness audit (verdict **BLOCKED, 74/100**) was re-verif
 finding-by-finding against the source and **accepted in full** — see
 `docs/audits/FayaNMS-ULTRA-Audit-Review-2026-09-13.md` (all 5 P0s confirmed at line
 level). New feature work is deprioritized behind the P0 live-write safety gate:
-SAFE-002 pre-handler mutation rate limiting ·
 SAFE-003/004/005 execution single-flight + atomic step claim + per-device write lock ·
 SAFE-006 fail-fast multi-device strategy · SAFE-008/009 typed snapshot-exact restore ·
 TEST-001/002/003 concurrency/restore/host-trust suites. **LANDED — SAFE-007:** the
@@ -230,6 +229,21 @@ payloads and probe bodies, is enforced on the backup plane, the probe plane and 
 change-engine step (CHECK/BACKUP/APPLY/VALIDATE/ROLLBACK), and is protocol-certified
 per flavor on every push (enroll → pin → verify → mismatch pipeline against real
 persona host keys — 119 certification checks).
+**LANDED — SAFE-002 (audit P0-002): pre-handler mutation rate limiting + spoof-resistant
+client identity.** Rate limiting used to run inside the response builders — AFTER a
+handler had already committed its side effects (a rate-limited mutation still executed,
+answered 429, and invited a duplicate-effect retry), keyed by the FIRST X-Forwarded-For
+entry, a header callers could rotate freely to mint fresh budgets. The gate now runs in
+the proxy plane (`src/proxy.ts` → `src/lib/api/rate-gate.ts`) BEFORE any handler: 120
+mutations/min and 300 reads/min per client key, with a VERIFIED service JWT exempt
+(machine loop can never self-throttle; tampered/expired tokens are NOT exempt). The
+client key is the XFF entry N hops from the RIGHT (`FAYANMS_TRUST_PROXY_HOPS`, default 1
+— one Caddy in front; 0 = trust nothing, shared "local" bucket) — rotating forged
+leftmost entries no longer resets the budget, unparseable/oversized tokens collapse to a
+stable hashed key, and the response builders (`ok/fail/failWithDetail`) are now pure
+envelope builders (synchronous; no second, post-commit budget). Proven live: 120×401 →
+429 (`Retry-After`) on the 121st, rotating-spoof attacks die at the same #121, and a
+verified worker JWT passes from an exhausted bucket while a tampered one does not.
 
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is

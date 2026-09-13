@@ -451,6 +451,7 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 | `postgres: password authentication failed` | stale `fayanms-pgdata` volume created under an earlier POSTGRES_PASSWORD | `docker compose down -v` DESTROYS data — take a D1 dump first — or `ALTER USER fayanms WITH PASSWORD` inside the container; then keep POSTGRES_PASSWORD stable |
 | Live probe/backup fails: `SSH_HOSTKEY_UNENROLLED` (fail-closed by design) | the endpoint has no pinned host key yet | Enroll from the device page (SSH Host Key card): probe → verify the fingerprint out-of-band → pin; then retry |
 | Live connection fails: `SSH_HOSTKEY_MISMATCH` | the endpoint presented a DIFFERENT key than the pinned enrollment (device re-provisioned, key rotated, or an impostor) | Treat as a security signal FIRST — verify the new key out-of-band; only then Re-enroll from the device page (the old pin is replaced, audited) |
+| API answers `429 RATE_LIMITED` with a `Retry-After` header | pre-handler rate gate (SAFE-002): 120 mutations/min, 300 reads/min per client key — or a whole office NAT sharing one key | Expected for abusive loops; wait out the `Retry-After` window (≤60 s). If legitimate humans collide behind one NAT, split them across egress IPs, or (advanced) raise the budgets in `src/lib/api/rate-gate.ts` — never disable the gate |
 | App can't reach postgres / connection refused | postgres not healthy yet, or topology override broke DNS | `docker compose ps` (health check), `docker compose logs postgres`; app retries are NOT automatic — `docker compose restart app` after postgres is healthy |
 | Worker logs "backend unreachable" loops | app not reachable at `NEXT_BASE_URL` (e.g. typo'd env override) | compose default `http://app:3000` (T5) is correct for the shipped stack — verify `WORKER_BASE_URL`/`NEXT_BASE_URL` overrides in the `--env-file`; the worker self-heals with backoff once reachable |
 | App routes report "Worker service unreachable" | worker not reachable at `WORKER_BASE_URL` | compose default `http://worker:3030` (T5); check `docker compose ps`/worker `HEALTHCHECK`, and that 3030 was never published/firewalled |
@@ -493,6 +494,16 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    or a missing enrollment (`SSH_HOSTKEY_UNENROLLED`) kills the connection with no
    credential sent. Host-key enrollment/revocation is audited (`SSH_HOSTKEY_*` events);
    after a legitimate device key rotation, re-enroll from the device page.
+8. **Pre-handler rate gate (SAFE-002, audit P0-002)**: every `/api/v1` request is
+   budgeted in the proxy plane BEFORE a handler runs (120 mutations / 300 reads per
+   minute per client key), so a throttled mutation can no longer commit side effects
+   and then answer 429. The client key is the `X-Forwarded-For` entry N hops from the
+   RIGHT — set `FAYANMS_TRUST_PROXY_HOPS` to the number of reverse proxies in front of
+   the app (default 1 = this compose stack's single Caddy/Nginx; 0 = trust nothing,
+   all callers share one conservative bucket). A VERIFIED service JWT (worker loops)
+   is exempt; forged, rotated or absent-leftmost XFF entries cannot mint fresh
+   budgets. In-memory store (per-process): a horizontally scaled app needs a shared
+   store (Redis) before budgets mean anything fleet-wide.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 

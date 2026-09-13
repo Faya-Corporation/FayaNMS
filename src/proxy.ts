@@ -1,29 +1,54 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { randomUUID } from "node:crypto";
+import { bearerTokenOf, verifyServiceToken } from "@/lib/auth/service-jwt";
+import {
+  rateKind,
+  rateLimitedBody,
+  rateLimitedHeaders,
+  resolveClientIp,
+  takeRateSlot,
+} from "@/lib/api/rate-gate";
 
 /**
- * API gate (Task 7-a) — WithAuth-style enforcement for the /api/v1 surface.
+ * API gate (Task 7-a + SAFE-002) — WithAuth-style enforcement AND
+ * pre-handler rate limiting for the /api/v1 surface.
  *
- * Rules:
- *   1. No valid session → 401 envelope { code: "UNAUTHENTICATED" }.
- *   2. Authenticated `auditor` performing any non-GET/HEAD → 403 envelope
- *      { code: "RBAC_FORBIDDEN", message: "Auditors have read-only access" }.
+ * Evaluation order (safe-fastest first):
+ *   1. MACHINE PLANE: a VERIFIED service JWT (signature + audience + expiry
+ *      + issuer allowlist, src/lib/auth/service-jwt.ts) passes through
+ *      untouched — the worker's claim/step/progress loops share the
+ *      loopback bucket with human traffic and a live change must never
+ *      self-throttle mid-run. The exemption requires a VERIFIED token,
+ *      never merely the header's presence.
+ *   2. RATE GATE (SAFE-002 — external ULTRA audit P0-002): every other
+ *      request consumes a sliding-window slot BEFORE any route handler
+ *      runs — 300 req/min per client for GET/HEAD, 120 req/min for
+ *      mutations (unknown method → the stricter mutation budget), so a
+ *      rate-limited request can no longer commit side effects and then
+ *      answer 429. The client key uses a rightmost-trusted-hop
+ *      X-Forwarded-For policy (src/lib/api/rate-gate.ts) — the leftmost
+ *      entries are attacker-controlled and are never trusted. Exceeded
+ *      budgets answer the standard 429 envelope with Retry-After.
+ *   3. SESSION PLANE (Task 7-a): no valid session → 401 envelope
+ *      { code: "UNAUTHENTICATED" }; authenticated `auditor` performing
+ *      any non-GET/HEAD → 403 { code: "RBAC_FORBIDDEN" }.
  *
  * The matcher is limited to /api/v1/:path*, so /api/auth/*, /_next/* and
  * static assets are never touched by this middleware. Inside /api/v1 the
  * PUBLIC surfaces are:
  *   - /api/v1/meta        — branding/status bootstrap used pre-sign-in
  *   - /api/v1/auth/*      — session bootstrap (answers its own 401 envelope)
+ * (They are still rate-limited — they are exactly the unauthenticated-
+ * facing surfaces the gate must protect.)
  *
  * INTERNAL SERVICE ENDPOINTS (P19 / audit SEC-002): the worker mini-service
  * (:3030) drives the job engine backend-to-backend with no user session —
  * the exact POST routes below stay session-exempt BUT each of them now
- * enforces a service-principal JWT (src/lib/auth/service-auth.ts,
- * FAYANMS_SERVICE_SECRET, aud "fayanms:internal", short expiry, rotation via
- * FAYANMS_SERVICE_SECRETS). /api/v1/metrics/retention/prune additionally
- * accepts an authorized human session (requireServiceOrPermission) because
- * the admin UI's "Prune now" action calls it. The /worker/status diagnostic
- * is deliberately NOT exempt — it answers to human sessions only.
+ * enforces a service-principal JWT at the handler layer, and machine
+ * traffic with a verified token is exempt from the rate budget by rule 1.
+ * Unauthenticated hammering of those routes is NOT exempt — it is rate-
+ * limited before the handler's own 401.
  *
  * Route handlers additionally verify identity server-side via
  * src/lib/auth/session.ts (requireUser/requireRole/requirePermission) —
@@ -49,7 +74,27 @@ const RBAC_FORBIDDEN_BODY = {
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Public surfaces (bootstrap) + service-principal routes (see above —
+  // 1. Machine plane — verified service JWT is exempt from the rate
+  // budget (and from the session checks below; its routes enforce the
+  // token + scope themselves at the handler layer).
+  const bearer = bearerTokenOf(req.headers.get("authorization"));
+  if (bearer && verifyServiceToken(bearer).ok) {
+    return NextResponse.next();
+  }
+
+  // 2. Rate gate — BEFORE any handler can commit side effects (SAFE-002).
+  const clientKey = resolveClientIp(req.headers);
+  const kind = rateKind(req.method);
+  const decision = takeRateSlot(clientKey, kind);
+  if (decision.limited) {
+    const requestId = randomUUID();
+    return NextResponse.json(
+      rateLimitedBody(decision.retryAfterSec, requestId),
+      { status: 429, headers: rateLimitedHeaders(decision.retryAfterSec, requestId) }
+    );
+  }
+
+  // 3a. Public surfaces (bootstrap) + service-principal routes (see above —
   // each enforcing its own service JWT at the handler layer).
   if (
     pathname === "/api/v1/meta" ||
