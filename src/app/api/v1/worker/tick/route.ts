@@ -469,6 +469,14 @@ export async function POST(request: Request) {
     });
     reapedCount = reapRes.count;
 
+    // SAFE-003 — a reaped job is terminal: release its change's execution
+    // lease (deleteMany by the reaped job ids; no-op for non-change jobs).
+    if (reapedCount > 0) {
+      await db.changeExecutionLease.deleteMany({
+        where: { jobId: { in: staleJobs.map((j) => j.id) } },
+      });
+    }
+
     if (reapedCount > 0) {
       // One summary audit event per tick (never one row per job) — same
       // pattern as CONFIG_RETENTION_PRUNED below.

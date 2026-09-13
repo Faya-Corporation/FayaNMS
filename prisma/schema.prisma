@@ -164,6 +164,9 @@ model Device {
   rollups     MetricRollup[]
   maintenance MaintenanceWindow[]
   cmdbItems   CmdbItem[]
+  // SAFE-005: exclusive per-device write lock while a change step runs
+  // (one change, one device, one step at a time).
+  writeLocks  DeviceWriteLock[]
 
   @@index([siteId])
   @@index([vendorId])
@@ -396,6 +399,9 @@ model ChangeRequest {
   snapshots    ConfigSnapshot[]
   incidents    Incident[]
   maintenanceWindows MaintenanceWindow[]
+  // SAFE-003: at most ONE live execution lease per change — the DB-enforced
+  // single-flight guard for queued/running CHANGE_EXECUTE jobs.
+  executionLease ChangeExecutionLease?
 
   @@index([status])
   @@index([requesterId])
@@ -950,4 +956,64 @@ model CmdbRelation {
   @@index([sourceId])
   @@index([targetId])
   @@index([relationType])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Production-safety sprint (SAFE-003/004/005) — execution concurrency guards
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * SAFE-003 — execution single-flight lease.
+ *
+ * At most ONE row can exist per changeId (the primary key IS the lock), so
+ * two concurrent POST /changes/[id]/execute can never both queue a
+ * CHANGE_EXECUTE job: exactly one lease INSERT commits, the loser dies with
+ * a P2002 unique violation inside its transaction (job INSERT + audit roll
+ * back with it) and the route answers 409 EXECUTION_IN_FLIGHT.
+ *
+ * Lifecycle: acquired by the execute route (job creation + lease in one
+ * transaction), released when the job reaches a TERMINAL state
+ * (SUCCEEDED / terminal FAILED / CANCELLED / scheduler-reaped) — a requeued
+ * retry keeps the lease because it is the SAME execution. expiresAt is the
+ * crash valve: the execute route may take over a lease only after it
+ * expires (the tick reaper normally releases long before — any RUNNING job
+ * older than 15 min is FAILED and releases its lease).
+ */
+model ChangeExecutionLease {
+  changeId   String   @id
+  change     ChangeRequest @relation(fields: [changeId], references: [id], onDelete: Cascade)
+  jobId      String
+  acquiredAt DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([jobId])
+  @@index([expiresAt])
+}
+
+/**
+ * SAFE-005 — exclusive per-device write lock.
+ *
+ * ONE row per deviceId (@unique — the lock): while a change executes a step
+ * (CHECK probe / BACKUP fetch / APPLY / VALIDATE / ROLLBACK), it holds the
+ * lock on every device in the change's scope, so two concurrent changes can
+ * never interleave device work on the same hardware. Acquired atomically in
+ * the same transaction as the SAFE-004 step claim (a conflict aborts the
+ * claim — the step stays PENDING and the driver retries with backoff on
+ * 409 DEVICE_WRITE_LOCKED). Released when the step reaches a terminal state
+ * (executor return / catch / orphan reap); expiresAt is the crash valve
+ * (purged on the next acquire attempt anywhere).
+ */
+model DeviceWriteLock {
+  id         String   @id @default(cuid())
+  deviceId   String   @unique
+  device     Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  changeId   String
+  jobId      String
+  stepId     String
+  acquiredAt DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([changeId])
+  @@index([stepId])
+  @@index([expiresAt])
 }

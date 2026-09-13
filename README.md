@@ -208,7 +208,6 @@ end-to-end production-readiness audit (verdict **BLOCKED, 74/100**) was re-verif
 finding-by-finding against the source and **accepted in full** — see
 `docs/audits/FayaNMS-ULTRA-Audit-Review-2026-09-13.md` (all 5 P0s confirmed at line
 level). New feature work is deprioritized behind the P0 live-write safety gate:
-SAFE-003/004/005 execution single-flight + atomic step claim + per-device write lock ·
 SAFE-006 fail-fast multi-device strategy · SAFE-008/009 typed snapshot-exact restore ·
 TEST-001/002/003 concurrency/restore/host-trust suites. **LANDED — SAFE-007:** the
 inaccurate live restore is now fail-closed — restore-flow changes are stamped
@@ -244,6 +243,31 @@ stable hashed key, and the response builders (`ok/fail/failWithDetail`) are now 
 envelope builders (synchronous; no second, post-commit budget). Proven live: 120×401 →
 429 (`Retry-After`) on the 121st, rotating-spoof attacks die at the same #121, and a
 verified worker JWT passes from an exhausted bucket while a tampered one does not.
+**LANDED — SAFE-003/004/005 (audit P0-003): execution single-flight, atomic step claim,
+per-device write lock.** Three concurrency defects, three DB-enforced guards (enforcement
+lives in PostgreSQL, not in process memory, so it holds across app instances):
+(1) **single-flight** — POST /changes/[id]/execute used to queue a second CHANGE_EXECUTE
+job for the same change unconditionally (double-click or retry = duplicate device
+mutations); the route now acquires a `ChangeExecutionLease` (the PK *is* the lock) in the
+same transaction that creates the job — a racing POST dies on the unique violation before
+any step row or audit event exists and answers `409 EXECUTION_IN_FLIGHT` naming the active
+job; the lease is released exactly when the job reaches a terminal state (SUCCEEDED /
+terminal FAILED / CANCELLED / scheduler-reaped; a requeued retry is the same execution and
+keeps it) with a 4h expiry as the crash valve.
+(2) **atomic step claim** — the engine picked the next PENDING step with a plain `find()`
+and marked it RUNNING with a blind id update (a genuine read→write TOCTOU); the claim is
+now a conditional `updateMany` on `status = 'PENDING'` with a rowcount check — exactly one
+concurrent claimant wins, a lost claim answers `409 STEP_IN_FLIGHT` and touches nothing.
+(3) **per-device write lock** — every step claim now also takes exclusive `DeviceWriteLock`
+rows (deviceId unique) on all devices in the change's scope, atomically in the claim
+transaction: two concurrent changes can never interleave device work ("one change, one
+device, one step at a time"); a conflict aborts the claim and answers `409
+DEVICE_WRITE_LOCKED` naming the holding change. Locks release when the step reaches a
+terminal state (executor return / catch / orphan reap; 15-min expiry as the crash valve).
+Proven live in the sandbox: concurrent execute POSTs → exactly one 201 + one 409 with one
+job + one lease in the DB; two concurrent changes over one device → the loser's driver log
+shows the 409 (`held by change …`), it requeues and resumes, and step timestamps prove
+disjoint device-usage windows. 9 new unit pins (`tests/audit/execution-guard.test.ts`).
 
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is

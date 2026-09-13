@@ -452,6 +452,8 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 | Live probe/backup fails: `SSH_HOSTKEY_UNENROLLED` (fail-closed by design) | the endpoint has no pinned host key yet | Enroll from the device page (SSH Host Key card): probe → verify the fingerprint out-of-band → pin; then retry |
 | Live connection fails: `SSH_HOSTKEY_MISMATCH` | the endpoint presented a DIFFERENT key than the pinned enrollment (device re-provisioned, key rotated, or an impostor) | Treat as a security signal FIRST — verify the new key out-of-band; only then Re-enroll from the device page (the old pin is replaced, audited) |
 | API answers `429 RATE_LIMITED` with a `Retry-After` header | pre-handler rate gate (SAFE-002): 120 mutations/min, 300 reads/min per client key — or a whole office NAT sharing one key | Expected for abusive loops; wait out the `Retry-After` window (≤60 s). If legitimate humans collide behind one NAT, split them across egress IPs, or (advanced) raise the budgets in `src/lib/api/rate-gate.ts` — never disable the gate |
+| Execute answers `409 EXECUTION_IN_FLIGHT` | single-flight guard (SAFE-003): this change ALREADY has a queued/running execution (double-click or retry while the first job is alive) | Follow the active job named in the error (id + correlation) in the Job Center instead of re-queuing; the lease auto-releases when the execution reaches a terminal state |
+| Change driver logs `409 DEVICE_WRITE_LOCKED … (held by change …)` | per-device write lock (SAFE-005): another executing change currently owns a device in this change's scope — one change, one device, one step at a time | Expected under contention: the job requeues automatically (30 s × attempts backoff) and resumes when the holder's step completes; if the holder is wedged, the tick reaper / 15-min lock expiry clears it — investigate the HOLDING change first |
 | App can't reach postgres / connection refused | postgres not healthy yet, or topology override broke DNS | `docker compose ps` (health check), `docker compose logs postgres`; app retries are NOT automatic — `docker compose restart app` after postgres is healthy |
 | Worker logs "backend unreachable" loops | app not reachable at `NEXT_BASE_URL` (e.g. typo'd env override) | compose default `http://app:3000` (T5) is correct for the shipped stack — verify `WORKER_BASE_URL`/`NEXT_BASE_URL` overrides in the `--env-file`; the worker self-heals with backoff once reachable |
 | App routes report "Worker service unreachable" | worker not reachable at `WORKER_BASE_URL` | compose default `http://worker:3030` (T5); check `docker compose ps`/worker `HEALTHCHECK`, and that 3030 was never published/firewalled |
@@ -504,6 +506,16 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    is exempt; forged, rotated or absent-leftmost XFF entries cannot mint fresh
    budgets. In-memory store (per-process): a horizontally scaled app needs a shared
    store (Redis) before budgets mean anything fleet-wide.
+9. **Execution concurrency guards (SAFE-003/004/005, audit P0-003)** are device-control
+   gates too: ONE queued/running execution per change (a DB lease — a racing execute
+   POST is refused `409 EXECUTION_IN_FLIGHT`), one atomic CAS step claim (a lost
+   claimant gets `409 STEP_IN_FLIGHT`), and exclusive per-device write locks so two
+   changes can never interleave work on the same hardware (`409 DEVICE_WRITE_LOCKED`
+   names the holder). Enforcement is database-side (lease PK = changeId, lock deviceId
+   unique), so it holds across multiple app/worker instances; a requeued retry is the
+   same execution and keeps its lease; both guards carry generous expiries (4 h lease,
+   15 min lock) purely as crash valves — the tick reaper and the engine's own release
+   paths are the normal lifecycle.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 

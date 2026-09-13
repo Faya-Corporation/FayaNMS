@@ -79,6 +79,9 @@ export async function POST(
       where: { id },
       data: { status: "CANCELLED", finishedAt },
     }),
+    // SAFE-003 — CANCELLED is a terminal state: release the change's
+    // execution lease so the change can be deliberately executed again.
+    db.changeExecutionLease.deleteMany({ where: { jobId: job.id } }),
   ]);
 
   return ok(

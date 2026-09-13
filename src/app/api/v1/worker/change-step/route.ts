@@ -17,8 +17,15 @@ import {
   LIVE_RESTORE_NOT_CERTIFIED,
   VENDOR_CONFIG_FLAVORS,
 } from "@/lib/change/live-plan";
-import { fail, firstIssueMessage, ok } from "../../_lib/api";
+import { fail, failWithDetail, firstIssueMessage, ok } from "../../_lib/api";
 import { authenticateServiceRequest } from "@/lib/auth/service-auth";
+import {
+  DeviceWriteLockedError,
+  StepClaimLostError,
+  deviceLockRows,
+  isStepClaimWon,
+  isUniqueConflict,
+} from "@/lib/change/execution-guard";
 import { getHostKeyPin } from "@/lib/ssh/host-keys";
 import { workerControlHeaders } from "@/lib/worker/control-client";
 import { WORKER_BASE_URL } from "@/lib/worker/worker-url";
@@ -96,7 +103,17 @@ export const dynamic = "force-dynamic";
  *   changeStatus, suggestIncident (outcome !== "SUCCESS"), stepsTotal,
  *   stepsCompleted, message, lastStep }.
  *
- * Locking/idempotency: the job row is the lock (single claim). A RUNNING
+ * Locking/idempotency: the job row is the lock (single claim — SAFE-003's
+ * execution lease guarantees ONE queued/running execution per change).
+ * Steps are claimed with an atomic CAS (SAFE-004: conditional updateMany on
+ * status='PENDING' with a rowcount check — the read→blind-update TOCTOU
+ * from audit P0-003 is gone); a lost claim answers 409 STEP_IN_FLIGHT (the
+ * driver retries with backoff). Every step claim ALSO takes exclusive
+ * DeviceWriteLock rows on every device in the change's scope (SAFE-005 —
+ * one change, one device, one step at a time); a lock conflict aborts the
+ * claim transaction and answers 409 DEVICE_WRITE_LOCKED. Locks are
+ * released when the step reaches a terminal state (executor return /
+ * catch / orphan reap); expiresAt is the crash valve. A RUNNING
  * step younger than 5 min answers 409 STEP_IN_FLIGHT (the driver retries
  * with backoff); an older one is reaped to FAILED ("orphaned step") — an
  * orphaned APPLY/VALIDATE still engages the rollback path, anything else
@@ -525,6 +542,10 @@ export async function POST(request: Request) {
             finishedAt: now,
           },
         });
+        // SAFE-005 — the reaped step can no longer release its own locks:
+        // drop them here so the device frees immediately (TTL is the
+        // backstop, not the primary mechanism).
+        await tx.deviceWriteLock.deleteMany({ where: { stepId: orphan.id } });
         if (engagedRollback) {
           await engageRollback(tx as unknown as TxClient, change.id, change.steps);
         } else {
@@ -659,56 +680,133 @@ export async function POST(request: Request) {
     );
   }
 
-  /* ── mark the step RUNNING + change status bookkeeping ──────────────── */
-  await db.$transaction(
-    async (tx) => {
-      await tx.changeStep.update({
-        where: { id: next.id },
-        data: { status: "RUNNING", startedAt: now, error: null },
-      });
-      let transition: string | null = null;
-      if (next.type === "CHECK" && ["APPROVED", "SCHEDULED"].includes(change.status)) {
-        transition = "PRE_CHECK";
-      } else if (next.type === "APPLY" && change.status !== "ROLLBACK") {
-        transition = "EXECUTING";
-      } else if (next.type === "VALIDATE" && change.status !== "ROLLBACK") {
-        transition = "VALIDATING";
-      } else if (next.type === "ROLLBACK") {
-        transition = "ROLLBACK";
-      }
-      if (transition && transition !== change.status) {
-        await tx.changeRequest.update({
-          where: { id: change.id },
-          data: { status: transition },
+  /* ── claim the step (SAFE-004 CAS) + take device locks (SAFE-005) ───── */
+  try {
+    await db.$transaction(
+      async (tx) => {
+        // SAFE-004 — ATOMIC claim: conditional update with a rowcount check.
+        // The previous read-then-blind-update let two concurrent change-step
+        // calls both "claim" the same PENDING step (the check-then-act gap
+        // between the pick above and the update — audit P0-003). The
+        // conditional updateMany is atomic on PostgreSQL: exactly one
+        // concurrent claimant sees count === 1.
+        const claimed = await tx.changeStep.updateMany({
+          where: { id: next.id, status: "PENDING" },
+          data: { status: "RUNNING", startedAt: now, error: null },
         });
-      }
-    },
-    { maxWait: 5_000, timeout: 20_000 }
-  );
+        if (!isStepClaimWon(claimed.count)) {
+          // Another executor won the row between our read and our write —
+          // touch NOTHING else (their locks and state own the change now).
+          throw new StepClaimLostError(next.order, next.name);
+        }
+
+        // SAFE-005 — exclusive per-device write locks, atomic with the
+        // claim (a conflict aborts this transaction — the claim rolls back
+        // with it, so no executor ever runs a step it did not fully win):
+        //   1. drop OUR change's previous-step locks (single-flight + the
+        //      claim CAS guarantee no concurrent executor of this change);
+        //   2. purge expired locks (crash valve — any owner);
+        //   3. take exclusive locks on every device in scope.
+        await tx.deviceWriteLock.deleteMany({ where: { changeId: change.id } });
+        await tx.deviceWriteLock.deleteMany({ where: { expiresAt: { lt: now } } });
+        if (change.devices.length > 0) {
+          try {
+            await tx.deviceWriteLock.createMany({
+              data: deviceLockRows(
+                change.devices.map((link) => link.deviceId),
+                { changeId: change.id, jobId: job.id, stepId: next.id },
+                now
+              ),
+            });
+          } catch (error) {
+            if (isUniqueConflict(error)) {
+              throw new DeviceWriteLockedError();
+            }
+            throw error;
+          }
+        }
+
+        let transition: string | null = null;
+        if (next.type === "CHECK" && ["APPROVED", "SCHEDULED"].includes(change.status)) {
+          transition = "PRE_CHECK";
+        } else if (next.type === "APPLY" && change.status !== "ROLLBACK") {
+          transition = "EXECUTING";
+        } else if (next.type === "VALIDATE" && change.status !== "ROLLBACK") {
+          transition = "VALIDATING";
+        } else if (next.type === "ROLLBACK") {
+          transition = "ROLLBACK";
+        }
+        if (transition && transition !== change.status) {
+          await tx.changeRequest.update({
+            where: { id: change.id },
+            data: { status: transition },
+          });
+        }
+      },
+      { maxWait: 5_000, timeout: 20_000 }
+    );
+  } catch (error) {
+    if (error instanceof StepClaimLostError) {
+      return fail(error.code, error.message, error.httpStatus);
+    }
+    if (error instanceof DeviceWriteLockedError) {
+      // Name the holding change(s) so the operator can see WHO owns the
+      // device right now. Filter our own id defensively: the deleteMany of
+      // our previous-step locks reverted with the aborted transaction, but
+      // a stale row of ours must never make this change look self-blocked.
+      const holders = await db.deviceWriteLock.findMany({
+        where: { deviceId: { in: change.devices.map((link) => link.deviceId) } },
+        select: { changeId: true },
+      });
+      const heldBy = [...new Set(holders.map((row) => row.changeId))].filter(
+        (id) => id !== change.id
+      );
+      return failWithDetail(
+        error.code,
+        heldBy.length > 0
+          ? `${error.message} (held by change ${heldBy.join(", ")})`
+          : error.message,
+        error.httpStatus,
+        { heldByChanges: heldBy }
+      );
+    }
+    throw error;
+  }
 
   /* ── execute the step (HTTP outside tx — writes in one short tx) ────── */
+  type StepResponse = Awaited<ReturnType<typeof executeCheckStep>>;
+  let stepResponse: StepResponse;
   try {
     switch (next.type) {
       case "CHECK":
-        return ok(await executeCheckStep(change, next, correlationId));
+        stepResponse = await executeCheckStep(change, next, correlationId);
+        break;
       case "BACKUP":
-        return ok(
-          await executeBackupStep(change, next, correlationId, job.id)
-        );
+        stepResponse = await executeBackupStep(change, next, correlationId, job.id);
+        break;
       case "APPLY":
-        return ok(
-          await executeApplyStep(change, next, correlationId, job.id, failAt, payload)
+        stepResponse = await executeApplyStep(
+          change, next, correlationId, job.id, failAt, payload
         );
+        break;
       case "VALIDATE":
-        return ok(
-          await executeValidateStep(change, next, correlationId, job.id, failAt, payload)
+        stepResponse = await executeValidateStep(
+          change, next, correlationId, job.id, failAt, payload
         );
+        break;
       case "ROLLBACK":
-        return ok(await executeRollbackStep(change, next, correlationId, job.id));
+        stepResponse = await executeRollbackStep(change, next, correlationId, job.id);
+        break;
       default:
         throw new Error(`Unsupported step type: ${next.type}`);
     }
   } catch (error) {
+    // SAFE-005 — the step did not reach a terminal state: release its
+    // device locks alongside the step itself (the driver's retry will
+    // re-claim and re-acquire atomically).
+    await db.deviceWriteLock
+      .deleteMany({ where: { stepId: next.id } })
+      .catch(() => {});
     // Release the step so the driver's retry re-executes it (the change
     // status transition stays — harmless bookkeeping).
     await db.changeStep
@@ -725,6 +823,13 @@ export async function POST(request: Request) {
       500
     );
   }
+  // SAFE-005 — the step reached a terminal state inside its executor
+  // (PASSED/FAILED + change bookkeeping): release its device locks. The
+  // next step's claim re-acquires them atomically with its own CAS.
+  await db.deviceWriteLock
+    .deleteMany({ where: { stepId: next.id } })
+    .catch(() => {});
+  return ok(stepResponse);
 }
 
 /* ───────────────────────────── CHECK step ────────────────────────────── */

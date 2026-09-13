@@ -229,16 +229,21 @@ export async function POST(request: Request) {
         );
       }
       const execution = parsedExecution.data;
-      await db.jobExecution.update({
-        where: { id: job.id },
-        data: {
-          status: "SUCCEEDED",
-          progress: 100,
-          finishedAt: now,
-          error: null,
-          resultJson: JSON.stringify(execution),
-        },
-      });
+      await db.$transaction([
+        db.jobExecution.update({
+          where: { id: job.id },
+          data: {
+            status: "SUCCEEDED",
+            progress: 100,
+            finishedAt: now,
+            error: null,
+            resultJson: JSON.stringify(execution),
+          },
+        }),
+        // SAFE-003 — the execution reached its terminal state: release the
+        // change's single-flight lease.
+        db.changeExecutionLease.deleteMany({ where: { jobId: job.id } }),
+      ]);
       return ok({
         jobId,
         updated: true,
@@ -535,6 +540,13 @@ export async function POST(request: Request) {
             finishedAt: now,
           },
     });
+
+    // SAFE-003 — terminal FAILED releases the change's execution lease;
+    // a requeued retry is the SAME execution, so its lease STAYS (one
+    // queued/running execution per change, retries included).
+    if (!requeue) {
+      await tx.changeExecutionLease.deleteMany({ where: { jobId: job.id } });
+    }
 
     // Audit only terminal failures (retries are visible via attempts/scheduledAt).
     if (!requeue) {
