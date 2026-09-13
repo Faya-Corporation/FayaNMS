@@ -107,6 +107,11 @@ export async function POST(request: Request) {
             firmware: true,
             mgmtIp: true,
             status: true,
+            // Phase 22 slice 1 — data-plane routing + credential REFERENCE
+            // fields. The secretRef is a vault POINTER (never a secret): the
+            // worker resolves it against its own environment at connect time.
+            dataSource: true,
+            credentialProfile: { select: { username: true, port: true, secretRef: true } },
           },
         });
         if (device) {
@@ -121,6 +126,16 @@ export async function POST(request: Request) {
             firmware: device.firmware,
             managementIp: device.mgmtIp,
             status: device.status,
+            // LIVE_SSH devices carry the credential block; SIMULATOR devices
+            // keep payload.credential absent (the worker routes on dataSource).
+            dataSource: device.dataSource,
+            credential: device.credentialProfile
+              ? {
+                  username: device.credentialProfile.username,
+                  port: device.credentialProfile.port,
+                  secretRef: device.credentialProfile.secretRef,
+                }
+              : null,
           };
         }
       }

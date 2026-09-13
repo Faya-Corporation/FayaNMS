@@ -1,13 +1,19 @@
 /// <reference types="bun-types" />
 /**
- * FayaNMS worker mini-service — entry point (bun, zero dependencies).
+ * FayaNMS worker mini-service — entry point (bun; single runtime dependency:
+ * ssh2 — the real-transport LIVE_SSH plane, Phase 22 slice 1).
  *
  * HTTP surface on port 3030 (hardcoded per Task 2-b; the gateway only exposes
  * 3000 — this service is backend-to-backend):
  *   GET  /health          → liveness + in-memory job counters + adapter names
- *   GET  /capabilities    → adapter capability manifests
- *   POST /simulate/connect   → simulated device connect (test-connection flow +
- *                              the runner's own connect step)
+ *   GET  /capabilities    → adapter capability manifests (simulator + live)
+ *   POST /simulate/connect   → device connect probe. dataSource routing
+ *                              (Phase 22 slice 1): SIMULATOR (default) uses
+ *                              the in-memory adapters; LIVE_SSH performs a
+ *                              REAL SSH probe (exec-only, read-only) using a
+ *                              credential BLOCK { username, port, secretRef }
+ *                              — the secret itself NEVER travels; the worker
+ *                              resolves the vault reference worker-side.
  *   POST /simulate/generate-config → vendor-flavored config text (Task 4-b
  *                              change engine pre/post backups)
  *   POST /simulate/apply      → config text with a change-flavored delta
@@ -24,11 +30,16 @@
  * Process guards: unhandledRejection / uncaughtException are logged and
  * contained — the HTTP server keeps answering /health.
  *
- * This service never touches SQLite; all persistence flows through
- * http://localhost:3000 (see next-client.ts header note).
+ * This service never touches the database; all persistence flows through
+ * NEXT_BASE_URL (runbook T5; the http://localhost:3000 default preserves the
+ * same-host loopback contract).
  */
 
 import { adapters, pickAdapter, type DeviceTarget } from "./adapters";
+import { LiveAdapterError } from "./live-ssh";
+import { parseTargetCredential, resolveAdapter, type TargetCredential } from "./adapter-router";
+import { SshError } from "./ssh-transport";
+import { VaultError } from "./vault";
 import { startRunner, getCounters } from "./runner";
 import { startScheduler, getSchedulerState } from "./scheduler";
 import { log } from "./next-client";
@@ -37,7 +48,12 @@ import { controlRejectResponse, verifyControlToken } from "./control-auth";
 const PORT = 3030; // hardcoded — do not read PORT env (task 2-b contract)
 const STARTED_AT = Date.now();
 
-async function handle(req: Request): Promise<Response> {
+/**
+ * Exported for the LIVE_SSH certification driver (certify.ts) — the driver
+ * imports this module with import.meta.main === false, so the server bind
+ * and the background loops below do NOT run in that path.
+ */
+export async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
   try {
     if (req.method === "GET" && url.pathname === "/health") {
@@ -48,6 +64,7 @@ async function handle(req: Request): Promise<Response> {
         jobs: getCounters(),
         scheduler: getSchedulerState(),
         adapters: adapters.map((a) => a.adapter),
+        liveAdapters: ["cisco-ios-live"],
       });
     }
 
@@ -56,21 +73,31 @@ async function handle(req: Request): Promise<Response> {
       // architecture disclosure — control-plane token required.
       const auth = verifyControlToken(req);
       if (!auth.ok) return controlRejectResponse(auth);
-      return Response.json(
-        adapters.map((a) => ({
+      return Response.json([
+        ...adapters.map((a) => ({
           vendor: a.vendor,
           adapter: a.adapter,
           capabilities: a.capabilities,
           configFlavor: a.configFlavor,
           notes: a.notes,
-        }))
-      );
+        })),
+        {
+          vendor: "cisco",
+          adapter: "cisco-ios-live",
+          capabilities: ["connect", "backup_config"],
+          configFlavor: "cisco-ios",
+          notes:
+            "LIVE read-only SSH transport (Phase 22 slice 1): real SSH exec with a read-only show-command allowlist; certified against the in-repo IOS protocol harness — hardware certification pending.",
+        },
+      ]);
     }
 
     // Phase 19-C (audit GATEWAY-101): every /simulate/* mutation requires a
     // control-plane service JWT with the "simulate" scope. The sandbox
-    // gateway can reach :3030, so anonymous simulator control is closed —
-    // this becomes the direct device-control gate when real adapters land.
+    // gateway can reach :3030, so anonymous simulator control is closed.
+    // Since Phase 22 slice 1 this gate is ALSO the direct device-control
+    // gate: a LIVE_SSH probe body makes /simulate/connect open a REAL SSH
+    // connection (read-only) — the JWT requirement covers both planes.
     if (url.pathname.startsWith("/simulate/")) {
       const auth = verifyControlToken(req, "simulate");
       if (!auth.ok) return controlRejectResponse(auth);
@@ -96,26 +123,77 @@ async function handle(req: Request): Promise<Response> {
         return Response.json(
           {
             ok: false,
-            error: "Body must be { vendor: string, host: string, hostname?: string }",
+            error: "Body must be { vendor: string, host: string, hostname?: string, dataSource?: \"SIMULATOR\"|\"LIVE_SSH\", credential?: { username, port, secretRef } }",
           },
           { status: 400 }
         );
       }
+
+      // Phase 22 slice 1 — dataSource routing. The credential block carries
+      // the vault REFERENCE only (username/port/secretRef); the secret is
+      // resolved worker-side at connection time. Incomplete LIVE_SSH
+      // requests are rejected BEFORE any connection attempt.
+      const dataSource =
+        typeof body?.dataSource === "string" && body.dataSource.trim()
+          ? body.dataSource.trim().toUpperCase()
+          : "SIMULATOR";
+      let credential: TargetCredential | null = null;
+      if (dataSource === "LIVE_SSH") {
+        try {
+          credential = parseTargetCredential(body?.credential ?? null);
+        } catch (e) {
+          return Response.json(
+            { ok: false, vendor, host, error: (e as Error).message },
+            { status: 400 }
+          );
+        }
+      }
+
       const target: DeviceTarget = {
-        deviceId: "manual-test",
+        deviceId: typeof body?.deviceId === "string" ? body.deviceId : "manual-test",
         hostname,
         vendor,
+        managementIp: host,
+        dataSource,
       };
-      const adapter = pickAdapter(vendor); // unknown vendor → generic (ok)
-      const conn = await adapter.connect(target);
-      return Response.json({
-        ok: true,
-        vendor,
-        host,
-        latencyMs: conn.latencyMs,
-        banner: conn.banner,
-        negotiated: conn.negotiated,
-      });
+      try {
+        const adapter = resolveAdapter(target, credential);
+        const conn = await adapter.connect(target);
+        return Response.json({
+          ok: true,
+          vendor,
+          host,
+          adapter: adapter.adapter,
+          dataSource,
+          latencyMs: conn.latencyMs,
+          banner: conn.banner,
+          negotiated: conn.negotiated,
+        });
+      } catch (e) {
+        // Failure semantics (Phase 22 slice 1):
+        //   VaultError = request/credential problem (NO connection was ever
+        //     attempted) → 400 bad request;
+        //   SshError / LiveAdapterError = the probe really failed against the
+        //     device/transport → 200 ok:false so the test-connection UI
+        //     renders the actionable reason instead of a generic 500.
+        if (e instanceof VaultError) {
+          return Response.json(
+            { ok: false, vendor, host, dataSource, error: `${e.code}: ${e.message}` },
+            { status: 400 }
+          );
+        }
+        if (e instanceof SshError || e instanceof LiveAdapterError) {
+          return Response.json({
+            ok: false,
+            vendor,
+            host,
+            adapter: dataSource === "LIVE_SSH" ? "cisco-ios-live" : undefined,
+            dataSource,
+            error: `${e.code}: ${e.message}`,
+          });
+        }
+        throw e;
+      }
     }
 
     if (req.method === "POST" && url.pathname === "/simulate/generate-config") {
@@ -207,11 +285,23 @@ async function handle(req: Request): Promise<Response> {
   }
 }
 
-const server = Bun.serve({ port: PORT, fetch: (req) => handle(req) });
-log(`fayanms-worker v0.1.0 listening on :${server.port}`);
-startRunner();
-startScheduler();
+if (import.meta.main) {
+  const server = Bun.serve({ port: PORT, fetch: (req) => handle(req) });
+  log(`fayanms-worker v0.1.0 listening on :${server.port}`);
+  startRunner();
+  startScheduler();
 
+  process.on("SIGTERM", () => {
+    log("SIGTERM received — shutting down");
+    server.stop(true);
+    process.exit(0);
+  });
+  process.on("SIGINT", () => {
+    log("SIGINT received — shutting down");
+    server.stop(true);
+    process.exit(0);
+  });
+}
 /* ───────────────────── change-apply delta (Task 4-b) ───────────────────── */
 
 /** Uppercase kebab slug of the change title (truncated) for config lines. */
@@ -253,17 +343,6 @@ function applyChangeDelta(rawText: string, flavor: string, changeTitle: string):
   ];
   return `${lines.join("\n")}\n${block.join("\n")}\n`;
 }
-
-process.on("SIGTERM", () => {
-  log("SIGTERM received — shutting down");
-  server.stop(true);
-  process.exit(0);
-});
-process.on("SIGINT", () => {
-  log("SIGINT received — shutting down");
-  server.stop(true);
-  process.exit(0);
-});
 
 /* ───────────── process-level guards (Task 10-a) ───────────── */
 

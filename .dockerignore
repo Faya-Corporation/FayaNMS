@@ -7,7 +7,10 @@
 # (Dockerfile.worker) share this context root.
 
 # dependencies / build output (installed fresh inside the stages)
-node_modules
+# NOTE the ** form: a bare "node_modules" matches only the top level, which
+# would still let mini-services/worker/node_modules enter the context (Phase
+# 22 lesson — the worker now carries its own node_modules with ssh2).
+**/node_modules
 .next
 out
 build

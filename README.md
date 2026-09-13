@@ -111,6 +111,19 @@ and the seed refuses to wipe a production database).
 
 The worker claims jobs (`CONFIG_BACKUP`, `DISCOVERY`, `DRIFT_CHECK`, `CHANGE_EXECUTE`, `ALERT_EVALUATION`, `METRIC_RETENTION`, `REPORT_RUN`, `FIRMWARE_UPGRADE`, `ZTP_PROVISION`) with concurrency 3, per-job timeouts, exponential backoff on backend outages, and `GET :3030/health` observability. A scheduler tick (`POST /api/v1/worker/tick`, every ~30 s) enqueues scheduled work, prunes metric/snapshot retention, and **reaps orphaned RUNNING jobs** (10 min threshold; 15 min for change execution) — flipped to FAILED with a `JOB_ORPHAN_REAPED` audit row and an "Orphaned" marker in the Job Center, recoverable via the built-in retry.
 
+### Live device connections (Phase 22 slice 1 — read-only)
+
+Devices carry a data plane: `SIMULATOR` (default — the deterministic in-memory adapters) or
+`LIVE_SSH` — reached by the worker over **real SSH** (exec-only, strict read-only
+`show`-command allowlist). A `LIVE_SSH` device requires a linked `CredentialProfile`; only
+the REFERENCE fields travel (username/port/secretRef) — the worker resolves the secret
+worker-side from its own vault environment (`vault://ssh/network-admin` → env
+`FAYANMS_VAULT_SSH_NETWORK_ADMIN`), so no secret ever passes through the app or the job
+channel. Certified flavor: **cisco-ios** (IOS/IOS-XE), verified end-to-end in CI against
+the in-repo protocol harness (`mini-services/worker/certify.ts` — a REAL SSH server with a
+vendor-realistic IOS persona). **Hardware certification (physical devices) remains open**;
+apply/restore/rollback stay simulator-only until Phase 22's controlled-change work.
+
 ### Docker / Windows Server deployment
 
 The container stack ships in-repo: `Dockerfile` (multi-stage bun → Next standalone, non-root, stateless — persistence is PostgreSQL), `Dockerfile.worker`, `compose.yml` (app + worker + `postgres:16-alpine` on a bridge network + one-off `provision` service; both service hops are env-configurable — `WORKER_BASE_URL` / `NEXT_BASE_URL`, runbook T5 — and the app URL is composed from `POSTGRES_PASSWORD`), and `.dockerignore`. The full host runbook — Windows Server + WSL2 prep, secrets, first deployment, backups, upgrades, troubleshooting — is [docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md](docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md); the env template is [docs/deploy/env.production.example](docs/deploy/env.production.example).
@@ -146,15 +159,19 @@ authentication, configuration encryption and audit verification are substantiall
 and production persistence is now PostgreSQL (Phase 21 slice 1, 2026-09-13: schema,
 compose `postgres` service, CI service-container gates; slice 2 the same day: a committed
 `prisma/migrations` history with fresh-database `migrate deploy` and a migrations≡schema
-drift guard enforced in CI). Remaining before a production
-claim: real vendor-device adapter certification (Phase 22) and the optional Phase 21
-components (Redis/KMS/object storage/distributed locks). (CI enforcement on a protected
+drift guard enforced in CI). The device data plane is DUAL: the deterministic simulator
+plus a REAL read-only SSH transport for Cisco IOS/IOS-XE, protocol-certified in CI
+(Phase 22 slice 1, 2026-09-13). Remaining before a production
+claim: hardware certification of the live SSH plane and the remaining vendor flavors
+(Phase 22) and the optional Phase 21 components (Redis/KMS/object storage/distributed
+locks). (CI enforcement on a protected
 `main` — one of the three original blockers — was completed on 2026-09-10, see below.)
 
-Known limitations (not production claims): the device data plane remains a deterministic
-SIMULATOR; the demo dataset is never committed (rebuild via the seed above — it runs
+Known limitations (not production claims): physical-device certification of the LIVE_SSH
+plane (the code is certified against a real-protocol harness; the wire to real hardware is
+not); the demo dataset is never committed (rebuild via the seed above — it runs
 against any reachable PostgreSQL); the CI gate is live at `.github/workflows/ci.yml` (lint, src-zero-error
-typecheck, `bun test tests/`, Prisma schema, i18n parity, production build, brand
+typecheck, `bun test tests/`, LIVE_SSH certification, Prisma schema, i18n parity, production build, brand
 validators and a security scan job) and is now CI-enforced: activated on GitHub Actions on
 2026-09-10 with green `gate` + `scan` runs on `main`, and `main` is protected — the `gate`
 and `scan` status checks are required, pull requests require 1 approval incl. CODEOWNERS

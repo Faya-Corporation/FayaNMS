@@ -91,7 +91,8 @@
  * Any single job failure is contained — the loop never crashes.
  */
 
-import { pickAdapter, sleep, randInt, type DeviceTarget } from "./adapters";
+import { sleep, randInt, type DeviceTarget } from "./adapters";
+import { parseTargetCredential, resolveAdapter } from "./adapter-router";
 import { nextPost, selfPost, log } from "./next-client";
 
 const CLAIM_INTERVAL_MS = 3_000;
@@ -218,7 +219,16 @@ async function runBackupJob(job: ClaimedJob): Promise<void> {
     firmware: (payload.firmware as string) ?? null,
     managementIp: (payload.managementIp as string) ?? null,
     status: (payload.status as string) ?? null,
+    // Phase 22 slice 1 — data-plane routing (claim enrichment supplies it).
+    dataSource:
+      typeof payload.dataSource === "string" && payload.dataSource.trim()
+        ? payload.dataSource.trim().toUpperCase()
+        : "SIMULATOR",
   };
+  // Parsed BEFORE the OFFLINE guard: a LIVE_SSH device with a broken
+  // credential block must fail fast with the typed error, not as a generic
+  // OFFLINE failure. Throws → the generic failure path (requeue/backoff).
+  const credential = parseTargetCredential(payload.credential ?? null);
 
   if (!target.deviceId || target.deviceId === "null" || !payload.hostname) {
     throw new Error(
@@ -233,15 +243,63 @@ async function runBackupJob(job: ClaimedJob): Promise<void> {
     throw new Error("SSH connection timed out after 30 s (device state: OFFLINE)");
   }
 
+  const adapter = resolveAdapter(target, credential);
+  const isLive = (target.dataSource ?? "SIMULATOR") === "LIVE_SSH";
+
+  if (isLive) {
+    // ── LIVE plane (Phase 22 slice 1): real SSH, read-only ──
+    // No artificial sleeps: the progress posts bracket the REAL connect
+    // and the REAL exec round-trip. The adapter is exec-only with a
+    // read-only show-command allowlist; apply/restore stay simulator-only.
+    const conn = await adapter.connect(target);
+    await reportProgress(
+      job.id,
+      40,
+      `Connected over real SSH to ${target.hostname} in ${conn.latencyMs} ms (${adapter.adapter})`
+    );
+    const cfg = await adapter.fetchConfig(target);
+    await reportProgress(
+      job.id,
+      85,
+      `Running-config collected via SSH exec (read-only, flavor ${adapter.configFlavor})`
+    );
+    const bytes = new TextEncoder().encode(cfg.rawText).length;
+
+    await nextPost(
+      "/api/v1/worker/complete",
+      {
+        jobId: job.id,
+        outcome: "SUCCEEDED",
+        result: {
+          rawText: cfg.rawText,
+          normalizedText: cfg.normalizedText,
+          configFlavor: adapter.configFlavor,
+          bytes,
+          dataSource: "LIVE_SSH",
+        },
+      },
+      15_000
+    );
+
+    counters.completed += 1;
+    counters.completedByType.CONFIG_BACKUP =
+      (counters.completedByType.CONFIG_BACKUP ?? 0) + 1;
+    await log(
+      `job ${job.id} [${job.correlationId}] SUCCEEDED (LIVE_SSH): ${target.hostname} bytes=${bytes} flavor=${adapter.configFlavor} connectMs=${conn.latencyMs}`
+    );
+    return;
+  }
+
+  // ── SIMULATOR plane (unchanged path) ──
   // Connect step goes through the worker's own /simulate/connect endpoint
   // (spec step sequence) — same adapter code path the test-connection flow uses.
   const sim = (await selfPost("/simulate/connect", {
     vendor: target.vendor,
     host: target.managementIp ?? target.hostname,
     hostname: target.hostname,
+    dataSource: target.dataSource,
   })) as { latencyMs?: number; negotiated?: string };
 
-  const adapter = pickAdapter(target.vendor);
   await reportProgress(
     job.id,
     15,
@@ -275,6 +333,7 @@ async function runBackupJob(job: ClaimedJob): Promise<void> {
         normalizedText: cfg.normalizedText,
         configFlavor: adapter.configFlavor,
         bytes,
+        dataSource: "SIMULATOR",
       },
     },
     15_000

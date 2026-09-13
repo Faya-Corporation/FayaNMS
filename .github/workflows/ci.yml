@@ -31,6 +31,10 @@
 #     3. unit/contract/security tests  (bun test tests/ — Phase 19-C AUTHZ-006
 #                                     suite: role matrix, authorization contract
 #                                     inventory, service auth, crypto, audit chain)
+#     3b. LIVE_SSH certification       (certify.ts — the real-SSH read-only
+#                                     adapter end-to-end against the in-repo
+#                                     IOS protocol harness; Phase 22 slice 1,
+#                                     2026-09-13)
 #     4. brand validation              (brand:validate, brand:validate-icons,
 #                                     validate-brand-consumers)
 #     5. schema validation             (prisma validate + MIGRATION HISTORY
@@ -113,6 +117,13 @@ jobs:
 
       - name: Tests (role matrix, authorization contract, service auth, crypto, audit chain)
         run: bun test tests/
+
+      # Phase 22 slice 1 — the LIVE_SSH read-only data plane (real ssh2 client
+      # against a REAL in-process SSH server with an IOS persona). Proves
+      # routing, transport, command mapping, normalization AND every typed
+      # failure path. Self-contained (ephemeral port, throwaway secrets).
+      - name: Live SSH adapter certification (Phase 22 slice 1)
+        run: bun mini-services/worker/certify.ts
 
       # Phase B3 / re-audit BR-C2 — brand/icon governance gates (see
       # docs/brand/ASSET-MANIFEST.md §5 for the validation contract).
@@ -235,7 +246,10 @@ jobs:
           echo "f9f25499a2c8cc367b3af45df2ea7eeca7fbccceab9c35079968f4b3652194be  /tmp/osv-scanner" | sha256sum -c -
           chmod +x /tmp/osv-scanner
           mv /tmp/osv-scanner /usr/local/bin/osv-scanner
-          osv-scanner scan --lockfile=./bun.lock
+          # Root app lockfile AND the worker service lockfile (Phase 22: the
+          # worker carries the ssh2 runtime dependency — its lockfile is
+          # committed and scanned with the same severity).
+          osv-scanner scan --lockfile=./bun.lock --lockfile=./mini-services/worker/bun.lock
 
       # ── 11. P20-014 — SBOM ──
       # R10-005 hardening: the unpinned `curl main/install.sh | sh` path inside a

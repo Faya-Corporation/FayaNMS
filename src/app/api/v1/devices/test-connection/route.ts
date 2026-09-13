@@ -104,6 +104,11 @@ export async function POST(request: Request) {
       status: true,
       lastSeen: true,
       vendor: { select: { key: true, name: true, adapterKey: true } },
+      // Phase 22 slice 1 — data-plane routing + credential REFERENCE fields
+      // (secretRef is a vault pointer; the secret never travels — the worker
+      // resolves it worker-side at connect time).
+      dataSource: true,
+      credentialProfile: { select: { username: true, port: true, secretRef: true } },
     },
   });
   if (!device) {
@@ -112,6 +117,7 @@ export async function POST(request: Request) {
 
   const correlationId = newJobCorrelationId();
   const vendorKey = device.vendor?.adapterKey ?? device.vendor?.key ?? "generic";
+  const isLive = (device.dataSource ?? "SIMULATOR").trim().toUpperCase() === "LIVE_SSH";
 
   let probe: WorkerProbe;
   try {
@@ -123,8 +129,20 @@ export async function POST(request: Request) {
         host: device.mgmtIp,
         hostname: device.hostname,
         deviceId: device.id,
+        // Phase 22 slice 1: LIVE_SSH devices probe over REAL SSH (read-only);
+        // SIMULATOR devices keep the existing in-memory probe behavior.
+        dataSource: device.dataSource,
+        credential: isLive && device.credentialProfile
+          ? {
+              username: device.credentialProfile.username,
+              port: device.credentialProfile.port,
+              secretRef: device.credentialProfile.secretRef,
+            }
+          : undefined,
       }),
-      signal: AbortSignal.timeout(8000),
+      // A live SSH probe (handshake + auth) can legitimately take longer
+      // than the in-memory simulator answer.
+      signal: AbortSignal.timeout(isLive ? 15000 : 8000),
     });
     if (!response.ok) {
       probe = {
@@ -175,6 +193,7 @@ export async function POST(request: Request) {
         ok: probe.ok,
         latencyMs: probe.latencyMs,
         reportedStatus: probe.status,
+        dataSource: device.dataSource ?? "SIMULATOR",
       }),
     },
   });

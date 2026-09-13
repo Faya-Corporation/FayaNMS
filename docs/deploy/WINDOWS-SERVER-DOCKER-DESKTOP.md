@@ -477,6 +477,12 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 5. `enforce_admins=false` means **whoever controls the owner credential controls `main`**
    — on a shared Windows Server host, protect the deployment key (the PAT/credential
    helper used for `git pull`) accordingly.
+6. **LIVE_SSH secrets (Phase 22) live ONLY on the worker**: the app stores vault
+   references; the worker resolves them from `FAYANMS_VAULT_*` entries in
+   `.env.production` at connect time. The compose `worker` service carries the env_file —
+   protect that file exactly like the other secrets (item 2) and never publish 3030
+   beyond the host (the service JWT + the read-only command allowlist are the device
+   control gates).
 
 ## Explicitly NOT covered here (tracked elsewhere)
 
@@ -486,7 +492,14 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
   `prisma/migrations` history, fresh-database `migrate deploy` + migrations≡schema drift
   guard in CI, `migrate deploy` as the T7/D3 path) LANDED the same day. The remaining
   components are optional hardening, not prerequisites for this single-host deployment.
-- Real vendor adapters (Phase 22) and controlled change execution (Phase 23).
+- Real vendor adapters — Phase 22 slice 1 LANDED 2026-09-13: devices carry a data plane
+  (`SIMULATOR` default / `LIVE_SSH`), the worker has a REAL read-only SSH transport
+  (exec-only, show-command allowlist) with worker-side vault resolution
+  (`FAYANMS_VAULT_*` entries in `.env.production`), and the cisco-ios flavor is
+  protocol-certified in CI against the in-repo SSH harness. STILL OPEN: physical-hardware
+  certification, the remaining vendor flavors, and controlled changes on live devices
+  (Phase 22/23) — the apply/restore paths stay simulator-only.
+- Controlled change execution against LIVE devices (Phase 23).
 - HA/multi-node (the architecture is deliberately single-node PostgreSQL today).
 
 ---

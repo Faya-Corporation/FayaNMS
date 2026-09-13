@@ -31,7 +31,18 @@ function readRootEnvSecret(): string | null {
     const text = readFileSync(envPath, "utf8");
     for (const line of text.split("\n")) {
       const match = /^FAYANMS_SERVICE_SECRET=(.+)$/.exec(line.trim());
-      if (match) return match[1].trim();
+      if (match) {
+        let value = match[1].trim();
+        // Tolerate dotenv-style quoting (Phase 22 lesson: a quoted value in
+        // .env must not leak its quote characters into the HMAC secret).
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
+          value = value.slice(1, -1);
+        }
+        return value;
+      }
     }
   } catch {
     /* .env unreadable — fall through */

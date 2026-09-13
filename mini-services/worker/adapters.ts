@@ -2,7 +2,11 @@
  * FayaNMS worker — device adapter contract + simulator adapters.
  *
  * Contract (roadmap 2-b): every adapter exposes `connect` and `fetchConfig`.
- * The worker is a SIMULATION engine — no real SSH/SNMP. Templates are
+ * This module is the SIMULATOR plane — vendor-flavored in-memory adapters.
+ * The LIVE plane (real SSH, read-only) lives in live-ssh.ts + ssh-transport.ts
+ * and is routed by adapter-router.ts (Phase 22 slice 1); both planes
+ * implement the identical DeviceAdapter contract, so the runner, snapshot
+ * storage and the diff engine treat them uniformly. Simulator templates are
  * parameterized by device hostname/model/firmware/mgmt-ip so different
  * devices produce different configs, and successive backups of the SAME
  * device differ slightly via collector-comment lines only (uptime counter,
@@ -17,6 +21,7 @@
  * Phase 12-b: the JunOS body is hierarchical curly-brace (show-configuration
  * style); the PAN-OS body is `show config running` set-style. Both are
  * normalized by the same comment/blank-strip contract as every other flavor.
+ * Phase 22: the live manifest key is cisco-ios-live (vendor: cisco).
  */
 
 /* ───────────────────────────── contract ───────────────────────────── */
@@ -33,6 +38,13 @@ export interface DeviceTarget {
   managementIp?: string | null;
   /** device status at claim time — the runner checks OFFLINE before connect */
   status?: string | null;
+  /**
+   * Device data plane (Phase 22 slice 1): "SIMULATOR" (default) uses the
+   * in-memory adapters; "LIVE_SSH" routes through the real-transport
+   * read-only adapter (adapter-router.ts + live-ssh.ts). Arrives via the
+   * claim enrichment / probe body; absent = SIMULATOR.
+   */
+  dataSource?: string | null;
 }
 
 export interface ConnResult {

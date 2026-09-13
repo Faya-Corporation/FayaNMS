@@ -119,6 +119,14 @@ model Device {
   displayName        String?
   vendorId           String
   vendor             Vendor   @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  // dataSource: SIMULATOR | LIVE_SSH (Phase 22 slice 1, 2026-09-13 — read-only SSH).
+  // LIVE_SSH devices are reached by the worker over REAL SSH (exec-only,
+  // read-only command allowlist). They REQUIRE a linked CredentialProfile
+  // (username/port/secretRef travel in job payloads — never the secret) and
+  // a worker-side vault entry for the secretRef (FAYANMS_VAULT_* env).
+  dataSource         String   @default("SIMULATOR")
+  credentialProfileId String?
+  credentialProfile  CredentialProfile? @relation(fields: [credentialProfileId], references: [id], onDelete: SetNull)
   platform           String?
   model              String?
   serialNumber       String?
@@ -201,6 +209,9 @@ model CredentialProfile {
   port          Int       @default(22)
   lastRotatedAt DateTime?
   notes         String?
+
+  // LIVE_SSH devices using this profile (Phase 22 slice 1)
+  devices       Device[]
 }
 
 model BackupPolicy {
