@@ -27,7 +27,8 @@
 # this workflow runs the ALREADY-mandated local gates on every push/PR):
 #   job `gate`:
 #     1. lint                          (eslint, exit code enforced)
-#     2. typecheck                     (tsc --noEmit — src/ zero-error policy)
+#     2. typecheck                     (tsc --noEmit — src/ + worker
+#                                     zero-error policy)
 #     3. unit/contract/security tests  (bun test tests/ — Phase 19-C AUTHZ-006
 #                                     suite: role matrix, authorization contract
 #                                     inventory, service auth, crypto, audit chain)
@@ -100,20 +101,30 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Phase 22: the worker is a real service with its own runtime dependency
+      # (ssh2) and its own committed lockfile. Installed frozen so the
+      # certification step AND the typecheck resolve ssh2/@types/ssh2 exactly
+      # like the repo does. (The worker IMAGE does its own --omit dev/optional
+      # install in Dockerfile.worker — CI needs the types for the typecheck.)
+      - name: Install worker dependencies (frozen)
+        run: cd mini-services/worker && bun install --frozen-lockfile
+
       - name: Lint
         run: bun run lint
 
-      # Documented policy: "src/ zero-error". The repo currently carries known
-      # pre-existing TypeScript errors under examples/ and skills/ (legacy
-      # reference/skill directories OUTSIDE the product; cleanup is tracked
-      # separately, not in this gate). Failures are never hidden: tsc's full
-      # output stays visible via tee, and the grep gate re-checks the log so any
-      # error under src/ or scripts/ fails the job while the known-legacy
-      # example/skill directories do not block.
-      - name: Typecheck (tsc --noEmit — src/ zero-error policy)
+      # Documented policy: "src/ + worker zero-error". The repo currently
+      # carries known pre-existing TypeScript errors under examples/ and
+      # skills/ (legacy reference/skill directories OUTSIDE the product;
+      # cleanup is tracked separately, not in this gate). Failures are never
+      # hidden: tsc's full output stays visible via tee, and the grep gate
+      # re-checks the log so any error under src/, scripts/ or mini-services/
+      # fails the job while the known-legacy example/skill directories do not
+      # block. (mini-services enforcement added in Phase 22 slice 1 — run #21
+      # proved worker type errors were invisible before.)
+      - name: Typecheck (tsc — src/ + worker zero-error policy)
         run: |
           bunx tsc --noEmit 2>&1 | tee tsc.log
-          test ! -n "$(grep -E '^(src|scripts)/' tsc.log)"
+          test ! -n "$(grep -E '^(src|scripts|mini-services)/' tsc.log)"
 
       - name: Tests (role matrix, authorization contract, service auth, crypto, audit chain)
         run: bun test tests/
