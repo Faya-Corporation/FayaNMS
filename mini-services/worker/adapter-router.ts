@@ -11,6 +11,14 @@
  * (username/port/secretRef) and NEVER a secret. The secret is resolved
  * HERE, worker-side, from the operator-managed vault environment, only at
  * the moment a connection is actually made.
+ *
+ * SAFE-001 (audit P0-001): every LIVE_SSH connection is host-key pinned.
+ * The app passes the enrolled fingerprint (SshHostKey table) in the payload
+ * as `sshHostKeyPin: { fingerprint }`; a live connection WITHOUT a pin is
+ * refused before any connection is opened (SSH_HOSTKEY_UNENROLLED) except
+ * in explicit enrollment mode (the audited enrollment probe on
+ * /simulate/connect only). A malformed pin is a typed request error too
+ * (SSH_HOSTKEY_PIN_INVALID) — never silently ignored.
  */
 
 import { pickAdapter, type DeviceAdapter, type DeviceTarget } from "./adapters";
@@ -61,13 +69,75 @@ export function isLiveTarget(target: Pick<DeviceTarget, "dataSource">): boolean 
 }
 
 /**
+ * SAFE-001 — request-level host-key policy failure. Raised BEFORE any
+ * connection is opened (the caller maps it to 400, mirroring VaultError:
+ * nothing reached the device).
+ */
+export class HostKeyPolicyError extends Error {
+  constructor(
+    public readonly code: "SSH_HOSTKEY_UNENROLLED" | "SSH_HOSTKEY_PIN_INVALID",
+    message: string,
+  ) {
+    super(message);
+    this.name = "HostKeyPolicyError";
+  }
+}
+
+/** OpenSSH-style fingerprint: "SHA256:" + 43 base64 chars (padding stripped). */
+export const HOSTKEY_FINGERPRINT_RE = /^SHA256:[A-Za-z0-9+/]{43}$/;
+
+/**
+ * Parse + validate the `sshHostKeyPin` payload block
+ * ({ fingerprint: "SHA256:…" } | absent). Returns the fingerprint string or
+ * null. A MALFORMED pin throws SSH_HOSTKEY_PIN_INVALID — a broken pin must
+ * fail the request, never fall back to an unpinned connection.
+ */
+export function parseHostKeyPin(raw: unknown): string | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new HostKeyPolicyError(
+      "SSH_HOSTKEY_PIN_INVALID",
+      "sshHostKeyPin must be an object { fingerprint: \"SHA256:…\" } (the enrolled host-key pin)",
+    );
+  }
+  const pin = raw as Record<string, unknown>;
+  const fingerprint = typeof pin.fingerprint === "string" ? pin.fingerprint.trim() : "";
+  if (!fingerprint || !HOSTKEY_FINGERPRINT_RE.test(fingerprint)) {
+    throw new HostKeyPolicyError(
+      "SSH_HOSTKEY_PIN_INVALID",
+      `sshHostKeyPin.fingerprint is not an OpenSSH SHA256 fingerprint ("SHA256:" + 43 base64 chars): ${JSON.stringify(
+        fingerprint.slice(0, 80),
+      )}`,
+    );
+  }
+  return fingerprint;
+}
+
+export interface ResolveAdapterOptions {
+  /**
+   * Pinned host-key fingerprint from the payload (null = not enrolled).
+   * Required for every live connection UNLESS enrollmentMode is set.
+   */
+  hostKeyPin?: string | null;
+  /**
+   * Enrollment mode (SAFE-001): connect WITHOUT enforcement and CAPTURE the
+   * presented key so the operator can pin it. Only the audited enrollment
+   * probe on /simulate/connect may set this — never the job/backup/change
+   * planes.
+   */
+  enrollmentMode?: boolean;
+}
+
+/**
  * Resolve the adapter for a target. LIVE_SSH requires a parsed credential
- * block; anything else routes to the existing simulator behavior
- * (unknown vendor degrades to `generic`, unchanged).
+ * block AND (SAFE-001) a host-key pin except in enrollment mode; anything
+ * else routes to the existing simulator behavior (unknown vendor degrades
+ * to `generic`, unchanged).
  */
 export function resolveAdapter(
   target: DeviceTarget,
   credential: TargetCredential | null,
+  options: ResolveAdapterOptions = {},
 ): DeviceAdapter {
   if (isLiveTarget(target)) {
     if (!credential) {
@@ -76,13 +146,53 @@ export function resolveAdapter(
         `Device ${target.hostname} is LIVE_SSH but carries no credential block — link a CredentialProfile (username/port/secretRef) first`,
       );
     }
+    const pin = options.hostKeyPin ?? null;
+    if (!pin && !options.enrollmentMode) {
+      throw new HostKeyPolicyError(
+        "SSH_HOSTKEY_UNENROLLED",
+        `Device ${target.hostname} has no pinned SSH host key — live connections are refused (fail-closed). Enroll the host key from the device page, then retry.`,
+      );
+    }
+    // Defense in depth: a non-null pin MUST be well-formed. The payload
+    // layer (parseHostKeyPin) validates first, but resolveAdapter never
+    // trusts its callers — a malformed pin fails closed, never ignored.
+    if (pin && !HOSTKEY_FINGERPRINT_RE.test(pin)) {
+      throw new HostKeyPolicyError(
+        "SSH_HOSTKEY_PIN_INVALID",
+        `host-key pin is not an OpenSSH SHA256 fingerprint ("SHA256:" + 43 base64 chars): ${JSON.stringify(
+          pin.slice(0, 80),
+        )}`,
+      );
+    }
     const password = resolveVaultSecret(credential.secretRef);
     return createLiveSshAdapter(target.vendor, {
       host: target.managementIp ?? target.hostname,
       port: credential.port,
       username: credential.username,
       password,
+      expectedFingerprint: pin,
+      // Enrollment capture only when explicitly requested (and pin-less).
+      onHostKey: options.enrollmentMode
+        ? (meta): void => {
+            recordedHostKey = meta;
+          }
+        : undefined,
     });
   }
   return pickAdapter(target.vendor);
+}
+
+/**
+ * Enrollment capture slot — set by resolveAdapter's onHostKey callback
+ * during an enrollment-mode connection and read by the /simulate/connect
+ * handler to answer the probe with the presented key. Single-connection
+ * lifetime: the probe records exactly one handshake.
+ */
+let recordedHostKey: { keyType: string; fingerprint: string } | null = null;
+
+/** Read (and clear) the captured host key from the last enrollment-mode connection. */
+export function takeRecordedHostKey(): { keyType: string; fingerprint: string } | null {
+  const meta = recordedHostKey;
+  recordedHostKey = null;
+  return meta;
 }

@@ -19,6 +19,7 @@ import {
 } from "@/lib/change/live-plan";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import { authenticateServiceRequest } from "@/lib/auth/service-auth";
+import { getHostKeyPin } from "@/lib/ssh/host-keys";
 import { workerControlHeaders } from "@/lib/worker/control-client";
 import { WORKER_BASE_URL } from "@/lib/worker/worker-url";
 import { z } from "zod";
@@ -176,6 +177,19 @@ function credentialBlockOf(link: DeviceLink): {
     port: profile.port,
     secretRef: profile.secretRef,
   };
+}
+
+/**
+ * SAFE-001 — the enrolled host-key pin for a live device link
+ * ({ fingerprint } | null). The worker refuses UNPINNED live connections
+ * (SSH_HOSTKEY_UNENROLLED), so a null here is a fail-closed state that
+ * surfaces as an actionable step/pre-check failure — never a bypass.
+ */
+async function hostKeyPinOf(link: DeviceLink): Promise<{ fingerprint: string } | null> {
+  const credential = credentialBlockOf(link);
+  const host = link.device.mgmtIp;
+  if (!credential || !host) return null;
+  return getHostKeyPin(host, credential.port);
 }
 
 /** Live config flavor for a vendor code — null when not certified. */
@@ -755,6 +769,9 @@ async function executeCheckStep(
               hostname,
               dataSource: "LIVE_SSH",
               credential,
+              // SAFE-001 — pinned probe; unenrolled → the worker refuses
+              // (SSH_HOSTKEY_UNENROLLED) and the pre-check fails closed.
+              sshHostKeyPin: await hostKeyPinOf(link),
             },
             15_000
           );
@@ -946,6 +963,8 @@ async function executeBackupStep(
             hostname: link.device.hostname,
             deviceId: link.deviceId,
             credential,
+            // SAFE-001 — pinned collection (fail-closed when unenrolled).
+            sshHostKeyPin: await hostKeyPinOf(link),
           },
           25_000
         );
@@ -1384,6 +1403,9 @@ async function applyLiveDevice(
     hostname: link.device.hostname,
     deviceId: link.deviceId,
     credential,
+    // SAFE-001 — the controlled apply and every subsequent collection on
+    // this endpoint ride on the pinned host key (fail-closed when null).
+    sshHostKeyPin: await hostKeyPinOf(link),
   };
 
   const apply = await workerDevicePost(
@@ -1481,6 +1503,8 @@ async function executeValidateStep(
           hostname: link.device.hostname,
           deviceId: link.deviceId,
           credential,
+          // SAFE-001 — pinned validation fetch (fail-closed when unenrolled).
+          sshHostKeyPin: await hostKeyPinOf(link),
         },
         25_000
       );
@@ -1725,6 +1749,7 @@ async function executeRollbackStep(
         liveSkipped.add(link.deviceId);
         continue;
       }
+      const pin = await hostKeyPinOf(link);
       const rollback = await workerDevicePost(
         "/live/apply",
         {
@@ -1733,6 +1758,8 @@ async function executeRollbackStep(
           hostname: link.device.hostname,
           deviceId: link.deviceId,
           credential,
+          // SAFE-001 — pinned rollback (fail-closed when unenrolled).
+          sshHostKeyPin: pin,
           plan: { kind: "ROLLBACK", anchor, slug: original },
         },
         40_000
@@ -1755,6 +1782,8 @@ async function executeRollbackStep(
           hostname: link.device.hostname,
           deviceId: link.deviceId,
           credential,
+          // SAFE-001 — pinned post-rollback collection.
+          sshHostKeyPin: pin,
         },
         25_000
       );

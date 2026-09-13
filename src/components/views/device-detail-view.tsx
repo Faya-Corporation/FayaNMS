@@ -38,6 +38,7 @@ import { useStatusLabel } from "@/hooks/use-status-label";
 import type { DeviceAuditRow, DeviceDetail, TestConnectionResult } from "@/lib/api-client";
 import { useNavigationStore } from "@/stores/navigation";
 import { AddDeviceSheet } from "@/components/device/device-form-sheet";
+import { HostKeyCard } from "@/components/device/host-key-card";
 import { DeviceHealthTab } from "@/components/device/device-health-tab";
 import { DeviceInterfacesTab } from "@/components/device/device-interfaces-tab";
 import { DeviceConfigTab } from "@/components/device/device-config-tab";
@@ -418,6 +419,11 @@ function OverviewSection({
           </div>
         </div>
       </div>
+
+      {/* SAFE-001 — host-key enrollment state for live devices (fail-closed
+          enforcement lives in the worker transport; this card is the
+          operator's enrollment surface). */}
+      {device.dataSource === "LIVE_SSH" && <HostKeyCard deviceId={device.id} />}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {/* Identity */}

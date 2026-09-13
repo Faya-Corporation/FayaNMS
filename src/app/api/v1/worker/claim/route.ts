@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import { authenticateServiceRequest } from "@/lib/auth/service-auth";
+import { getHostKeyPin } from "@/lib/ssh/host-keys";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -115,6 +116,13 @@ export async function POST(request: Request) {
           },
         });
         if (device) {
+          // SAFE-001 — the enrolled host-key pin travels with the payload;
+          // an UNENROLLED live device stays pin-less and the worker refuses
+          // the connection (SSH_HOSTKEY_UNENROLLED) — fail-closed.
+          const sshHostKeyPin =
+            device.dataSource === "LIVE_SSH" && device.credentialProfile && device.mgmtIp
+              ? await getHostKeyPin(device.mgmtIp, device.credentialProfile.port)
+              : null;
           payload = {
             ...payload,
             deviceId: device.id,
@@ -136,6 +144,8 @@ export async function POST(request: Request) {
                   secretRef: device.credentialProfile.secretRef,
                 }
               : null,
+            // SAFE-001: { fingerprint } | null (fail-closed when unenrolled).
+            sshHostKeyPin,
           };
         }
       }

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { getHostKeyPin } from "@/lib/ssh/host-keys";
 import { workerControlHeaders } from "@/lib/worker/control-client";
 import { WORKER_BASE_URL } from "@/lib/worker/worker-url";
 import { z } from "zod";
@@ -126,6 +127,13 @@ export async function POST(request: Request) {
 
   let probe: WorkerProbe;
   try {
+    // SAFE-001 — the enrolled host-key pin rides on the probe; an unenrolled
+    // live device is refused by the worker (SSH_HOSTKEY_UNENROLLED) — the
+    // UI points the operator at the host-key enrollment card.
+    const sshHostKeyPin =
+      isLive && device.credentialProfile && device.mgmtIp
+        ? await getHostKeyPin(device.mgmtIp, device.credentialProfile.port)
+        : null;
     const response = await fetch(WORKER_URL, {
       method: "POST",
       headers: workerControlHeaders(),
@@ -144,17 +152,30 @@ export async function POST(request: Request) {
               secretRef: device.credentialProfile.secretRef,
             }
           : undefined,
+        sshHostKeyPin: sshHostKeyPin ?? undefined,
       }),
       // A live SSH probe (handshake + auth) can legitimately take longer
       // than the in-memory simulator answer.
       signal: AbortSignal.timeout(isLive ? 15000 : 8000),
     });
     if (!response.ok) {
+      // SAFE-001: surface the worker's actionable rejection body (e.g.
+      // "SSH_HOSTKEY_UNENROLLED: … enroll the host key") instead of a bare
+      // HTTP status — the operator must be able to act on it.
+      let rejectionMessage = `Worker responded with HTTP ${response.status}`;
+      try {
+        const body = (await response.json()) as { error?: string } | null;
+        if (body && typeof body.error === "string" && body.error.trim()) {
+          rejectionMessage = body.error.trim();
+        }
+      } catch {
+        /* keep the generic status message */
+      }
       probe = {
         reachable: true,
         ok: false,
         latencyMs: null,
-        message: `Worker responded with HTTP ${response.status}`,
+        message: rejectionMessage,
         status: null,
         vendor: vendorKey,
         raw: null,

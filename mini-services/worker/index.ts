@@ -14,6 +14,13 @@
  *                              credential BLOCK { username, port, secretRef }
  *                              — the secret itself NEVER travels; the worker
  *                              resolves the vault reference worker-side.
+ *                              SAFE-001: LIVE probes carry the enrolled
+ *                              host-key pin (sshHostKeyPin.fingerprint,
+ *                              enforced pre-auth); an UNPINNED live probe is
+ *                              refused (SSH_HOSTKEY_UNENROLLED, 400) unless
+ *                              enrollHostKey=true — the audited enrollment
+ *                              capture that answers with the presented
+ *                              hostKey { keyType, fingerprint }.
  *   POST /simulate/generate-config → vendor-flavored config text (Task 4-b
  *                              change engine pre/post backups)
  *   POST /simulate/apply      → config text with a change-flavored delta
@@ -22,7 +29,9 @@
  *   POST /live/fetch-config   → Phase 23: REAL SSH config collection for a
  *                              LIVE_SSH device (the change engine's BACKUP
  *                              and VALIDATE steps); same read-only exec
- *                              surface as the Phase 22 adapters.
+ *                              surface as the Phase 22 adapters. SAFE-001:
+ *                              the pinned host key is REQUIRED (fail-closed
+ *                              SSH_HOSTKEY_UNENROLLED without it).
  *   POST /live/apply          → Phase 23 CONTROLLED change on a live
  *                              device: the body carries a validated PLAN
  *                              ({ kind, anchor, slug }) — never commands.
@@ -30,6 +39,11 @@
  *                              (live-change.ts + change-commands.ts) and
  *                              drives a bounded PTY CLI session
  *                              (sshCliSession) with stop-on-first-rejection.
+ *                              SAFE-001: the pinned host key is REQUIRED —
+ *                              a controlled change to an endpoint whose key
+ *                              does not match the enrollment dies in the
+ *                              handshake (SSH_HOSTKEY_MISMATCH), before the
+ *                              first command is built.
  *
  * Background loops (Task 10-a: both self-schedule with exponential backoff
  * and auto-recover while the backend is down):
@@ -48,7 +62,14 @@
 
 import { adapters, pickAdapter, type DeviceTarget } from "./adapters";
 import { LIVE_SSH_FLAVORS, LiveAdapterError, createLiveSshAdapter } from "./live-ssh";
-import { parseTargetCredential, resolveAdapter, type TargetCredential } from "./adapter-router";
+import {
+  HostKeyPolicyError,
+  parseHostKeyPin,
+  parseTargetCredential,
+  resolveAdapter,
+  takeRecordedHostKey,
+  type TargetCredential,
+} from "./adapter-router";
 import {
   applyLiveChangePlan,
   LIVE_CHANGE_FLAVORS,
@@ -149,7 +170,7 @@ export async function handle(req: Request): Promise<Response> {
         return Response.json(
           {
             ok: false,
-            error: "Body must be { vendor: string, host: string, hostname?: string, dataSource?: \"SIMULATOR\"|\"LIVE_SSH\", credential?: { username, port, secretRef } }",
+            error: "Body must be { vendor: string, host: string, hostname?: string, dataSource?: \"SIMULATOR\"|\"LIVE_SSH\", credential?: { username, port, secretRef }, sshHostKeyPin?: { fingerprint }, enrollHostKey?: boolean }",
           },
           { status: 400 }
         );
@@ -163,6 +184,23 @@ export async function handle(req: Request): Promise<Response> {
         typeof body?.dataSource === "string" && body.dataSource.trim()
           ? body.dataSource.trim().toUpperCase()
           : "SIMULATOR";
+      // SAFE-001 — host-key policy. The pin is validated up front (malformed
+      // → 400, never ignored); enrollment mode is honored ONLY on this probe
+      // endpoint and only for LIVE_SSH targets.
+      let enrollmentMode = false;
+      let hostKeyPin: string | null = null;
+      try {
+        hostKeyPin = parseHostKeyPin(body?.sshHostKeyPin ?? null);
+        enrollmentMode = dataSource === "LIVE_SSH" && body?.enrollHostKey === true;
+      } catch (e) {
+        if (e instanceof HostKeyPolicyError) {
+          return Response.json(
+            { ok: false, vendor, host, error: `${e.code}: ${e.message}` },
+            { status: 400 }
+          );
+        }
+        throw e;
+      }
       let credential: TargetCredential | null = null;
       if (dataSource === "LIVE_SSH") {
         try {
@@ -183,8 +221,9 @@ export async function handle(req: Request): Promise<Response> {
         dataSource,
       };
       try {
-        const adapter = resolveAdapter(target, credential);
+        const adapter = resolveAdapter(target, credential, { hostKeyPin, enrollmentMode });
         const conn = await adapter.connect(target);
+        const capturedHostKey = enrollmentMode ? takeRecordedHostKey() : null;
         return Response.json({
           ok: true,
           vendor,
@@ -194,15 +233,18 @@ export async function handle(req: Request): Promise<Response> {
           latencyMs: conn.latencyMs,
           banner: conn.banner,
           negotiated: conn.negotiated,
+          // SAFE-001 — enrollment answer: the presented key, for the operator
+          // to pin after (out-of-band) verification. Never stored worker-side.
+          ...(capturedHostKey ? { hostKey: capturedHostKey } : {}),
         });
       } catch (e) {
-        // Failure semantics (Phase 22 slice 1):
-        //   VaultError = request/credential problem (NO connection was ever
-        //     attempted) → 400 bad request;
+        // Failure semantics (Phase 22 slice 1 + SAFE-001):
+        //   VaultError / HostKeyPolicyError = request/credential/policy
+        //     problem (NO connection was ever attempted) → 400 bad request;
         //   SshError / LiveAdapterError = the probe really failed against the
         //     device/transport → 200 ok:false so the test-connection UI
         //     renders the actionable reason instead of a generic 500.
-        if (e instanceof VaultError) {
+        if (e instanceof VaultError || e instanceof HostKeyPolicyError) {
           return Response.json(
             { ok: false, vendor, host, dataSource, error: `${e.code}: ${e.message}` },
             { status: 400 }
@@ -331,6 +373,7 @@ export async function handle(req: Request): Promise<Response> {
         );
       }
       let credential: TargetCredential;
+      let hostKeyPin: string | null = null;
       try {
         const parsed = parseTargetCredential(body?.credential ?? null);
         if (!parsed) {
@@ -340,11 +383,23 @@ export async function handle(req: Request): Promise<Response> {
           );
         }
         credential = parsed;
+        // SAFE-001 — config collection is PINNED or refused (fail-closed;
+        // no enrollment escape hatch on the job/change planes).
+        hostKeyPin = parseHostKeyPin(body?.sshHostKeyPin ?? null);
+        if (!hostKeyPin) {
+          throw new HostKeyPolicyError(
+            "SSH_HOSTKEY_UNENROLLED",
+            `no pinned SSH host key for ${host}:${credential.port} — live config collection is refused (fail-closed). Enroll the host key from the device page first.`,
+          );
+        }
       } catch (e) {
-        return Response.json(
-          { ok: false, vendor, host, error: (e as Error).message },
-          { status: 400 }
-        );
+        if (e instanceof VaultError || e instanceof HostKeyPolicyError) {
+          return Response.json(
+            { ok: false, vendor, host, error: `${e.code}: ${e.message}` },
+            { status: 400 }
+          );
+        }
+        throw e;
       }
       const target: DeviceTarget = {
         deviceId: typeof body?.deviceId === "string" ? body.deviceId : "live-fetch",
@@ -360,6 +415,7 @@ export async function handle(req: Request): Promise<Response> {
           port: credential.port,
           username: credential.username,
           password,
+          expectedFingerprint: hostKeyPin,
         });
         const config = await adapter.fetchConfig(target);
         return Response.json({
@@ -423,6 +479,7 @@ export async function handle(req: Request): Promise<Response> {
         );
       }
       let credential: TargetCredential;
+      let hostKeyPin: string | null = null;
       try {
         const parsed = parseTargetCredential(body?.credential ?? null);
         if (!parsed) {
@@ -432,11 +489,23 @@ export async function handle(req: Request): Promise<Response> {
           );
         }
         credential = parsed;
+        // SAFE-001 — controlled changes are PINNED or refused (fail-closed;
+        // no enrollment escape hatch on the job/change planes).
+        hostKeyPin = parseHostKeyPin(body?.sshHostKeyPin ?? null);
+        if (!hostKeyPin) {
+          throw new HostKeyPolicyError(
+            "SSH_HOSTKEY_UNENROLLED",
+            `no pinned SSH host key for ${host}:${credential.port} — controlled changes are refused (fail-closed). Enroll the host key from the device page first.`,
+          );
+        }
       } catch (e) {
-        return Response.json(
-          { ok: false, vendor, host, error: (e as Error).message },
-          { status: 400 }
-        );
+        if (e instanceof VaultError || e instanceof HostKeyPolicyError) {
+          return Response.json(
+            { ok: false, vendor, host, error: `${e.code}: ${e.message}` },
+            { status: 400 }
+          );
+        }
+        throw e;
       }
       try {
         const plan = parseChangePlan(body?.plan ?? null);
@@ -446,6 +515,7 @@ export async function handle(req: Request): Promise<Response> {
           port: credential.port,
           username: credential.username,
           password,
+          expectedFingerprint: hostKeyPin,
         }, plan);
         return Response.json({
           ok: true,

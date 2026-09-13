@@ -16,6 +16,12 @@
  *   5.  HTTP routing: POST /simulate/connect with dataSource LIVE_SSH +
  *       a credential block (control token) — the exact surface the
  *       test-connection flow uses
+ *  5b.  SAFE-001 host-key pipeline (every flavor): the persona exposes its
+ *       real host key; the ENROLL probe (enrollHostKey=true, no pin)
+ *       captures it; a PINNED connection succeeds; a WRONG pin dies in the
+ *       handshake with SSH_HOSTKEY_MISMATCH BEFORE authentication; an
+ *       UNPINNED live probe/collection/apply is refused 400
+ *       (SSH_HOSTKEY_UNENROLLED — fail-closed, no connection opened).
  *
  * Cross-cutting checks (once): unreachable target → SSH_UNREACHABLE,
  * missing vault entry → CREDENTIAL_UNRESOLVED, uncertified vendor (sophos)
@@ -43,6 +49,9 @@
 
 import type { DeviceTarget } from "./adapters";
 import {
+  HOSTKEY_FINGERPRINT_RE,
+  HostKeyPolicyError,
+  parseHostKeyPin,
   parseTargetCredential,
   resolveAdapter,
 } from "./adapter-router";
@@ -194,6 +203,19 @@ async function main(): Promise<void> {
       harnesses.push(harness);
       console.log(`harness: real SSH server on 127.0.0.1:${harness.port} (${cert.hostname})`);
 
+      // ── SAFE-001: the persona's REAL host key is the pin for this flavor ──
+      if (!harness.hostKeyFingerprint || !HOSTKEY_FINGERPRINT_RE.test(harness.hostKeyFingerprint)) {
+        check(`${cert.vendor}: harness exposes its real host key (SAFE-001)`, false, String(harness.hostKeyFingerprint));
+        continue;
+      }
+      const pin = harness.hostKeyFingerprint;
+      const pinBlock = { fingerprint: pin };
+      check(
+        `${cert.vendor}: harness exposes its real host key (SAFE-001)`,
+        harness.hostKeyType === "ssh-ed25519",
+        `${harness.hostKeyType} ${pin}`,
+      );
+
       const credential = parseTargetCredential({
         username: "netadmin",
         port: harness.port,
@@ -202,7 +224,7 @@ async function main(): Promise<void> {
       const target = liveTarget(cert.hostname, cert.vendor);
 
       // ── 1. routing ──
-      const live = resolveAdapter(target, credential);
+      const live = resolveAdapter(target, credential, { hostKeyPin: pin });
       check(
         `${cert.vendor}: LIVE_SSH routes to the live adapter`,
         live.adapter === cert.adapter,
@@ -211,6 +233,11 @@ async function main(): Promise<void> {
       check(
         `${cert.vendor}: flavor registry agrees`,
         resolveLiveSshFlavor(cert.vendor).adapter === cert.adapter,
+      );
+      await expectError(
+        `${cert.vendor}: unpinned live routing refused (SSH_HOSTKEY_UNENROLLED)`,
+        "SSH_HOSTKEY_UNENROLLED",
+        () => resolveAdapter(target, credential),
       );
 
       // ── 2. connect over real SSH ──
@@ -241,17 +268,34 @@ async function main(): Promise<void> {
         `${cfg.normalizedText.split("\n").length} normalized lines`,
       );
 
-      // ── 4. wrong password → typed failure ──
+      // ── 4. wrong password → typed failure (with the CORRECT pin — proves
+      // the pin passes the handshake and only the auth fails) ──
       const wrongPassword = createLiveSshAdapter(cert.vendor, {
         host: "127.0.0.1",
         port: harness.port,
         username: "netadmin",
         password: "definitely-wrong",
+        expectedFingerprint: pin,
       });
       await expectError(
         `${cert.vendor}: wrong password → SSH_AUTH_FAILED`,
         "SSH_AUTH_FAILED",
         () => wrongPassword.connect(target),
+      );
+
+      // ── 4b. SAFE-001: wrong pin dies in the HANDSHAKE, pre-auth ──
+      const wrongPin = `SHA256:${"A".repeat(43)}`;
+      const pinMismatch = createLiveSshAdapter(cert.vendor, {
+        host: "127.0.0.1",
+        port: harness.port,
+        username: "netadmin",
+        password: "faya-harness",
+        expectedFingerprint: wrongPin,
+      });
+      await expectError(
+        `${cert.vendor}: wrong pin → SSH_HOSTKEY_MISMATCH (pre-auth)`,
+        "SSH_HOSTKEY_MISMATCH",
+        () => pinMismatch.connect(target),
       );
 
       // ── 5. HTTP routing (the test-connection surface) ──
@@ -274,6 +318,7 @@ async function main(): Promise<void> {
         hostname: cert.hostname,
         dataSource: "LIVE_SSH",
         credential: { username: "netadmin", port: harness.port, secretRef: VAULT_REF },
+        sshHostKeyPin: pinBlock,
       });
       const liveJson = (await liveRes.json()) as Record<string, unknown>;
       check(
@@ -297,6 +342,43 @@ async function main(): Promise<void> {
         `status ${badRes.status}`,
       );
 
+      // ── 5b. SAFE-001 enrollment + fail-closed HTTP contracts ──
+      const unpinnedRes = await post({
+        vendor: cert.vendor,
+        host: "127.0.0.1",
+        hostname: cert.hostname,
+        dataSource: "LIVE_SSH",
+        credential: { username: "netadmin", port: harness.port, secretRef: VAULT_REF },
+      });
+      const unpinnedJson = (await unpinnedRes.json()) as Record<string, unknown>;
+      check(
+        `${cert.vendor}: HTTP live probe without pin → 400 SSH_HOSTKEY_UNENROLLED`,
+        unpinnedRes.status === 400 &&
+          String(unpinnedJson.error ?? "").includes("SSH_HOSTKEY_UNENROLLED"),
+        `status ${unpinnedRes.status}`,
+      );
+
+      const enrollRes = await post({
+        vendor: cert.vendor,
+        host: "127.0.0.1",
+        hostname: cert.hostname,
+        dataSource: "LIVE_SSH",
+        credential: { username: "netadmin", port: harness.port, secretRef: VAULT_REF },
+        enrollHostKey: true,
+      });
+      const enrollJson = (await enrollRes.json()) as {
+        ok?: boolean;
+        hostKey?: { keyType?: string; fingerprint?: string };
+      };
+      check(
+        `${cert.vendor}: enrollment probe captures the presented host key`,
+        enrollRes.status === 200 &&
+          enrollJson.ok === true &&
+          enrollJson.hostKey?.keyType === "ssh-ed25519" &&
+          enrollJson.hostKey?.fingerprint === pin,
+        `status ${enrollRes.status}`,
+      );
+
       /* ── Phase 23: controlled-change certification ── */
       const liveApply = (body: unknown) =>
         handle(
@@ -316,6 +398,7 @@ async function main(): Promise<void> {
         host: "127.0.0.1",
         hostname: cert.hostname,
         credential: { username: "netadmin", port: harness.port, secretRef: VAULT_REF },
+        sshHostKeyPin: pinBlock,
         plan: { kind: "APPLY", anchor: "bad anchor with spaces", slug: "X" },
       });
       check(
@@ -333,6 +416,7 @@ async function main(): Promise<void> {
         host: "127.0.0.1",
         hostname: cert.hostname,
         credential: { username: "netadmin", port: harness.port, secretRef: VAULT_REF },
+        sshHostKeyPin: pinBlock,
         plan: {
           kind: "APPLY",
           anchor: cert.change.anchor,
@@ -357,6 +441,7 @@ async function main(): Promise<void> {
         port: harness.port,
         username: "netadmin",
         password: appliedPassword,
+        expectedFingerprint: pin,
       });
       const postApply = await postApplyAdapter.fetchConfig(target);
       const applyMarker =
@@ -379,6 +464,7 @@ async function main(): Promise<void> {
         host: "127.0.0.1",
         hostname: cert.hostname,
         credential: { username: "netadmin", port: harness.port, secretRef: VAULT_REF },
+        sshHostKeyPin: pinBlock,
         plan: {
           kind: "ROLLBACK",
           anchor: cert.change.anchor,
@@ -421,6 +507,29 @@ async function main(): Promise<void> {
         fetchNoCred.status === 400,
         `status ${fetchNoCred.status}`,
       );
+
+      // /live/fetch-config with credential but WITHOUT pin → 400 fail-closed.
+      const fetchNoPin = await handle(
+        new Request("http://worker/live/fetch-config", {
+          method: "POST",
+          headers: {
+            authorization: serviceAuthHeader(),
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            vendor: cert.vendor,
+            host: "127.0.0.1",
+            credential: { username: "netadmin", port: harness.port, secretRef: VAULT_REF },
+          }),
+        }),
+      );
+      const fetchNoPinJson = (await fetchNoPin.json()) as Record<string, unknown>;
+      check(
+        `${cert.vendor}: /live/fetch-config without pin → 400 SSH_HOSTKEY_UNENROLLED`,
+        fetchNoPin.status === 400 &&
+          String(fetchNoPinJson.error ?? "").includes("SSH_HOSTKEY_UNENROLLED"),
+        `status ${fetchNoPin.status}`,
+      );
     }
 
     console.log("\n── cross-cutting contracts ──");
@@ -449,6 +558,30 @@ async function main(): Promise<void> {
       "FLAVOR_UNSUPPORTED",
       () => resolveLiveSshFlavor("sophos"),
     );
+
+    // SAFE-001 — pin parsing contract (request-level, before any connection).
+    check("pin parse: absent → null", parseHostKeyPin(null) === null && parseHostKeyPin(undefined) === null);
+    const validFp = `SHA256:${"aZ09+/".slice(0, 1).repeat(43)}`;
+    check("pin parse: valid fingerprint accepted", parseHostKeyPin({ fingerprint: validFp }) === validFp);
+    for (const [label, raw] of [
+      ["non-object", "SHA256:abc"],
+      ["missing field", {}],
+      ["empty", { fingerprint: "" }],
+      ["missing prefix", { fingerprint: "a".repeat(43) }],
+      ["too short", { fingerprint: `SHA256:${"a".repeat(42)}` }],
+      ["bad charset", { fingerprint: `SHA256:${"@".repeat(43)}` }],
+    ] as const) {
+      try {
+        parseHostKeyPin(raw);
+        check(`pin parse: ${label} → SSH_HOSTKEY_PIN_INVALID`, false, "nothing thrown");
+      } catch (e) {
+        check(
+          `pin parse: ${label} → SSH_HOSTKEY_PIN_INVALID`,
+          e instanceof HostKeyPolicyError && e.code === "SSH_HOSTKEY_PIN_INVALID",
+          errorCode(e),
+        );
+      }
+    }
 
     // HTTP simulator probe unchanged.
     const { handle } = await import("./index");

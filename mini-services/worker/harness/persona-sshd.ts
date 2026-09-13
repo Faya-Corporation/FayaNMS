@@ -23,12 +23,19 @@
  *     that accept the template verbs and mutate the persona config, so a
  *     post-apply fetch reflects the delta.
  *
+ * SAFE-001: the persona EXPOSES its host-key fingerprint
+ * (hostKeyFingerprint, computed with the same transport helper the worker
+ * enforces with) so the certification driver can exercise the full
+ * enroll → pin → verify → mismatch pipeline against a real key.
+ *
  * The vendor-specific personas (command outputs, error-line behavior) live
  * next door: ios-sshd.ts, fortios-sshd.ts, aoscx-sshd.ts, junos-sshd.ts,
  * panos-sshd.ts.
  */
 
 import { Server, utils, type Connection } from "ssh2";
+
+import { computeHostKeyFingerprint, parseHostKeyType } from "../ssh-transport";
 
 /** One line of CLI input handled by the persona shell. */
 export interface PersonaShellAction {
@@ -63,6 +70,14 @@ export interface PersonaHarnessOptions {
 
 export interface PersonaHarness {
   port: number;
+  /**
+   * SAFE-001 — OpenSSH-style fingerprint of this persona's host key
+   * ("SHA256:…", same helper the worker transport enforces with). Null only
+   * if the harness key could not be parsed (certification would fail).
+   */
+  hostKeyFingerprint: string | null;
+  /** key algorithm the persona presents, e.g. "ssh-ed25519" */
+  hostKeyType: string;
   close(): Promise<void>;
 }
 
@@ -119,7 +134,15 @@ export async function startPersonaSshHarness(
 ): Promise<PersonaHarness> {
   const username = opts.username ?? "netadmin";
   const password = opts.password ?? "faya-harness";
-  const hostKey = utils.generateKeyPairSync("ed25519").private;
+  const keyPair = utils.generateKeyPairSync("ed25519");
+  const hostKey = keyPair.private;
+  // SAFE-001 — derive the persona's public key blob + fingerprint with the
+  // SAME helpers the client transport enforces, so certify pins the real
+  // value and a mismatch test proves the enforcement path end-to-end.
+  const parsedKey = utils.parseKey(hostKey);
+  const publicBlob = parsedKey instanceof Error ? null : parsedKey.getPublicSSH();
+  const hostKeyFingerprint = publicBlob ? computeHostKeyFingerprint(publicBlob) : null;
+  const hostKeyType = publicBlob ? parseHostKeyType(publicBlob) : "unknown";
   const connections = new Set<Connection>();
   const allowlist = new Set(Object.keys(opts.commands));
 
@@ -181,6 +204,8 @@ export async function startPersonaSshHarness(
 
   return {
     port,
+    hostKeyFingerprint,
+    hostKeyType,
     close: () =>
       new Promise<void>((resolve) => {
         for (const conn of connections) {

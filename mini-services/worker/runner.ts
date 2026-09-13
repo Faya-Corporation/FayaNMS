@@ -92,7 +92,11 @@
  */
 
 import { sleep, randInt, type DeviceTarget } from "./adapters";
-import { parseTargetCredential, resolveAdapter } from "./adapter-router";
+import {
+  parseHostKeyPin,
+  parseTargetCredential,
+  resolveAdapter,
+} from "./adapter-router";
 import { nextPost, selfPost, log } from "./next-client";
 
 const CLAIM_INTERVAL_MS = 3_000;
@@ -243,7 +247,12 @@ async function runBackupJob(job: ClaimedJob): Promise<void> {
     throw new Error("SSH connection timed out after 30 s (device state: OFFLINE)");
   }
 
-  const adapter = resolveAdapter(target, credential);
+  // SAFE-001 — the claim enrichment carries the enrolled host-key pin for
+  // live devices ({ fingerprint } | absent). Parsed (and validated) here so
+  // a malformed pin fails the job typed instead of reaching any device;
+  // an ABSENT pin fails closed inside resolveAdapter (SSH_HOSTKEY_UNENROLLED).
+  const hostKeyPin = parseHostKeyPin(payload.sshHostKeyPin ?? null);
+  const adapter = resolveAdapter(target, credential, { hostKeyPin });
   const isLive = (target.dataSource ?? "SIMULATOR") === "LIVE_SSH";
 
   if (isLive) {

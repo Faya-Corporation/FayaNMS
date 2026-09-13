@@ -17,13 +17,21 @@
  *     can never send arbitrary command text).
  *   - TYPED FAILURES: every error surfaces as an SshError with a stable
  *     code (SSH_AUTH_FAILED / SSH_UNREACHABLE / SSH_TIMEOUT /
- *     SSH_EXEC_FAILED / SSH_SESSION_FAILED) so the runner can map it to
- *     the job failure path verbatim and the UI can render an actionable
- *     message.
+ *     SSH_EXEC_FAILED / SSH_SESSION_FAILED / SSH_HOSTKEY_MISMATCH) so the
+ *     runner can map it to the job failure path verbatim and the UI can
+ *     render an actionable message.
+ *   - HOST-KEY PINNING (SAFE-001, audit P0-001): when a pinned fingerprint
+ *     is present the transport verifies the server's host key DURING the
+ *     handshake and BEFORE authentication — credentials are never sent to
+ *     an endpoint whose key does not match the enrollment (typed
+ *     SSH_HOSTKEY_MISMATCH, fail closed). Enrollment capture (recording the
+ *     presented key without enforcement) is a separate, explicit mode used
+ *     only by the audited enrollment probe.
  *   - BOUNDED: every connect/exec/session carries an explicit timeout;
  *     sockets are always ended (success and failure paths both).
  */
 
+import { createHash } from "node:crypto";
 import { Client } from "ssh2";
 
 export class SshError extends Error {
@@ -33,7 +41,8 @@ export class SshError extends Error {
       | "SSH_UNREACHABLE"
       | "SSH_TIMEOUT"
       | "SSH_EXEC_FAILED"
-      | "SSH_SESSION_FAILED",
+      | "SSH_SESSION_FAILED"
+      | "SSH_HOSTKEY_MISMATCH",
     message: string,
   ) {
     super(message);
@@ -46,6 +55,44 @@ export interface SshCredentials {
   port: number;
   username: string;
   password: string;
+  /**
+   * SAFE-001 host-key pin: OpenSSH-style "SHA256:<base64>" fingerprint the
+   * server's key MUST match (verified pre-auth). null/absent = no pin —
+   * only legitimate in enrollment mode (see onHostKey).
+   */
+  expectedFingerprint?: string | null;
+  /**
+   * Enrollment capture (SAFE-001): records the presented host key during
+   * the handshake WITHOUT enforcement. Only the audited enrollment probe
+   * may set this — capture never bypasses a pin; the two modes are
+   * mutually exclusive by construction (enroll ⇒ expected=null).
+   */
+  onHostKey?: (meta: { keyType: string; fingerprint: string }) => void;
+}
+
+/**
+ * OpenSSH-style SHA-256 fingerprint of an SSH public key blob:
+ * "SHA256:" + base64(digest) with padding stripped (43 chars).
+ * This is the exact value pinned in the SshHostKey enrollment and compared
+ * inside the hostVerifier below.
+ */
+export function computeHostKeyFingerprint(publicKeyBlob: Buffer): string {
+  const b64 = createHash("sha256").update(publicKeyBlob).digest("base64").replace(/=+$/, "");
+  return `SHA256:${b64}`;
+}
+
+/**
+ * Extract the key algorithm name from an SSH wire-format public key blob
+ * (first length-prefixed string field, e.g. "ssh-ed25519"). Used by the
+ * enrollment capture so the admin sees which key type they are pinning.
+ */
+export function parseHostKeyType(publicKeyBlob: Buffer): string {
+  if (publicKeyBlob.length < 4) return "unknown";
+  const nameLen = publicKeyBlob.readUInt32BE(0);
+  if (nameLen === 0 || 4 + nameLen > publicKeyBlob.length || nameLen > 64) {
+    return "unknown";
+  }
+  return publicKeyBlob.subarray(4, 4 + nameLen).toString("utf8") || "unknown";
 }
 
 export interface SshProbeResult {
@@ -79,6 +126,10 @@ function openConnection(creds: SshCredentials, timeoutMs: number): Promise<OpenC
     const client = new Client();
     let banner = "";
     let settled = false;
+    // SAFE-001: set when the hostVerifier rejected the presented key — the
+    // subsequent connect error is then surfaced as SSH_HOSTKEY_MISMATCH (the
+    // generic ssh2 failure text would otherwise be unclassifiable).
+    let hostKeyRejected: string | null = null;
 
     const fail = (err: unknown): void => {
       if (settled) return;
@@ -87,6 +138,15 @@ function openConnection(creds: SshCredentials, timeoutMs: number): Promise<OpenC
         client.end();
       } catch {
         /* already closed */
+      }
+      if (hostKeyRejected !== null) {
+        reject(
+          new SshError(
+            "SSH_HOSTKEY_MISMATCH",
+            `SSH host key does not match the pinned enrollment (expected ${hostKeyRejected}) — connection refused before authentication; if the device key legitimately rotated, re-enroll the host key`,
+          ),
+        );
+        return;
       }
       reject(classifyConnectError(err));
     };
@@ -102,15 +162,35 @@ function openConnection(creds: SshCredentials, timeoutMs: number): Promise<OpenC
       })
       .on("error", fail);
 
+    const connectConfig: Parameters<Client["connect"]>[0] = {
+      host: creds.host,
+      port: creds.port,
+      username: creds.username,
+      password: creds.password,
+      readyTimeout: timeoutMs,
+      keepaliveInterval: 0,
+    };
+
+    // SAFE-001 — pin enforcement and/or enrollment capture. ssh2 calls the
+    // verifier with the raw server host key DURING the handshake, BEFORE
+    // any authentication: a mismatch aborts the connection without the
+    // credential ever being transmitted.
+    if (creds.expectedFingerprint || creds.onHostKey) {
+      connectConfig.hostVerifier = (key: Buffer): boolean => {
+        const fingerprint = computeHostKeyFingerprint(key);
+        if (creds.onHostKey) {
+          creds.onHostKey({ keyType: parseHostKeyType(key), fingerprint });
+        }
+        if (creds.expectedFingerprint && fingerprint !== creds.expectedFingerprint) {
+          hostKeyRejected = creds.expectedFingerprint;
+          return false;
+        }
+        return true;
+      };
+    }
+
     try {
-      client.connect({
-        host: creds.host,
-        port: creds.port,
-        username: creds.username,
-        password: creds.password,
-        readyTimeout: timeoutMs,
-        keepaliveInterval: 0,
-      });
+      client.connect(connectConfig);
     } catch (err) {
       fail(err);
     }

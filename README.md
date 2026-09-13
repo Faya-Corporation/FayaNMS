@@ -208,7 +208,7 @@ end-to-end production-readiness audit (verdict **BLOCKED, 74/100**) was re-verif
 finding-by-finding against the source and **accepted in full** — see
 `docs/audits/FayaNMS-ULTRA-Audit-Review-2026-09-13.md` (all 5 P0s confirmed at line
 level). New feature work is deprioritized behind the P0 live-write safety gate:
-SAFE-001 SSH host-key pinning · SAFE-002 pre-handler mutation rate limiting ·
+SAFE-002 pre-handler mutation rate limiting ·
 SAFE-003/004/005 execution single-flight + atomic step claim + per-device write lock ·
 SAFE-006 fail-fast multi-device strategy · SAFE-008/009 typed snapshot-exact restore ·
 TEST-001/002/003 concurrency/restore/host-trust suites. **LANDED — SAFE-007:** the
@@ -217,6 +217,19 @@ inaccurate live restore is now fail-closed — restore-flow changes are stamped
 devices (typed `LIVE_RESTORE_NOT_CERTIFIED` refusal + `LIVE_RESTORE_REFUSED` audit
 event, zero device contact) until snapshot-exact restore ships; the restore dialog
 warns on LIVE devices and the removed auto-approval checkbox (dead since P19) is gone.
+**LANDED — SAFE-001 (audit P0-001): SSH host-key enrollment + pinning, fail-closed.**
+Every LIVE_SSH connection is now host-key pinned: the worker transport verifies the
+server's presented key DURING the handshake and BEFORE authentication (a mismatch dies
+with typed `SSH_HOSTKEY_MISMATCH` — credentials are never transmitted to an impostor),
+and connections without a pin are refused outright (`SSH_HOSTKEY_UNENROLLED` —
+fail-closed, nothing reaches the device). Enrollment is an explicit, audited operator
+action (`SSH_HOSTKEY_PROBED` → out-of-band fingerprint verification → `SSH_HOSTKEY_ENROLLED`;
+revocation = `SSH_HOSTKEY_REVOKED`) from the device page's SSH Host Key card; the pin
+(`SshHostKey` table, one per host+port endpoint — the known_hosts model) rides job
+payloads and probe bodies, is enforced on the backup plane, the probe plane and every
+change-engine step (CHECK/BACKUP/APPLY/VALIDATE/ROLLBACK), and is protocol-certified
+per flavor on every push (enroll → pin → verify → mismatch pipeline against real
+persona host keys — 119 certification checks).
 
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is

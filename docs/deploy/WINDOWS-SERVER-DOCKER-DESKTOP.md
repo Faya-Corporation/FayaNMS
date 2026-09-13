@@ -449,6 +449,8 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 | Startup abort: `NEXT_PUBLIC_SITE_URL is required/… localhost/.local` | B3-029 guard | Real DNS name or LAN IP; **rebuild** the image (build-time ARG), not just env |
 | Startup abort: security policy (secret too short / demo mode / non-postgres DATABASE_URL) | policy contract | Regenerate secrets per T6 (incl. POSTGRES_PASSWORD); run app without `FAYANMS_DEMO_MODE`; keep `DATABASE_URL` as the compose-composed postgres URL |
 | `postgres: password authentication failed` | stale `fayanms-pgdata` volume created under an earlier POSTGRES_PASSWORD | `docker compose down -v` DESTROYS data — take a D1 dump first — or `ALTER USER fayanms WITH PASSWORD` inside the container; then keep POSTGRES_PASSWORD stable |
+| Live probe/backup fails: `SSH_HOSTKEY_UNENROLLED` (fail-closed by design) | the endpoint has no pinned host key yet | Enroll from the device page (SSH Host Key card): probe → verify the fingerprint out-of-band → pin; then retry |
+| Live connection fails: `SSH_HOSTKEY_MISMATCH` | the endpoint presented a DIFFERENT key than the pinned enrollment (device re-provisioned, key rotated, or an impostor) | Treat as a security signal FIRST — verify the new key out-of-band; only then Re-enroll from the device page (the old pin is replaced, audited) |
 | App can't reach postgres / connection refused | postgres not healthy yet, or topology override broke DNS | `docker compose ps` (health check), `docker compose logs postgres`; app retries are NOT automatic — `docker compose restart app` after postgres is healthy |
 | Worker logs "backend unreachable" loops | app not reachable at `NEXT_BASE_URL` (e.g. typo'd env override) | compose default `http://app:3000` (T5) is correct for the shipped stack — verify `WORKER_BASE_URL`/`NEXT_BASE_URL` overrides in the `--env-file`; the worker self-heals with backoff once reachable |
 | App routes report "Worker service unreachable" | worker not reachable at `WORKER_BASE_URL` | compose default `http://worker:3030` (T5); check `docker compose ps`/worker `HEALTHCHECK`, and that 3030 was never published/firewalled |
@@ -483,6 +485,14 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    protect that file exactly like the other secrets (item 2) and never publish 3030
    beyond the host (the service JWT + the plan validation / per-flavor command
    templates are the device-control gates — the app can never send command text).
+7. **SSH host-key pinning (SAFE-001, audit P0-001)** is a device-control gate too:
+   every LIVE_SSH connection is refused unless the endpoint's host key was enrolled
+   from the device page (probe → out-of-band verification → pin; the `SshHostKey`
+   table holds one key per host+port). The worker verifies the pinned fingerprint
+   DURING the handshake, BEFORE authentication — a key mismatch (`SSH_HOSTKEY_MISMATCH`)
+   or a missing enrollment (`SSH_HOSTKEY_UNENROLLED`) kills the connection with no
+   credential sent. Host-key enrollment/revocation is audited (`SSH_HOSTKEY_*` events);
+   after a legitimate device key rotation, re-enroll from the device page.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 
@@ -511,7 +521,10 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
   the marker in the live config, ROLLBACK pushes the inverse plan, and the demo `failAt`
   controls never contact live devices. The job engine's loopback calls are exempt from
   the user-facing rate budget (verified service JWT required) so a change can never
-  self-throttle mid-run. STILL OPEN: physical-hardware certification of the live plane
+  self-throttle mid-run. SAFE-001 (same day) added host-key pinning to EVERY live
+  connection (backups, probes and all change steps) — an endpoint whose key is not
+  enrolled, or whose key does not match the pin, fails closed before authentication.
+  STILL OPEN: physical-hardware certification of the live plane
   and the sophos WebAPI transport.
 - HA/multi-node (the architecture is deliberately single-node PostgreSQL today).
 

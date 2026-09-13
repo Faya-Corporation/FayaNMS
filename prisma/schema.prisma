@@ -214,6 +214,36 @@ model CredentialProfile {
   devices       Device[]
 }
 
+// SAFE-001 (audit P0-001, 2026-09-13): SSH host-key enrollment + pinning.
+// One pinned host key per SSH ENDPOINT (host+port — the known_hosts model),
+// enrolled explicitly by an operator (probe → confirm) and enforced by the
+// worker transport BEFORE authentication: a connection to an endpoint whose
+// presented key does not match the pinned fingerprint fails closed with
+// SSH_HOSTKEY_MISMATCH, and LIVE connections WITHOUT an enrollment are
+// refused outright (SSH_HOSTKEY_UNENROLLED) except on the audited
+// enrollment probe. The fingerprint is the OpenSSH-style
+// "SHA256:<base64(no padding)>" of the server's public key blob.
+model SshHostKey {
+  id          String   @id @default(cuid())
+  // Endpoint coordinates (credential port) — e.g. mgmtIp 10.20.0.1 + port 22.
+  host        String
+  port        Int
+  // Key algorithm as presented by the server, e.g. "ssh-ed25519".
+  keyType     String
+  // OpenSSH-style fingerprint: SHA256:<43 base64 chars, no padding>.
+  fingerprint String
+  // Base64 of the raw public key blob (audit/rotation display; the worker
+  // enforces on the FINGERPRINT, never on this column).
+  hostKeyBase64 String
+  enrolledAt  DateTime @default(now())
+  enrolledBy  String
+  lastVerifiedAt DateTime?
+  notes       String?
+
+  @@unique([host, port])
+  @@index([host])
+}
+
 model BackupPolicy {
   id         String  @id @default(cuid())
   name       String  @unique
