@@ -1,11 +1,14 @@
 /**
  * SAFE-006 — fail-fast multi-device apply + truthful per-device states
- * (production-safety sprint, external ULTRA audit P0-005).
+ * (production-safety sprint, external ULTRA audit P0-005), plus the shared
+ * pure contract of the change engine's failure/rollback pipeline
+ * (TEST-001/002/003 consolidation).
  *
  * Pure, dependency-free decision helpers shared by the change engine's
  * APPLY / ROLLBACK / VALIDATE executors in
  * src/app/api/v1/worker/change-step/route.ts and unit-pinned in
- * tests/audit/apply-failfast.test.ts.
+ * tests/audit/apply-failfast.test.ts (dispositions) and
+ * tests/audit/change-engine-invariants.test.ts (pipeline contract).
  *
  * The defect this closes: the multi-device APPLY loop used to contact EVERY
  * device (LIVE apply or simulator) and only evaluated `anyFailure` AFTER the
@@ -271,4 +274,35 @@ export function isRollbackRestoreTarget(
  */
 export function isPostRollbackValidateContext(changeStatus: string): boolean {
   return changeStatus === "ROLLBACK";
+}
+
+/* ─────────────────── rollback plan + restore idempotency ──────────────── */
+
+/**
+ * The appended rollback plan (TEST-002 contract): when an APPLY/VALIDATE
+ * step fails, the engine SKIPS the remaining original steps and appends
+ * EXACTLY these three, in this order — restore, then validate (context-
+ * aware, see isPostRollbackValidateContext), then a fresh backup. The
+ * order is load-bearing: validation must observe the restored state, and
+ * the final backup must capture it after validation.
+ */
+export const ROLLBACK_STEP_TEMPLATES = [
+  { name: "Restore pre-change configuration", type: "ROLLBACK" },
+  { name: "Post-rollback validation", type: "VALIDATE" },
+  { name: "Post-rollback backup", type: "BACKUP" },
+] as const;
+
+/**
+ * Rollback retry idempotency (TEST-002): a re-executed rollback must not
+ * mint a duplicate snapshot for the same device+job. Reuse the job's
+ * existing snapshot for the device EXACTLY when its sha256 already equals
+ * the sha of the text about to be stored (the device is provably in the
+ * restored state); anything else (no existing row, different sha) mints a
+ * fresh snapshot so the audit trail always reflects the real state.
+ */
+export function shouldReuseRestoredSnapshot(
+  existing: { sha256: string } | null | undefined,
+  restoredSha256: string
+): boolean {
+  return existing?.sha256 === restoredSha256;
 }

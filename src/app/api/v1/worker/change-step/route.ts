@@ -28,11 +28,13 @@ import {
 } from "@/lib/change/execution-guard";
 import {
   APPLY_FAIL_FAST_AUDIT_ACTION,
+  ROLLBACK_STEP_TEMPLATES,
   applyFailFastAuditDetail,
   applyFailFastStepError,
   classifyApplyDispositions,
   isPostRollbackValidateContext,
   isRollbackRestoreTarget,
+  shouldReuseRestoredSnapshot,
   type ApplyAttempt,
 } from "@/lib/change/apply-disposition";
 import { getHostKeyPin } from "@/lib/ssh/host-keys";
@@ -178,11 +180,8 @@ const EXECUTABLE_CHANGE_STATUSES = [
   "ROLLBACK",
 ];
 
-const ROLLBACK_STEP_TEMPLATES = [
-  { name: "Restore pre-change configuration", type: "ROLLBACK" },
-  { name: "Post-rollback validation", type: "VALIDATE" },
-  { name: "Post-rollback backup", type: "BACKUP" },
-];
+// The appended rollback plan (ROLLBACK → VALIDATE → BACKUP) lives in
+// src/lib/change/apply-disposition.ts — pinned contract, shared with tests.
 
 /** Worker sim endpoints answer { ok: true, ... } — non-ok/5xx/network throw. */
 class WorkerSimError extends Error {}
@@ -2135,7 +2134,7 @@ async function executeRollbackStep(
         });
         const restoredSha = createHash("sha256").update(restoredText).digest("hex");
         const snapshot =
-          existing && existing.sha256 === restoredSha
+          existing && shouldReuseRestoredSnapshot(existing, restoredSha)
             ? { ok: true as const, version: existing.version, sha256: existing.sha256 }
             : await createSnapshot(tx as unknown as TxClient, {
                 deviceId: link.deviceId,

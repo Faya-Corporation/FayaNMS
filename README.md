@@ -208,8 +208,8 @@ end-to-end production-readiness audit (verdict **BLOCKED, 74/100**) was re-verif
 finding-by-finding against the source and **accepted in full** — see
 `docs/audits/FayaNMS-ULTRA-Audit-Review-2026-09-13.md` (all 5 P0s confirmed at line
 level). New feature work is deprioritized behind the P0 live-write safety gate:
-SAFE-008/009 typed snapshot-exact restore · TEST-001/002/003 concurrency/restore/host-trust
-suites. **LANDED — SAFE-007:** the
+SAFE-008/009 typed snapshot-exact restore (the last P0-gated item) · POL/SEC/OPS items
+per the audit §16 order. **LANDED — SAFE-007:** the
 inaccurate live restore is now fail-closed — restore-flow changes are stamped
 `operationKind = RESTORE_SNAPSHOT` and the engine refuses to apply them to LIVE_SSH
 devices (typed `LIVE_RESTORE_NOT_CERTIFIED` refusal + `LIVE_RESTORE_REFUSED` audit
@@ -294,6 +294,22 @@ classifier pinned by 15 new tests (`tests/audit/apply-failfast.test.ts`; suite 1
 and proven live through the real API: failAt=APPLY over two devices → first FAILED,
 second SKIPPED, exactly one ROLLBACK pass, terminal FAILED + `CHANGE_FAILED
 {rolledBack: true}`, and a healthy run zero-regression.
+**LANDED — TEST-001/002/003 (audit remediation order item 6): the change-engine safety
+contract consolidated.** The per-fix suites grown by the sprint (execution-guard →
+SAFE-003/004/005, live-restore-guard + apply-failfast → SAFE-006/007, ssh-hostkey-guard →
+SAFE-001, rate-gate → SAFE-002) are now joined by `tests/audit/change-engine-invariants.test.ts`
+(8 pins) holding the cross-cutting invariants any refactor must keep: the sentinel→409
+semantics the worker driver relies on (`STEP_IN_FLIGHT` / `DEVICE_WRITE_LOCKED` are
+exactly the requeue-resumable set; `EXECUTION_IN_FLIGHT` stays operator-facing, never
+machine-retried), the DB enforcement markers' unique-conflict classification (a lease
+fight is not a lock fight), the appended rollback plan order (ROLLBACK → VALIDATE →
+BACKUP), the rollback retry-idempotency decision (reuse only on an exact sha match —
+the audit trail never mints duplicates), the composed SKIPPED rule (a provably-uncontacted
+device is never restored and never re-asserted), and the host-trust enrollment↔transport
+format identity (the derived fingerprint is canonical OpenSSH form, accepted verbatim by
+the pin parser, distinct per key, and tampered/malformed pins fail CLOSED). The DB-level
+concurrency behaviors remain proven by the SAFE-003/004/005 sandbox E2E (PostgreSQL-side
+enforcement is not unit-reproducible without a database); suite 191 → 199.
 
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
