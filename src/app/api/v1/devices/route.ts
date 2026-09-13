@@ -121,6 +121,8 @@ export async function GET(request: Request) {
         lastBackupAt: true,
         lastSeen: true,
         backupCompliance: true,
+        dataSource: true,
+        credentialProfile: { select: { name: true, type: true } },
         site: { select: { name: true, code: true } },
         vendor: { select: { key: true, name: true } },
         _count: {
@@ -155,8 +157,13 @@ const createSchema = z.object({
   siteId: z.string().trim().min(1).optional(),
   // criticality: LOW | MEDIUM | HIGH | CRITICAL
   criticality: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
-  // Accepted for the credential-assignment flow (2-c). The Device model has
-  // no credential column yet — validated here, recorded on the audit trail.
+  // Data plane (Phase 22 slice 2): SIMULATOR (default, deterministic
+  // in-memory adapters) or LIVE_SSH (real read-only SSH exec via the
+  // worker). Enforced below: LIVE_SSH requires a linked SSH_PASSWORD
+  // CredentialProfile.
+  dataSource: z.enum(["SIMULATOR", "LIVE_SSH"]).default("SIMULATOR"),
+  // CredentialProfile reference — the profile's secretRef is a vault
+  // POINTER; secrets live in the worker-side vault and never travel.
   credentialProfileId: z.string().trim().min(1).optional(),
   tags: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
   notes: z.string().trim().max(2000).optional(),
@@ -203,13 +210,38 @@ export async function POST(request: Request) {
     }
   }
 
+  let linkedProfileType: string | null = null;
   if (data.credentialProfileId) {
     const profile = await db.credentialProfile.findUnique({
       where: { id: data.credentialProfileId },
-      select: { id: true },
+      select: { id: true, type: true },
     });
     if (!profile) {
       return fail("CREDENTIAL_PROFILE_NOT_FOUND", "The selected credential profile does not exist", 400, requestContext(request));
+    }
+    linkedProfileType = profile.type;
+  }
+
+  // Phase 22 slice 2 — data-plane invariants (fail-closed): a LIVE_SSH
+  // device can never be created without a usable SSH credential profile.
+  if (data.dataSource === "LIVE_SSH") {
+    if (!data.credentialProfileId) {
+      return fail(
+        "CREDENTIAL_REQUIRED_FOR_LIVE",
+        "LIVE_SSH devices require a linked credential profile (username/port/secretRef) — link one before switching to the live plane",
+        400,
+        requestContext(request),
+      );
+    }
+    // The live transport is SSH exec with password auth; key/API/SNMP
+    // profiles cannot drive it yet (honest scope — future transports).
+    if (linkedProfileType !== "SSH_PASSWORD") {
+      return fail(
+        "CREDENTIAL_TYPE_UNSUPPORTED",
+        `LIVE_SSH currently supports SSH_PASSWORD credential profiles only (got ${linkedProfileType ?? "unknown"})`,
+        400,
+        requestContext(request),
+      );
     }
   }
 
@@ -235,6 +267,8 @@ export async function POST(request: Request) {
         status: "UNKNOWN",
         criticality: data.criticality,
         backupCompliance: "UNKNOWN",
+        dataSource: data.dataSource,
+        credentialProfileId: data.credentialProfileId,
         tagsJson: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : null,
         notes: data.notes,
       },
@@ -248,6 +282,7 @@ export async function POST(request: Request) {
         status: true,
         criticality: true,
         healthScore: true,
+        dataSource: true,
         lastBackupAt: true,
         lastSeen: true,
         backupCompliance: true,
@@ -272,6 +307,7 @@ export async function POST(request: Request) {
           mgmtIp: device.mgmtIp,
           vendor: vendor.key,
           siteId: data.siteId ?? null,
+          dataSource: device.dataSource,
           credentialProfileId: data.credentialProfileId ?? null,
           criticality: device.criticality,
           status: device.status,

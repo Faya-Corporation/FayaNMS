@@ -111,17 +111,25 @@ and the seed refuses to wipe a production database).
 
 The worker claims jobs (`CONFIG_BACKUP`, `DISCOVERY`, `DRIFT_CHECK`, `CHANGE_EXECUTE`, `ALERT_EVALUATION`, `METRIC_RETENTION`, `REPORT_RUN`, `FIRMWARE_UPGRADE`, `ZTP_PROVISION`) with concurrency 3, per-job timeouts, exponential backoff on backend outages, and `GET :3030/health` observability. A scheduler tick (`POST /api/v1/worker/tick`, every ~30 s) enqueues scheduled work, prunes metric/snapshot retention, and **reaps orphaned RUNNING jobs** (10 min threshold; 15 min for change execution) — flipped to FAILED with a `JOB_ORPHAN_REAPED` audit row and an "Orphaned" marker in the Job Center, recoverable via the built-in retry.
 
-### Live device connections (Phase 22 slice 1 — read-only)
+### Live device connections (Phase 22 — read-only)
 
 Devices carry a data plane: `SIMULATOR` (default — the deterministic in-memory adapters) or
 `LIVE_SSH` — reached by the worker over **real SSH** (exec-only, strict read-only
-`show`-command allowlist). A `LIVE_SSH` device requires a linked `CredentialProfile`; only
+command allowlist). A `LIVE_SSH` device requires a linked `CredentialProfile`; only
 the REFERENCE fields travel (username/port/secretRef) — the worker resolves the secret
 worker-side from its own vault environment (`vault://ssh/network-admin` → env
 `FAYANMS_VAULT_SSH_NETWORK_ADMIN`), so no secret ever passes through the app or the job
-channel. Certified flavor: **cisco-ios** (IOS/IOS-XE), verified end-to-end in CI against
-the in-repo protocol harness (`mini-services/worker/certify.ts` — a REAL SSH server with a
-vendor-realistic IOS persona). **Hardware certification (physical devices) remains open**;
+channel. The data plane is chosen and credential-linked **in the UI** (Add/Edit device →
+Data plane; live devices carry a `LIVE` chip in the inventory and a Data-plane row on the
+detail page) and enforced fail-closed in the API: `LIVE_SSH` without an `SSH_PASSWORD`
+credential profile is rejected (`CREDENTIAL_REQUIRED_FOR_LIVE` / `CREDENTIAL_TYPE_UNSUPPORTED`).
+Certified flavors (verified end-to-end in CI against the in-repo protocol harnesses —
+`mini-services/worker/certify.ts`, a REAL SSH server per vendor persona):
+**cisco-ios** (IOS/IOS-XE, `show running-config`), **fortinet-fortios** (FortiOS,
+`show full-configuration`), **hpe-aos-cx** (AOS-CX, `show running-config`).
+**Sophos SFOS is deliberately uncertified over SSH** — the SFOS CLI has no read-only
+full-config dump; that flavor needs a WebAPI transport (open item), as do Juniper/Palo
+Alto. **Hardware certification (physical devices) remains open**;
 apply/restore/rollback stay simulator-only until Phase 22's controlled-change work.
 
 ### Docker / Windows Server deployment
@@ -160,10 +168,12 @@ and production persistence is now PostgreSQL (Phase 21 slice 1, 2026-09-13: sche
 compose `postgres` service, CI service-container gates; slice 2 the same day: a committed
 `prisma/migrations` history with fresh-database `migrate deploy` and a migrations≡schema
 drift guard enforced in CI). The device data plane is DUAL: the deterministic simulator
-plus a REAL read-only SSH transport for Cisco IOS/IOS-XE, protocol-certified in CI
-(Phase 22 slice 1, 2026-09-13). Remaining before a production
+plus a REAL read-only SSH transport for Cisco IOS/IOS-XE, Fortinet FortiOS and HPE Aruba
+AOS-CX — protocol-certified in CI per-flavor, selectable in the UI with fail-closed
+device invariants (Phase 22 slices 1–2, 2026-09-13). Remaining before a production
 claim: hardware certification of the live SSH plane and the remaining vendor flavors
-(Phase 22) and the optional Phase 21 components (Redis/KMS/object storage/distributed
+(Sophos needs a WebAPI transport; Juniper/Palo Alto pending) and the optional Phase 21
+components (Redis/KMS/object storage/distributed
 locks). (CI enforcement on a protected
 `main` — one of the three original blockers — was completed on 2026-09-10, see below.)
 

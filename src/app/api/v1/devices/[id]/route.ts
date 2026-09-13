@@ -10,9 +10,9 @@ export const dynamic = "force-dynamic";
  *         relation counts, BigInt uptime serialized as string, tags parsed).
  * PATCH /api/v1/devices/[id] — editable fields: displayName (name), notes
  *         (description), criticality, siteId, tags, status (MAINTENANCE
- *         toggling), credentialProfileId (recorded on the audit trail —
- *         the Device model grows a credential column in the credentials
- *         workstream, roadmap 2-c).
+ *         toggling), credentialProfileId, dataSource (Phase 22 slice 2 —
+ *         both PERSISTED with fail-closed invariants: a LIVE_SSH device
+ *         always carries a linked SSH_PASSWORD CredentialProfile).
  */
 
 const OPEN_INCIDENT_STATUSES = [
@@ -42,6 +42,7 @@ async function loadDevice(id: string) {
         include: {
           vendor: { select: { id: true, key: true, name: true, adapterKey: true } },
           site: { select: { id: true, name: true, code: true, region: true } },
+          credentialProfile: { select: { id: true, name: true, type: true, port: true } },
         },
       }),
       db.deviceInterface.count({ where: { deviceId: id } }),
@@ -79,6 +80,8 @@ async function loadDevice(id: string) {
     updatedAt: device.updatedAt,
     vendor: device.vendor,
     site: device.site,
+    dataSource: device.dataSource,
+    credentialProfile: device.credentialProfile,
     counts: {
       interfaces,
       snapshots,
@@ -116,6 +119,17 @@ const patchSchema = z.object({
   notes: z.string().trim().max(2000).nullable().optional(),
   // criticality: LOW | MEDIUM | HIGH | CRITICAL
   criticality: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
+  // Management address is editable so LIVE_SSH devices can be repointed at
+  // their real host (Phase 22 slice 2 — was previously accepted by the form
+  // but silently dropped).
+  mgmtIp: z
+    .string()
+    .trim()
+    .regex(
+      /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/,
+      "mgmtIp must be a valid IPv4 address",
+    )
+    .optional(),
   siteId: z.string().trim().min(1).nullable().optional(),
   tags: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
   // status: UI uses PATCH for MAINTENANCE toggling; the full set is accepted
@@ -123,6 +137,9 @@ const patchSchema = z.object({
   status: z
     .enum(["ONLINE", "OFFLINE", "DEGRADED", "MAINTENANCE", "UNKNOWN", "UNMANAGED"])
     .optional(),
+  // Data plane (Phase 22 slice 2) — persisted; invariants enforced below
+  // against the EFFECTIVE (patched) device state.
+  dataSource: z.enum(["SIMULATOR", "LIVE_SSH"]).optional(),
   credentialProfileId: z.string().trim().min(1).nullable().optional(),
 });
 
@@ -173,12 +190,44 @@ export async function PATCH(
   if (data.credentialProfileId) {
     const profile = await db.credentialProfile.findUnique({
       where: { id: data.credentialProfileId },
-      select: { id: true },
+      select: { id: true, type: true },
     });
     if (!profile) {
       return fail(
         "CREDENTIAL_PROFILE_NOT_FOUND",
         "The selected credential profile does not exist",
+        400
+      );
+    }
+  }
+
+  // Phase 22 slice 2 — data-plane invariants, evaluated against the
+  // EFFECTIVE (patched) device state so partial updates cannot create an
+  // illegal state:
+  //   LIVE_SSH ⇒ a credential profile is linked (fail-closed) and its type
+  //   is SSH_PASSWORD (the live transport is password-auth SSH exec).
+  const effectiveDataSource =
+    data.dataSource ?? current.dataSource ?? "SIMULATOR";
+  const effectiveCredentialId =
+    data.credentialProfileId === undefined
+      ? current.credentialProfileId
+      : data.credentialProfileId;
+  if (effectiveDataSource === "LIVE_SSH") {
+    if (!effectiveCredentialId) {
+      return fail(
+        "CREDENTIAL_REQUIRED_FOR_LIVE",
+        "LIVE_SSH devices require a linked credential profile (username/port/secretRef) — link one before switching to the live plane",
+        400
+      );
+    }
+    const profile = await db.credentialProfile.findUnique({
+      where: { id: effectiveCredentialId },
+      select: { type: true },
+    });
+    if (profile && profile.type !== "SSH_PASSWORD") {
+      return fail(
+        "CREDENTIAL_TYPE_UNSUPPORTED",
+        `LIVE_SSH currently supports SSH_PASSWORD credential profiles only (got ${profile.type})`,
         400
       );
     }
@@ -193,8 +242,13 @@ export async function PATCH(
     updateData.tagsJson = data.tags.length > 0 ? JSON.stringify(data.tags) : null;
   }
   if (data.status !== undefined) updateData.status = data.status;
-  // credentialProfileId is validated + audited; persistence arrives with the
-  // credential-assignment workstream (schema frozen for 2-a).
+  if (data.mgmtIp !== undefined) updateData.mgmtIp = data.mgmtIp;
+  if (data.dataSource !== undefined) updateData.dataSource = data.dataSource;
+  // credentialProfileId is validated above and PERSISTED here (the secret
+  // itself never travels — profiles store a vault secretRef pointer).
+  if (data.credentialProfileId !== undefined) {
+    updateData.credentialProfileId = data.credentialProfileId;
+  }
 
   const changedKeys = Object.keys(updateData).filter((key) => {
     const before = (current as unknown as Record<string, unknown>)[key];
@@ -202,7 +256,7 @@ export async function PATCH(
     return JSON.stringify(before ?? null) !== JSON.stringify(after ?? null);
   });
 
-  if (changedKeys.length === 0 && data.credentialProfileId === undefined) {
+  if (changedKeys.length === 0 && data.credentialProfileId === undefined && data.dataSource === undefined) {
     const device = await loadDevice(id);
     return ok(device);
   }
@@ -220,9 +274,6 @@ export async function PATCH(
   for (const key of changedKeys) {
     before[key] = (current as unknown as Record<string, unknown>)[key] ?? null;
     after[key] = updateData[key] ?? null;
-  }
-  if (data.credentialProfileId !== undefined) {
-    after.credentialProfileId = data.credentialProfileId;
   }
 
   await db.auditEvent.create({

@@ -428,6 +428,14 @@ function OverviewSection({
         >
           <dl className="grid grid-cols-1 gap-x-6 gap-y-0 p-card sm:grid-cols-2">
             <RecordItem label="Management IP" mono value={device.mgmtIp} />
+            <RecordItem
+              label="Data plane"
+              value={
+                device.dataSource === "LIVE_SSH"
+                  ? `Live — real SSH (read-only)${device.credentialProfile ? ` · ${device.credentialProfile.name}` : ""}`
+                  : "Simulator (deterministic)"
+              }
+            />
             <RecordItem label="Hostname" mono value={device.hostname} />
             <RecordItem label="Vendor" value={device.vendor.name} />
             <RecordItem

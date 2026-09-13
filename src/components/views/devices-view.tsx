@@ -258,8 +258,20 @@ const DeviceRow = memo(function DeviceRow({
           {/* Device-type glyph (decorative — hostname labels the row). */}
           <NetworkDeviceIcon className="mt-0.5" deviceType={device.role} />
           <span className="flex min-w-0 flex-col items-start">
-            <span className="font-tech truncate font-medium ltr-technical">
-              {device.hostname}
+            <span className="flex items-center gap-1.5">
+              <span className="font-tech truncate font-medium ltr-technical">
+                {device.hostname}
+              </span>
+              {/* Data-plane chip (Phase 22) — LIVE devices are reached by the
+                  worker over REAL SSH (exec-only, read-only). */}
+              {device.dataSource === "LIVE_SSH" && (
+                <span
+                  className="shrink-0 rounded-full border border-brand-accent/40 bg-brand-accent/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-brand-accent"
+                  title="LIVE device — worker connects over real SSH (read-only)"
+                >
+                  LIVE
+                </span>
+              )}
             </span>
             {device.displayName && device.displayName !== device.hostname && (
               <span className="max-w-[28ch] truncate text-xs text-muted-foreground">

@@ -1,23 +1,23 @@
 /**
- * FayaNMS worker — LIVE_SSH adapter (Phase 22 slice 1, READ-ONLY).
+ * FayaNMS worker — LIVE_SSH adapter (Phase 22, READ-ONLY).
  *
  * Implements the SAME DeviceAdapter contract as the simulator adapters
  * (connect + fetchConfig, same ConfigResult shape), so the job runner
  * treats simulator and live devices identically downstream (snapshot
  * storage, normalization, diff engine).
  *
- * Honesty note: this slice certifies the TRANSPORT and the IOS command
- * mapping against the in-repo protocol harness (harness/ios-sshd.ts — a
- * REAL SSH server speaking vendor-realistic payloads). Certification
- * against physical hardware (IOS/IOS-XE on real devices) remains open —
- * tracked in the README honest-status block.
+ * Honesty note: each flavor certifies the TRANSPORT and its vendor command
+ * mapping against the in-repo protocol harnesses (harness/*.ts — REAL SSH
+ * servers speaking vendor-realistic payloads). Certification against
+ * physical hardware remains open per-flavor — tracked in the README
+ * honest-status block.
  *
  * READ-ONLY DISCIPLINE:
  *   - the transport is exec-only (see ssh-transport.ts);
  *   - the command set is a hardcoded per-flavor allowlist of read-only
- *     "show" commands — there is NO code path in this module that can
- *     mutate device state. apply/restore/rollback stay simulator-only by
- *     design (Phase 23 governs controlled changes for live devices).
+ *     commands — there is NO code path in this module that can mutate
+ *     device state. apply/restore/rollback stay simulator-only by design
+ *     (Phase 23 governs controlled changes for live devices).
  */
 
 import {
@@ -49,7 +49,14 @@ interface LiveFlavor {
   notes: string;
 }
 
-/** Certified LIVE_SSH flavors. Slice 1: Cisco IOS/IOS-XE classic CLI. */
+/**
+ * Certified LIVE_SSH flavors.
+ * Slice 1: Cisco IOS/IOS-XE classic CLI.
+ * Slice 2: Fortinet FortiOS (`show full-configuration`) and HPE Aruba
+ *          AOS-CX (`show running-config`).
+ * Sophos SFOS is deliberately NOT here: the SFOS SSH CLI has no read-only
+ * full-config dump — that flavor needs the WebAPI transport (open item).
+ */
 export const LIVE_SSH_FLAVORS: Record<string, LiveFlavor> = {
   cisco: {
     adapter: "cisco-ios-live",
@@ -57,6 +64,20 @@ export const LIVE_SSH_FLAVORS: Record<string, LiveFlavor> = {
     commandConfig: "show running-config",
     notes:
       "Cisco IOS/IOS-XE over real SSH exec (show running-config); certified against the in-repo IOS protocol harness.",
+  },
+  fortinet: {
+    adapter: "fortinet-fortios-live",
+    configFlavor: "fortios",
+    commandConfig: "show full-configuration",
+    notes:
+      "Fortinet FortiOS over real SSH exec (show full-configuration); certified against the in-repo FortiOS protocol harness.",
+  },
+  hpe: {
+    adapter: "hpe-aos-cx-live",
+    configFlavor: "aos-cx",
+    commandConfig: "show running-config",
+    notes:
+      "HPE Aruba AOS-CX over real SSH exec (show running-config); certified against the in-repo AOS-CX protocol harness.",
   },
 };
 
@@ -88,7 +109,7 @@ export function createLiveSshAdapter(vendor: string, creds: SshCredentials): Dev
     adapter: flavor.adapter,
     vendor: vendor.trim().toLowerCase(),
     // Read-only capability set on purpose: no apply/restore/rollback for
-    // live devices in Phase 22 slice 1 (Phase 23 scope).
+    // live devices in Phase 22 (Phase 23 scope).
     capabilities: ["connect", "backup_config"],
     configFlavor: flavor.configFlavor,
     notes: `LIVE (read-only SSH exec) — ${flavor.notes}`,

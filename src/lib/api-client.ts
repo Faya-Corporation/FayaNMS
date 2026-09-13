@@ -222,6 +222,10 @@ export interface DeviceRow {
   lastBackupAt: string | null;
   lastSeen: string | null;
   backupCompliance: string;
+  // Data plane (Phase 22): SIMULATOR | LIVE_SSH + the linked credential
+  // profile reference (secrets never travel — profiles store a vault pointer).
+  dataSource: string;
+  credentialProfile: { name: string; type: string } | null;
   site: { name: string; code: string } | null;
   vendor: { key: string; name: string } | null;
   _count: {
@@ -258,6 +262,15 @@ export interface DeviceDetail {
   updatedAt: string;
   vendor: { id: string; key: string; name: string; adapterKey: string };
   site: { id: string; name: string; code: string; region: string | null } | null;
+  // Data plane (Phase 22): SIMULATOR | LIVE_SSH + the linked credential
+  // profile reference (secrets never travel — profiles store a vault pointer).
+  dataSource: string;
+  credentialProfile: {
+    id: string;
+    name: string;
+    type: string;
+    port: number;
+  } | null;
   counts: {
     interfaces: number;
     snapshots: number;
@@ -394,7 +407,9 @@ export interface CreateDevicePayload {
   mgmtIp: string;
   siteId?: string;
   criticality: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-  /** Validated + audited; persisted when credential assignment lands (2-c). */
+  /** Data plane: SIMULATOR (default) | LIVE_SSH (real read-only SSH). */
+  dataSource?: "SIMULATOR" | "LIVE_SSH";
+  /** CredentialProfile reference — persisted with the device (Phase 22). */
   credentialProfileId?: string;
   tags?: string[];
   notes?: string;
@@ -407,6 +422,10 @@ export interface UpdateDevicePayload {
   siteId?: string | null;
   tags?: string[];
   status?: "ONLINE" | "OFFLINE" | "DEGRADED" | "MAINTENANCE" | "UNKNOWN" | "UNMANAGED";
+  /** Management address (editable so live devices can be repointed). */
+  mgmtIp?: string;
+  /** Data plane: SIMULATOR | LIVE_SSH (Phase 22 — persisted). */
+  dataSource?: "SIMULATOR" | "LIVE_SSH";
   credentialProfileId?: string | null;
 }
 

@@ -35,27 +35,42 @@ const IPV4_PATTERN =
   /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
 const HOSTNAME_PATTERN = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
 
-const formSchema = z.object({
-  hostname: z
-    .string()
-    .trim()
-    .min(1, "Hostname is required")
-    .max(63, "Hostname is limited to 63 characters")
-    .regex(HOSTNAME_PATTERN, "Letters, digits and hyphens only"),
-  displayName: z.string().trim().max(120).optional(),
-  vendorId: z.string().min(1, "Vendor is required"),
-  model: z.string().trim().max(120).optional(),
-  mgmtIp: z
-    .string()
-    .trim()
-    .regex(IPV4_PATTERN, "Enter a valid IPv4 management address"),
-  siteId: z.string().optional(),
-  criticality: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
-  credentialProfileId: z.string().optional(),
-  /** Comma-separated tags; parsed into an array on submit. */
-  tags: z.string().trim().max(400).optional(),
-  notes: z.string().trim().max(2000).optional(),
-});
+const formSchema = z
+  .object({
+    hostname: z
+      .string()
+      .trim()
+      .min(1, "Hostname is required")
+      .max(63, "Hostname is limited to 63 characters")
+      .regex(HOSTNAME_PATTERN, "Letters, digits and hyphens only"),
+    displayName: z.string().trim().max(120).optional(),
+    vendorId: z.string().min(1, "Vendor is required"),
+    model: z.string().trim().max(120).optional(),
+    mgmtIp: z
+      .string()
+      .trim()
+      .regex(IPV4_PATTERN, "Enter a valid IPv4 management address"),
+    siteId: z.string().optional(),
+    criticality: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+    // Data plane (Phase 22): SIMULATOR = deterministic in-memory adapters;
+    // LIVE_SSH = the worker connects over REAL SSH (exec-only, read-only).
+    dataSource: z.enum(["SIMULATOR", "LIVE_SSH"]),
+    credentialProfileId: z.string().optional(),
+    /** Comma-separated tags; parsed into an array on submit. */
+    tags: z.string().trim().max(400).optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .superRefine((values, ctx) => {
+    // Fail-closed at the form layer too: a LIVE_SSH device without a linked
+    // credential profile can never work — the API rejects it as well.
+    if (values.dataSource === "LIVE_SSH" && !(values.credentialProfileId ?? "").trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["credentialProfileId"],
+        message: "LIVE devices require a linked SSH credential profile",
+      });
+    }
+  });
 
 type FormValues = z.infer<typeof formSchema>;
 
@@ -99,7 +114,8 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
           : device?.criticality === "LOW"
             ? "LOW"
             : "MEDIUM",
-      credentialProfileId: "",
+      dataSource: device?.dataSource === "LIVE_SSH" ? "LIVE_SSH" : "SIMULATOR",
+      credentialProfileId: device?.credentialProfile?.id ?? "",
       tags: device?.tags.join(", ") ?? "",
       notes: device?.notes ?? "",
     }),
@@ -117,10 +133,12 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
   const vendorId = useWatch({ control: form.control, name: "vendorId" });
   const siteId = useWatch({ control: form.control, name: "siteId" });
   const criticality = useWatch({ control: form.control, name: "criticality" });
+  const dataSource = useWatch({ control: form.control, name: "dataSource" });
   const credentialProfileId = useWatch({
     control: form.control,
     name: "credentialProfileId",
   });
+  const isLive = dataSource === "LIVE_SSH";
 
   // Reset the form whenever the sheet opens (or the edited device changes).
   useEffect(() => {
@@ -140,7 +158,10 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
             displayName: values.displayName || values.hostname,
             notes: values.notes || null,
             criticality: values.criticality,
+            mgmtIp: values.mgmtIp,
             siteId: values.siteId || null,
+            dataSource: values.dataSource,
+            credentialProfileId: values.credentialProfileId || null,
             tags: parseTags(values.tags) ?? [],
           },
         },
@@ -158,6 +179,7 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
         mgmtIp: values.mgmtIp,
         siteId: values.siteId || undefined,
         criticality: values.criticality,
+        dataSource: values.dataSource,
         credentialProfileId: values.credentialProfileId || undefined,
         tags: parseTags(values.tags),
         notes: values.notes || undefined,
@@ -306,14 +328,54 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>Credential profile</Label>
+            <Label>Data plane</Label>
             <Select
               onValueChange={(value) =>
-                form.setValue("credentialProfileId", value === "NONE" ? "" : value)
+                form.setValue("dataSource", value as FormValues["dataSource"], {
+                  shouldValidate: true,
+                })
+              }
+              value={dataSource}
+            >
+              <SelectTrigger aria-label="Data plane">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="SIMULATOR">Simulator (deterministic demo adapters)</SelectItem>
+                <SelectItem value="LIVE_SSH">Live device (read-only SSH)</SelectItem>
+              </SelectContent>
+            </Select>
+            {isLive ? (
+              <p className="text-xs text-muted-foreground">
+                The worker connects over REAL SSH (exec-only, read-only show
+                commands). Certified live vendors: Cisco IOS/IOS-XE, Fortinet
+                FortiOS, HPE Aruba AOS-CX.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Simulator devices answer the worker deterministically — ideal
+                for demos, training and workflow testing.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="device-credential-profile">
+              Credential profile{isLive ? " *" : ""}
+            </Label>
+            <Select
+              onValueChange={(value) =>
+                form.setValue("credentialProfileId", value === "NONE" ? "" : value, {
+                  shouldValidate: true,
+                })
               }
               value={credentialProfileId || "NONE"}
             >
-              <SelectTrigger aria-label="Credential profile">
+              <SelectTrigger
+                aria-label="Credential profile"
+                aria-invalid={Boolean(form.formState.errors.credentialProfileId)}
+                id="device-credential-profile"
+              >
                 <SelectValue placeholder="None yet" />
               </SelectTrigger>
               <SelectContent>
@@ -325,9 +387,15 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
                 ))}
               </SelectContent>
             </Select>
+            {form.formState.errors.credentialProfileId && (
+              <p className="text-xs text-danger">
+                {form.formState.errors.credentialProfileId.message}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
-              Managed in Administration → Credential Profiles — secrets stay
-              in the vault, FayaNMS stores references only.
+              {isLive
+                ? "Required for live devices — use an SSH_PASSWORD profile and make sure its secret exists in the worker vault (FAYANMS_VAULT_*)."
+                : "Managed in Administration → Credential Profiles — secrets stay in the vault, FayaNMS stores references only."}
             </p>
           </div>
 

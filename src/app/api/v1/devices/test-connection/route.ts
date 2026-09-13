@@ -118,6 +118,11 @@ export async function POST(request: Request) {
   const correlationId = newJobCorrelationId();
   const vendorKey = device.vendor?.adapterKey ?? device.vendor?.key ?? "generic";
   const isLive = (device.dataSource ?? "SIMULATOR").trim().toUpperCase() === "LIVE_SSH";
+  // The live flavor registry keys on the VENDOR CODE (cisco | fortinet | hpe…),
+  // while simulator adapters accept either the adapter key or the vendor code.
+  // Probes therefore carry the vendor code for LIVE_SSH devices
+  // (adapterKey would surface FLAVOR_UNSUPPORTED — caught in slice-2 browser QA).
+  const probeVendor = isLive ? (device.vendor?.key ?? "generic") : vendorKey;
 
   let probe: WorkerProbe;
   try {
@@ -125,7 +130,7 @@ export async function POST(request: Request) {
       method: "POST",
       headers: workerControlHeaders(),
       body: JSON.stringify({
-        vendor: vendorKey,
+        vendor: probeVendor,
         host: device.mgmtIp,
         hostname: device.hostname,
         deviceId: device.id,

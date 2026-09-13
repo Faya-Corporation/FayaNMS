@@ -492,13 +492,17 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
   `prisma/migrations` history, fresh-database `migrate deploy` + migrations≡schema drift
   guard in CI, `migrate deploy` as the T7/D3 path) LANDED the same day. The remaining
   components are optional hardening, not prerequisites for this single-host deployment.
-- Real vendor adapters — Phase 22 slice 1 LANDED 2026-09-13: devices carry a data plane
-  (`SIMULATOR` default / `LIVE_SSH`), the worker has a REAL read-only SSH transport
-  (exec-only, show-command allowlist) with worker-side vault resolution
-  (`FAYANMS_VAULT_*` entries in `.env.production`), and the cisco-ios flavor is
-  protocol-certified in CI against the in-repo SSH harness. STILL OPEN: physical-hardware
-  certification, the remaining vendor flavors, and controlled changes on live devices
-  (Phase 22/23) — the apply/restore paths stay simulator-only.
+- Real vendor adapters — Phase 22 slices 1–2 LANDED 2026-09-13: devices carry a data plane
+  (`SIMULATOR` default / `LIVE_SSH`) chosen in the Add/Edit device form with a linked
+  credential profile (fail-closed API invariants: LIVE ⇒ SSH_PASSWORD profile), the worker
+  has a REAL read-only SSH transport (exec-only, per-flavor command allowlist) with
+  worker-side vault resolution (`FAYANMS_VAULT_*` entries in `.env.production`), and three
+  flavors are protocol-certified in CI against the in-repo SSH harnesses: cisco-ios
+  (`show running-config`), fortinet-fortios (`show full-configuration`), hpe-aos-cx
+  (`show running-config`). Sophos SFOS is deliberately uncertified over SSH (no read-only
+  full-config dump in the SFOS CLI — a WebAPI transport is the future path). STILL OPEN:
+  physical-hardware certification, sophos/juniper/palo flavors, and controlled changes on
+  live devices (Phase 22/23) — the apply/restore paths stay simulator-only.
 - Controlled change execution against LIVE devices (Phase 23).
 - HA/multi-node (the architecture is deliberately single-node PostgreSQL today).
 

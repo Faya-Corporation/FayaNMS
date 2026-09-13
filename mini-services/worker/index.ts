@@ -36,7 +36,7 @@
  */
 
 import { adapters, pickAdapter, type DeviceTarget } from "./adapters";
-import { LiveAdapterError } from "./live-ssh";
+import { LIVE_SSH_FLAVORS, LiveAdapterError } from "./live-ssh";
 import { parseTargetCredential, resolveAdapter, type TargetCredential } from "./adapter-router";
 import { SshError } from "./ssh-transport";
 import { VaultError } from "./vault";
@@ -64,7 +64,7 @@ export async function handle(req: Request): Promise<Response> {
         jobs: getCounters(),
         scheduler: getSchedulerState(),
         adapters: adapters.map((a) => a.adapter),
-        liveAdapters: ["cisco-ios-live"],
+        liveAdapters: Object.values(LIVE_SSH_FLAVORS).map((f) => f.adapter),
       });
     }
 
@@ -81,14 +81,15 @@ export async function handle(req: Request): Promise<Response> {
           configFlavor: a.configFlavor,
           notes: a.notes,
         })),
-        {
-          vendor: "cisco",
-          adapter: "cisco-ios-live",
+        // LIVE manifest derived from the certified-flavor registry — no
+        // hardcoded vendor list to drift out of sync (Phase 22 slice 2).
+        ...Object.entries(LIVE_SSH_FLAVORS).map(([vendor, flavor]) => ({
+          vendor,
+          adapter: flavor.adapter,
           capabilities: ["connect", "backup_config"],
-          configFlavor: "cisco-ios",
-          notes:
-            "LIVE read-only SSH transport (Phase 22 slice 1): real SSH exec with a read-only show-command allowlist; certified against the in-repo IOS protocol harness — hardware certification pending.",
-        },
+          configFlavor: flavor.configFlavor,
+          notes: `LIVE read-only SSH transport (Phase 22): ${flavor.notes} Hardware certification pending.`,
+        })),
       ]);
     }
 
@@ -187,7 +188,10 @@ export async function handle(req: Request): Promise<Response> {
             ok: false,
             vendor,
             host,
-            adapter: dataSource === "LIVE_SSH" ? "cisco-ios-live" : undefined,
+            adapter:
+              dataSource === "LIVE_SSH"
+                ? LIVE_SSH_FLAVORS[vendor.trim().toLowerCase()]?.adapter
+                : undefined,
             dataSource,
             error: `${e.code}: ${e.message}`,
           });

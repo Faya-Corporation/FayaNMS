@@ -1,25 +1,23 @@
 /**
- * FayaNMS LIVE_SSH certification harness — a REAL SSH server (ssh2 server
- * mode) wearing a Cisco IOS 15.x device persona.
+ * FayaNMS LIVE_SSH certification harness — Cisco IOS 15.x persona.
  *
- * What this IS: a genuine SSH protocol endpoint (ed25519 host key, real
- * handshake, real password authentication, real exec channels). The
- * adapter under certification exercises the genuine ssh2 client transport
- * against genuine ssh2 server machinery — only the DEVICE PERSONA (the
- * CLI text) is simulated. That makes this a TRANSPORT + COMMAND-MAPPING
- * certification, not a mock of the adapter itself.
+ * A REAL SSH server (ssh2 server mode, via the persona factory in
+ * persona-sshd.ts) wearing an IOS device persona. Certification semantics
+ * are unchanged from slice 1: genuine SSH protocol end-to-end, only the
+ * CLI text is simulated; hardware certification stays open (README
+ * honest-status block).
  *
- * What this is NOT: physical hardware. Hardware certification (real
- * IOS/IOS-XE devices) stays open and is tracked in the README
- * honest-status block — the harness proves the code, not the wire to a
- * real switch.
- *
- * Exec surface (read-only, mirrors the live-ssh.ts cisco-ios allowlist):
+ * Exec surface (read-only, mirrors the live-ssh.ts cisco allowlist):
  *   show running-config | show version | show ip interface brief
  * Anything else answers the authentic IOS error line and exits 0.
  */
 
-import { Server, utils, type Connection } from "ssh2";
+import {
+  personaOutput,
+  startPersonaSshHarness,
+  type PersonaHarness,
+  type PersonaHarnessOptions,
+} from "./persona-sshd";
 
 export interface HarnessOptions {
   /** ephemeral port when omitted (0) */
@@ -28,12 +26,10 @@ export interface HarnessOptions {
   password?: string;
 }
 
-export interface IOSHarness {
-  port: number;
-  close(): Promise<void>;
-}
+/** Preserve the slice-1 public type so certify.ts callers stay stable. */
+export type IOSHarness = PersonaHarness;
 
-const SHOW_VERSION = [
+export const IOS_SHOW_VERSION = personaOutput([
   "Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.2(4)E7, RELEASE SOFTWARE (fc3)",
   "Technical Support: http://www.cisco.com/techsupport",
   "Copyright (c) 1986-2018 by Cisco Systems, Inc.",
@@ -54,9 +50,9 @@ const SHOW_VERSION = [
   "The password-recovery mechanism is enabled.",
   "",
   "Configuration register is 0xF",
-];
+]);
 
-const SHOW_RUNNING = [
+export const IOS_SHOW_RUNNING = personaOutput([
   "Building configuration...",
   "",
   "Current configuration : 3184 bytes",
@@ -126,84 +122,29 @@ const SHOW_RUNNING = [
   " transport input ssh",
   "!",
   "end",
-];
+]);
 
-const SHOW_IP_BRIEF = [
+export const IOS_SHOW_IP_BRIEF = personaOutput([
   "Interface              IP-Address      OK? Method Status                Protocol",
   "Vlan10                 10.20.10.3      YES manual up                    up",
   "Vlan99                 10.20.99.3      YES manual up                    up",
   "GigabitEthernet0/1     unassigned      YES unset  up                    up",
   "GigabitEthernet0/2     unassigned      YES unset  up                    up",
-];
+]);
 
 const COMMAND_OUTPUTS: Record<string, string> = {
-  "show running-config": `${SHOW_RUNNING.join("\n")}\n`,
-  "show version": `${SHOW_VERSION.join("\n")}\n`,
-  "show ip interface brief": `${SHOW_IP_BRIEF.join("\n")}\n`,
+  "show running-config": IOS_SHOW_RUNNING,
+  "show version": IOS_SHOW_VERSION,
+  "show ip interface brief": IOS_SHOW_IP_BRIEF,
 };
-
-const COMMAND_ALLOWLIST = new Set(Object.keys(COMMAND_OUTPUTS));
 
 export async function startIosSshHarness(
   opts: HarnessOptions = {},
 ): Promise<IOSHarness> {
-  const username = opts.username ?? "netadmin";
-  const password = opts.password ?? "faya-harness";
-  const hostKey = utils.generateKeyPairSync("ed25519").private;
-  const connections = new Set<Connection>();
-
-  const server = new Server({ hostKeys: [hostKey] }, (ctx) => {
-    connections.add(ctx);
-    ctx.on("close", () => connections.delete(ctx));
-    ctx.on("authentication", (auth) => {
-      if (auth.method !== "password") {
-        auth.reject();
-        return;
-      }
-      if (auth.username === username && auth.password === password) {
-        auth.accept();
-      } else {
-        auth.reject();
-      }
-    });
-    ctx.on("session", (accept) => {
-      const session = accept();
-      session.on("exec", (acceptExec, _rejectExec, info) => {
-        const stream = acceptExec();
-        const command = (info.command ?? "").trim();
-        if (COMMAND_ALLOWLIST.has(command)) {
-          stream.stdout.write(COMMAND_OUTPUTS[command]);
-        } else {
-          // Authentic IOS behavior: unknown commands print the error line
-          // and the exec channel exits 0.
-          stream.stdout.write("% Invalid input detected at '^' marker.\n");
-        }
-        stream.exit(0);
-        stream.end();
-      });
-    });
-  });
-
-  const port = await new Promise<number>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(opts.port ?? 0, "127.0.0.1", () => {
-      const addr = server.address();
-      resolve(typeof addr === "object" && addr ? addr.port : 0);
-    });
-  });
-
-  return {
-    port,
-    close: () =>
-      new Promise<void>((resolve) => {
-        for (const conn of connections) {
-          try {
-            conn.end();
-          } catch {
-            /* already closed */
-          }
-        }
-        server.close(() => resolve());
-      }),
+  const personaOpts: PersonaHarnessOptions = {
+    ...opts,
+    commands: COMMAND_OUTPUTS,
+    invalidCommandLine: "% Invalid input detected at '^' marker.\n",
   };
+  return startPersonaSshHarness(personaOpts);
 }
