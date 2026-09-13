@@ -26,6 +26,15 @@ import {
   isStepClaimWon,
   isUniqueConflict,
 } from "@/lib/change/execution-guard";
+import {
+  APPLY_FAIL_FAST_AUDIT_ACTION,
+  applyFailFastAuditDetail,
+  applyFailFastStepError,
+  classifyApplyDispositions,
+  isPostRollbackValidateContext,
+  isRollbackRestoreTarget,
+  type ApplyAttempt,
+} from "@/lib/change/apply-disposition";
 import { getHostKeyPin } from "@/lib/ssh/host-keys";
 import { workerControlHeaders } from "@/lib/worker/control-client";
 import { WORKER_BASE_URL } from "@/lib/worker/worker-url";
@@ -56,9 +65,31 @@ export const dynamic = "force-dynamic";
  * description/comment token under the first interface extracted from the
  * pre-change snapshot — deterministic, reversible, idempotent on retry.
  *
- * Demo control (failAt) NEVER touches live devices: the APPLY/VALIDATE
+ * Demo control (failAt) never WRITES to live devices: the APPLY/VALIDATE
  * failure is injected engine-side BEFORE any device contact, so a demo
- * run can never induce a real fault on production hardware.
+ * run can never induce a real fault on production hardware. (The appended
+ * post-rollback steps may READ live devices — config collection cannot
+ * fault hardware — but a refused/refused-then-rolled-back device is never
+ * written: see SAFE-006 below.)
+ *
+ * SAFE-006 — fail-fast multi-device APPLY + truthful per-device states
+ * (audit P0-005): the APPLY loop STOPS at the first device failure (device-
+ * level or transport) — no later device is contacted, so the blast radius is
+ * exactly the devices actually reached. Per-device dispositions are TRUTHFUL:
+ *   SUCCESS → contacted and applied (its collected post-apply config is
+ *             recorded as a POST_CHANGE snapshot even when the step fails);
+ *   FAILED  → contacted and its apply failed (the stopper);
+ *   SKIPPED → provably never contacted (fail-fast stop, or an engine-side
+ *             refusal such as the demo failAt control on the LIVE plane).
+ * The failure transaction also writes an APPLY_FAIL_FAST audit event with
+ * the full disposition map. The ROLLBACK executor restores ONLY devices the
+ * failed apply actually reached (SKIPPED devices are never "restored" —
+ * that would be the first write they ever see); unknown per-device states
+ * (orphaned apply reaped mid-flight) stay restore targets — fail-safe.
+ * The post-rollback VALIDATE asserts the INVERSE of the post-apply one for
+ * LIVE devices (the applied marker must be ABSENT after a restore) and
+ * skips SKIPPED devices entirely — the pre-SAFE-006 marker-present
+ * assertion failed forever there and re-engaged rollback unboundedly.
  *
  * Step semantics:
  *   CHECK     per device — reachability via /simulate/connect (non-ok ⇒
@@ -73,22 +104,34 @@ export const dynamic = "force-dynamic";
  *             PRE_CHANGE for the first backup (no APPLY before it in the
  *             plan), POST_CHANGE for every later one (post-change and
  *             post-rollback backups alike).
- *   APPLY     per device — /simulate/apply ⇒ the intended running config is
- *             captured as a CURRENT POST_CHANGE snapshot (the new running
- *             config); ChangeDevice.result = SUCCESS.
- *             payload.failAt === "APPLY" ⇒ the sim answers HTTP 500 ⇒ step
- *             FAILED, first device FAILED + the rest SKIPPED.
+ *   APPLY     per device, FAIL-FAST (SAFE-006) — /simulate/apply (or the
+ *             live controlled plane) ⇒ the intended running config is
+ *             captured as a CURRENT POST_CHANGE snapshot; ChangeDevice.result
+ *             = SUCCESS per applied device. First failure ⇒ the loop STOPS:
+ *             the failing device FAILED, every later device SKIPPED (never
+ *             contacted), devices already applied keep SUCCESS + their
+ *             POST_CHANGE snapshots, and an APPLY_FAIL_FAST audit event
+ *             records the disposition map. payload.failAt === "APPLY" ⇒ the
+ *             sim answers HTTP 500 (first device FAILED + rest SKIPPED) or,
+ *             on the LIVE plane, the apply is refused engine-side with
+ *             refusedBeforeContact (every device SKIPPED — no live write).
  *   VALIDATE  payload.failAt === "VALIDATE" ⇒ FAILED (simulated) else PASSED
- *             with a per-device ok list.
- *   ROLLBACK  (driven once the change is in ROLLBACK) — recreates a CURRENT
- *             snapshot per device from the PRE_CHANGE snapshot's rawText
- *             captured earlier this run (fallback: latest snapshot created
- *             before the job started; none ⇒ step FAILED → ROLLBACK_FAILED).
- *             The restored running config is stored with source POST_CHANGE
- *             (documented decision: every snapshot this execution produced
- *             belongs to the change's post-activity state). A ROLLBACK step
- *             reached during a healthy run (user-authored plan) is SKIPPED
- *             "on standby" — the same story the seeded changes tell.
+ *             with a per-device ok list. Context-aware (SAFE-006): while the
+ *             change is in ROLLBACK the LIVE assertion inverts — the applied
+ *             marker must be ABSENT (its presence means the restore failed)
+ *             — and SKIPPED devices are neither contacted nor asserted.
+ *   ROLLBACK  (driven once the change is in ROLLBACK) — restores ONLY the
+ *             devices the failed apply actually reached (SAFE-006; result
+ *             SKIPPED devices are left untouched with a truthful step note).
+ *             Each restored device gets a CURRENT snapshot from the
+ *             PRE_CHANGE snapshot's rawText captured earlier this run
+ *             (fallback: latest snapshot created before the job started;
+ *             none ⇒ step FAILED → ROLLBACK_FAILED). The restored running
+ *             config is stored with source POST_CHANGE (documented decision:
+ *             every snapshot this execution produced belongs to the change's
+ *             post-activity state). A ROLLBACK step reached during a healthy
+ *             run (user-authored plan) is SKIPPED "on standby" — the same
+ *             story the seeded changes tell.
  *
  * On APPLY/VALIDATE failure the remaining original steps are SKIPPED and
  * three PENDING steps are appended (order continues): ROLLBACK "Restore
@@ -1211,7 +1254,6 @@ async function executeApplyStep(
   payload: Record<string, unknown>
 ) {
   const now = new Date();
-  const results = new Map<string, { ok: boolean; configText: string; error?: string }>();
   const slug = changeSlugFromTitle(change.title);
 
   // ── SAFE-007: live restore fail-closed guard (BEFORE any device contact) ──
@@ -1275,17 +1317,30 @@ async function executeApplyStep(
     });
   }
 
+  // ── SAFE-006: fail-fast multi-device APPLY ──
+  // The loop STOPS at the first device failure (device-level or transport):
+  // no later device is contacted, so the blast radius is exactly the devices
+  // actually reached. Devices after the stop have NO attempt — the
+  // classifier records them SKIPPED (never-contacted), never FAILED.
+  const results = new Map<string, ApplyAttempt>();
+  let applyStopped = false;
+
   for (const link of change.devices) {
+    if (applyStopped) continue; // SAFE-006 — no further device contact
     if (isLiveDeviceLink(link)) {
       // ── LIVE plane (Phase 23): controlled apply over real SSH ──
       if (failAt === "APPLY") {
         // Demo control NEVER contacts live devices — the failure is
         // injected engine-side so a demo run can't fault real hardware.
+        // refusedBeforeContact ⇒ the classifier records the device SKIPPED
+        // (provably unmodified — never FAILED), and the loop stops here.
         results.set(link.deviceId, {
           ok: false,
           configText: "",
           error: "Demo control failAt=APPLY — live apply suppressed before device contact",
+          refusedBeforeContact: true,
         });
+        applyStopped = true;
         continue;
       }
       try {
@@ -1293,23 +1348,27 @@ async function executeApplyStep(
         // post-apply running config (becomes the POST_CHANGE snapshot).
         const result = await applyLiveDevice(change, link, jobId, slug);
         results.set(link.deviceId, result);
+        if (!result.ok) applyStopped = true;
       } catch (error) {
-        // Transport-level throw (worker unreachable / 5xx) — the step
-        // retries; already-applied devices are NOT assumed idempotent
-        // (SAFE-003/004 will add durable per-operation resume semantics —
-        // until then a retried apply may re-run the plan on devices that
-        // already accepted it, which is exactly why live applies stay
-        // behind the P0 safety gate).
+        // Transport-level throw (worker unreachable / 5xx) — fail-fast
+        // applies here too: with the transport down, later devices would
+        // only burn timeouts. The step as a whole retries (the driver's
+        // backoff re-claims the step; SAFE-003/004's single-flight + CAS
+        // claim serialize the attempts; the live plan itself is
+        // content-idempotent — the same slug rewrites the same
+        // description), and devices already applied keep their truthful
+        // SUCCESS state + POST_CHANGE snapshot for the audit trail.
         results.set(link.deviceId, {
           ok: false,
           configText: "",
           error: (error as Error).message,
         });
+        applyStopped = true;
       }
       continue;
     }
 
-    // ── SIMULATOR plane (unchanged) ──
+    // ── SIMULATOR plane ──
     try {
       const sim = await workerSimPost(
         "/simulate/apply",
@@ -1328,42 +1387,98 @@ async function executeApplyStep(
         configText: "",
         error: (error as Error).message,
       });
+      applyStopped = true;
     }
   }
 
-  const anyFailure = [...results.values()].some((result) => !result.ok);
+  // SAFE-006 — truthful per-device dispositions (pure classifier, unit-
+  // pinned in tests/audit/apply-failfast.test.ts). Rows are 1:1 with
+  // change.devices in order.
+  const summary = classifyApplyDispositions(
+    change.devices.map((link) => ({
+      deviceId: link.deviceId,
+      hostname: link.device.hostname,
+      attempt: results.get(link.deviceId),
+    }))
+  );
+  const anyFailure = !summary.allApplied;
   const outputs: string[] = [];
 
   await db.$transaction(
     async (tx) => {
       if (anyFailure) {
-        // First failing device FAILED, the rest SKIPPED.
-        let markedFirst = false;
-        for (const link of change.devices) {
-          const result = results.get(link.deviceId);
-          if (!result?.ok && !markedFirst) {
-            await tx.changeDevice.update({
-              where: { id: link.id },
-              data: { result: "FAILED" },
-            });
-            markedFirst = true;
-          } else {
-            await tx.changeDevice.update({
-              where: { id: link.id },
-              data: { result: "SKIPPED" },
+        // SAFE-006 — truthful per-device states on failure:
+        //   SUCCESS → actually applied: keeps SUCCESS and its collected
+        //             post-apply config is recorded as a POST_CHANGE
+        //             snapshot (the audit trail must show what the device
+        //             really runs now — the pre-SAFE-006 code labeled these
+        //             devices SKIPPED and discarded their configs);
+        //   FAILED  → the contacted device whose apply failed (the stopper);
+        //   SKIPPED → provably never contacted.
+        const appliedSnapshots: { hostname: string; version: number; sha256: string }[] = [];
+        for (let index = 0; index < change.devices.length; index += 1) {
+          const link = change.devices[index];
+          const row = summary.rows[index];
+          if (!link || !row) continue; // defensive — rows are 1:1 with devices
+          if (row.result === "SUCCESS" && row.snapshotText !== null) {
+            const reused = await snapshotForJob(
+              tx as unknown as TxClient,
+              link.deviceId,
+              jobId,
+              "POST_CHANGE"
+            );
+            const snapshot =
+              reused ??
+              (
+                await createSnapshot(tx as unknown as TxClient, {
+                  deviceId: link.deviceId,
+                  rawText: row.snapshotText,
+                  source: "POST_CHANGE",
+                  changeId: change.id,
+                  jobId,
+                  correlationId,
+                  actorName: "system:change-engine",
+                  // The device really took a new config.
+                  bumpLastConfigChangeAt: true,
+                })
+              );
+            if (!snapshot.ok) {
+              throw new Error(`Device ${link.device.hostname} disappeared during apply step`);
+            }
+            appliedSnapshots.push({
+              hostname: link.device.hostname,
+              version: snapshot.version,
+              sha256: snapshot.sha256,
             });
           }
+          await tx.changeDevice.update({
+            where: { id: link.id },
+            data: { result: row.result },
+          });
         }
-        const firstError =
-          [...results.values()].find((result) => !result.ok)?.error ?? "apply failed";
         await tx.changeStep.update({
           where: { id: step.id },
           data: {
             status: "FAILED",
             finishedAt: now,
-            error: `Apply failed: ${firstError}`,
+            error: applyFailFastStepError(summary),
           },
         });
+        const auditDetail = applyFailFastAuditDetail(summary);
+        if (auditDetail) {
+          await tx.auditEvent.create({
+            data: {
+              actorName: "system:change-engine",
+              action: APPLY_FAIL_FAST_AUDIT_ACTION,
+              resourceType: "ChangeRequest",
+              resourceId: change.id,
+              resourceLabel: change.number,
+              result: "FAILURE",
+              correlationId,
+              afterJson: JSON.stringify({ ...auditDetail, appliedSnapshots }),
+            },
+          });
+        }
         await engageRollback(tx as unknown as TxClient, change.id, change.steps);
         return;
       }
@@ -1413,9 +1528,15 @@ async function executeApplyStep(
 
   if (anyFailure) {
     await consumeFailAt(jobId, payload);
+    const uncontactedCount = summary.uncontactedHostnames.length;
     return buildResponse(change.id, {
       done: false,
-      message: "Apply failed — rollback engaged",
+      message:
+        `Apply failed at ${summary.stopHostname ?? "device"} — fail-fast: ` +
+        (uncontactedCount > 0
+          ? `${uncontactedCount} remaining device(s) not contacted; `
+          : "") +
+        "rollback engaged",
     });
   }
   return buildResponse(change.id, {
@@ -1582,12 +1703,33 @@ async function executeValidateStep(
   // Phase 23 — LIVE devices: a REAL post-change assertion — re-fetch the
   // running config over SSH and confirm the applied description marker is
   // present in the live config (the same slug the APPLY plan used).
+  // SAFE-006 — context-aware: while the change is in ROLLBACK (the appended
+  // "Post-rollback validation" step) the truthful assertion INVERTS — a
+  // restored device must NOT carry the applied marker anymore (its presence
+  // means the restore failed) — and SKIPPED devices (the fail-fast apply
+  // provably never contacted them) need neither contact nor assertion.
+  // (Pre-SAFE-006 this step asserted marker-PRESENT in both contexts: a
+  // restored device failed validation forever and each failure re-engaged
+  // rollback unboundedly.)
+  const postRollback = isPostRollbackValidateContext(change.status);
   const outputs: string[] = [];
   const validateFailures: string[] = [];
   for (const link of change.devices) {
     if (!isLiveDeviceLink(link)) {
-      outputs.push(`${link.device.hostname} ok — running-config committed`);
+      if (postRollback && link.result === "SKIPPED") {
+        outputs.push(
+          `${link.device.hostname} — not modified by the failed apply (fail-fast); nothing to validate`
+        );
+      } else {
+        outputs.push(`${link.device.hostname} ok — running-config committed`);
+      }
       continue;
+    }
+    if (postRollback && link.result === "SKIPPED") {
+      outputs.push(
+        `${link.device.hostname} — not modified by the failed apply (fail-fast); validation not required`
+      );
+      continue; // no contact with a provably-unmodified device
     }
     const credential = credentialBlockOf(link);
     const flavor = liveFlavorOf(link);
@@ -1621,7 +1763,18 @@ async function executeValidateStep(
       }
       const marker = expectedDescriptionMarker(flavor, changeSlugFromTitle(change.title));
       const normalized = String(call.json.normalizedText ?? "");
-      if (normalized.includes(marker)) {
+      const markerPresent = normalized.includes(marker);
+      if (postRollback) {
+        if (markerPresent) {
+          validateFailures.push(
+            `${link.device.hostname}: applied marker still present after rollback — restore did not complete`
+          );
+        } else {
+          outputs.push(
+            `${link.device.hostname} ok — pre-change state confirmed (applied marker absent)`
+          );
+        }
+      } else if (markerPresent) {
         outputs.push(
           `${link.device.hostname} ok — change marker present in the live running config`
         );
@@ -1716,10 +1869,19 @@ async function executeRollbackStep(
     });
   }
 
+  // SAFE-006 — restore ONLY the devices the failed apply actually reached.
+  // A device the fail-fast apply provably never contacted (result SKIPPED)
+  // must not be "restored" — that would be the first write it ever sees.
+  // Unknown/null states (e.g. an orphaned apply reaped mid-flight before it
+  // could write per-device results) stay restore targets — fail-safe.
+  const restoreTargets = change.devices.filter((link) =>
+    isRollbackRestoreTarget(link.result)
+  );
+
   // Resolve restore sources OUTSIDE the write transaction.
   const restoreSources = new Map<string, { rawText: string; version: number; sha256: string }>();
   const missing: string[] = [];
-  for (const link of change.devices) {
+  for (const link of restoreTargets) {
     const preChange = await db.configSnapshot.findFirst({
       where: { changeId: change.id, deviceId: link.deviceId, source: "PRE_CHANGE" },
       orderBy: { version: "desc" },
@@ -1827,7 +1989,7 @@ async function executeRollbackStep(
   const liveSkipped = new Set<string>();
   const rollbackFailures: string[] = [];
 
-  for (const link of change.devices) {
+  for (const link of restoreTargets) {
     if (!isLiveDeviceLink(link)) continue;
     const source = restoreSources.get(link.deviceId);
     if (!source) continue; // handled by the missing path above
@@ -1951,7 +2113,17 @@ async function executeRollbackStep(
     async (tx) => {
       for (const link of change.devices) {
         const source = restoreSources.get(link.deviceId);
-        if (!source) continue;
+        if (!source) {
+          // Not a restore target (SKIPPED under the fail-fast apply):
+          // truthful note only — no snapshot, no result overwrite; the
+          // device keeps its provably-unmodified SKIPPED state.
+          if (!isRollbackRestoreTarget(link.result)) {
+            outputs.push(
+              `${link.device.hostname} — not modified by the failed apply (fail-fast); nothing to restore`
+            );
+          }
+          continue;
+        }
         // Idempotency: reuse this job's restore snapshot when the sha already
         // matches the restored text (retries never duplicate). For live
         // devices the restored text is what the DEVICE shows now.
@@ -1998,7 +2170,11 @@ async function executeRollbackStep(
         data: {
           status: "PASSED",
           finishedAt: now,
-          output: `Pre-change configuration restored — ${outputs.join(" · ")}`,
+          output: `${
+            restoreTargets.length > 0
+              ? "Pre-change configuration restored"
+              : "Nothing to restore — the failed apply modified no device (SAFE-006)"
+          }${outputs.length > 0 ? ` — ${outputs.join(" · ")}` : ""}`,
           error: null,
         },
       });
@@ -2008,6 +2184,9 @@ async function executeRollbackStep(
 
   return buildResponse(change.id, {
     done: false,
-    message: "Pre-change configuration restored",
+    message:
+      restoreTargets.length > 0
+        ? "Pre-change configuration restored"
+        : "Nothing to restore — no device was modified by the failed apply",
   });
 }

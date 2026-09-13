@@ -452,6 +452,8 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 | Live probe/backup fails: `SSH_HOSTKEY_UNENROLLED` (fail-closed by design) | the endpoint has no pinned host key yet | Enroll from the device page (SSH Host Key card): probe → verify the fingerprint out-of-band → pin; then retry |
 | Live connection fails: `SSH_HOSTKEY_MISMATCH` | the endpoint presented a DIFFERENT key than the pinned enrollment (device re-provisioned, key rotated, or an impostor) | Treat as a security signal FIRST — verify the new key out-of-band; only then Re-enroll from the device page (the old pin is replaced, audited) |
 | API answers `429 RATE_LIMITED` with a `Retry-After` header | pre-handler rate gate (SAFE-002): 120 mutations/min, 300 reads/min per client key — or a whole office NAT sharing one key | Expected for abusive loops; wait out the `Retry-After` window (≤60 s). If legitimate humans collide behind one NAT, split them across egress IPs, or (advanced) raise the budgets in `src/lib/api/rate-gate.ts` — never disable the gate |
+| Multi-device change stopped at the FIRST failing device; later devices show `SKIPPED` | fail-fast containment (SAFE-006): the APPLY loop stops at the first failure — later devices are never contacted (previously they were applied anyway and then mislabeled) | Expected protective behavior. Read the step error + the `APPLY_FAIL_FAST` audit event (stop host, first error, applied/failed/uncontacted map), fix the failing device, then re-execute; devices already applied keep `SUCCESS` and their post-apply snapshots |
+| Post-rollback validation FAILED: `applied marker still present after rollback — restore did not complete` | context-aware post-rollback validation (SAFE-006): after a restore the assertion is INVERTED — the applied marker must be GONE; its presence means the restore did not take effect | Investigate that device first (the ROLLBACK step output names what was restored); verify its config manually and restore via a new change — treat the stuck marker as a real half-applied state, not a validation bug |
 | Execute answers `409 EXECUTION_IN_FLIGHT` | single-flight guard (SAFE-003): this change ALREADY has a queued/running execution (double-click or retry while the first job is alive) | Follow the active job named in the error (id + correlation) in the Job Center instead of re-queuing; the lease auto-releases when the execution reaches a terminal state |
 | Change driver logs `409 DEVICE_WRITE_LOCKED … (held by change …)` | per-device write lock (SAFE-005): another executing change currently owns a device in this change's scope — one change, one device, one step at a time | Expected under contention: the job requeues automatically (30 s × attempts backoff) and resumes when the holder's step completes; if the holder is wedged, the tick reaper / 15-min lock expiry clears it — investigate the HOLDING change first |
 | App can't reach postgres / connection refused | postgres not healthy yet, or topology override broke DNS | `docker compose ps` (health check), `docker compose logs postgres`; app retries are NOT automatic — `docker compose restart app` after postgres is healthy |
@@ -516,6 +518,15 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    same execution and keeps its lease; both guards carry generous expiries (4 h lease,
    15 min lock) purely as crash valves — the tick reaper and the engine's own release
    paths are the normal lifecycle.
+10. **Fail-fast multi-device apply + truthful states (SAFE-006, audit P0-005)** is a
+   blast-radius gate: a multi-device change STOPS at the first failing device — later
+   devices are never contacted (previously they were modified anyway and then labeled
+   SKIPPED). Per-device results are truthful (`SUCCESS` = applied, its post-apply config
+   snapshotted even on a failed step; `FAILED` = the stopper; `SKIPPED` = provably
+   never contacted), every stop writes an `APPLY_FAIL_FAST` audit event with the
+   disposition map, the ROLLBACK executor restores only the devices the apply actually
+   reached, and the post-rollback validation asserts the change is GONE (marker absent)
+   on restored devices — never "marker present", which could only fail forever.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 

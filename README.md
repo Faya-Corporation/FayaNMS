@@ -208,8 +208,8 @@ end-to-end production-readiness audit (verdict **BLOCKED, 74/100**) was re-verif
 finding-by-finding against the source and **accepted in full** — see
 `docs/audits/FayaNMS-ULTRA-Audit-Review-2026-09-13.md` (all 5 P0s confirmed at line
 level). New feature work is deprioritized behind the P0 live-write safety gate:
-SAFE-006 fail-fast multi-device strategy · SAFE-008/009 typed snapshot-exact restore ·
-TEST-001/002/003 concurrency/restore/host-trust suites. **LANDED — SAFE-007:** the
+SAFE-008/009 typed snapshot-exact restore · TEST-001/002/003 concurrency/restore/host-trust
+suites. **LANDED — SAFE-007:** the
 inaccurate live restore is now fail-closed — restore-flow changes are stamped
 `operationKind = RESTORE_SNAPSHOT` and the engine refuses to apply them to LIVE_SSH
 devices (typed `LIVE_RESTORE_NOT_CERTIFIED` refusal + `LIVE_RESTORE_REFUSED` audit
@@ -268,6 +268,32 @@ Proven live in the sandbox: concurrent execute POSTs → exactly one 201 + one 4
 job + one lease in the DB; two concurrent changes over one device → the loser's driver log
 shows the 409 (`held by change …`), it requeues and resumes, and step timestamps prove
 disjoint device-usage windows. 9 new unit pins (`tests/audit/execution-guard.test.ts`).
+**LANDED — SAFE-006 (audit P0-005): fail-fast multi-device apply + truthful per-device
+states.** The APPLY loop used to contact EVERY device in the change and evaluate
+`anyFailure` only after the loop (later LIVE devices really were modified past a failure),
+then labeled the first failing device FAILED and every other device SKIPPED — including
+devices whose apply had actually succeeded (modified, but recorded as skipped, with their
+collected post-apply configs discarded). Now the loop STOPS at the first failure
+(device-level or transport): devices after the stop are never contacted, the blast radius
+is exactly the devices actually reached, and the dispositions are TRUTHFUL — SUCCESS =
+contacted and applied (its collected post-apply config is recorded as a POST_CHANGE
+snapshot even when the step fails), FAILED = the stopper, SKIPPED = provably never
+contacted (a missing attempt is never mis-read as a failure again). Every stop writes an
+`APPLY_FAIL_FAST` audit event with the full disposition map (stop host + kind, first
+error, applied/failed/uncontacted lists, per-device snapshot versions). The rollback
+executor restores ONLY devices the failed apply actually reached ("restoring" a SKIPPED
+device would be the first write it ever sees; unknown states from an orphaned apply stay
+restore targets — fail-safe), the demo `failAt` control on the LIVE plane is now a
+refusal that never touches nor fails a device, and the post-rollback VALIDATE is
+context-aware: for restored LIVE devices it asserts the applied marker is ABSENT (its
+presence means the restore failed) and SKIPPED devices are neither contacted nor
+asserted — the old marker-present assertion could never pass there and each failure
+re-engaged rollback unboundedly (an adjacent latent defect this fix closes; every prior
+E2E used simulator devices, where validation is a no-op, so it never surfaced). Pure
+classifier pinned by 15 new tests (`tests/audit/apply-failfast.test.ts`; suite 176 → 191)
+and proven live through the real API: failAt=APPLY over two devices → first FAILED,
+second SKIPPED, exactly one ROLLBACK pass, terminal FAILED + `CHANGE_FAILED
+{rolledBack: true}`, and a healthy run zero-regression.
 
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
