@@ -152,6 +152,30 @@ function verifyServiceJwt(
 }
 
 /**
+ * Machine-plane detection for the API governance layer (Phase 23): true
+ * when the CURRENT request scope carries a VALID service JWT (signature +
+ * audience + expiry verified against the configured secrets). The
+ * rate limiter exempts such traffic — the worker's claim/step/progress
+ * loops share the loopback bucket with human traffic, and a live change
+ * must never self-throttle mid-run. The exemption requires a VERIFIED
+ * token, never merely the header's presence.
+ */
+export async function currentRequestIsServiceAuth(): Promise<boolean> {
+  try {
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const match = /^Bearer\s+(.+)$/i.exec(h.get("authorization") ?? "");
+    if (!match) return false;
+    const secrets = getServiceSecrets();
+    if (secrets.length === 0) return false;
+    return verifyServiceJwt(match[1], secrets).ok;
+  } catch {
+    // No request scope — not machine traffic.
+    return false;
+  }
+}
+
+/**
  * Authenticate a machine caller AND enforce the route's required scope
  * (Phase 19-C / audit SVC-101). Returns a discriminated result with a
  * precise error code for the 401/403 envelope (never throws).

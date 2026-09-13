@@ -10,6 +10,12 @@
  * Exec surface (read-only, mirrors the live-ssh.ts cisco allowlist):
  *   show running-config | show version | show ip interface brief
  * Anything else answers the authentic IOS error line and exits 0.
+ *
+ * Shell surface (Phase 23 controlled-change plane): an interactive CLI
+ * with exec/config/config-if modes. The template verbs accepted here are
+ * exactly the ones change-commands.ts can emit (configure terminal →
+ * interface → description → end → write memory), and `description` MUTATES
+ * the persona's running config so a post-apply fetch reflects the delta.
  */
 
 import {
@@ -132,18 +138,122 @@ export const IOS_SHOW_IP_BRIEF = personaOutput([
   "GigabitEthernet0/2     unassigned      YES unset  up                    up",
 ]);
 
-const COMMAND_OUTPUTS: Record<string, string> = {
+const COMMAND_OUTPUTS: Record<string, string | (() => string)> = {
   "show running-config": IOS_SHOW_RUNNING,
   "show version": IOS_SHOW_VERSION,
   "show ip interface brief": IOS_SHOW_IP_BRIEF,
 };
 
+/* ─────────────── Phase 23: interactive config-mode shell ─────────────── */
+
+type IosMode = "exec" | "config" | "config-if";
+
+interface IosShellState {
+  mode: IosMode;
+  ifName: string;
+  body: string;
+}
+
+/** Insert/replace/remove ` description <value>` inside one interface block. */
+export function setIosInterfaceDescription(
+  body: string,
+  ifName: string,
+  description: string | null,
+): string {
+  const lines = body.replace(/\s+$/, "").split("\n");
+  const idx = lines.findIndex((l) => l.trim() === `interface ${ifName}`);
+  if (idx < 0) return body;
+  let end = lines.length;
+  for (let i = idx + 1; i < lines.length; i += 1) {
+    const t = lines[i].trim();
+    if (t.startsWith("interface ") || t === "!" || t === "end") {
+      end = i;
+      break;
+    }
+  }
+  let descIdx = -1;
+  for (let i = idx + 1; i < end; i += 1) {
+    if (lines[i].trim().startsWith("description ")) {
+      descIdx = i;
+      break;
+    }
+  }
+  const next = description === null ? null : ` description ${description}`;
+  if (descIdx >= 0) {
+    if (next) lines[descIdx] = next;
+    else lines.splice(descIdx, 1);
+  } else if (next) {
+    lines.splice(idx + 1, 0, next);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function iosShell(): { state: IosShellState; shell: PersonaHarnessOptions["shell"] } {
+  const state: IosShellState = {
+    mode: "exec",
+    ifName: "",
+    body: IOS_SHOW_RUNNING,
+  };
+  COMMAND_OUTPUTS["show running-config"] = () => state.body;
+  const shell = {
+    prompt: () =>
+      state.mode === "exec"
+        ? "HARNESS-IOS-01#"
+        : state.mode === "config"
+          ? "HARNESS-IOS-01(config)#"
+          : `HARNESS-IOS-01(config-if)#`,
+    handle: (line: string) => {
+      const cmd = line.trim();
+      if (state.mode === "exec") {
+        if (cmd === "configure terminal") {
+          state.mode = "config";
+          return { output: "Enter configuration commands, one per line. End with CNTL/Z.\n" };
+        }
+        if (cmd === "write memory") return { output: "Building configuration... [OK]\n" };
+        if (cmd === "end" || cmd === "exit") return {};
+        return { error: true };
+      }
+      if (state.mode === "config") {
+        const match = /^interface (\S+)$/.exec(cmd);
+        if (match) {
+          state.mode = "config-if";
+          state.ifName = match[1];
+          return {};
+        }
+        if (cmd === "end") {
+          state.mode = "exec";
+          return {};
+        }
+        return { error: true };
+      }
+      const description = /^description (.+)$/.exec(cmd);
+      if (description) {
+        state.body = setIosInterfaceDescription(state.body, state.ifName, description[1].trim());
+        return {};
+      }
+      if (cmd === "no description") {
+        state.body = setIosInterfaceDescription(state.body, state.ifName, null);
+        return {};
+      }
+      if (cmd === "end") {
+        state.mode = "exec";
+        return {};
+      }
+      return { error: true };
+    },
+  };
+  return { state, shell };
+}
+
 export async function startIosSshHarness(
   opts: HarnessOptions = {},
 ): Promise<IOSHarness> {
+  const { shell } = iosShell();
   const personaOpts: PersonaHarnessOptions = {
     ...opts,
     commands: COMMAND_OUTPUTS,
+    shell,
+    // Authentic IOS behavior for an unrecognized command.
     invalidCommandLine: "% Invalid input detected at '^' marker.\n",
   };
   return startPersonaSshHarness(personaOpts);

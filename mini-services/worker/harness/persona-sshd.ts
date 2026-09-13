@@ -1,6 +1,7 @@
 /**
  * FayaNMS LIVE_SSH certification harness — generic REAL SSH server factory
- * wearing vendor personas (Phase 22 slice 2).
+ * wearing vendor personas (Phase 22 slice 2; Phase 23 adds config-mode
+ * shells).
  *
  * What this IS: a genuine SSH protocol endpoint (ed25519 host key, real
  * handshake, real password authentication, real exec channels). The adapters
@@ -13,11 +14,39 @@
  * on a wire) stays open and is tracked per-flavor in the README
  * honest-status block — the harness proves the code, not the cable.
  *
+ * Two surfaces:
+ *   - exec  (Phase 22 read-only plane): one-shot command → output → exit 0,
+ *     backed by the `commands` map (values may be functions so personas can
+ *     expose MUTABLE config text).
+ *   - shell (Phase 23 controlled-change plane): an interactive PTY session
+ *     driven line-by-line by the persona's own state machine — config modes
+ *     that accept the template verbs and mutate the persona config, so a
+ *     post-apply fetch reflects the delta.
+ *
  * The vendor-specific personas (command outputs, error-line behavior) live
- * next door: ios-sshd.ts, fortios-sshd.ts, aoscx-sshd.ts.
+ * next door: ios-sshd.ts, fortios-sshd.ts, aoscx-sshd.ts, junos-sshd.ts,
+ * panos-sshd.ts.
  */
 
 import { Server, utils, type Connection } from "ssh2";
+
+/** One line of CLI input handled by the persona shell. */
+export interface PersonaShellAction {
+  /** text printed after the line (before the next prompt) */
+  output?: string;
+  /** true → the persona's invalid-command line is printed instead */
+  error?: boolean;
+}
+
+/** Persona-owned interactive CLI: prompt + per-line state machine. */
+export interface PersonaShellSpec {
+  /** the current prompt (personas change it across config modes) */
+  prompt(): string;
+  /** printed once when the session opens */
+  motd?: string;
+  /** handle ONE input line (without the trailing newline) */
+  handle(line: string): PersonaShellAction | Promise<PersonaShellAction>;
+}
 
 export interface PersonaHarnessOptions {
   /** ephemeral port when omitted (0) */
@@ -25,9 +54,11 @@ export interface PersonaHarnessOptions {
   username?: string;
   password?: string;
   /** command → raw output text (the persona's READ-ONLY exec allowlist) */
-  commands: Record<string, string>;
+  commands: Record<string, string | (() => string)>;
   /** the authentic CLI line the persona prints for unknown commands */
   invalidCommandLine: string;
+  /** interactive config-mode shell (Phase 23 controlled-change plane) */
+  shell?: PersonaShellSpec;
 }
 
 export interface PersonaHarness {
@@ -38,6 +69,49 @@ export interface PersonaHarness {
 /** Join persona body lines into a raw command payload (trailing newline). */
 export function personaOutput(lines: string[]): string {
   return `${lines.join("\n")}\n`;
+}
+
+async function driveShell(
+  stream: {
+    write(chunk: string): void;
+    end(): void;
+    on(event: "data", listener: (chunk: Buffer) => void): void;
+    on(event: "close", listener: () => void): void;
+  },
+  shell: PersonaShellSpec,
+  invalidCommandLine: string,
+): Promise<void> {
+  if (shell.motd) stream.write(shell.motd);
+  stream.write(shell.prompt());
+  let lineBuffer = "";
+
+  const handleLine = async (rawLine: string): Promise<void> => {
+    const line = rawLine.replace(/\r$/, "");
+    if (line.length > 0) {
+      try {
+        const action = await shell.handle(line);
+        if (action.output) stream.write(action.output);
+        if (action.error) stream.write(invalidCommandLine);
+      } catch {
+        stream.write(invalidCommandLine);
+      }
+    }
+    stream.write(shell.prompt());
+  };
+
+  return new Promise<void>((resolve) => {
+    stream.on("data", (chunk: Buffer) => {
+      lineBuffer += chunk.toString();
+      let index = lineBuffer.indexOf("\n");
+      while (index >= 0) {
+        const line = lineBuffer.slice(0, index);
+        lineBuffer = lineBuffer.slice(index + 1);
+        void handleLine(line);
+        index = lineBuffer.indexOf("\n");
+      }
+    });
+    stream.on("close", () => resolve());
+  });
 }
 
 export async function startPersonaSshHarness(
@@ -65,11 +139,18 @@ export async function startPersonaSshHarness(
     });
     ctx.on("session", (accept) => {
       const session = accept();
+      // Real devices grant the PTY request before any shell/exec — accept it
+      // (the Phase 23 CLI session driver requests a PTY for prompt-driven
+      // interaction).
+      session.on("pty", (acceptPty) => {
+        acceptPty();
+      });
       session.on("exec", (acceptExec, _rejectExec, info) => {
         const stream = acceptExec();
         const command = (info.command ?? "").trim();
-        if (allowlist.has(command)) {
-          stream.stdout.write(opts.commands[command]);
+        const entry = allowlist.has(command) ? opts.commands[command] : undefined;
+        if (entry !== undefined) {
+          stream.stdout.write(typeof entry === "function" ? entry() : entry);
         } else {
           // Authentic persona behavior: unknown commands print the vendor
           // error line and the exec channel exits 0.
@@ -77,6 +158,15 @@ export async function startPersonaSshHarness(
         }
         stream.exit(0);
         stream.end();
+      });
+      session.on("shell", (acceptShell) => {
+        if (!opts.shell) {
+          // Persona without an interactive CLI: close the channel.
+          acceptShell().end();
+          return;
+        }
+        const stream = acceptShell();
+        void driveShell(stream, opts.shell, opts.invalidCommandLine);
       });
     });
   });

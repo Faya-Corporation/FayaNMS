@@ -111,7 +111,7 @@ and the seed refuses to wipe a production database).
 
 The worker claims jobs (`CONFIG_BACKUP`, `DISCOVERY`, `DRIFT_CHECK`, `CHANGE_EXECUTE`, `ALERT_EVALUATION`, `METRIC_RETENTION`, `REPORT_RUN`, `FIRMWARE_UPGRADE`, `ZTP_PROVISION`) with concurrency 3, per-job timeouts, exponential backoff on backend outages, and `GET :3030/health` observability. A scheduler tick (`POST /api/v1/worker/tick`, every ~30 s) enqueues scheduled work, prunes metric/snapshot retention, and **reaps orphaned RUNNING jobs** (10 min threshold; 15 min for change execution) — flipped to FAILED with a `JOB_ORPHAN_REAPED` audit row and an "Orphaned" marker in the Job Center, recoverable via the built-in retry.
 
-### Live device connections (Phase 22 — read-only)
+### Live device connections (Phase 22 — read-only · Phase 23 — controlled changes)
 
 Devices carry a data plane: `SIMULATOR` (default — the deterministic in-memory adapters) or
 `LIVE_SSH` — reached by the worker over **real SSH** (exec-only, strict read-only
@@ -126,11 +126,26 @@ credential profile is rejected (`CREDENTIAL_REQUIRED_FOR_LIVE` / `CREDENTIAL_TYP
 Certified flavors (verified end-to-end in CI against the in-repo protocol harnesses —
 `mini-services/worker/certify.ts`, a REAL SSH server per vendor persona):
 **cisco-ios** (IOS/IOS-XE, `show running-config`), **fortinet-fortios** (FortiOS,
-`show full-configuration`), **hpe-aos-cx** (AOS-CX, `show running-config`).
+`show full-configuration`), **hpe-aos-cx** (AOS-CX, `show running-config`),
+**juniper-junos** (Junos OS, `show configuration`) and **palo-panos** (PAN-OS,
+`show config running`).
 **Sophos SFOS is deliberately uncertified over SSH** — the SFOS CLI has no read-only
-full-config dump; that flavor needs a WebAPI transport (open item), as do Juniper/Palo
-Alto. **Hardware certification (physical devices) remains open**;
-apply/restore/rollback stay simulator-only until Phase 22's controlled-change work.
+full-config dump; that flavor needs a WebAPI transport (open item).
+**Hardware certification (physical devices) remains open**.
+
+**Controlled changes on live devices (Phase 23, 2026-09-13):** the change engine routes
+each device by data plane. LIVE_SSH devices execute through the worker's
+**controlled-change plane** — the app sends a validated PLAN (`{ kind, anchor, slug }`),
+never command text: the worker builds the command list itself from per-flavor templates
+(`live-change.ts` + `change-commands.ts`), re-validates every token, and drives a bounded
+PTY CLI session (`sshCliSession`) with stop-on-first-rejection. The applied delta is a
+single reversible description/comment token under the first interface extracted from the
+decrypted pre-change snapshot; APPLY captures the REAL post-apply config as the
+POST_CHANGE snapshot, VALIDATE re-fetches and asserts the change marker in the live
+running config, and ROLLBACK pushes the inverse plan (restore the original description
+or remove the line). The demo `failAt` controls never touch live devices (engine-side
+injection only). Anchors/descriptions are strict allowlisted tokens — malformed plans are
+rejected 400 before any connection.
 
 ### Docker / Windows Server deployment
 
@@ -168,14 +183,25 @@ and production persistence is now PostgreSQL (Phase 21 slice 1, 2026-09-13: sche
 compose `postgres` service, CI service-container gates; slice 2 the same day: a committed
 `prisma/migrations` history with fresh-database `migrate deploy` and a migrations≡schema
 drift guard enforced in CI). The device data plane is DUAL: the deterministic simulator
-plus a REAL read-only SSH transport for Cisco IOS/IOS-XE, Fortinet FortiOS and HPE Aruba
-AOS-CX — protocol-certified in CI per-flavor, selectable in the UI with fail-closed
-device invariants (Phase 22 slices 1–2, 2026-09-13). Remaining before a production
-claim: hardware certification of the live SSH plane and the remaining vendor flavors
-(Sophos needs a WebAPI transport; Juniper/Palo Alto pending) and the optional Phase 21
+plus a REAL SSH transport for Cisco IOS/IOS-XE, Fortinet FortiOS, HPE Aruba AOS-CX,
+Juniper Junos OS and Palo Alto PAN-OS — protocol-certified in CI per-flavor (read-only
+plus controlled plan-validated changes, Phase 22 slices 1–3 + Phase 23, 2026-09-13),
+selectable in the UI with fail-closed device invariants. Remaining before a production
+claim: hardware certification of the live SSH plane and the remaining vendor flavor
+(Sophos needs a WebAPI transport) and the optional Phase 21
 components (Redis/KMS/object storage/distributed
 locks). (CI enforcement on a protected
 `main` — one of the three original blockers — was completed on 2026-09-10, see below.)
+
+Update (Phase 22 slice 3 + Phase 23, 2026-09-13): the live read-only plane now covers
+**five certified flavors** (Cisco IOS/IOS-XE, Fortinet FortiOS, HPE Aruba AOS-CX,
+Juniper Junos OS, Palo Alto PAN-OS), and **controlled changes on live devices are
+LANDED and e2e-verified**: plan-validated apply/rollback over real SSH sessions with
+post-apply validation and machine-plane rate-limit exemption for the job engine
+(a live change can no longer self-throttle). Remaining before a production claim:
+hardware certification of the live SSH plane (physical devices), the Sophos SFOS
+WebAPI transport, and the optional Phase 21 components (Redis/KMS/object storage/
+distributed locks).
 
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is

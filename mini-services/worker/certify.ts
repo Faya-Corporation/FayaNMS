@@ -1,6 +1,7 @@
 /**
- * FayaNMS LIVE_SSH certification driver (Phase 22) — the CI gate behind
- * "the real-transport adapters work".
+ * FayaNMS LIVE_SSH certification driver (Phase 22 + Phase 23) — the CI gate
+ * behind "the real-transport adapters work" and "controlled changes on live
+ * devices work".
  *
  * Starts the in-process protocol harnesses (REAL SSH servers, see
  * harness/*.ts — one persona per certified vendor) and drives the live
@@ -22,9 +23,19 @@
  * CREDENTIAL_REF_INVALID (routing + HTTP 400), simulator HTTP probe
  * unchanged.
  *
- * Certified flavors (slice 2): cisco (IOS), fortinet (FortiOS), hpe
- * (AOS-CX). Sophos is deliberately uncertified — SFOS has no read-only
- * SSH config dump; it needs a future WebAPI transport.
+ * CONTROLLED-CHANGE section (Phase 23) — per flavor, over the REAL SSH
+ * persona shells (config-mode CLIs that MUTATE their running-config):
+ *   6.  invalid plan → PLAN_INVALID (HTTP 400, no device contact)
+ *   7.  /live/apply APPLY plan → applied:true over a real PTY CLI session
+ *   8.  post-apply fetchConfig reflects the delta (persona config mutated)
+ *   9.  /live/apply ROLLBACK plan (original description / removal)
+ *  10.  post-rollback fetchConfig restored
+ * Plus: /live/fetch-config and /live/apply without a credential → 400.
+ *
+ * Certified flavors (slice 3): cisco (IOS), fortinet (FortiOS), hpe
+ * (AOS-CX), juniper (Junos OS), palo (PAN-OS). Sophos is deliberately
+ * uncertified — SFOS has no read-only SSH config dump; it needs a future
+ * WebAPI transport.
  *
  * Exit code 0 = certified. Any failed check exits 1 with the CERT report.
  * Run: bun mini-services/worker/certify.ts
@@ -50,6 +61,14 @@ import {
   startAosCxSshHarness,
   type AosCxHarness,
 } from "./harness/aoscx-sshd";
+import {
+  startJunosSshHarness,
+  type JunosHarness,
+} from "./harness/junos-sshd";
+import {
+  startPanosSshHarness,
+  type PanosHarness,
+} from "./harness/panos-sshd";
 import { serviceAuthHeader } from "./service-token";
 
 // The worker verifies control tokens with FAYANMS_SERVICE_SECRET (process
@@ -105,7 +124,16 @@ interface FlavorCert {
   rawMarkers: string[];
   /** one structural line that must survive normalization */
   normalizedMarker: string;
-  startHarness: () => Promise<IOSHarness | FortiosHarness | AosCxHarness>;
+  startHarness: () => Promise<
+    IOSHarness | FortiosHarness | AosCxHarness | JunosHarness | PanosHarness
+  >;
+  /** Phase 23 controlled-change parameters (anchor + markers) */
+  change: {
+    anchor: string;
+    /** the description the anchor carries BEFORE any change (null = none) */
+    original: string | null;
+    applySlug: string;
+  };
 }
 
 const FLAVOR_CERTS: FlavorCert[] = [
@@ -116,6 +144,7 @@ const FLAVOR_CERTS: FlavorCert[] = [
     rawMarkers: ["Building configuration", "hostname HARNESS-IOS-01", "router ospf 1"],
     normalizedMarker: "interface Vlan10",
     startHarness: () => startIosSshHarness({ username: "netadmin", password: "faya-harness" }),
+    change: { anchor: "GigabitEthernet0/1", original: "UPLINK-CORE-SW-01", applySlug: "FAYA-CHANGE-01" },
   },
   {
     vendor: "fortinet",
@@ -124,6 +153,7 @@ const FLAVOR_CERTS: FlavorCert[] = [
     rawMarkers: ['set hostname "HARNESS-FTG-01"', "config firewall policy", "set srcintf \"lan\""],
     normalizedMarker: "config system interface",
     startHarness: () => startFortiosSshHarness({ username: "netadmin", password: "faya-harness" }),
+    change: { anchor: "wan1", original: null, applySlug: "FAYA-CHANGE-01" },
   },
   {
     vendor: "hpe",
@@ -132,12 +162,31 @@ const FLAVOR_CERTS: FlavorCert[] = [
     rawMarkers: ["hostname HARNESS-CX-01", "interface vlan 10", "ip address 10.40.10.2/24"],
     normalizedMarker: "interface 1/1/1",
     startHarness: () => startAosCxSshHarness({ username: "netadmin", password: "faya-harness" }),
+    change: { anchor: "1/1/1", original: "UPLINK-CORE-SW-01", applySlug: "FAYA-CHANGE-01" },
+  },
+  {
+    vendor: "juniper",
+    hostname: "HARNESS-JN-01",
+    adapter: "juniper-junos-live",
+    rawMarkers: ["host-name HARNESS-JN-01;", "interfaces {", "security-zone UNTRUST"],
+    normalizedMarker: "ge-0/0/1 {",
+    startHarness: () => startJunosSshHarness({ username: "netadmin", password: "faya-harness" }),
+    change: { anchor: "ge-0/0/0", original: "WAN-UPLINK-ISP-A", applySlug: "FAYA-CHANGE-01" },
+  },
+  {
+    vendor: "palo",
+    hostname: "HARNESS-PA-01",
+    adapter: "palo-panos-live",
+    rawMarkers: ["set deviceconfig system hostname HARNESS-PA-01", "set zone TRUST network layer3 ethernet1/2"],
+    normalizedMarker: "set network interface ethernet ethernet1/1 link-state auto",
+    startHarness: () => startPanosSshHarness({ username: "netadmin", password: "faya-harness" }),
+    change: { anchor: "ethernet1/1", original: "WAN-UPLINK", applySlug: "FAYA-CHANGE-01" },
   },
 ];
 
 async function main(): Promise<void> {
-  console.log("FayaNMS LIVE_SSH certification — Phase 22 (3 certified flavors)");
-  const harnesses: (IOSHarness | FortiosHarness | AosCxHarness)[] = [];
+  console.log("FayaNMS LIVE_SSH certification — Phase 22 read-only + Phase 23 controlled change (5 certified flavors)");
+  const harnesses: (IOSHarness | FortiosHarness | AosCxHarness | JunosHarness | PanosHarness)[] = [];
   try {
     for (const cert of FLAVOR_CERTS) {
       console.log(`\n── flavor: ${cert.vendor} (${cert.adapter}) ──`);
@@ -247,6 +296,131 @@ async function main(): Promise<void> {
         badRes.status === 400 && (await badRes.json()).ok === false,
         `status ${badRes.status}`,
       );
+
+      /* ── Phase 23: controlled-change certification ── */
+      const liveApply = (body: unknown) =>
+        handle(
+          new Request("http://worker/live/apply", {
+            method: "POST",
+            headers: {
+              authorization: serviceAuthHeader(),
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(body),
+          }),
+        );
+
+      // 6. An invalid plan must be rejected WITHOUT device contact.
+      const evilRes = await liveApply({
+        vendor: cert.vendor,
+        host: "127.0.0.1",
+        hostname: cert.hostname,
+        credential: { username: "netadmin", port: harness.port, secretRef: VAULT_REF },
+        plan: { kind: "APPLY", anchor: "bad anchor with spaces", slug: "X" },
+      });
+      check(
+        `${cert.vendor}: invalid plan rejected (PLAN_INVALID, no device contact)`,
+        evilRes.status === 400 &&
+          String(((await evilRes.json()) as Record<string, unknown>).error ?? "").includes(
+            "PLAN_INVALID",
+          ),
+        `status ${evilRes.status}`,
+      );
+
+      // 7. Controlled APPLY over the real PTY CLI session.
+      const applyRes = await liveApply({
+        vendor: cert.vendor,
+        host: "127.0.0.1",
+        hostname: cert.hostname,
+        credential: { username: "netadmin", port: harness.port, secretRef: VAULT_REF },
+        plan: {
+          kind: "APPLY",
+          anchor: cert.change.anchor,
+          slug: cert.change.applySlug,
+        },
+      });
+      const applyJson = (await applyRes.json()) as {
+        ok?: boolean;
+        applied?: boolean;
+        commands?: string[];
+      };
+      check(
+        `${cert.vendor}: controlled APPLY over real SSH session`,
+        applyRes.status === 200 && applyJson.ok === true && applyJson.applied === true,
+        `status ${applyRes.status} commands=${(applyJson.commands ?? []).length}`,
+      );
+
+      // 8. Post-apply fetch reflects the delta (persona config mutated).
+      const appliedPassword = resolveVaultSecret(VAULT_REF);
+      const postApplyAdapter = createLiveSshAdapter(cert.vendor, {
+        host: "127.0.0.1",
+        port: harness.port,
+        username: "netadmin",
+        password: appliedPassword,
+      });
+      const postApply = await postApplyAdapter.fetchConfig(target);
+      const applyMarker =
+        cert.vendor === "fortinet"
+          ? `set description "${cert.change.applySlug}"`
+          : cert.vendor === "palo"
+            ? `comment "${cert.change.applySlug}"`
+            : cert.vendor === "juniper"
+              ? `description ${cert.change.applySlug};`
+              : `description ${cert.change.applySlug}`;
+      check(
+        `${cert.vendor}: post-apply fetch reflects the applied delta`,
+        postApply.rawText.includes(applyMarker),
+        `marker "${applyMarker}"`,
+      );
+
+      // 9. Controlled ROLLBACK (restore original, or remove when none).
+      const rollbackRes = await liveApply({
+        vendor: cert.vendor,
+        host: "127.0.0.1",
+        hostname: cert.hostname,
+        credential: { username: "netadmin", port: harness.port, secretRef: VAULT_REF },
+        plan: {
+          kind: "ROLLBACK",
+          anchor: cert.change.anchor,
+          slug: cert.change.original,
+        },
+      });
+      const rollbackJson = (await rollbackRes.json()) as {
+        ok?: boolean;
+        applied?: boolean;
+      };
+      check(
+        `${cert.vendor}: controlled ROLLBACK over real SSH session`,
+        rollbackRes.status === 200 && rollbackJson.ok === true && rollbackJson.applied === true,
+        `status ${rollbackRes.status}`,
+      );
+
+      // 10. Post-rollback fetch restored the original state.
+      const postRollback = await postApplyAdapter.fetchConfig(target);
+      check(
+        `${cert.vendor}: post-rollback fetch restored the original config`,
+        cert.change.original
+          ? postRollback.rawText.includes(cert.change.original) &&
+              !postRollback.rawText.includes(applyMarker)
+          : !postRollback.rawText.includes(applyMarker),
+      );
+
+      // /live/fetch-config without credential → 400 (request-level).
+      const fetchNoCred = await handle(
+        new Request("http://worker/live/fetch-config", {
+          method: "POST",
+          headers: {
+            authorization: serviceAuthHeader(),
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ vendor: cert.vendor, host: "127.0.0.1" }),
+        }),
+      );
+      check(
+        `${cert.vendor}: /live/fetch-config without credential → 400`,
+        fetchNoCred.status === 400,
+        `status ${fetchNoCred.status}`,
+      );
     }
 
     console.log("\n── cross-cutting contracts ──");
@@ -306,7 +480,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   console.log(
-    `CERT RESULT: PASSED — LIVE_SSH read-only data plane certified (${FLAVOR_CERTS.length} flavors, protocol level)`,
+    `CERT RESULT: PASSED — LIVE_SSH read-only + controlled-change data plane certified (${FLAVOR_CERTS.length} flavors, protocol level)`,
   );
 }
 

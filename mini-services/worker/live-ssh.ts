@@ -54,6 +54,10 @@ interface LiveFlavor {
  * Slice 1: Cisco IOS/IOS-XE classic CLI.
  * Slice 2: Fortinet FortiOS (`show full-configuration`) and HPE Aruba
  *          AOS-CX (`show running-config`).
+ * Slice 3: Juniper Junos OS (`show configuration`, hierarchical
+ *          curly-brace — the same shape the simulator adapter and the
+ *          app-side anchor extractor speak) and Palo Alto PAN-OS
+ *          (`show config running`, set-style).
  * Sophos SFOS is deliberately NOT here: the SFOS SSH CLI has no read-only
  * full-config dump — that flavor needs the WebAPI transport (open item).
  */
@@ -78,6 +82,20 @@ export const LIVE_SSH_FLAVORS: Record<string, LiveFlavor> = {
     commandConfig: "show running-config",
     notes:
       "HPE Aruba AOS-CX over real SSH exec (show running-config); certified against the in-repo AOS-CX protocol harness.",
+  },
+  juniper: {
+    adapter: "juniper-junos-live",
+    configFlavor: "junos",
+    commandConfig: "show configuration",
+    notes:
+      "Juniper Junos OS over real SSH exec (show configuration, hierarchical); certified against the in-repo Junos protocol harness.",
+  },
+  palo: {
+    adapter: "palo-panos-live",
+    configFlavor: "panos",
+    commandConfig: "show config running",
+    notes:
+      "Palo Alto PAN-OS over real SSH exec (show config running, set-style); certified against the in-repo PAN-OS protocol harness.",
   },
 };
 

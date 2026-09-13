@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { currentRequestIsServiceAuth } from "@/lib/auth/service-auth";
 
 /**
  * Shared helpers for /api/v1 route handlers.
@@ -27,6 +28,12 @@ import { z } from "zod";
  * `requestContext(request)` as the last ok()/fail() argument so the correct
  * budget applies (legacy call sites fall back to headers()-derived IP and
  * the stricter budget).
+ *
+ * MACHINE-PLANE EXEMPTION (Phase 23): requests carrying a VERIFIED service
+ * JWT (the worker's claim/step/progress loops) skip the user-facing
+ * budget — the loops share the loopback bucket with human traffic, and a
+ * live change must never self-throttle mid-run. The exemption requires a
+ * valid token (signature + audience + expiry), never merely its presence.
  */
 
 export interface PageMeta {
@@ -130,6 +137,11 @@ interface Governance {
 
 async function govern(ctx?: RequestContext): Promise<Governance> {
   const requestId = randomUUID();
+  // Machine plane first — a verified service JWT is exempt from the
+  // user-facing budget (Phase 23; see the header contract above).
+  if (await currentRequestIsServiceAuth()) {
+    return { requestId, limited: false };
+  }
   const ip = await resolveIp(ctx?.ip);
   if (ip === null) return { requestId, limited: false };
   const { limited, retryAfterSec } = takeRateSlot(ip, rateKind(ctx?.method));

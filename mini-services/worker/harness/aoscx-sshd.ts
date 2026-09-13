@@ -9,6 +9,11 @@
  * Exec surface (read-only):
  *   show running-config | show version
  * Anything else answers the authentic AOS-CX error line and exits 0.
+ *
+ * Shell surface (Phase 23 controlled-change plane): AOS-CX CLI
+ * (configure → interface → description → end → write memory);
+ * `description` MUTATES the persona config so a post-apply fetch reflects
+ * the delta.
  */
 
 import {
@@ -81,17 +86,127 @@ export const AOSCX_SHOW_RUNNING = personaOutput([
   "!",
 ]);
 
-const COMMAND_OUTPUTS: Record<string, string> = {
+const COMMAND_OUTPUTS: Record<string, string | (() => string)> = {
   "show running-config": AOSCX_SHOW_RUNNING,
   "show version": AOSCX_SHOW_VERSION,
 };
 
+/* ─────────────── Phase 23: interactive config-mode shell ─────────────── */
+
+type AosCxMode = "exec" | "config" | "config-if";
+
+interface AosCxShellState {
+  mode: AosCxMode;
+  ifName: string;
+  body: string;
+}
+
+/** Insert/replace/remove `description <value>` inside one interface block. */
+export function setAosCxInterfaceDescription(
+  body: string,
+  ifName: string,
+  description: string | null,
+): string {
+  const lines = body.replace(/\s+$/, "").split("\n");
+  const idx = lines.findIndex((l) => l.trim() === `interface ${ifName}`);
+  if (idx < 0) return body;
+  let end = lines.length;
+  for (let i = idx + 1; i < lines.length; i += 1) {
+    const t = lines[i].trim();
+    if (t.startsWith("interface ") || t === "!") {
+      end = i;
+      break;
+    }
+  }
+  let descIdx = -1;
+  for (let i = idx + 1; i < end; i += 1) {
+    if (lines[i].trim().startsWith("description ")) {
+      descIdx = i;
+      break;
+    }
+  }
+  const next = description === null ? null : `   description ${description}`;
+  if (descIdx >= 0) {
+    if (next) lines[descIdx] = next;
+    else lines.splice(descIdx, 1);
+  } else if (next) {
+    lines.splice(idx + 1, 0, next);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function aosCxShell(): {
+  state: AosCxShellState;
+  shell: PersonaHarnessOptions["shell"];
+} {
+  const state: AosCxShellState = {
+    mode: "exec",
+    ifName: "",
+    body: AOSCX_SHOW_RUNNING,
+  };
+  COMMAND_OUTPUTS["show running-config"] = () => state.body;
+  const shell = {
+    prompt: () =>
+      state.mode === "exec"
+        ? "HARNESS-CX-01#"
+        : state.mode === "config"
+          ? "HARNESS-CX-01(config)#"
+          : `HARNESS-CX-01(config-if)#`,
+    handle: (line: string) => {
+      const cmd = line.trim();
+      if (state.mode === "exec") {
+        if (cmd === "configure") {
+          state.mode = "config";
+          return {};
+        }
+        if (cmd === "write memory") return { output: "Copying configuration... [OK]\n" };
+        if (cmd === "end" || cmd === "exit") return {};
+        return { error: true };
+      }
+      if (state.mode === "config") {
+        const match = /^interface (\S+)$/.exec(cmd);
+        if (match) {
+          state.mode = "config-if";
+          state.ifName = match[1];
+          return {};
+        }
+        if (cmd === "end") {
+          state.mode = "exec";
+          return {};
+        }
+        return { error: true };
+      }
+      const description = /^description (.+)$/.exec(cmd);
+      if (description) {
+        state.body = setAosCxInterfaceDescription(
+          state.body,
+          state.ifName,
+          description[1].trim(),
+        );
+        return {};
+      }
+      if (cmd === "no description") {
+        state.body = setAosCxInterfaceDescription(state.body, state.ifName, null);
+        return {};
+      }
+      if (cmd === "end") {
+        state.mode = "exec";
+        return {};
+      }
+      return { error: true };
+    },
+  };
+  return { state, shell };
+}
+
 export async function startAosCxSshHarness(
   opts: HarnessOptions = {},
 ): Promise<AosCxHarness> {
+  const { shell } = aosCxShell();
   const personaOpts: PersonaHarnessOptions = {
     ...opts,
     commands: COMMAND_OUTPUTS,
+    shell,
     // Authentic AOS-CX behavior for an unrecognized command.
     invalidCommandLine: "% Invalid input: unrecognized command\n",
   };

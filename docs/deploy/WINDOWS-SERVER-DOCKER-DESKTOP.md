@@ -481,8 +481,8 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    references; the worker resolves them from `FAYANMS_VAULT_*` entries in
    `.env.production` at connect time. The compose `worker` service carries the env_file —
    protect that file exactly like the other secrets (item 2) and never publish 3030
-   beyond the host (the service JWT + the read-only command allowlist are the device
-   control gates).
+   beyond the host (the service JWT + the plan validation / per-flavor command
+   templates are the device-control gates — the app can never send command text).
 
 ## Explicitly NOT covered here (tracked elsewhere)
 
@@ -492,18 +492,27 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
   `prisma/migrations` history, fresh-database `migrate deploy` + migrations≡schema drift
   guard in CI, `migrate deploy` as the T7/D3 path) LANDED the same day. The remaining
   components are optional hardening, not prerequisites for this single-host deployment.
-- Real vendor adapters — Phase 22 slices 1–2 LANDED 2026-09-13: devices carry a data plane
-  (`SIMULATOR` default / `LIVE_SSH`) chosen in the Add/Edit device form with a linked
-  credential profile (fail-closed API invariants: LIVE ⇒ SSH_PASSWORD profile), the worker
-  has a REAL read-only SSH transport (exec-only, per-flavor command allowlist) with
-  worker-side vault resolution (`FAYANMS_VAULT_*` entries in `.env.production`), and three
+- Real vendor adapters — Phase 22 slices 1–3 + Phase 23 LANDED 2026-09-13: devices carry a
+  data plane (`SIMULATOR` default / `LIVE_SSH`) chosen in the Add/Edit device form with a
+  linked credential profile (fail-closed API invariants: LIVE ⇒ SSH_PASSWORD profile), the
+  worker has a REAL SSH transport (exec-only, per-flavor command allowlist) with
+  worker-side vault resolution (`FAYANMS_VAULT_*` entries in `.env.production`), and FIVE
   flavors are protocol-certified in CI against the in-repo SSH harnesses: cisco-ios
   (`show running-config`), fortinet-fortios (`show full-configuration`), hpe-aos-cx
-  (`show running-config`). Sophos SFOS is deliberately uncertified over SSH (no read-only
-  full-config dump in the SFOS CLI — a WebAPI transport is the future path). STILL OPEN:
-  physical-hardware certification, sophos/juniper/palo flavors, and controlled changes on
-  live devices (Phase 22/23) — the apply/restore paths stay simulator-only.
-- Controlled change execution against LIVE devices (Phase 23).
+  (`show running-config`), juniper-junos (`show configuration`), palo-panos
+  (`show config running`). Sophos SFOS is deliberately uncertified over SSH (no
+  read-only full-config dump in the SFOS CLI — a WebAPI transport is the future path).
+- Controlled changes on LIVE devices — Phase 23 LANDED 2026-09-13: the change engine
+  routes each device by data plane; LIVE_SSH devices execute a validated PLAN
+  (`{ kind, anchor, slug }` — never command text) through the worker's controlled-change
+  plane (per-flavor command templates built worker-side, bounded PTY CLI session with
+  stop-on-first-rejection), the applied delta is one reversible interface-description
+  token anchored in the decrypted pre-change snapshot, VALIDATE re-fetches and asserts
+  the marker in the live config, ROLLBACK pushes the inverse plan, and the demo `failAt`
+  controls never contact live devices. The job engine's loopback calls are exempt from
+  the user-facing rate budget (verified service JWT required) so a change can never
+  self-throttle mid-run. STILL OPEN: physical-hardware certification of the live plane
+  and the sophos WebAPI transport.
 - HA/multi-node (the architecture is deliberately single-node PostgreSQL today).
 
 ---
