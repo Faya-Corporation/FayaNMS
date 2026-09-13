@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/Prisma-6-2D3748?style=flat-square" alt="Prisma 6">
     <img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square" alt="Tailwind CSS 4">
     <img src="https://img.shields.io/badge/next--intl-EN%20%C2%B7%20AR-475569?style=flat-square" alt="next-intl — English + Arabic">
-    <img src="https://img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml?style=flat-square&branch=main&label=CI" alt="CI — gate + scan required on main">
+    <img src="https://img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml?style=flat-square&branch=main&label=CI" alt="CI — gate + scan run on every push to main">
   </p>
 </div>
 
@@ -190,8 +190,8 @@ selectable in the UI with fail-closed device invariants. Remaining before a prod
 claim: hardware certification of the live SSH plane and the remaining vendor flavor
 (Sophos needs a WebAPI transport) and the optional Phase 21
 components (Redis/KMS/object storage/distributed
-locks). (CI enforcement on a protected
-`main` — one of the three original blockers — was completed on 2026-09-10, see below.)
+locks). (Branch protection on `main` was previously activated 2026-09-10 but the
+live GitHub state is currently UNPROTECTED — corrected and tracked as OPS-001, see below.)
 
 Update (Phase 22 slice 3 + Phase 23, 2026-09-13): the live read-only plane now covers
 **five certified flavors** (Cisco IOS/IOS-XE, Fortinet FortiOS, HPE Aruba AOS-CX,
@@ -203,19 +203,36 @@ hardware certification of the live SSH plane (physical devices), the Sophos SFOS
 WebAPI transport, and the optional Phase 21 components (Redis/KMS/object storage/
 distributed locks).
 
+PRODUCTION-SAFETY REMEDIATION SPRINT (2026-09-13, in progress): an independent
+end-to-end production-readiness audit (verdict **BLOCKED, 74/100**) was re-verified
+finding-by-finding against the source and **accepted in full** — see
+`docs/audits/FayaNMS-ULTRA-Audit-Review-2026-09-13.md` (all 5 P0s confirmed at line
+level). New feature work is deprioritized behind the P0 live-write safety gate:
+SAFE-001 SSH host-key pinning · SAFE-002 pre-handler mutation rate limiting ·
+SAFE-003/004/005 execution single-flight + atomic step claim + per-device write lock ·
+SAFE-006 fail-fast multi-device strategy · SAFE-008/009 typed snapshot-exact restore ·
+TEST-001/002/003 concurrency/restore/host-trust suites. **LANDED — SAFE-007:** the
+inaccurate live restore is now fail-closed — restore-flow changes are stamped
+`operationKind = RESTORE_SNAPSHOT` and the engine refuses to apply them to LIVE_SSH
+devices (typed `LIVE_RESTORE_NOT_CERTIFIED` refusal + `LIVE_RESTORE_REFUSED` audit
+event, zero device contact) until snapshot-exact restore ships; the restore dialog
+warns on LIVE devices and the removed auto-approval checkbox (dead since P19) is gone.
+
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
 not); the demo dataset is never committed (rebuild via the seed above — it runs
 against any reachable PostgreSQL); the CI gate is live at `.github/workflows/ci.yml` (lint, src-zero-error
 typecheck, `bun test tests/`, LIVE_SSH certification, Prisma schema, i18n parity, production build, brand
-validators and a security scan job) and is now CI-enforced: activated on GitHub Actions on
-2026-09-10 with green `gate` + `scan` runs on `main`, and `main` is protected — the `gate`
-and `scan` status checks are required, pull requests require 1 approval incl. CODEOWNERS
-review, conversation resolution is required, force pushes and deletions are blocked
-(activated via the settings REST API with an Administration:write token; activation record
-in docs/brand/SOCIAL-REPOSITORY.md §6);
-approval-quorum (CAB ≥2 distinct approvers) and approval-expiry fingerprints are Phase-21
-policy work;
+validators and a security scan job) with green `gate` + `scan` runs on `main`.
+BRANCH PROTECTION — CORRECTED 2026-09-13 (external ULTRA audit P1-017): the live GitHub
+branch state is `main.protected = false` (verified by API read-back); an earlier
+settings-API activation (docs/brand/SOCIAL-REPOSITORY.md §6) has since been lost/not
+reflected by the platform, and a previous version of this section wrongly described the
+branch as protected — that was governance drift. The truthful current statement is:
+CI runs on every push, but push-triggered CI is NOT pre-merge enforcement. Restoring
+protection/rulesets is OPS-001 on the remediation backlog;
+approval-quorum (CAB ≥2 distinct approvers) and approval-expiry fingerprints are P1
+policy work (POL-001/002/003);
 service JWTs remain symmetric-secret (per-service keys / asymmetric signing = Phase 21); the
 design-governance QA matrix is substantially executed with recorded evidence — including a
 full 43-view cycle at 1920, a full 43-view WCAG-320px reflow sweep and scripted keyboard-only

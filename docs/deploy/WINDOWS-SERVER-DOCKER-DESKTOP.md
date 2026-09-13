@@ -32,7 +32,7 @@ execute and tick.
 | Startup security policy (production) **aborts** unless: `NEXTAUTH_SECRET` ≥ 32 chars, `FAYANMS_SERVICE_SECRET` 64-hex, `FAYANMS_CONFIG_ENC_KEY` 64-hex, and `FAYANMS_DEMO_MODE ≠ true` | src/lib/startup/security-policy.ts, .env.example | Secrets must be generated per environment; demo seeding is a separate, non-production step |
 | Demo seed gate: requires `FAYANMS_DEMO_MODE=true` **and** refuses under production NODE_ENV | prisma/seed.ts:2443 | Seed in a one-off container without `NODE_ENV=production`, then run the app clean |
 | CI `scan` job's trivy step **is ACTIVE since 2026-09-12** (fs scan, HIGH/CRITICAL, exit-code 1; first verified scans: 0 vulns / 0 misconfigs / 0 secrets — the planned `.trivyignore` mirror never had to land, see T4) | .github/workflows/ci.yml step 12 | Any new HIGH/CRITICAL advisory or Dockerfile misconfig turns CI red — fix forward; the `osv-scanner.toml` accepted-risk ledger is EMPTY today, keep it that way unless a finding genuinely requires a major migration |
-| CI is active with required checks `gate` + `scan` on protected `main` (owner direct-push bypass documented) | SOCIAL-REPOSITORY.md §6 | All repo-side tasks land via normal pushes; every push must stay green |
+| CI is active (`gate` + `scan` on every push to `main`) — branch protection currently OFF, restore tracked as OPS-001 | README honest-status block | All repo-side tasks land via normal pushes; every push must stay green |
 
 Demo dataset sign-in (only when seeded): `admin@faya.local` / `faya123` — **demo-only**,
 advertised by the sign-in gate by design. Do not expose such a deployment to untrusted networks.

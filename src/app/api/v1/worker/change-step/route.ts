@@ -12,7 +12,9 @@ import {
   expectedDescriptionMarker,
   extractLiveAnchor,
   extractOriginalDescription,
+  isRestoreOperation,
   LIVE_NO_ANCHOR,
+  LIVE_RESTORE_NOT_CERTIFIED,
   VENDOR_CONFIG_FLAVORS,
 } from "@/lib/change/live-plan";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
@@ -26,14 +28,14 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/v1/worker/change-step — the Next-side change execution engine
  * (Task 4-b). Called BY the worker mini-service in a loop after it claims a
- * CHANGE_EXECUTE job; the worker never touches SQLite.
+ * CHANGE_EXECUTE job; the worker never touches the database directly
+ * (PostgreSQL since Phase 21 — the app owns all persistence).
  *
  * Contract: executes EXACTLY ONE next PENDING ChangeStep per call, then
  * returns { done, … } so the driver either keeps looping or completes the
  * job. HTTP calls to the worker's /simulate/* and /live/* endpoints happen
  * OUTSIDE transactions; results are written in one short transaction per
  * step (never hold a tx across a fetch).
- *
  * DATA PLANE ROUTING (Phase 23): every per-device call resolves the
  * device's data plane first. SIMULATOR (default) keeps the historical
  * /simulate/* behavior verbatim. LIVE_SSH devices route through the
@@ -1088,6 +1090,67 @@ async function executeApplyStep(
   const results = new Map<string, { ok: boolean; configText: string; error?: string }>();
   const slug = changeSlugFromTitle(change.title);
 
+  // ── SAFE-007: live restore fail-closed guard (BEFORE any device contact) ──
+  // A RESTORE_SNAPSHOT change approved for execution must not run the generic
+  // description-marker apply plan against LIVE devices: the engine does not
+  // yet consume the selected snapshot as the desired configuration
+  // (SAFE-008/009 pending), so a "restore to snapshot vN" would silently
+  // apply an unrelated interface-description change instead. Fail the step
+  // and the change closed; nothing is modified, no rollback needed.
+  // Simulator-plane restores are unaffected (honest within the simulated
+  // data plane).
+  if (
+    isRestoreOperation(change.operationKind) &&
+    change.devices.some((link) => isLiveDeviceLink(link))
+  ) {
+    await db.$transaction(
+      async (tx) => {
+        await tx.changeStep.update({
+          where: { id: step.id },
+          data: {
+            status: "FAILED",
+            finishedAt: now,
+            error: LIVE_RESTORE_NOT_CERTIFIED,
+          },
+        });
+        for (const link of change.devices) {
+          await tx.changeDevice.update({
+            where: { id: link.id },
+            data: { result: "SKIPPED" },
+          });
+        }
+        await tx.changeRequest.update({
+          where: { id: change.id },
+          data: { status: "FAILED" },
+        });
+        await tx.auditEvent.create({
+          data: {
+            actorName: "system:change-engine",
+            action: "LIVE_RESTORE_REFUSED",
+            resourceType: "ChangeRequest",
+            resourceId: change.id,
+            resourceLabel: change.number,
+            result: "FAILURE",
+            correlationId,
+            afterJson: JSON.stringify({
+              reason: "SAFE-007",
+              operationKind: change.operationKind,
+              devices: change.devices.length,
+            }),
+          },
+        });
+      },
+      { maxWait: 5_000, timeout: 20_000 }
+    );
+    return buildResponse(change.id, {
+      done: true,
+      outcome: "FAILED",
+      suggestIncident: true,
+      message:
+        "Live restore refused — snapshot-exact restore is not certified yet (SAFE-008/009); no device was contacted",
+    });
+  }
+
   for (const link of change.devices) {
     if (isLiveDeviceLink(link)) {
       // ── LIVE plane (Phase 23): controlled apply over real SSH ──
@@ -1108,7 +1171,11 @@ async function executeApplyStep(
         results.set(link.deviceId, result);
       } catch (error) {
         // Transport-level throw (worker unreachable / 5xx) — the step
-        // retries; already-applied devices are idempotent (same plan).
+        // retries; already-applied devices are NOT assumed idempotent
+        // (SAFE-003/004 will add durable per-operation resume semantics —
+        // until then a retried apply may re-run the plan on devices that
+        // already accepted it, which is exactly why live applies stay
+        // behind the P0 safety gate).
         results.set(link.deviceId, {
           ok: false,
           configText: "",

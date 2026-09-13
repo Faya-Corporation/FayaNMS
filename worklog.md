@@ -2012,3 +2012,21 @@ Work Log:
 
 Stage Summary:
 - THE EXTERNAL AUDIT IS VERIFIED ACCURATE — all 5 P0s, all sampled P1/P2s confirmed at cited locations; fingerprint evidence exact. BLOCKED verdict accepted; the roadmap pivots from feature phases to the production-safety remediation sprint (P0 gate first, no new product features before items 1–6 per audit §16). Next executable step: SAFE-007 (disable/guard inaccurate LIVE restore) as the first remediation commit.
+---
+Task ID: R20-safe007
+Agent: Orchestrator (Z.ai Code)
+Task: Production-safety remediation sprint step 1 — SAFE-007 (external ULTRA audit priority #1: disable/guard the inaccurate LIVE restore).
+
+Work Log:
+- Schema: ChangeRequest.operationKind (String, default GENERIC) — the typed executable intent, SAFE-008's foundation; migration 20260913030000_change_operation_kind applied via migrate deploy (found + worked around a stale shell-environment DATABASE_URL=file:...custom.db overriding .env — root cause of a transient deploy failure, not a repo defect).
+- Shared guard lib (src/lib/change/live-plan.ts): CHANGE_OPERATION_KINDS, LIVE_RESTORE_NOT_CERTIFIED (typed refusal string naming SAFE-008/009 + the no-contact invariant), isRestoreOperation() (requires the explicitly stamped kind — legacy/unknown values behave GENERIC, never swept into the guard).
+- Restore route: stamps operationKind="RESTORE_SNAPSHOT" on the created EMERGENCY change (+ audit afterJson; docstring states the snapshot id/sha256 travel as AUDIT data, not an executable operation).
+- Engine (change-step executeApplyStep): fail-closed guard BEFORE any device contact — RESTORE_SNAPSHOT change with any LIVE_SSH device link ⇒ step FAILED with LIVE_RESTORE_NOT_CERTIFIED, devices SKIPPED, change FAILED, LIVE_RESTORE_REFUSED audit event, response done:true/FAILED/suggestIncident; simulator-plane restores unaffected.
+- UI (device-config-tab): restore dialog now warns on LIVE devices (amber NOT-CERTIFIED panel: change can be filed/approved but execution fails by design); removed the dead autoApprove checkbox + mutation payload field (route has stripped the param since P19 — the label promised behavior that no longer exists).
+- Honesty fixes from the review (N-04/N-05): stale "worker never touches SQLite" header → PostgreSQL; false "already-applied devices are idempotent" retry comment → states the real SAFE-003/004 gap.
+- Governance drift (P1-017 doc half): README + runbook + SOCIAL-REPOSITORY.md §6 now state the verified `main.protected = false` truth with a dated correction banner (OPS-001 backlog); brand honesty test B0-002 updated to PIN the corrected state (fails if the stale protected claim ever returns).
+- Tests: tests/audit/live-restore-guard.test.ts (5 tests: kind catalog, restore classification, GENERIC/null/undefined/unknown fail-open, typed refusal contract). Suite 118 → 123.
+- GATES: lint 0 · tsc 0 (src + worker) · bun test 123/123 · prisma validate OK · migrate deploy OK · drift guard exit 0 (migrations ≡ schema) · build:gate PASS · dev.log clean.
+
+Stage Summary:
+- SAFE-007 LANDED: the audit's #1 immediate safe action is enforced in code — an approved restore change can no longer silently run the generic description-marker plan against a LIVE device; the engine refuses fail-closed with zero device contact and a dedicated audit action, and the UI says so up front. Branch-protection governance drift corrected in all three docs with a test pinning the truth. Next: SAFE-001 (SSH host-key enrollment + pinning, fail-closed) per the adopted remediation order.

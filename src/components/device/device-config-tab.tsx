@@ -10,6 +10,7 @@ import {
   History,
   MoreHorizontal,
   Pin,
+  ShieldAlert,
   ShieldCheck,
   Undo2,
   X,
@@ -167,7 +168,11 @@ export function DeviceConfigTab({
   const [approveTarget, setApproveTarget] = useState<DeviceSnapshotRow | null>(null);
   const [approveNote, setApproveNote] = useState("");
   const [restoreTarget, setRestoreTarget] = useState<DeviceSnapshotRow | null>(null);
-  const [restoreAutoApprove, setRestoreAutoApprove] = useState(false);
+  // SAFE-007 honesty: restore changes on LIVE_SSH devices fail closed at the
+  // engine until snapshot-exact restore ships (SAFE-008/009) — the dialog
+  // states this up front instead of letting an approver discover it at run time.
+  const isLiveDevice =
+    (device.data?.dataSource ?? "SIMULATOR").trim().toUpperCase() === "LIVE_SSH";
 
   const approve = useApproveBaseline();
 
@@ -186,14 +191,13 @@ export function DeviceConfigTab({
   const openDriftCount = deviceDrift.data?.total ?? 0;
 
   const restore = useMutation({
-    mutationFn: (payload: { snapshotId: string; confirmHostname: string; autoApprove: boolean }) =>
+    mutationFn: (payload: { snapshotId: string; confirmHostname: string }) =>
       apiFetch<RestoreSnapshotResult>(
         `/api/v1/devices/${deviceId}/snapshots/${payload.snapshotId}/restore`,
         {
           method: "POST",
           body: JSON.stringify({
             confirmHostname: payload.confirmHostname,
-            autoApprove: payload.autoApprove,
           }),
         }
       ),
@@ -403,7 +407,6 @@ export function DeviceConfigTab({
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => {
-                            setRestoreAutoApprove(false);
                             setRestoreTarget(snapshot);
                           }}
                         >
@@ -581,7 +584,7 @@ export function DeviceConfigTab({
         confirmLabel="Create restore change"
         confirmPhrase={device.data?.hostname ?? ""}
         confirmHint={device.data?.hostname ?? "hostname"}
-        description="Restoring pushes a stored configuration back onto the device. This is never executed directly — a tracked EMERGENCY change is created and run by the change engine."
+        description="Restoring pushes a stored configuration back onto the device. This is never executed directly — a tracked EMERGENCY change is created and run by the change engine. Approval policy (SoD-enforced) always applies: there is no auto-approval path."
         impact={[
           {
             label: "Device",
@@ -627,7 +630,6 @@ export function DeviceConfigTab({
           const result = await restore.mutateAsync({
             snapshotId: restoreTarget.id,
             confirmHostname: device.data?.hostname ?? "",
-            autoApprove: restoreAutoApprove,
           });
           return (
             <div className="flex flex-col gap-3">
@@ -662,22 +664,16 @@ export function DeviceConfigTab({
         open={restoreTarget !== null}
         title={`Restore ${device.data?.hostname ?? "device"} to v${restoreTarget?.version ?? ""}`}
       >
-        {restoreTarget && (
-          <label className="flex items-start gap-2 rounded-lg border bg-surface-subtle p-3 text-xs">
-            <input
-              aria-label="Auto-approve as emergency change"
-              checked={restoreAutoApprove}
-              className="mt-0.5 size-3.5"
-              onChange={(event) => setRestoreAutoApprove(event.target.checked)}
-              type="checkbox"
-            />
+        {isLiveDevice && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+            <ShieldAlert aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
             <span>
-              <span className="font-medium">Auto-approve</span> — record a
-              MANAGER approval automatically and schedule the change for
-              immediate execution. Leave off to send it to the Changes queue
-              for human approval.
+              <span className="font-medium">LIVE device — restore execution is NOT CERTIFIED yet.</span>{" "}
+              Until snapshot-exact restore ships (SAFE-008/009), the engine refuses to apply a
+              restore change to LIVE_SSH devices fail-closed (no device is contacted). The
+              change can still be filed and approved, but execution will fail by design.
             </span>
-          </label>
+          </div>
         )}
       </HighRiskActionDialog>
     </div>

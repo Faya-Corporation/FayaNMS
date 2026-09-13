@@ -336,6 +336,12 @@ model ChangeRequest {
   riskScore   Int     @default(0)
   // riskLevel: LOW (<21) | MEDIUM (<41) | HIGH (<71) | CRITICAL (>=71)
   riskLevel   String  @default("LOW")
+  // operationKind: typed executable intent (SAFE-007/SAFE-008). GENERIC =
+  // wizard/standard changes; RESTORE_SNAPSHOT = the guarded restore-to-snapshot
+  // flow. The execution engine refuses LIVE_SSH apply for restore changes
+  // (fail closed, no device contact) until snapshot-exact restore semantics
+  // are implemented and vendor-certified (SAFE-008/009).
+  operationKind String @default("GENERIC")
   requesterId String
   requester   User    @relation("ChangeRequester", fields: [requesterId], references: [id], onDelete: Restrict)
   ownerId     String?

@@ -184,27 +184,36 @@ describe("CI gate wires the brand governance (B0-002)", () => {
       expect(source).toContain("bun test tests/");
     },
   );
-  test("CI activation status stays honest (B0-002: enforced since 2026-09-10)", () => {
-    // The activation window closed on 2026-09-10 (tasks R8 + R9): the workflow
-    // push landed, gate + scan ran green on main, and both were set as required
-    // status checks on the protected branch. Docs must now assert the
-    // ENFORCED state with the activation record — the old "committed ≠
-    // enforced" rule applied only while the workflow-scope push was pending.
+  test("CI activation status stays honest (B0-002; corrected 2026-09-13 — OPS-001)", () => {
+    // History: the activation window closed 2026-09-10 (tasks R8 + R9) —
+    // workflow pushed, gate + scan green on main, both set as required checks
+    // on the protected branch. CORRECTION (external ULTRA audit P1-017,
+    // verified by API read-back on 2026-09-13): the live GitHub state is
+    // `main.protected = false` — push-triggered CI is NOT pre-merge
+    // enforcement today. Docs must assert the corrected state (OPS-001),
+    // never the stale "protected" claim.
     const social = readFileSync(
       join(ROOT, "docs", "brand", "SOCIAL-REPOSITORY.md"),
       "utf8",
     );
-    // The activation record must exist, be dated, and name the required checks.
+    // The historical activation record stays, but a dated correction banner
+    // must lead it and name the live state + the backlog item.
     expect(social).toMatch(/ACTIVATION COMPLETE/);
     expect(social).toMatch(/2026-09-10/);
     expect(social).toMatch(/required status checks/i);
+    expect(social).toMatch(/STATUS CORRECTION — 2026-09-13/);
+    expect(social).toMatch(/main\.protected = false/);
+    expect(social).toMatch(/OPS-001/);
     // The README must carry the factual CI badge (badge policy §4) and the
-    // honest-status section must describe the gate as CI-enforced.
+    // honest-status section must carry the same corrected branch-protection
+    // truth (CI runs on every push; protection currently OFF).
     const readme = read("README.md");
     expect(readme).toContain(
       "img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml",
     );
-    expect(readme).toMatch(/CI-enforced/i);
+    expect(readme).toMatch(/BRANCH PROTECTION — CORRECTED 2026-09-13/);
+    expect(readme).toMatch(/main\.protected = false/);
+    expect(readme).not.toMatch(/`main` is protected/);
     // GOV-R9-001 / R10-004 — admin-bypass verdict wording: the user-facing
     // README must never claim "universally non-bypassable" while
     // enforce_admins=false, and the governance doc must carry the accurate

@@ -26,6 +26,37 @@ export const VENDOR_CONFIG_FLAVORS: Record<string, string> = {
   palo: "panos",
 };
 
+/* ─────────── SAFE-007: typed operation kind + live-restore guard ─────────── */
+
+/** Typed executable intent for a ChangeRequest (ChangeRequest.operationKind). */
+export const CHANGE_OPERATION_KINDS = ["GENERIC", "RESTORE_SNAPSHOT"] as const;
+export type ChangeOperationKind = (typeof CHANGE_OPERATION_KINDS)[number];
+
+/**
+ * Engine refusal for restore-flow changes on the LIVE plane (SAFE-007).
+ * The restore route files an EMERGENCY change whose prose names the target
+ * snapshot, but the execution engine does not yet consume the selected
+ * snapshot as the desired configuration (SAFE-008/009 pending) — the live
+ * APPLY plane would instead push the generic description-marker plan, i.e.
+ * an approved "restore to snapshot vN" would silently do something else.
+ * Until typed snapshot-exact restore ships and is vendor-certified, the
+ * engine fails the step closed BEFORE any device contact.
+ */
+export const LIVE_RESTORE_NOT_CERTIFIED =
+  "LIVE_RESTORE_NOT_CERTIFIED — snapshot-exact restore is not implemented yet (SAFE-008/009): " +
+  "the live apply plane refuses restore-flow changes fail-closed; no device was contacted";
+
+/**
+ * Whether a change carries the restore-snapshot operation intent. GENERIC
+ * (null/undefined/unknown included) never blocks — the guard requires the
+ * explicitly stamped kind so legacy rows keep executing exactly as before.
+ */
+export function isRestoreOperation(
+  operationKind: string | null | undefined
+): boolean {
+  return (operationKind ?? "GENERIC") === "RESTORE_SNAPSHOT";
+}
+
 /**
  * Sanitized change slug — mirrors the worker simulator's changeSlug rule
  * (uppercase kebab, ≤48 chars) so simulator and live deltas stay uniform

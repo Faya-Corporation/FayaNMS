@@ -80,6 +80,14 @@ Keep the demo semantics visible in the one-liner; the README body carries the fu
 
 ## 6. Governance activation status
 
+> **STATUS CORRECTION — 2026-09-13 (external ULTRA audit P1-017, verified by API read-back):**
+> the live GitHub branch state is currently **`main.protected = false`** — the protection
+> activated on 2026-09-10 (record below) is NOT reflected by the platform anymore. Push-triggered
+> CI remains active and required for every landing, but it is NOT pre-merge enforcement today.
+> Restoring protection/rulesets is remediation backlog item **OPS-001**. The historical activation
+> record is preserved below for provenance; present-tense claims of "protected `main`" elsewhere in
+> this document must be read through this correction until OPS-001 lands.
+
 **Dated 2026-09-10 — ACTIVATION COMPLETE (tasks R8 + R9).**
 
 `.github/workflows/ci.yml` is committed **and live on GitHub Actions**. It runs two jobs:

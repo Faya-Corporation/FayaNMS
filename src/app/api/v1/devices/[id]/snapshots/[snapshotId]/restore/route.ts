@@ -43,6 +43,14 @@ export const dynamic = "force-dynamic";
  * and a ChangeDevice link. The change always enters AWAITING_APPROVAL —
  * steps stay PENDING until a real approver decides and the executor claims
  * the scheduled change.
+ *
+ * SAFE-007 (production-safety sprint): the created change is stamped
+ * operationKind = "RESTORE_SNAPSHOT" — the typed executable intent. Until
+ * snapshot-exact restore semantics exist and are vendor-certified
+ * (SAFE-008/009), the execution engine refuses LIVE_SSH apply for such
+ * changes fail-closed (no device contact); simulator-plane restores are
+ * unaffected. The snapshot id/sha256 below travel as AUDIT data, not as
+ * an executable operation — the typed operation is SAFE-008's deliverable.
  */
 
 const restoreSchema = z.object({
@@ -169,6 +177,9 @@ export async function POST(
           status,
           riskScore,
           riskLevel,
+          // SAFE-007: typed executable intent — the engine's live-apply
+          // guard keys on this (refuses LIVE_SSH restore changes).
+          operationKind: "RESTORE_SNAPSHOT",
           requesterId: actor.id,
           ownerId: actor.id,
           scheduledStart: null,
@@ -241,6 +252,7 @@ export async function POST(
             version: snapshot.version,
             riskScore,
             riskLevel,
+            operationKind: "RESTORE_SNAPSHOT",
           }),
         },
       });
