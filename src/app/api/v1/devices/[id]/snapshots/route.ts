@@ -79,6 +79,7 @@ export async function GET(
         normIv: true,
         normTag: true,
         wrappedDek: true,
+        encAad: true, // AAD binding (CRYPTO-101) — required by decryptSnapshotTexts
         wrapIv: true,
         wrapTag: true,
         createdAt: true,
