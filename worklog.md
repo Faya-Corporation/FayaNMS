@@ -2230,3 +2230,15 @@ Stage Summary:
 - Honest posture: physical-device certification of the LIVE_SSH plane remains open (capability boundary, documented); CI runs #34-#36 remain red from GitHub-side runner unavailability only (zero steps executed — user-side billing/minutes check + UI re-run; the workflow is unchanged since runs #28-#33 were green); the demo-plane interaction between recurring CONFIG_BACKUP jobs and the config-changed-since-approval pre-check is documented as expected protective behavior with the fresh-approval-cycle remedy.
 - Next executable steps per the audit §16 order: P1-003 risk timezone (persist an explicit IANA tz + policy version instead of server-local getDay()/getHours()), then the SEC tier (webhook SSRF, secret-at-rest, service identity), Sophos SFOS WebAPI transport (CERT-006), OPS-001 branch protection (settings-side, user token required).
 - Artifacts: this commit (prisma schema + migration 20260914204315_approval_bindable_decisions; src/lib/change/approval-policy.ts; src/lib/change/fingerprint.ts; src/lib/change/approval-gate.ts; approvals route rewrite; execute route gate; 3 provisioning sites; detail GET; api-client types; seed decisions block; change-detail quorum UI; tests/audit/approval-policy.test.ts; README + authorization-matrix + runbook). E2E evidence ephemeral (driver + created changes deleted; CHANGE_APPROVED/CHANGE_APPROVALS_INVALIDATED/CHANGE_EXECUTE_FINGERPRINT_MISMATCH audit events retained as honest history).
+
+---
+Task ID: R27-pol001003-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 60a97dd (POL-001/002/003) — honest evidence record
+
+Work Log:
+- Pushed 60a97dd; run #38 picked it up and failed with the IDENTICAL infrastructure signature as #34-#37: gate failure with ZERO steps executed, no runner ever assigned (runner: ''), scan skipped — GitHub-hosted runner unavailability for this private repo (capacity/minutes), not a gate or scanner finding. An API re-run (HTTP 201) produced attempt 2 with the same no-runner signature within seconds. Run #37 (e972278, the R26 docs commit) shows the same pattern, extending the no-runner blockage to four consecutive pushes.
+- Every local equivalent of the gate ran green on this exact commit before push: lint 0 · tsc 0 (src+scripts+mini-services) · bun test 242/242 (2,024 expects) · prisma validate + migrate deploy + drift guard exit 0 · seed OK · LIVE_SSH certification PASS · brand validators PASS · i18n parity OK · build:gate PASS · plus the 31/31 sandbox E2E recorded in R27.
+
+Stage Summary:
+- TRUTHFUL CI STATE for 60a97dd: locally gate-proven, CI-blocked by infrastructure only. User-side follow-up (cannot be done from the sandbox): verify GitHub Actions minutes/billing for the account, then re-run runs #37/#38 from the Actions UI — the workflow is unchanged since runs #28-#33 were green; no code action is required.
