@@ -228,7 +228,7 @@ export async function handle(req: Request): Promise<Response> {
         dataSource,
       };
       try {
-        const adapter = resolveAdapter(target, credential, { hostKeyPin, enrollmentMode });
+        const adapter = await resolveAdapter(target, credential, { hostKeyPin, enrollmentMode });
         const conn = await adapter.connect(target);
         const capturedHostKey = enrollmentMode ? takeRecordedHostKey() : null;
         return Response.json({
@@ -485,7 +485,7 @@ export async function handle(req: Request): Promise<Response> {
         dataSource: "LIVE_SSH",
       };
       try {
-        const password = resolveVaultSecret(credential.secretRef);
+        const password = await resolveVaultSecret(credential.secretRef);
         const adapter = createLiveSshAdapter(vendor, {
           host,
           port: credential.port,
@@ -585,7 +585,7 @@ export async function handle(req: Request): Promise<Response> {
       }
       try {
         const plan = parseChangePlan(body?.plan ?? null);
-        const password = resolveVaultSecret(credential.secretRef);
+        const password = await resolveVaultSecret(credential.secretRef);
         const result = await applyLiveChangePlan(vendor, {
           host,
           port: credential.port,

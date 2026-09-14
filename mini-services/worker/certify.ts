@@ -224,7 +224,7 @@ async function main(): Promise<void> {
       const target = liveTarget(cert.hostname, cert.vendor);
 
       // ── 1. routing ──
-      const live = resolveAdapter(target, credential, { hostKeyPin: pin });
+      const live = await resolveAdapter(target, credential, { hostKeyPin: pin });
       check(
         `${cert.vendor}: LIVE_SSH routes to the live adapter`,
         live.adapter === cert.adapter,
@@ -435,7 +435,7 @@ async function main(): Promise<void> {
       );
 
       // 8. Post-apply fetch reflects the delta (persona config mutated).
-      const appliedPassword = resolveVaultSecret(VAULT_REF);
+      const appliedPassword = await resolveVaultSecret(VAULT_REF);
       const postApplyAdapter = createLiveSshAdapter(cert.vendor, {
         host: "127.0.0.1",
         port: harness.port,
@@ -535,7 +535,7 @@ async function main(): Promise<void> {
     console.log("\n── cross-cutting contracts ──");
 
     // Simulator routing unchanged (zero regression).
-    const sim = resolveAdapter(
+    const sim = await resolveAdapter(
       { deviceId: "cert-sim", hostname: "sim-01", vendor: "cisco" },
       null,
     );

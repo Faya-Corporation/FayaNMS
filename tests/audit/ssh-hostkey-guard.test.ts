@@ -133,9 +133,9 @@ describe("SAFE-001 — routing policy (fail-closed before any connection)", () =
   // Vault entry for the credential reference (worker-side resolution).
   process.env.FAYANMS_VAULT_SSH_GUARD_TEST = "guard-secret";
 
-  test("LIVE without a pin → SSH_HOSTKEY_UNENROLLED", () => {
+  test("LIVE without a pin → SSH_HOSTKEY_UNENROLLED", async () => {
     try {
-      resolveAdapter(target, credential);
+      await resolveAdapter(target, credential);
       expect.unreachable("expected SSH_HOSTKEY_UNENROLLED");
     } catch (e) {
       expect(e).toBeInstanceOf(HostKeyPolicyError);
@@ -143,28 +143,28 @@ describe("SAFE-001 — routing policy (fail-closed before any connection)", () =
     }
   });
 
-  test("LIVE without a pin but in enrollment mode → adapter resolves (audited probe only)", () => {
-    const adapter = resolveAdapter(target, credential, { enrollmentMode: true });
+  test("LIVE without a pin but in enrollment mode → adapter resolves (audited probe only)", async () => {
+    const adapter = await resolveAdapter(target, credential, { enrollmentMode: true });
     expect(adapter.adapter).toBe("cisco-ios-live");
   });
 
-  test("LIVE with a valid pin → adapter resolves and rides the pin", () => {
-    const adapter = resolveAdapter(target, credential, { hostKeyPin: VALID_FP });
+  test("LIVE with a valid pin → adapter resolves and rides the pin", async () => {
+    const adapter = await resolveAdapter(target, credential, { hostKeyPin: VALID_FP });
     expect(adapter.adapter).toBe("cisco-ios-live");
     expect(adapter.capabilities).toContain("connect");
   });
 
-  test("LIVE with a malformed pin → SSH_HOSTKEY_PIN_INVALID (no fallback)", () => {
+  test("LIVE with a malformed pin → SSH_HOSTKEY_PIN_INVALID (no fallback)", async () => {
     try {
-      resolveAdapter(target, credential, { hostKeyPin: "garbage" });
+      await resolveAdapter(target, credential, { hostKeyPin: "garbage" });
       expect.unreachable("expected SSH_HOSTKEY_PIN_INVALID");
     } catch (e) {
       expect((e as HostKeyPolicyError).code).toBe("SSH_HOSTKEY_PIN_INVALID");
     }
   });
 
-  test("SIMULATOR routing ignores the pin entirely (zero regression)", () => {
-    const sim = resolveAdapter(
+  test("SIMULATOR routing ignores the pin entirely (zero regression)", async () => {
+    const sim = await resolveAdapter(
       { deviceId: "sim-1", hostname: "sim-01", vendor: "cisco" },
       null,
       { hostKeyPin: VALID_FP }

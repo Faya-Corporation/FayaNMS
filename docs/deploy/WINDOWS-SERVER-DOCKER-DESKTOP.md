@@ -586,6 +586,25 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    `bun scripts/encrypt-webhook-secrets.ts` once against the upgraded
    deployment to re-encrypt every envelope under the new keyId (it is
    idempotent and refuses envelopes minted by keys it does not hold).
+16. **The worker vault is a real provider resolver (P1-005, audit §6)**:
+   `FAYANMS_VAULT_PROVIDER` selects where the worker resolves
+   `vault://…` references from — `env` (default: the Phase 22
+   `FAYANMS_VAULT_*` variables, byte-compatible with existing refs),
+   `file` (`FAYANMS_VAULT_FILE` → a JSON secrets store looked up by full
+   ref, bare path or the env-style name, so migrating from env vars is a
+   copy-paste), or `exec` (`FAYANMS_VAULT_EXEC` → a shell-free argv
+   template wrapping any real vault CLI — HashiCorp Vault agent, pass,
+   1Password CLI, a KMS helper — with the reference substituted at every
+   `%s`). In this compose shape keep using `env` with entries in
+   `.env.production`, or mount a root-owned `0600` JSON file and switch to
+   `file`; the `exec` provider is the escape hatch to a REAL vault without
+   embedding vendor SDKs in the worker. Every provider is fail-closed
+   (typed `CREDENTIAL_UNRESOLVED`/`VAULT_PROVIDER_*` errors, never a
+   fallback, secret values never logged or returned), and the exec deadline
+   (`FAYANMS_VAULT_EXEC_TIMEOUT_MS`, default 5 s) hard-kills a hanging
+   vault CLI (SIGTERM, then SIGKILL) before the SSH session can stall the
+   worker. References never encode a provider — switching backends never
+   silently re-interprets an existing reference.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 

@@ -252,7 +252,7 @@ async function runBackupJob(job: ClaimedJob): Promise<void> {
   // a malformed pin fails the job typed instead of reaching any device;
   // an ABSENT pin fails closed inside resolveAdapter (SSH_HOSTKEY_UNENROLLED).
   const hostKeyPin = parseHostKeyPin(payload.sshHostKeyPin ?? null);
-  const adapter = resolveAdapter(target, credential, { hostKeyPin });
+  const adapter = await resolveAdapter(target, credential, { hostKeyPin });
   const isLive = (target.dataSource ?? "SIMULATOR") === "LIVE_SSH";
 
   if (isLive) {

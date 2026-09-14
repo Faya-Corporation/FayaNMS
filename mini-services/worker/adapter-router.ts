@@ -134,11 +134,11 @@ export interface ResolveAdapterOptions {
  * else routes to the existing simulator behavior (unknown vendor degrades
  * to `generic`, unchanged).
  */
-export function resolveAdapter(
+export async function resolveAdapter(
   target: DeviceTarget,
   credential: TargetCredential | null,
   options: ResolveAdapterOptions = {},
-): DeviceAdapter {
+): Promise<DeviceAdapter> {
   if (isLiveTarget(target)) {
     if (!credential) {
       throw new VaultError(
@@ -164,7 +164,9 @@ export function resolveAdapter(
         )}`,
       );
     }
-    const password = resolveVaultSecret(credential.secretRef);
+    // P1-005: vault resolution is async (exec provider carries a real
+    // deadline); the adapter is resolved through the awaited promise.
+    const password = await resolveVaultSecret(credential.secretRef);
     return createLiveSshAdapter(target.vendor, {
       host: target.managementIp ?? target.hostname,
       port: credential.port,

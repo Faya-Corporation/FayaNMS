@@ -492,6 +492,46 @@ stamped lastUsedAt; non-opted-in route refuses
 preceding the gate; garbage token 401; read-plane candidates refused at the
 proxy; human ack path byte-identical to before.
 
+**LANDED — P1-005 (audit SEC tier): the worker "vault" is a real provider-based
+resolver, not a misnomered env lookup.**
+The audit pinned `vault://ssh/network-admin → FAYANMS_VAULT_SSH_NETWORK_ADMIN`
+as an env-var lookup wearing a vault's name. The resolver now has three
+operator-selectable backends behind the SAME reference grammar
+(`FAYANMS_VAULT_PROVIDER=env|file|exec`, default `env`): `env` keeps the
+Phase 22 model byte-compatible; `file` resolves against
+`FAYANMS_VAULT_FILE`, a JSON secrets store looked up by exact full
+reference, bare path or the env-style normalized name (an operator can
+migrate by exporting the same names into the file; a group/other-readable
+mode draws a loud POSIX warning — fail-open on the warning only, because
+Windows/Docker bind-mounts cannot always carry 0600); `exec` runs
+`FAYANMS_VAULT_EXEC`, a shell-free argv template (every `%s` becomes the
+raw reference; no shell, no quoting rules) whose trimmed stdout is the
+secret — the escape hatch that wraps any real vault CLI (HashiCorp Vault
+agent, pass, 1Password CLI, a KMS-backed helper) without embedding vendor
+SDKs in the worker. Design decision recorded in code: references NEVER
+encode a provider (per-ref prefixes like `vault://file/…` were rejected —
+the first path segment would be ambiguous against real vault paths); the
+backend is deployment-level, so rotating from env to file to exec never
+silently re-interprets an existing reference. Fail-closed throughout:
+unknown providers are `VAULT_PROVIDER_INVALID`, mis-shaped stores are
+`VAULT_PROVIDER_MISCONFIGURED`, unresolved refs are the historical
+`CREDENTIAL_UNRESOLVED` — never an empty string, never a fallback, and
+secret values never appear in messages or responses. The exec provider is
+async with a manually enforced deadline (`FAYANMS_VAULT_EXEC_TIMEOUT_MS`,
+default 5 s, clamped 100–60000, SIGTERM then SIGKILL after 1 s) — Bun
+silently ignores `spawnSync`'s `timeout` option, so a synchronous deadline
+would have been a lie on this runtime; resolution is therefore a Promise
+awaited at every call site (adapter-router, runner, worker handlers,
+certify driver). Suite 353 → 374 (`tests/audit/vault-providers.test.ts`,
+21 pins: grammar stability across all three providers, migration lookup
+order, mis-configuration taxonomy, argv-template substitution, non-zero
+exit/empty stdout/spawn failure/timeout kill, and the secret-never-logged
+guarantee). Sandbox E2E over the live worker HTTP plane (5/5): missing
+entry → 400 `CREDENTIAL_UNRESOLVED` naming the env var; operator-set entry
+→ vault resolves on the worker env and the failure correctly moves
+downstream to the SSH transport (`SSH_UNREACHABLE`, port 1 refused); the
+resolved secret value never crosses the wire.
+
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
 not); the demo dataset is never committed (rebuild via the seed above — it runs
