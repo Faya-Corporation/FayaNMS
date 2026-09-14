@@ -305,6 +305,7 @@ model ConfigSnapshot {
   createdAt      DateTime       @default(now())
 
   baselines      ConfigBaseline[]
+  restoreTargets ChangeRequest[]  @relation("RestoreTarget") // SAFE-008 — changes approved to restore THIS snapshot
   driftBaselines DriftRecord[]    @relation("DriftBaseline")
   driftCurrents  DriftRecord[]    @relation("DriftCurrent")
 
@@ -371,10 +372,21 @@ model ChangeRequest {
   riskLevel   String  @default("LOW")
   // operationKind: typed executable intent (SAFE-007/SAFE-008). GENERIC =
   // wizard/standard changes; RESTORE_SNAPSHOT = the guarded restore-to-snapshot
-  // flow. The execution engine refuses LIVE_SSH apply for restore changes
-  // (fail closed, no device contact) until snapshot-exact restore semantics
-  // are implemented and vendor-certified (SAFE-008/009).
+  // flow. SAFE-008: a restore change carries its approved target on
+  // restoreSnapshotId and the engine consumes that snapshot as the desired
+  // configuration (snapshot-exact commit, sha-verified echo). The LIVE_SSH
+  // plane still refuses restore changes fail-closed (no device contact):
+  // its certified transport surface is bounded description-marker deltas,
+  // not full-config pushes — vendor certification is a separate gate
+  // (LIVE_RESTORE_NOT_CERTIFIED in src/lib/change/live-plan.ts).
   operationKind String @default("GENERIC")
+  // SAFE-008 — the approved restore target (ConfigSnapshot id). Set ONCE at
+  // creation by the guarded restore route; never updated afterwards (the
+  // approver approves exactly this target). SetNull on snapshot deletion —
+  // the engine then refuses execution (RESTORE_TARGET_UNRESOLVABLE) instead
+  // of guessing a substitute. Null on GENERIC changes.
+  restoreSnapshotId String?
+  restoreSnapshot   ConfigSnapshot? @relation("RestoreTarget", fields: [restoreSnapshotId], references: [id], onDelete: SetNull)
   requesterId String
   requester   User    @relation("ChangeRequester", fields: [requesterId], references: [id], onDelete: Restrict)
   ownerId     String?

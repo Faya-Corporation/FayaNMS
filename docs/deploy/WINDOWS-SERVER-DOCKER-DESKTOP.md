@@ -456,6 +456,7 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 | Post-rollback validation FAILED: `applied marker still present after rollback — restore did not complete` | context-aware post-rollback validation (SAFE-006): after a restore the assertion is INVERTED — the applied marker must be GONE; its presence means the restore did not take effect | Investigate that device first (the ROLLBACK step output names what was restored); verify its config manually and restore via a new change — treat the stuck marker as a real half-applied state, not a validation bug |
 | Execute answers `409 EXECUTION_IN_FLIGHT` | single-flight guard (SAFE-003): this change ALREADY has a queued/running execution (double-click or retry while the first job is alive) | Follow the active job named in the error (id + correlation) in the Job Center instead of re-queuing; the lease auto-releases when the execution reaches a terminal state |
 | Change driver logs `409 DEVICE_WRITE_LOCKED … (held by change …)` | per-device write lock (SAFE-005): another executing change currently owns a device in this change's scope — one change, one device, one step at a time | Expected under contention: the job requeues automatically (30 s × attempts backoff) and resumes when the holder's step completes; if the holder is wedged, the tick reaper / 15-min lock expiry clears it — investigate the HOLDING change first |
+| Restore change fails with `RESTORE_TARGET_UNRESOLVABLE` (apply step, devices SKIPPED) | fail-closed target guard (SAFE-008): the approved snapshot is gone (deleted → FK SetNull), belongs to another device, or failed its stored digest | This is by design — the engine never guesses a substitute restore source. Re-file the restore from the device page against an existing snapshot; check `RESTORE_REFUSED` in the audit trail for the typed reason |
 | App can't reach postgres / connection refused | postgres not healthy yet, or topology override broke DNS | `docker compose ps` (health check), `docker compose logs postgres`; app retries are NOT automatic — `docker compose restart app` after postgres is healthy |
 | Worker logs "backend unreachable" loops | app not reachable at `NEXT_BASE_URL` (e.g. typo'd env override) | compose default `http://app:3000` (T5) is correct for the shipped stack — verify `WORKER_BASE_URL`/`NEXT_BASE_URL` overrides in the `--env-file`; the worker self-heals with backoff once reachable |
 | App routes report "Worker service unreachable" | worker not reachable at `WORKER_BASE_URL` | compose default `http://worker:3030` (T5); check `docker compose ps`/worker `HEALTHCHECK`, and that 3030 was never published/firewalled |
@@ -527,6 +528,20 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    disposition map, the ROLLBACK executor restores only the devices the apply actually
    reached, and the post-rollback validation asserts the change is GONE (marker absent)
    on restored devices — never "marker present", which could only fail forever.
+11. **Snapshot-exact restore + typed target (SAFE-008/009, audit P0-004)**: a
+   restore-as-change carries its approved snapshot on `ChangeRequest.restoreSnapshotId`
+   (stamped at creation, immutable) and the engine restores EXACTLY that configuration —
+   the simulator plane commits the approved bytes only after a sha256 pre-commit
+   verification (`/simulate/restore` refuses a mismatched body with `409 SHA_MISMATCH`),
+   the commit echo is re-asserted in the apply transaction and again by the VALIDATE
+   step (a restore is "validated" only when the committed config IS the approved
+   snapshot, byte for byte). Every unresolvable target refuses fail-closed
+   (`RESTORE_TARGET_UNRESOLVABLE` — unset / deleted / cross-device / digest failure,
+   zero device contact, `RESTORE_REFUSED` audited). Restore changes over LIVE_SSH
+   devices remain refused until full-config pushes are vendor-certified (the live
+   transport is certified for bounded description-marker deltas only) — the refusal is
+   a capability boundary, not a gap. Rollback of a failed restore = the job's
+   pre-restore backup, exactly like any other change.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 

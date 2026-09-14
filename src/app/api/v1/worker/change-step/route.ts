@@ -38,6 +38,17 @@ import {
   type ApplyAttempt,
 } from "@/lib/change/apply-disposition";
 import { getHostKeyPin } from "@/lib/ssh/host-keys";
+import {
+  RESTORE_APPLIED_AUDIT_ACTION,
+  RESTORE_REFUSED_AUDIT_ACTION,
+  buildRestoreValidateOutputs,
+  classifyRestoreTarget,
+  isRestoreCommitSizeOk,
+  restoreCommitEchoOk,
+  type RestoreTargetData,
+  type RestoreValidateRow,
+  type RestoreTargetVerdict,
+} from "@/lib/change/restore-op";
 import { workerControlHeaders } from "@/lib/worker/control-client";
 import { WORKER_BASE_URL } from "@/lib/worker/worker-url";
 import { z } from "zod";
@@ -1255,65 +1266,14 @@ async function executeApplyStep(
   const now = new Date();
   const slug = changeSlugFromTitle(change.title);
 
-  // ── SAFE-007: live restore fail-closed guard (BEFORE any device contact) ──
-  // A RESTORE_SNAPSHOT change approved for execution must not run the generic
-  // description-marker apply plan against LIVE devices: the engine does not
-  // yet consume the selected snapshot as the desired configuration
-  // (SAFE-008/009 pending), so a "restore to snapshot vN" would silently
-  // apply an unrelated interface-description change instead. Fail the step
-  // and the change closed; nothing is modified, no rollback needed.
-  // Simulator-plane restores are unaffected (honest within the simulated
-  // data plane).
-  if (
-    isRestoreOperation(change.operationKind) &&
-    change.devices.some((link) => isLiveDeviceLink(link))
-  ) {
-    await db.$transaction(
-      async (tx) => {
-        await tx.changeStep.update({
-          where: { id: step.id },
-          data: {
-            status: "FAILED",
-            finishedAt: now,
-            error: LIVE_RESTORE_NOT_CERTIFIED,
-          },
-        });
-        for (const link of change.devices) {
-          await tx.changeDevice.update({
-            where: { id: link.id },
-            data: { result: "SKIPPED" },
-          });
-        }
-        await tx.changeRequest.update({
-          where: { id: change.id },
-          data: { status: "FAILED" },
-        });
-        await tx.auditEvent.create({
-          data: {
-            actorName: "system:change-engine",
-            action: "LIVE_RESTORE_REFUSED",
-            resourceType: "ChangeRequest",
-            resourceId: change.id,
-            resourceLabel: change.number,
-            result: "FAILURE",
-            correlationId,
-            afterJson: JSON.stringify({
-              reason: "SAFE-007",
-              operationKind: change.operationKind,
-              devices: change.devices.length,
-            }),
-          },
-        });
-      },
-      { maxWait: 5_000, timeout: 20_000 }
-    );
-    return buildResponse(change.id, {
-      done: true,
-      outcome: "FAILED",
-      suggestIncident: true,
-      message:
-        "Live restore refused — snapshot-exact restore is not certified yet (SAFE-008/009); no device was contacted",
-    });
+  // ── SAFE-008: typed restore operation (snapshot-exact, simulator plane) ──
+  // A restore-flow change carries its approved target on restoreSnapshotId
+  // (stamped once at creation, immutable). The dedicated executor consumes
+  // that snapshot as the desired configuration — the generic
+  // description-marker plan below NEVER runs for a restore change, closing
+  // the audit's P0-004 ("restore does not restore the selected snapshot").
+  if (isRestoreOperation(change.operationKind)) {
+    return executeRestoreApplyStep(change, step, correlationId, jobId, failAt, payload);
   }
 
   // ── SAFE-006: fail-fast multi-device APPLY ──
@@ -1544,6 +1504,566 @@ async function executeApplyStep(
   });
 }
 
+/* ─────────── SAFE-008/009: typed snapshot-exact restore (simulator plane) ── */
+
+/**
+ * SAFE-008 — load + decrypt the approved restore target and classify it.
+ * The decrypt layer (decryptSnapshotTexts) already enforces the stored
+ * sha256 digest (CONFIG_INTEGRITY_FAIL on mismatch); a throw maps to the
+ * typed RESTORE_TARGET_INTEGRITY refusal — unverified bytes are never
+ * pushed anywhere.
+ */
+async function resolveRestoreTarget(
+  change: ChangeWithRelations
+): Promise<RestoreTargetVerdict> {
+  const id = change.restoreSnapshotId ?? null;
+  let target: RestoreTargetData | null = null;
+  let rawTextPresent = false;
+  if (id) {
+    const row = await db.configSnapshot.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        deviceId: true,
+        version: true,
+        sha256: true,
+        rawText: true,
+        encKeyId: true,
+        encIv: true,
+        encTag: true,
+        normIv: true,
+        normTag: true,
+        wrappedDek: true,
+        encAad: true, // AAD binding (CRYPTO-101) — required by decryptSnapshotTexts
+        wrapIv: true,
+        wrapTag: true,
+      },
+    });
+    if (row) {
+      try {
+        const rawText = decryptSnapshotTexts(row).rawText;
+        rawTextPresent = true;
+        target = {
+          id: row.id,
+          deviceId: row.deviceId,
+          version: row.version,
+          sha256: row.sha256,
+          rawText,
+        };
+      } catch {
+        rawTextPresent = false; // digest mismatch — classified as integrity failure
+      }
+    }
+  }
+  return classifyRestoreTarget({
+    restoreSnapshotId: id,
+    target,
+    rawTextPresent,
+    changeDeviceIds: change.devices.map((link) => link.deviceId),
+  });
+}
+
+/**
+ * SAFE-008 — shared fail-closed restore refusal: step FAILED, every device
+ * SKIPPED (provably never contacted), change FAILED, typed RESTORE_REFUSED
+ * audit event. No rollback — nothing was modified.
+ */
+async function refuseRestore(
+  change: ChangeWithRelations,
+  step: StepRow,
+  correlationId: string,
+  detail: { error: string; reason: string; extra: Record<string, unknown> }
+): Promise<void> {
+  const now = new Date();
+  await db.$transaction(
+    async (tx) => {
+      await tx.changeStep.update({
+        where: { id: step.id },
+        data: { status: "FAILED", finishedAt: now, error: detail.error },
+      });
+      for (const link of change.devices) {
+        await tx.changeDevice.update({
+          where: { id: link.id },
+          data: { result: "SKIPPED" },
+        });
+      }
+      await tx.changeRequest.update({
+        where: { id: change.id },
+        data: { status: "FAILED" },
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorName: "system:change-engine",
+          action: RESTORE_REFUSED_AUDIT_ACTION,
+          resourceType: "ChangeRequest",
+          resourceId: change.id,
+          resourceLabel: change.number,
+          result: "FAILURE",
+          correlationId,
+          afterJson: JSON.stringify({
+            reason: detail.reason,
+            operationKind: change.operationKind,
+            devices: change.devices.length,
+            ...detail.extra,
+          }),
+        },
+      });
+    },
+    { maxWait: 5_000, timeout: 20_000 }
+  );
+}
+
+/**
+ * SAFE-008 — snapshot-exact restore APPLY (simulator plane). The approved
+ * snapshot's raw text IS the desired configuration: the worker's typed
+ * /simulate/restore commit verifies sha256(text) BEFORE committing (409
+ * otherwise) and echoes the committed bytes; the engine records the echo as
+ * the job's POST_CHANGE snapshot and re-asserts the echo (SAFE-009) inside
+ * the same transaction. Fail-fast (SAFE-006 semantics) and the truthful
+ * disposition classifier are reused unchanged; the rollback machinery needs
+ * no restore-specific handling (the job's PRE_CHANGE backup IS the
+ * pre-restore restore point).
+ *
+ * Refusals (fail-closed, zero device contact):
+ *   - RESTORE_TARGET_UNRESOLVABLE family — unresolvable/tampered target;
+ *   - LIVE_RESTORE_NOT_CERTIFIED — any LIVE_SSH device in scope (the live
+ *     transport is certified for bounded description-marker deltas only;
+ *     full-config pushes need per-flavor vendor certification).
+ */
+async function executeRestoreApplyStep(
+  change: ChangeWithRelations,
+  step: StepRow,
+  correlationId: string,
+  jobId: string,
+  failAt: "APPLY" | "VALIDATE" | null,
+  payload: Record<string, unknown>
+) {
+  const now = new Date();
+
+  // 1. Resolve the approved target BEFORE any device contact.
+  const verdict = await resolveRestoreTarget(change);
+  if (!verdict.ok) {
+    await refuseRestore(change, step, correlationId, {
+      error: verdict.message,
+      reason: verdict.code,
+      extra: {
+        restoreSnapshotId: change.restoreSnapshotId ?? null,
+        devices: change.devices.length,
+      },
+    });
+    return buildResponse(change.id, {
+      done: true,
+      outcome: "FAILED",
+      suggestIncident: true,
+      message:
+        "Restore refused — the approved snapshot target could not be resolved; no device was contacted",
+    });
+  }
+  const target = verdict.target;
+
+  // 2. LIVE boundary — capability refusal, not an implementation gap.
+  if (change.devices.some((link) => isLiveDeviceLink(link))) {
+    await refuseRestore(change, step, correlationId, {
+      error: LIVE_RESTORE_NOT_CERTIFIED,
+      reason: "LIVE_RESTORE_NOT_CERTIFIED",
+      extra: {
+        restoreSnapshotId: target.id,
+        targetVersion: target.version,
+        devices: change.devices.length,
+      },
+    });
+    return buildResponse(change.id, {
+      done: true,
+      outcome: "FAILED",
+      suggestIncident: true,
+      message: `Live restore refused — full-config pushes are not vendor-certified (snapshot v${target.version} NOT pushed); no device was contacted`,
+    });
+  }
+
+  // 3. Simulator plane — snapshot-exact commit, fail-fast.
+  const results = new Map<string, ApplyAttempt>();
+  let applyStopped = false;
+  for (const link of change.devices) {
+    if (applyStopped) continue; // SAFE-006 — no further device contact
+    try {
+      const sim = await workerSimPost(
+        "/simulate/restore",
+        {
+          hostname: link.device.hostname,
+          flavor: link.device.vendor.key,
+          configText: target.rawText,
+          expectedSha256: target.sha256,
+          failAt,
+        },
+        15_000
+      );
+      const committedText = String(sim.configText ?? "");
+      if (!committedText || !isRestoreCommitSizeOk(committedText)) {
+        results.set(link.deviceId, {
+          ok: false,
+          configText: "",
+          error: "restore commit echo invalid (empty or over the size bound)",
+        });
+        applyStopped = true;
+        continue;
+      }
+      results.set(link.deviceId, { ok: true, configText: committedText });
+    } catch (error) {
+      // Transport-level failure (worker unreachable / 4xx / 5xx): fail-fast
+      // — with the data plane down, later devices would only burn timeouts.
+      results.set(link.deviceId, {
+        ok: false,
+        configText: "",
+        error: (error as Error).message,
+      });
+      applyStopped = true;
+    }
+  }
+
+  // 4. SAFE-006 classifier + write transaction (echo gate inside).
+  const summary = classifyApplyDispositions(
+    change.devices.map((link) => ({
+      deviceId: link.deviceId,
+      hostname: link.device.hostname,
+      attempt: results.get(link.deviceId),
+    }))
+  );
+  const anyFailure = !summary.allApplied;
+  const echoMismatches: {
+    hostname: string;
+    committedSha: string;
+    targetSha: string;
+  }[] = [];
+  const outputs: string[] = [];
+  const restored: { hostname: string; version: number; sha256: string }[] = [];
+  let echoGateFailed = false;
+
+  await db.$transaction(
+    async (tx) => {
+      if (anyFailure) {
+        // Truthful per-device failure semantics — identical contract to the
+        // generic apply (APPLY_FAIL_FAST carries the disposition map).
+        const appliedSnapshots: {
+          hostname: string;
+          version: number;
+          sha256: string;
+        }[] = [];
+        for (let index = 0; index < change.devices.length; index += 1) {
+          const link = change.devices[index];
+          const row = summary.rows[index];
+          if (!link || !row) continue;
+          if (row.result === "SUCCESS" && row.snapshotText !== null) {
+            const reused = await snapshotForJob(
+              tx as unknown as TxClient,
+              link.deviceId,
+              jobId,
+              "POST_CHANGE"
+            );
+            const snapshot =
+              reused ??
+              (
+                await createSnapshot(tx as unknown as TxClient, {
+                  deviceId: link.deviceId,
+                  rawText: row.snapshotText,
+                  source: "POST_CHANGE",
+                  changeId: change.id,
+                  jobId,
+                  correlationId,
+                  actorName: "system:change-engine",
+                  bumpLastConfigChangeAt: true,
+                })
+              );
+            if (!snapshot.ok) {
+              throw new Error(
+                `Device ${link.device.hostname} disappeared during restore step`
+              );
+            }
+            appliedSnapshots.push({
+              hostname: link.device.hostname,
+              version: snapshot.version,
+              sha256: snapshot.sha256,
+            });
+          }
+          await tx.changeDevice.update({
+            where: { id: link.id },
+            data: { result: row.result },
+          });
+        }
+        await tx.changeStep.update({
+          where: { id: step.id },
+          data: {
+            status: "FAILED",
+            finishedAt: now,
+            error: applyFailFastStepError(summary),
+          },
+        });
+        const auditDetail = applyFailFastAuditDetail(summary);
+        if (auditDetail) {
+          await tx.auditEvent.create({
+            data: {
+              actorName: "system:change-engine",
+              action: APPLY_FAIL_FAST_AUDIT_ACTION,
+              resourceType: "ChangeRequest",
+              resourceId: change.id,
+              resourceLabel: change.number,
+              result: "FAILURE",
+              correlationId,
+              afterJson: JSON.stringify({ ...auditDetail, appliedSnapshots }),
+            },
+          });
+        }
+        // Rollback of a failed restore = re-apply the job's PRE_CHANGE
+        // (pre-restore backup) — the generic rollback machinery already
+        // resolves exactly that restore source.
+        await engageRollback(tx as unknown as TxClient, change.id, change.steps);
+        return;
+      }
+
+      // Success path — record the commit echo, gate it, audit the restore.
+      for (const link of change.devices) {
+        const result = results.get(link.deviceId);
+        const reused = await snapshotForJob(
+          tx as unknown as TxClient,
+          link.deviceId,
+          jobId,
+          "POST_CHANGE"
+        );
+        const snapshot =
+          reused ??
+          (
+            await createSnapshot(tx as unknown as TxClient, {
+              deviceId: link.deviceId,
+              rawText: result?.configText ?? "",
+              source: "POST_CHANGE",
+              changeId: change.id,
+              jobId,
+              correlationId,
+              actorName: "system:change-engine",
+              // The device really took a new (the approved) configuration.
+              bumpLastConfigChangeAt: true,
+            })
+          );
+        if (!snapshot.ok) {
+          throw new Error(
+            `Device ${link.device.hostname} disappeared during restore step`
+          );
+        }
+        if (restoreCommitEchoOk(snapshot.sha256, target.sha256)) {
+          await tx.changeDevice.update({
+            where: { id: link.id },
+            data: { result: "SUCCESS" },
+          });
+          outputs.push(
+            `${link.device.hostname} restored → snapshot v${snapshot.version} (sha ${shortSha(snapshot.sha256)})`
+          );
+          restored.push({
+            hostname: link.device.hostname,
+            version: snapshot.version,
+            sha256: snapshot.sha256,
+          });
+        } else {
+          // Defensive: the worker refuses sha-mismatched commits (409), so a
+          // SUCCESS attempt whose recorded digest differs means the echo was
+          // corrupted in transit. Fail closed — no blind rollback against a
+          // data plane whose state cannot be trusted.
+          echoMismatches.push({
+            hostname: link.device.hostname,
+            committedSha: snapshot.sha256,
+            targetSha: target.sha256,
+          });
+          await tx.changeDevice.update({
+            where: { id: link.id },
+            data: { result: "FAILED" },
+          });
+        }
+      }
+
+      if (echoMismatches.length > 0) {
+        echoGateFailed = true;
+        await tx.changeStep.update({
+          where: { id: step.id },
+          data: {
+            status: "FAILED",
+            finishedAt: now,
+            error: `RESTORE_COMMIT_ECHO_MISMATCH — committed config does not equal the approved snapshot for: ${echoMismatches
+              .map((m) => m.hostname)
+              .join(", ")}`,
+          },
+        });
+        await tx.changeRequest.update({
+          where: { id: change.id },
+          data: { status: "FAILED" },
+        });
+        await tx.auditEvent.create({
+          data: {
+            actorName: "system:change-engine",
+            action: RESTORE_REFUSED_AUDIT_ACTION,
+            resourceType: "ChangeRequest",
+            resourceId: change.id,
+            resourceLabel: change.number,
+            result: "FAILURE",
+            correlationId,
+            afterJson: JSON.stringify({
+              reason: "RESTORE_COMMIT_ECHO_MISMATCH",
+              targetSnapshot: {
+                id: target.id,
+                version: target.version,
+                sha256: target.sha256,
+              },
+              mismatches: echoMismatches,
+            }),
+          },
+        });
+        return;
+      }
+
+      await tx.changeStep.update({
+        where: { id: step.id },
+        data: {
+          status: "PASSED",
+          finishedAt: now,
+          output: `Snapshot restore committed (approved v${target.version}, sha ${shortSha(
+            target.sha256
+          )}) — ${outputs.join(" · ")}`,
+          error: null,
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorName: "system:change-engine",
+          action: RESTORE_APPLIED_AUDIT_ACTION,
+          resourceType: "ChangeRequest",
+          resourceId: change.id,
+          resourceLabel: change.number,
+          result: "SUCCESS",
+          correlationId,
+          afterJson: JSON.stringify({
+            targetSnapshot: {
+              id: target.id,
+              version: target.version,
+              sha256: target.sha256,
+            },
+            restored,
+          }),
+        },
+      });
+    },
+    { maxWait: 5_000, timeout: 20_000 }
+  );
+
+  if (anyFailure) {
+    await consumeFailAt(jobId, payload);
+    const uncontactedCount = summary.uncontactedHostnames.length;
+    return buildResponse(change.id, {
+      done: false,
+      message:
+        `Restore failed at ${summary.stopHostname ?? "device"} — fail-fast: ` +
+        (uncontactedCount > 0
+          ? `${uncontactedCount} remaining device(s) not contacted; `
+          : "") +
+        "rollback engaged",
+    });
+  }
+  if (echoGateFailed) {
+    return buildResponse(change.id, {
+      done: true,
+      outcome: "FAILED",
+      suggestIncident: true,
+      message:
+        "Restore commit echo mismatch — the data plane did not return the approved bytes; change failed closed",
+    });
+  }
+  return buildResponse(change.id, {
+    done: false,
+    message: `Snapshot restore committed — approved snapshot v${target.version} applied byte-exact`,
+  });
+}
+
+/**
+ * SAFE-009 — post-restore validation: the committed configuration recorded
+ * by the APPLY step (the job's POST_CHANGE snapshot) must equal the approved
+ * snapshot byte-exact (sha256 equality). No device re-contact: the simulator
+ * plane is stateless by design, so the commit echo IS the truthful record of
+ * what the plane committed; a LIVE validation path arrives with per-flavor
+ * full-config certification. A mismatch fails the step and engages the
+ * rollback (re-apply the pre-restore backup).
+ */
+async function executeRestoreValidateStep(
+  change: ChangeWithRelations,
+  step: StepRow,
+  correlationId: string,
+  jobId: string
+) {
+  const now = new Date();
+
+  // Defensive re-resolution — APPLY refuses an unresolvable target first;
+  // if it vanished between APPLY and VALIDATE the change still fails closed.
+  const verdict = await resolveRestoreTarget(change);
+  if (!verdict.ok) {
+    await refuseRestore(change, step, correlationId, {
+      error: verdict.message,
+      reason: verdict.code,
+      extra: { stage: "VALIDATE", restoreSnapshotId: change.restoreSnapshotId ?? null },
+    });
+    return buildResponse(change.id, {
+      done: true,
+      outcome: "FAILED",
+      suggestIncident: true,
+      message:
+        "Restore validation refused — the approved snapshot target could not be resolved",
+    });
+  }
+  const target = verdict.target;
+
+  const rows: RestoreValidateRow[] = [];
+  for (const link of change.devices) {
+    const post = await db.configSnapshot.findFirst({
+      where: { deviceId: link.deviceId, jobId, source: "POST_CHANGE" },
+      orderBy: { version: "desc" },
+      select: { sha256: true },
+    });
+    rows.push({
+      hostname: link.device.hostname,
+      committedSha: post?.sha256 ?? null,
+      targetSha: target.sha256,
+    });
+  }
+  const allOk = rows.every((row) => restoreCommitEchoOk(row.committedSha, row.targetSha));
+  const outputs = buildRestoreValidateOutputs(rows);
+
+  await db.$transaction(
+    async (tx) => {
+      await tx.changeStep.update({
+        where: { id: step.id },
+        data: {
+          status: allOk ? "PASSED" : "FAILED",
+          finishedAt: now,
+          output: allOk ? `Post-restore validation — ${outputs.join(" · ")}` : null,
+          error: allOk
+            ? null
+            : "Post-restore validation failed — committed config does not equal the approved snapshot",
+        },
+      });
+      if (!allOk) {
+        await engageRollback(tx as unknown as TxClient, change.id, change.steps);
+      }
+    },
+    { maxWait: 5_000, timeout: 20_000 }
+  );
+
+  if (!allOk) {
+    return buildResponse(change.id, {
+      done: false,
+      message: "Post-restore validation failed — rollback engaged",
+    });
+  }
+  return buildResponse(change.id, {
+    done: false,
+    message:
+      "Post-restore validation passed — committed config matches the approved snapshot byte-exact",
+  });
+}
+
 /* ───────────── Phase 23: controlled apply against a live device ───────────── */
 
 interface LiveApplyOutcome {
@@ -1711,6 +2231,17 @@ async function executeValidateStep(
   // restored device failed validation forever and each failure re-engaged
   // rollback unboundedly.)
   const postRollback = isPostRollbackValidateContext(change.status);
+
+  // SAFE-008/009 — a restore change validates sha-exact against the approved
+  // snapshot (the commit echo), not the description-marker assertion. The
+  // appended post-rollback VALIDATE of a FAILED restore falls through to the
+  // generic context-aware path: restore changes are simulator-only (live
+  // restore is refused at APPLY) and no marker semantics exist, so its
+  // truthful per-device notes apply unchanged.
+  if (isRestoreOperation(change.operationKind) && !postRollback) {
+    return executeRestoreValidateStep(change, step, correlationId, jobId);
+  }
+
   const outputs: string[] = [];
   const validateFailures: string[] = [];
   for (const link of change.devices) {

@@ -207,9 +207,10 @@ PRODUCTION-SAFETY REMEDIATION SPRINT (2026-09-13, in progress): an independent
 end-to-end production-readiness audit (verdict **BLOCKED, 74/100**) was re-verified
 finding-by-finding against the source and **accepted in full** — see
 `docs/audits/FayaNMS-ULTRA-Audit-Review-2026-09-13.md` (all 5 P0s confirmed at line
-level). New feature work is deprioritized behind the P0 live-write safety gate:
-SAFE-008/009 typed snapshot-exact restore (the last P0-gated item) · POL/SEC/OPS items
-per the audit §16 order. **LANDED — SAFE-007:** the
+level). **Every P0-gated item of the adopted remediation order is now LANDED**
+(SAFE-007 → SAFE-001 → SAFE-002 → SAFE-003/004/005 → SAFE-006 → TEST-001/002/003 →
+SAFE-008/009); the remaining backlog is the audit's P1/P2 tiers (POL/SEC/OPS items),
+hardware certification of the live plane, and OPS-001 (branch-protection restoration). **LANDED — SAFE-007:** the
 inaccurate live restore is now fail-closed — restore-flow changes are stamped
 `operationKind = RESTORE_SNAPSHOT` and the engine refuses to apply them to LIVE_SSH
 devices (typed `LIVE_RESTORE_NOT_CERTIFIED` refusal + `LIVE_RESTORE_REFUSED` audit
@@ -310,6 +311,45 @@ format identity (the derived fingerprint is canonical OpenSSH form, accepted ver
 the pin parser, distinct per key, and tampered/malformed pins fail CLOSED). The DB-level
 concurrency behaviors remain proven by the SAFE-003/004/005 sandbox E2E (PostgreSQL-side
 enforcement is not unit-reproducible without a database); suite 191 → 199.
+
+**LANDED — SAFE-008/009 (audit remediation order item 7): typed snapshot-exact
+restore — the P0-004 closeout and the last P0-gated item.** The defect: the guarded
+restore flow filed an EMERGENCY change whose PROSE named the target snapshot while the
+engine ran the generic description-marker plan — an approved "restore to snapshot vN"
+would silently do something else, and restore changes over LIVE devices were only
+covered by SAFE-007's blanket refusal. Now the approved target travels as DATA
+(`ChangeRequest.restoreSnapshotId`, stamped once at creation, immutable, SetNull on
+snapshot deletion) and the engine CONSUMES it: a dedicated restore APPLY executor
+resolves the target BEFORE any device contact and classifies every unresolvable case
+into a typed fail-closed refusal (`RESTORE_TARGET_UNRESOLVABLE`: unset / not-found /
+cross-device / integrity — the decrypt layer's digest check maps to a refusal, so
+unverified bytes push nowhere); the simulator data plane commits EXACTLY the approved
+snapshot text via a new typed worker route (`/simulate/restore`) that verifies
+sha256(text) BEFORE committing (409 `SHA_MISMATCH` otherwise) and echoes the committed
+bytes; the engine records the echo as the job's POST_CHANGE snapshot and re-asserts
+the equality in-transaction (`RESTORE_COMMIT_ECHO_MISMATCH` fails closed — no blind
+rollback against an untrustworthy data plane); VALIDATE re-asserts the committed sha
+equals the approved sha byte-exact (SAFE-009). Fail-fast (SAFE-006 semantics), the
+disposition classifier, and the rollback machinery are reused unchanged — a failed
+restore's rollback re-applies the job's pre-restore backup exactly as before. The
+LIVE_SSH plane stays refused (no device contact) with truthful wording: the live
+transport is certified for bounded description-marker deltas, NOT full-config pushes —
+per-flavor full-config certification is a separate gate, never a silent widening.
+Also closed en route: the restore flow provisioned NO approval rows (its change is
+born AWAITING_APPROVAL and never passes through DRAFT, so the SUBMIT path never ran)
+— a restore change could not gather approvals through the sanctioned API at all; the
+route now creates the risk policy's PENDING rows in the creation transaction.
+Suite 199 → 216 (`tests/audit/restore-op.test.ts`, 17 pins). Sandbox E2E (real stack,
+real sessions, real approvals — engineer requests, manager TECHNICAL, admin
+SECURITY+MANAGER under the wildcard SoD exemption, admin executes): (A) restore of
+snapshot v1 on a 6-version device ran CHECK/BACKUP/APPLY/VALIDATE/BACKUP all PASSED,
+change SUCCESSFUL, the POST_CHANGE snapshot sha IDENTICAL to the approved snapshot's
+(byte-exact restore proven), `RESTORE_APPLIED` audited; (B) the target snapshot
+deleted before execution (FK SetNull) → APPLY refused `RESTORE_TARGET_UNRESOLVABLE`,
+every device SKIPPED, NO rollback, `RESTORE_REFUSED` audited; (C) demo-control
+`failAt=APPLY` → APPLY FAILED with the truthful stop hostname, exactly one rollback
+pass (ROLLBACK/VALIDATE/BACKUP appended and PASSED), `APPLY_FAIL_FAST` + `CHANGE_FAILED`
+audited. E2E fixtures deleted after the run; audit events kept as history.
 
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is

@@ -33,18 +33,19 @@ export const CHANGE_OPERATION_KINDS = ["GENERIC", "RESTORE_SNAPSHOT"] as const;
 export type ChangeOperationKind = (typeof CHANGE_OPERATION_KINDS)[number];
 
 /**
- * Engine refusal for restore-flow changes on the LIVE plane (SAFE-007).
- * The restore route files an EMERGENCY change whose prose names the target
- * snapshot, but the execution engine does not yet consume the selected
- * snapshot as the desired configuration (SAFE-008/009 pending) — the live
- * APPLY plane would instead push the generic description-marker plan, i.e.
- * an approved "restore to snapshot vN" would silently do something else.
- * Until typed snapshot-exact restore ships and is vendor-certified, the
- * engine fails the step closed BEFORE any device contact.
+ * Engine refusal for restore-flow changes on the LIVE plane (SAFE-007/008).
+ * Since SAFE-008 the simulator plane commits the approved snapshot EXACTLY
+ * (sha-verified echo), but the live SSH transport's certified surface is
+ * bounded description-marker deltas only — a full-config push against real
+ * vendor hardware is NOT vendor-certified. A restore change over LIVE_SSH
+ * devices is therefore still refused fail-closed BEFORE any device contact;
+ * refusing stays truthful until the per-flavor full-config certification
+ * ships (a separate gate — do not widen the transport silently).
  */
 export const LIVE_RESTORE_NOT_CERTIFIED =
-  "LIVE_RESTORE_NOT_CERTIFIED — snapshot-exact restore is not implemented yet (SAFE-008/009): " +
-  "the live apply plane refuses restore-flow changes fail-closed; no device was contacted";
+  "LIVE_RESTORE_NOT_CERTIFIED — snapshot-exact restore is implemented on the simulator plane only " +
+  "(SAFE-008/009); the live SSH transport is certified for bounded description-marker deltas, not " +
+  "full-config restores, so restore-flow changes are refused fail-closed; no device was contacted";
 
 /**
  * Whether a change carries the restore-snapshot operation intent. GENERIC

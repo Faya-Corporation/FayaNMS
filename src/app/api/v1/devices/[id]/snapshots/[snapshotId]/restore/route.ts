@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { approvalLevelsFor } from "@/lib/change/risk";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
@@ -44,13 +45,15 @@ export const dynamic = "force-dynamic";
  * steps stay PENDING until a real approver decides and the executor claims
  * the scheduled change.
  *
- * SAFE-007 (production-safety sprint): the created change is stamped
- * operationKind = "RESTORE_SNAPSHOT" — the typed executable intent. Until
- * snapshot-exact restore semantics exist and are vendor-certified
- * (SAFE-008/009), the execution engine refuses LIVE_SSH apply for such
- * changes fail-closed (no device contact); simulator-plane restores are
- * unaffected. The snapshot id/sha256 below travel as AUDIT data, not as
- * an executable operation — the typed operation is SAFE-008's deliverable.
+ * SAFE-007/008 (production-safety sprint): the created change is stamped
+ * operationKind = "RESTORE_SNAPSHOT" AND carries the approved target on
+ * restoreSnapshotId — the typed executable intent plus the machine-readable
+ * restore source. Since SAFE-008 the engine consumes that snapshot as the
+ * desired configuration: the simulator plane commits it byte-exact
+ * (sha-verified commit echo, SAFE-009 validation); the LIVE_SSH plane still
+ * refuses restore changes fail-closed (no device contact) until full-config
+ * pushes are vendor-certified (LIVE_RESTORE_NOT_CERTIFIED). The prose below
+ * keeps the human-readable audit copy of the target (id · version · sha256).
  */
 
 const restoreSchema = z.object({
@@ -177,9 +180,12 @@ export async function POST(
           status,
           riskScore,
           riskLevel,
-          // SAFE-007: typed executable intent — the engine's live-apply
-          // guard keys on this (refuses LIVE_SSH restore changes).
+          // SAFE-007/008: typed executable intent + machine-readable restore
+          // target. restoreSnapshotId is set ONCE here and never updated —
+          // the approver approves exactly this target; the engine refuses
+          // execution when the row disappears (SetNull → unresolvable).
           operationKind: "RESTORE_SNAPSHOT",
+          restoreSnapshotId: snapshot.id,
           requesterId: actor.id,
           ownerId: actor.id,
           scheduledStart: null,
@@ -194,6 +200,20 @@ export async function POST(
 
       await tx.changeDevice.create({
         data: { changeId: created.id, deviceId: device.id, result: "PENDING" },
+      });
+
+      // Provision the PENDING approval rows for the risk policy's required
+      // levels INSIDE the same transaction (SAFE-008 closeout: the change is
+      // born AWAITING_APPROVAL — it never passes through DRAFT, so the
+      // SUBMIT path that provisions these rows for wizard changes never
+      // runs here. Without this block a restore change could never gather
+      // approvals through the API — the change was unreachable by design).
+      await tx.changeApproval.createMany({
+        data: approvalLevelsFor(riskLevel).map((level) => ({
+          changeId: created.id,
+          level,
+          status: "PENDING" as const,
+        })),
       });
 
       await tx.changeStep.createMany({

@@ -26,6 +26,12 @@
  *   POST /simulate/apply      → config text with a change-flavored delta
  *                              (Task 4-b apply step; HTTP 500 when the demo
  *                              control payload.failAt === "APPLY")
+ *   POST /simulate/restore    → SAFE-008: typed snapshot-exact restore
+ *                              COMMIT on the simulator plane — verifies
+ *                              sha256(configText) === body.expectedSha256
+ *                              BEFORE committing (409 SHA_MISMATCH) and
+ *                              echoes the committed bytes; HTTP 500 on the
+ *                              demo control payload.failAt === "APPLY"
  *   POST /live/fetch-config   → Phase 23: REAL SSH config collection for a
  *                              LIVE_SSH device (the change engine's BACKUP
  *                              and VALIDATE steps); same read-only exec
@@ -60,6 +66,7 @@
  * same-host loopback contract).
  */
 
+import { createHash } from "node:crypto";
 import { adapters, pickAdapter, type DeviceTarget } from "./adapters";
 import { LIVE_SSH_FLAVORS, LiveAdapterError, createLiveSshAdapter } from "./live-ssh";
 import {
@@ -343,6 +350,75 @@ export async function handle(req: Request): Promise<Response> {
       return Response.json({
         ok: true,
         configText: applyChangeDelta(config.rawText, adapter.configFlavor, changeTitle),
+      });
+    }
+
+    if (req.method === "POST" && url.pathname === "/simulate/restore") {
+      // SAFE-008 — typed snapshot-exact restore commit on the SIMULATOR data
+      // plane. The change engine pushes the APPROVED snapshot's raw text and
+      // its sha256; this route verifies the digest BEFORE committing and
+      // echoes the committed bytes (the engine records them as the job's
+      // POST_CHANGE snapshot and re-asserts the echo — SAFE-009). Deliberate
+      // contrast with the LIVE plane: this is a simulator persona (stateless
+      // config generation), not real hardware — full-config pushes against
+      // real devices remain refused engine-side (LIVE_RESTORE_NOT_CERTIFIED).
+      let body: Record<string, unknown> | undefined;
+      try {
+        body = (await req.json()) as Record<string, unknown>;
+      } catch {
+        return Response.json(
+          { ok: false, error: "Request body must be valid JSON" },
+          { status: 400 }
+        );
+      }
+      const hostname = typeof body?.hostname === "string" ? body.hostname.trim() : "";
+      const flavor = typeof body?.flavor === "string" ? body.flavor.trim() : "generic";
+      const configText = typeof body?.configText === "string" ? body.configText : "";
+      const expectedSha256 =
+        typeof body?.expectedSha256 === "string" ? body.expectedSha256.trim().toLowerCase() : "";
+      const failAt = typeof body?.failAt === "string" ? body.failAt.trim() : null;
+      if (!hostname || !configText || !/^[0-9a-f]{64}$/.test(expectedSha256)) {
+        return Response.json(
+          { ok: false, error: "Body must be { hostname: string, flavor?: string, configText: string, expectedSha256: string(64-hex), failAt?: string }" },
+          { status: 400 }
+        );
+      }
+      // Mirrors /simulate/apply's demo control — a demo restore can exercise
+      // the rollback path without faulting anything.
+      if (failAt === "APPLY") {
+        return Response.json(
+          {
+            ok: false,
+            error: `Simulated restore failure on ${hostname} — commit aborted (demo control failAt=APPLY)`,
+          },
+          { status: 500 }
+        );
+      }
+      // Size bound + control-character sanity (defensive mirrors of the
+      // app-side restore-op contract; the engine checks its copy too).
+      const byteLength = Buffer.byteLength(configText, "utf8");
+      if (byteLength > 262_144 || configText.includes("\u0000")) {
+        return Response.json(
+          { ok: false, error: "configText out of bounds (≤ 256 KiB, no NUL bytes)" },
+          { status: 400 }
+        );
+      }
+      // Integrity gate — commit EXACTLY the approved bytes or nothing.
+      const actualSha256 = createHash("sha256").update(configText, "utf8").digest("hex");
+      if (actualSha256 !== expectedSha256) {
+        return Response.json(
+          {
+            ok: false,
+            error: `SHA_MISMATCH — refusing to commit: body digest ${actualSha256} does not equal the approved snapshot digest`,
+          },
+          { status: 409 }
+        );
+      }
+      return Response.json({
+        ok: true,
+        configText,
+        sha256: actualSha256,
+        bytes: byteLength,
       });
     }
 
