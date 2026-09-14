@@ -103,7 +103,8 @@ and the seed refuses to wipe a production database).
 | `bunx tsc --noEmit` | Type check |
 | `bun run db:deploy` | Apply the committed migration history (`prisma/migrations`, `prisma migrate deploy`) — the production provisioning path |
 | `bun run db:migrate` | Land a migration: schema edits → a new timestamped entry in `prisma/migrations` (`prisma migrate dev`) |
-| `bun run db:push` | Dev-only scratch: sync the schema WITHOUT history (never in production — use `db:migrate`) |
+| `bun run db:push` | Dev-only scratch: sync the schema WITHOUT history (never in production — use `db:migrate`). Fail-tight: refuses a diff that would destroy data (P2-3) |
+| `bun run db:push:force` | The explicit scratch reset: `db:push --accept-data-loss` — run ONLY when losing dev rows is the intent |
 | `bun prisma/seed.ts` | Rebuild the pristine demo dataset |
 | `bun scripts/migrate-encrypt-snapshots.ts` | Encrypt legacy plaintext snapshots (idempotent; also the KEK-rotation path) |
 
@@ -612,6 +613,35 @@ SSH_PASSWORD-on-sophos refusal enforced, test-connection reaching the
 device over verified TLS, and a CONFIG_BACKUP job claimed by the worker
 and SUCCEEDED with the snapshot stored from the WebAPI collection.
 
+**LANDED — P2-1/P2-3/P1-019 (external ULTRA audit): production config
+hygiene trio — query logging gated, destructive db tooling renamed,
+repo-public sample secrets refused.**
+(P2-1) `src/lib/db.ts` used to construct the Prisma client with an
+unconditional `log: ['query']` — every SQL statement (with whatever
+tenant/device payload it carried) went to production stdout. Log levels
+now come from the pinned policy `src/lib/db-log.ts`: production defaults
+to errors+warnings only, development keeps full visibility, and
+`FAYANMS_DB_QUERY_LOG=true` is the documented ops escape hatch for
+time-boxed incident debugging (tests pin all four behaviors AND that
+`db.ts` delegates — the inline literal cannot return).
+(P2-3) `bun run db:push` carried `--accept-data-loss` under an ordinary
+developer name — a routine scratch sync could silently destroy
+tables/columns. `db:push` is now fail-tight (`prisma db push` — a
+destructive diff refuses in non-interactive contexts) and the destructive
+capability lives behind an explicitly named `db:push:force` (tests pin
+both scripts).
+(P1-019) The deterministic sample secrets committed to
+`.github/workflows/ci.yml` satisfied production shape validation — a
+deployment that copied them into production would have sailed through
+startup checks. The known-bad blocklist in `src/lib/startup/security-policy.ts`
+now covers ALL THREE secret variables (session, service, KEK — the shape
+checks alone used to guard only the session secret) plus every
+`FAYANMS_SERVICE_SECRETS` rotation entry, and the committed CI sample
+itself is blocklisted; a governance test parses `ci.yml` and asserts EVERY
+committed secret value is REFUSED by production validation, so a future
+cannot silently reintroduce the footgun (a freshly generated secret still
+passes — validation is not over-tightened).
+
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
 not); the demo dataset is never committed (rebuild via the seed above — it runs
@@ -624,10 +654,10 @@ settings-API activation (docs/brand/SOCIAL-REPOSITORY.md §6) has since been los
 reflected by the platform, and a previous version of this section wrongly described the
 branch as protected — that was governance drift. The truthful current statement is:
 CI runs on every push, but push-triggered CI is NOT pre-merge enforcement. Restoring
-protection/rulesets is OPS-001 on the remediation backlog;
-approval-quorum (CAB ≥2 distinct approvers) and approval-expiry fingerprints are P1
-policy work (POL-001/002/003);
-service JWTs remain symmetric-secret (per-service keys / asymmetric signing = Phase 21); the
+protection/rulesets is OPS-001 on the remediation backlog (approval
+quorum/fingerprint/expiry LANDED as POL-001/002/003);
+asymmetric service identity LANDED as P1-007 (Ed25519 EdDSA verifiers,
+two-phase flag-free rotation — see the deploy runbook note 17); the
 design-governance QA matrix is substantially executed with recorded evidence — including a
 full 43-view cycle at 1920, a full 43-view WCAG-320px reflow sweep and scripted keyboard-only
 cells — with the remaining cells tracked in §6 there.

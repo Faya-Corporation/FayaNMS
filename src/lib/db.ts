@@ -1,15 +1,21 @@
 import { PrismaClient } from '@prisma/client'
 
 import { invalidateAuditHead, stampAuditHash } from '@/lib/audit/chain'
+import { prismaLogLevels } from '@/lib/db-log'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+// P2-1 (external ULTRA audit): log levels come from the policy in
+// src/lib/db-log.ts — production defaults to errors+warnings only; the
+// unconditional query-level log that shipped every SQL statement to
+// production stdout is gone (FAYANMS_DB_QUERY_LOG=true is the explicit
+// ops escape hatch).
 const basePrisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: ['query'],
+    log: prismaLogLevels(),
   })
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = basePrisma

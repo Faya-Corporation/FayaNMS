@@ -6,12 +6,25 @@
  *
  * Production (NODE_ENV=production) aborts startup when ANY of these fail:
  *   - NEXTAUTH_SECRET missing, shorter than 32 chars, or a known demo/repo value
- *   - FAYANMS_SERVICE_SECRET missing or not 64 hex chars (internal service JWTs)
- *   - FAYANMS_CONFIG_ENC_KEY missing or not 64 hex chars (config encryption KEK)
+ *   - FAYANMS_SERVICE_SECRET missing, not 64 hex chars, or a known demo/repo
+ *     value (internal service JWTs)
+ *   - FAYANMS_SERVICE_SECRETS (rotation list): any entry not 64 hex chars or
+ *     matching a known demo/repo value
+ *   - FAYANMS_CONFIG_ENC_KEY missing, not 64 hex chars, or a known demo/repo
+ *     value (config encryption KEK)
  *   - FAYANMS_DEMO_MODE=true (seeded shared-credential users are forbidden)
  *   - DATABASE_URL missing or not a postgres(ql):// URL (Phase 21 slice 1:
  *     production persistence is PostgreSQL — compose ships the `postgres`
  *     service; a stray SQLite file: URL must never serve production traffic)
+ *
+ * P1-019 (external ULTRA audit): the shape checks alone used to ACCEPT the
+ * deterministic sample secrets committed to .github/workflows/ci.yml — a
+ * deployment that copied them into production would sail through validation.
+ * The known-bad check now covers ALL three secret variables (not just the
+ * session secret), and the committed CI sample itself is blocklisted.
+ * tests/audit/config-hygiene.test.ts parses ci.yml and pins that EVERY
+ * committed sample value is REFUSED by production validation, so a future
+ * editor cannot reintroduce the footgun.
  *
  * Development never aborts: it warns when the session secret is missing or a
  * known-bad value, so local iteration stays friction-free while keeping the
@@ -21,13 +34,19 @@
 const MIN_SECRET_LENGTH = 32;
 
 /**
- * Values that must never serve as a production session secret: the secret
- * that shipped in .env.example before Phase 19 (see audit SEC-004) and a
- * small blocklist of classic weak defaults.
+ * Values that must never serve ANY production secret: the secret that
+ * shipped in .env.example before Phase 19 (see audit SEC-004), a small
+ * blocklist of classic weak defaults, and every deterministic sample value
+ * committed to the repository (CI workflows) — repo-public material by
+ * construction (P1-019, external ULTRA audit). CI itself runs in
+ * non-production mode, where the blocklist only warns; production refuses.
  */
 const KNOWN_BAD_SECRETS: readonly string[] = [
   // The pre-P19 committed example value — treat as public knowledge.
   "57c9048e4d3fec488f31976c609e348a959bb5cd383310eea59227971013ab2c",
+  // The deterministic sample shared by .github/workflows/ci.yml (P1-019):
+  // public by construction, must never pass production validation.
+  "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03",
   "faya123",
   "changeme",
   "change-me",
@@ -81,13 +100,43 @@ export function findProductionPolicyViolations(
       variable: "FAYANMS_SERVICE_SECRET",
       reason: "missing or not 64 hex chars (internal service authentication)",
     });
+  } else if (isKnownBad(serviceSecret)) {
+    violations.push({
+      variable: "FAYANMS_SERVICE_SECRET",
+      reason: "matches a known demo/repository default value",
+    });
   }
+
+  // Rotation list (P1-007 two-phase rotation): every entry is held to the
+  // same bar as the primary secret — repo-public material included.
+  const rotationEntries = (env.FAYANMS_SERVICE_SECRETS ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  rotationEntries.forEach((entry, index) => {
+    if (!HEX_64.test(entry)) {
+      violations.push({
+        variable: `FAYANMS_SERVICE_SECRETS[${index}]`,
+        reason: "not 64 hex chars (service key rotation entry)",
+      });
+    } else if (isKnownBad(entry)) {
+      violations.push({
+        variable: `FAYANMS_SERVICE_SECRETS[${index}]`,
+        reason: "matches a known demo/repository default value",
+      });
+    }
+  });
 
   const encKey = env.FAYANMS_CONFIG_ENC_KEY?.trim() ?? "";
   if (!HEX_64.test(encKey)) {
     violations.push({
       variable: "FAYANMS_CONFIG_ENC_KEY",
       reason: "missing or not 64 hex chars (configuration encryption master key)",
+    });
+  } else if (isKnownBad(encKey)) {
+    violations.push({
+      variable: "FAYANMS_CONFIG_ENC_KEY",
+      reason: "matches a known demo/repository default value",
     });
   }
 

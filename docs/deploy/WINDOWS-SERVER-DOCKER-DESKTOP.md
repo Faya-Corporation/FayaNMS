@@ -339,7 +339,9 @@ Two mutually exclusive paths, chosen at first deploy. Both use the `provision` s
 CLI) and both target the `postgres` service directly. Since Phase 21 there is NO
 ownership handback — the database lives in PostgreSQL, not on a file volume. Both paths
 replay the COMMITTED migration history (`prisma/migrations`) via `prisma migrate deploy`
-— `db:push` is a dev-only scratch tool and must never touch this database:
+— `db:push` is a dev-only scratch tool and must never touch this database (and since
+P2-3 the plain `db:push` itself refuses destructive diffs — the only way to force one
+is the explicitly named `db:push:force`, which you should have NO reason to run here):
 
 - **Demo dataset (matches everything the demo surfaces expect):** one-off **`provision`
   container** **without** `NODE_ENV=production` **with** `FAYANMS_DEMO_MODE=true`:
@@ -430,7 +432,8 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
   Take a D1 `pg_dump` snapshot immediately before every upgrade. Migrations are
   forward-only, and CI proves on every push that (a) the committed history applies to a
   fresh database and (b) the history reproduces `prisma/schema.prisma` exactly (drift
-  guard) — so `migrate deploy` is deterministic. `db:push` is a dev-only scratch tool;
+  guard) — so `migrate deploy` is deterministic. `db:push` is a dev-only scratch tool
+  (fail-tight since P2-3: `db:push:force` is the only path that accepts data loss);
   never point it at this database (a schema change must land as a migration, or CI's
   drift guard fails the push).
 - [ ] **D4. Monitoring:** external uptime probe against `/` (sign-in gate is public);
@@ -646,6 +649,27 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    (SSH_PASSWORD for the five CLI vendors, API_TOKEN for sophos) and the
    host-key enrollment page refuses sophos devices typed
    (`SSH_HOSTKEY_NOT_APPLICABLE`).
+19. **Production config hygiene (P2-1/P2-3/P1-019, external ULTRA audit)**:
+   (P2-1) the Next.js process no longer logs every SQL query in
+   production (`src/lib/db-log.ts` — production defaults to
+   errors+warnings; development keeps full visibility). For time-boxed
+   incident debugging set `FAYANMS_DB_QUERY_LOG=true` in
+   `.env.production`, restart, and REMEMBER to remove it — query logs can
+   carry tenant/device payload and belong in aggregate logs only
+   deliberately. (P2-3) `bun run db:push` is fail-tight (a diff that
+   would destroy tables/columns refuses in non-interactive contexts);
+   `bun run db:push:force` is the explicit scratch reset. On THIS
+   deployment neither should ever target the provisioned database — the
+   only sanctioned path is `migrate deploy` (T7/D3). (P1-019) production
+   startup REFUSES every deterministic sample secret committed to the
+   repository — `.github/workflows/ci.yml`'s `NEXTAUTH_SECRET`,
+   `FAYANMS_SERVICE_SECRET` and `FAYANMS_CONFIG_ENC_KEY` values are
+   blocklisted in the startup policy, and the known-bad check now covers
+   all three secret variables plus every `FAYANMS_SERVICE_SECRETS`
+   rotation entry (previously only the session secret was blocklist-
+   checked). Practical rule unchanged and now enforced: generate real
+   secrets with `openssl rand -hex 32`; never copy sample values from
+   committed workflow files into `.env.production`.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 
