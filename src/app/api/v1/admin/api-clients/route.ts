@@ -27,8 +27,13 @@ export const dynamic = "force-dynamic";
  *         token is returned ONCE in this response. Audited
  *         API_CLIENT_CREATED with an AXC-XXXXXX correlation.
  *
- * NOTE: `lastUsedAt` stays null until Task 7-a wires bearer-token
- * authentication into the request path — no route validates tokens yet.
+ * NOTE: P1-012 wires the bearer plane — an active client's token now
+ * authenticates the permission-gated MUTATION routes through
+ * requirePermission → authenticateApiClient (scope-mapped, lastUsedAt
+ * stamped with a 60 s throttle, audit attribution traces to the client
+ * row). Read routes remain session-gated: the `.read` catalog scopes are
+ * RESERVED until read routes grow handler-level gates (documented in
+ * src/lib/auth/api-client-auth.ts).
  */
 
 /** Advisory scope catalog (resource.action) rendered by the create dialog. */

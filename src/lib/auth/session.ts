@@ -3,6 +3,7 @@ import type { User } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { fail } from "@/app/api/v1/_lib/api";
+import { authenticateApiClient } from "@/lib/auth/api-client-auth";
 import {
   APPROVAL_LEVEL_PERMISSIONS,
   APPROVE_GATE_PERMISSION,
@@ -160,8 +161,36 @@ export async function loadRolePermissions(roleName: string): Promise<string[]> {
  */
 export async function requirePermission(
   req: Request,
-  permission: string
+  permission: string,
+  opts: { allowApiClients?: boolean } = {}
 ): Promise<User> {
+  // P1-012 (API-client bearer plane) — FAIL-CLOSED OPT-IN: a Bearer header
+  // that resolves to an ACTIVE ApiClient row authenticates ONLY when this
+  // route explicitly opted in (opts.allowApiClients). The default refusal
+  // guarantees no route ever unknowingly receives the synthetic client
+  // identity (whose id is NOT a User row — writing it into a User-FK
+  // column would crash or, worse, misattribute). Opting-in routes must
+  // handle the client principal deliberately (see the acknowledge route
+  // for the certified pattern: nullable FK stays null, the audit row
+  // carries the client attribution).
+  const authorization = req.headers.get("authorization");
+  if (authorization && /^Bearer\s+\S+$/i.test(authorization)) {
+    const result = await authenticateApiClient(authorization, permission);
+    if (result.outcome === "principal") {
+      if (!opts.allowApiClients) {
+        throw new AuthError(
+          "API_CLIENT_HUMAN_REQUIRED",
+          `This operation requires human accountability — API-client tokens are not accepted on this route ("${permission}").`,
+          403
+        );
+      }
+      return result.principal;
+    }
+    if (result.outcome === "rejected") {
+      throw new AuthError(result.code, result.message, result.status);
+    }
+  }
+
   const user = await requireUser(req);
   const permissions = await loadRolePermissions(user.role);
   if (!roleHasPermission(permissions, permission)) {

@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { auditAttribution } from "@/lib/auth/api-client-auth";
 import {
   fail,
   firstIssueMessage,
@@ -16,6 +17,12 @@ export const dynamic = "force-dynamic";
  * Stamps acknowledgedBy/At (the session principal) and audits
  * ALERT_ACKNOWLEDGED. Requires the "alert.ack" permission (Phase 19-C,
  * audit AUTHZ-001 sweep — was authentication-only via resolveActingUser).
+ *
+ * P1-012: this route is the CERTIFIED API-client opt-in (allowApiClients).
+ * A client principal's id is NOT a User row, so acknowledgedById (a User
+ * FK, nullable) stays NULL for client acknowledgements — the
+ * ALERT_ACKNOWLEDGED audit row carries the client attribution (actorId =
+ * the ApiClient row id) as the accountability record.
  */
 const ackSchema = z.object({
 });
@@ -27,10 +34,13 @@ export async function POST(
   const { id } = await params;
 
   // Phase 19-C (audit AUTHZ-001 sweep): acknowledging requires the
-  // "alert.ack" permission; the actor is the session principal.
+  // "alert.ack" permission; the actor is the session principal — or, since
+  // P1-012, an authenticated API client with an "alerts.write" scope (the
+  // certified opt-in; acknowledgedById stays null, the audit row
+  // attributes to the client row).
   let actor: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    actor = await requirePermission(request, "alert.ack");
+    actor = await requirePermission(request, "alert.ack", { allowApiClients: true });
   } catch (error) {
     const authFail = authErrorToFail(error);
     if (!authFail) throw error;
@@ -71,21 +81,27 @@ export async function POST(
   }
 
   const now = new Date();
+  // P1-012: a client principal is not a User row — the nullable FK stays
+  // null and the audit trail is the accountability record.
+  const acknowledgedById = actor.role === "api-client" ? null : actor.id;
 
   const updated = await db.alert.update({
     where: { id },
     data: {
       status: "ACKNOWLEDGED",
-      acknowledgedById: actor.id,
+      acknowledgedById,
       acknowledgedAt: now,
     },
   });
 
   const correlationId = newCorrelationId("ALR");
+  // P1-012: client principals attribute as actorId=null + "api-client: <name>"
+  // + viaApiClientId in the payload (AuditEvent.actorId is a User FK).
+  const attribution = auditAttribution(actor);
   await db.auditEvent.create({
     data: {
-      actorId: actor.id,
-      actorName: actor.name ?? "Unknown user",
+      actorId: attribution.actorId,
+      actorName: attribution.actorName,
       action: "ALERT_ACKNOWLEDGED",
       resourceType: "Alert",
       resourceId: id,
@@ -96,6 +112,7 @@ export async function POST(
         status: "ACKNOWLEDGED",
         severity: alert.severity,
         message: alert.message,
+        viaApiClientId: attribution.viaApiClientId,
       }),
     },
   });

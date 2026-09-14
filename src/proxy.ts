@@ -30,7 +30,16 @@ import {
  *      X-Forwarded-For policy (src/lib/api/rate-gate.ts) — the leftmost
  *      entries are attacker-controlled and are never trusted. Exceeded
  *      budgets answer the standard 429 envelope with Retry-After.
- *   3. SESSION PLANE (Task 7-a): no valid session → 401 envelope
+ *   3. API-CLIENT PLANE (P1-012 — external ULTRA audit): an OPAQUE bearer
+ *      token (base64url, no dots — the ApiClient token shape) is admitted
+ *      for MUTATIONS ONLY, always after the rate gate (external traffic is
+ *      never exempt), and is fully validated at the handler layer by
+ *      requirePermission → authenticateApiClient (sha256 lookup, active
+ *      check, scope mapping). READS stay session-gated: no read route
+ *      carries a handler-level gate yet, so admitting a token there would
+ *      turn the proxy into the only check — refused with a precise 401
+ *      until read routes grow gates (see api-client-auth.ts).
+ *   4. SESSION PLANE (Task 7-a): no valid session → 401 envelope
  *      { code: "UNAUTHENTICATED" }; authenticated `auditor` performing
  *      any non-GET/HEAD → 403 { code: "RBAC_FORBIDDEN" }.
  *
@@ -70,6 +79,22 @@ const RBAC_FORBIDDEN_BODY = {
     message: "Auditors have read-only access",
   },
 };
+
+const API_CLIENT_READS_NOT_WIRED_BODY = {
+  success: false as const,
+  error: {
+    code: "UNAUTHENTICATED",
+    message:
+      "API-client tokens are accepted on the mutation plane only — read routes do not carry handler-level token gates yet (P1-012 plane boundaries).",
+  },
+};
+
+/**
+ * The ApiClient token shape: OPAQUE base64url (24–128 chars, no dots).
+ * Service JWTs are three dot-separated segments; NextAuth bearer JWTs are
+ * also dot-separated — neither can collide with this pattern.
+ */
+const OPAQUE_BEARER_PATTERN = /^[A-Za-z0-9_-]{24,128}$/;
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -112,6 +137,21 @@ export async function proxy(req: NextRequest) {
     pathname === "/api/v1/metrics/retention/prune"
   ) {
     return NextResponse.next();
+  }
+
+  // 3b. API-client plane (P1-012): an opaque bearer candidate is admitted
+  // to the MUTATION plane only — the handler (requirePermission →
+  // authenticateApiClient) performs the real sha256 + active + scope
+  // validation; the proxy merely refuses to let the session plane eat the
+  // request. A candidate on the read plane is refused outright: reads are
+  // proxy-session-gated and would otherwise trust an unvalidated token.
+  const bearerCandidate = bearerTokenOf(req.headers.get("authorization"));
+  if (bearerCandidate && OPAQUE_BEARER_PATTERN.test(bearerCandidate)) {
+    const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+    if (isMutation) {
+      return NextResponse.next();
+    }
+    return NextResponse.json(API_CLIENT_READS_NOT_WIRED_BODY, { status: 401 });
   }
 
   // GHSA-xmf8-cvqr-rfgj (next-auth v4): getToken() throws an uncaught

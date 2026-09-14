@@ -459,6 +459,39 @@ over live HTTP (10/10): stored column is an envelope with zero plaintext
 residue, once-only secret matches the decrypt path, masked view stable
 across PATCH, legacy row re-encrypts and resolves identically.
 
+**LANDED — P1-012 (audit SEC tier): API-client bearer authentication wired.**
+The ApiClient surface self-documented "no route validates tokens yet" and
+`lastUsedAt` stayed null by design — the feature was a dead UI. The bearer
+plane is now live, fail-closed and opt-in per route:
+`requirePermission(req, permission, { allowApiClients: true })` — a Bearer
+header that resolves to an ACTIVE ApiClient row (sha256 lookup, same hashing
+as creation) is scope-mapped onto the route-permission vocabulary through an
+explicit code table (`API_CLIENT_SCOPE_PERMISSIONS`, same
+`roleHasPermission` matcher as the human RBAC matrix) and returns a
+user-shaped principal whose audit attribution is FK-safe
+(`auditAttribution()`): `AuditEvent.actorId` stays NULL (it is a User FK),
+`actorName` reads `api-client: <name>`, and the payload carries
+`viaApiClientId` — traceable to the client row without ever impersonating a
+human. Routes that DON'T opt in refuse client principals with
+`403 API_CLIENT_HUMAN_REQUIRED` — no route can unknowingly receive a
+synthetic identity (the hard way this was proven: ChangeRequest.requesterId
+is a required User FK and human accountability there is invariant, so
+change creation refuses clients by design). The proxy admits opaque bearer
+candidates (base64url, no dots — JWTs cannot collide) for MUTATIONS only,
+always rate-limited; reads stay session-gated and the `.read` catalog
+scopes are documented RESERVED until read routes grow handler gates.
+Approvals/SoD/admin surfaces (`requireRole`, `requireApprovalEntitlement`)
+never consult the client plane — an API client can never satisfy POL-001's
+human quorum. `lastUsedAt` stamps with a 60 s throttle. The certified
+opt-in surface: `POST /api/v1/alerts/[id]/acknowledge` (nullable FK stays
+null, audit row is the accountability record). Suite 335 → 353
+(`tests/audit/api-client-auth.test.ts`, 18 pins). Sandbox E2E over live
+HTTP (11/11): client ack 200 with null-FK + client-attributed audit +
+stamped lastUsedAt; non-opted-in route refuses
+`API_CLIENT_HUMAN_REQUIRED`; wrong scope refuses with the scope check
+preceding the gate; garbage token 401; read-plane candidates refused at the
+proxy; human ack path byte-identical to before.
+
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
 not); the demo dataset is never committed (rebuild via the seed above — it runs
