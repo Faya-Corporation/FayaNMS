@@ -2263,3 +2263,15 @@ Stage Summary:
 - Honest posture: CI runs #34-#39 remain red from GitHub-side runner unavailability only (zero steps executed, no runner assigned — user-side billing/minutes check + UI re-run; the workflow is unchanged since runs #28-#33 were green); physical-device certification of the LIVE_SSH plane remains the documented capability boundary; service JWTs remain symmetric-secret (P1 tier, next in the SEC items).
 - Next executable steps per the audit §16 order: the SEC tier — P1-010 webhook SSRF guards (loopback/private/link-local/metadata blocking + redirect/DNS re-check policy), P1-011 webhook secret at rest (encrypt with the KEK path), P1-012 API-client bearer auth (token validation + lastUsedAt), P1-005 vault, P1-007 asymmetric service identity; then CERT-006 Sophos SFOS WebAPI transport; OPS-001 branch protection stays settings-side (user token required).
 - Artifacts: this commit (src/lib/change/risk.ts; src/components/change/change-wizard.tsx; src/app/api/v1/changes/route.ts; src/app/api/v1/changes/[id]/route.ts; tests/audit/risk-tz.test.ts; README + deploy doc). E2E evidence ephemeral (driver + probe change deleted; CHANGE_CREATED/CHANGE_UPDATED audit rows retained as honest history).
+
+---
+Task ID: R28-risktz-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 051fa85 (P1-003) — honest evidence record
+
+Work Log:
+- Pushed 051fa85; run #40 picked it up and failed with the IDENTICAL infrastructure signature as #34-#39: gate failure with ZERO steps executed, no runner ever assigned, scan skipped — GitHub-hosted runner unavailability for this private repo (capacity/minutes), not a gate or scanner finding. An API re-run (HTTP 201) was requested this session per the standing discipline; prior re-runs (#34-#38) reproduced the same signature within seconds.
+- Every local equivalent of the gate ran green on this exact commit before push: lint 0 · tsc 0 (src+worker) · bun test 258/258 (2,046 expects) · prisma validate + drift guard exit 0 · seed OK · build:gate PASS · plus the 10/10 sandbox E2E recorded in R28.
+
+Stage Summary:
+- TRUTHFUL CI STATE for 051fa85: locally gate-proven, CI-blocked by infrastructure only. User-side follow-up (cannot be done from the sandbox): verify GitHub Actions minutes/billing for the account, then re-run runs #39/#40 from the Actions UI — the workflow is unchanged since runs #28-#33 were green; no code action is required.
