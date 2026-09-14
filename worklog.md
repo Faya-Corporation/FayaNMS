@@ -2446,3 +2446,15 @@ Stage Summary:
 - Honest posture: certification remains against the in-repo harnesses (physical-hardware certification of BOTH transports is still open and tracked); the SFOS envelope is vendor-realistic, not byte-verified against a physical XGS appliance; the sandbox retains the cert006-* demo-dataset rows (no delete surface exists).
 - This closes the user's ordered tier: P1-010 ✓, P1-011 ✓, P1-012 ✓, P1-005 ✓, P1-007 ✓, CERT-006 ✓. Next executable candidates from the audit backlog: OPS-001 (branch protection settings — user-token-side), physical-hardware certification, CI runner unavailability follow-up (user-side billing check).
 - Artifacts: this commit (webapi-transport.ts; live-webapi.ts; adapter-router routing; live-transport.ts app helper + two device routes + host-key refusal + form copy; harness/sfos-webapi.ts + harness/tls/; certify.ts sophos section; tests/audit/sfos-webapi.test.ts; README; deploy note 18; .env.example).
+
+---
+Task ID: R32-cert-006-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit deb192d (CERT-006) — honest evidence record
+
+Work Log:
+- Pushed deb192d; run 34909122459 failed with the IDENTICAL infrastructure signature as runs #34-#44: gate failure with ZERO steps executed, no runner ever assigned (runner_name empty), scan skipped — GitHub-hosted runner unavailability for this private repo (capacity/minutes), not a gate or scanner finding. The workflow file is unchanged since runs #28-#33 were green.
+- Every local equivalent of the gate ran green on the exact commit before push: lint 0 · tsc 0 · bun test 407/407 (2,360 expects) · drift guard exit 0 · build:gate PASS · certification driver exit 0 (six certified flavors incl. the new sophos WebAPI section) · plus the 9-pin sfos-webapi suite and the 8/8 full-stack E2E recorded in the R32 entry.
+
+Stage Summary:
+- TRUTHFUL CI STATE for deb192d: locally gate-proven, CI-blocked by infrastructure only. API re-run issued (HTTP 201). User-side follow-up (cannot be done from the sandbox): verify GitHub Actions minutes/billing for the account, then re-run the affected runs from the Actions UI; no code action is required.
