@@ -5,7 +5,11 @@ import {
   fetchRiskDevices,
   scoreChangeServerSide,
 } from "../../_lib/change";
-import { approvalLevelsFor } from "@/lib/change/risk";
+import {
+  approvalLevelsFor,
+  BUSINESS_HOURS_POLICY_VERSION,
+  BUSINESS_HOURS_TIMEZONE,
+} from "@/lib/change/risk";
 import { quorumRequiredFor } from "@/lib/change/approval-policy";
 import {
   authErrorToFail,
@@ -528,6 +532,8 @@ export async function PATCH(
               title: data.title ?? existing.title,
               riskScore: risk.score,
               riskLevel: risk.level,
+              riskPolicyVersion: BUSINESS_HOURS_POLICY_VERSION,
+              riskTimezone: BUSINESS_HOURS_TIMEZONE,
               deviceCount: deviceIds ? deviceIds.length : undefined,
               stepCount: steps.length,
             }),

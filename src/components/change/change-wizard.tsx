@@ -1211,8 +1211,8 @@ export function ChangeWizard({
                         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           <CalendarClock aria-hidden="true" className="size-3.5" />
                           {isBusinessHours(parseLocalInput(watchedStart) as Date)
-                            ? "Inside business hours (Sun–Thu 08:00–17:00) — +12 risk points."
-                            : "Outside business hours — no scheduling penalty."}
+                            ? "Inside business hours (Sun–Thu 08:00–17:00, policy timezone Asia/Riyadh) — +12 risk points."
+                            : "Outside business hours (evaluated in policy timezone Asia/Riyadh) — no scheduling penalty."}
                         </p>
                       )}
 

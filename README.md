@@ -389,6 +389,26 @@ change to SUCCESSFUL; out-of-band step tamper after approval → execute refuses
 `APPROVAL_EXPIRED`, change flips AWAITING_APPROVAL, fresh cycle re-approves
 and drives to SUCCESSFUL. Driver deleted after the run; audit events kept.
 
+**LANDED — P1-003 (audit remediation order item 8): business-hours risk factor
+is timezone-deterministic.** The factor's `isBusinessHours()` read
+`date.getDay()`/`date.getHours()` — the EVALUATING MACHINE's local timezone —
+so a UTC-hosted server and a Riyadh browser could disagree on the same
+change's score and therefore its approval-level policy. The window
+(Sun–Thu 08:00–17:00, Gulf working week) is now evaluated in ONE documented
+policy IANA timezone (`BUSINESS_HOURS_TIMEZONE = "Asia/Riyadh"`, UTC+3 fixed
+offset) via the built-in `Intl.DateTimeFormat` engine — zero dependencies,
+identical in every browser and Node/Bun, so the client preview and the
+server's authoritative score agree on any host. An unknown timezone fails
+TIGHT (`RISK_TZ_INVALID`), never a silent fallback; the factor detail names
+the tz in the wizard's breakdown and hint; and the policy carries
+`BUSINESS_HOURS_POLICY_VERSION = 2`, stamped into the CHANGE_CREATED /
+CHANGE_UPDATED audit payloads alongside the score so the policy generation is
+auditable at decision time. Suite 242 → 258
+(`tests/audit/risk-tz.test.ts`, 16 pins: policy identity, the exact
+UTC-vs-Riyadh weekday/hour disagreements the audit flagged, window
+boundaries, the ICU midnight-hour fold, override + fail-tight, factor
+detail).
+
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
 not); the demo dataset is never committed (rebuild via the seed above — it runs

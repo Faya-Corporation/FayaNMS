@@ -16,7 +16,7 @@ import {
 } from "../_lib/change";
 import { resolveActingUser } from "../_lib/actor";
 import { requirePermission, authErrorToFail } from "@/lib/auth/session";
-import { approvalLevelsFor } from "@/lib/change/risk";
+import { approvalLevelsFor, BUSINESS_HOURS_POLICY_VERSION, BUSINESS_HOURS_TIMEZONE } from "@/lib/change/risk";
 import { quorumRequiredFor } from "@/lib/change/approval-policy";
 import { z } from "zod";
 
@@ -343,6 +343,8 @@ export async function POST(request: Request) {
             status,
             riskScore: risk.score,
             riskLevel: risk.level,
+            riskPolicyVersion: BUSINESS_HOURS_POLICY_VERSION,
+            riskTimezone: BUSINESS_HOURS_TIMEZONE,
             deviceCount: deviceIds.length,
             stepCount: steps.length,
             submit,

@@ -560,6 +560,14 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    fresh approval cycle (expired decisions may be superseded by the same
    approvers; live ones cannot). Pre-POL approval data refuses
    `APPROVALS_REBIND_REQUIRED` — the gate never silently bypasses.
+13. **Timezone-deterministic risk policy (P1-003, audit §6)**: the business-hours
+   risk factor (which feeds the approval-level policy) is evaluated in ONE
+   policy IANA timezone — `Asia/Riyadh`, a code constant, not a server/browser
+   setting — so the client preview and the server's authoritative score agree
+   on any host. Deploy the app and worker in any timezone; do not "fix" risk
+   scoring by changing the host clock. The audit trail stamps
+   `riskPolicyVersion`/`riskTimezone` on every CHANGE_CREATED/CHANGE_UPDATED
+   event so the policy generation is auditable at decision time.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 

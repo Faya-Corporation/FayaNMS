@@ -19,13 +19,22 @@
  *   6. No rollback plan ............. +15 (rollback is the safety net)
  *   7. No validation plan ........... +8 (post-change verification)
  *   8. Business-hours window ........ +12 when scheduled inside Sun–Thu
- *                                     08:00–17:00 (user population awake;
- *                                     deliberately naive hour-range check —
- *                                     no tz library in the sandbox)
+ *                                     08:00–17:00 in the POLICY timezone
+ *                                     (Asia/Riyadh — deterministic, never
+ *                                     the evaluating machine's local tz;
+ *                                     P1-003 remediation)
  *
  * Level thresholds (mirrors riskLevelFor in the restore route and the
  * RISK_LEVEL map in src/lib/domain/status.ts):
  *   LOW <21 · MEDIUM <41 · HIGH <71 · CRITICAL ≥71
+ *
+ * Timezone policy (audit P1-003): the business-hours factor is part of the
+ * approval-level policy surface, so it MUST NOT depend on the machine that
+ * happens to evaluate it (a UTC server and a Riyadh browser previously
+ * disagreed on the same change). The window is evaluated in one documented
+ * policy IANA timezone via the built-in Intl engine (zero dependencies,
+ * identical in every browser and in Node/Bun), and the policy carries a
+ * version that API audit trails stamp at decision time.
  */
 
 export type ChangeType = "STANDARD" | "NORMAL" | "EMERGENCY";
@@ -65,6 +74,24 @@ export interface RiskBreakdown {
   factors: RiskFactor[];
 }
 
+/**
+ * Timezone policy for the business-hours factor (audit P1-003).
+ * Governance constants in code, NOT env knobs (same posture as the
+ * approval-policy constants): the policy tz is the deployment's home
+ * region — Asia/Riyadh, UTC+3 fixed offset, no DST — matching the
+ * Sun–Thu Gulf working week below.
+ */
+export const BUSINESS_HOURS_TIMEZONE = "Asia/Riyadh";
+
+/**
+ * Policy version for the business-hours factor, stamped into the
+ * CHANGE_CREATED / CHANGE_UPDATED audit payloads alongside the score:
+ *   v1 = pre-P1-003 (naive host-local getDay()/getHours() — machine-dependent)
+ *   v2 = policy-tz evaluation via Intl in Asia/Riyadh (this implementation)
+ * Bump ONLY when the window definition itself changes (days, hours, tz).
+ */
+export const BUSINESS_HOURS_POLICY_VERSION = 2;
+
 /** Level banding — the ONLY place these thresholds live. */
 export function riskLevelFor(score: number): RiskLevel {
   if (score >= 71) return "CRITICAL";
@@ -99,14 +126,53 @@ export function deviceAffectsFirewall(device: {
 }
 
 /**
- * Business-hours test — Sun–Thu 08:00–16:59 local server time. Naive
- * hour-range check on purpose (no tz lib); good enough for advisory
- * scheduling guidance and deterministic on both sides.
+ * Business-hours test — Sun–Thu 08:00–16:59 in the POLICY timezone.
+ *
+ * `date` is an absolute instant; the weekday/hour are derived in
+ * `timeZone` (default: the policy tz) through Intl.formatToParts, so the
+ * client preview and the server's authoritative score agree on any host
+ * regardless of its local timezone — the P1-003 invariant this file's
+ * header demands ("client and server MUST agree").
+ *
+ * Fail-tight: an unknown/invalid timezone throws RISK_TZ_INVALID instead
+ * of silently evaluating in some fallback tz (same posture as the
+ * approval-policy's fail-tight defaults).
  */
-export function isBusinessHours(date: Date): boolean {
-  const day = date.getDay(); // 0 = Sunday … 6 = Saturday
-  const hour = date.getHours();
-  // Sun(0)–Thu(4) working week (Gulf region convention).
+export function isBusinessHours(
+  date: Date,
+  timeZone: string = BUSINESS_HOURS_TIMEZONE
+): boolean {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      weekday: "short",
+      hour: "2-digit",
+      hour12: false,
+    }).formatToParts(date);
+  } catch {
+    throw new Error(`RISK_TZ_INVALID: ${timeZone}`);
+  }
+
+  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
+  const hourPart = parts.find((p) => p.type === "hour")?.value ?? "";
+  const weekdayIndex: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+  const day = weekdayIndex[weekday];
+  // Some ICU builds emit "24" for midnight under hour12:false — fold to 0.
+  const hour = Number.parseInt(hourPart, 10) % 24;
+  if (day === undefined || !Number.isFinite(hour)) {
+    throw new Error(`RISK_TZ_UNRESOLVABLE: ${weekday}/${hourPart}`);
+  }
+
+  // Sun(0)–Thu(4) working week (Gulf region convention), 08:00–16:59.
   const workday = day >= 0 && day <= 4;
   return workday && hour >= 8 && hour < 17;
 }
@@ -202,7 +268,7 @@ export function scoreChangeRisk(input: RiskInput): RiskBreakdown {
       key: "business-hours",
       label: "Business-hours window",
       points: 12,
-      detail: "Scheduled Sun–Thu between 08:00 and 17:00 — users are online",
+      detail: `Scheduled Sun–Thu 08:00–17:00 (${BUSINESS_HOURS_TIMEZONE}) — users are online`,
     });
   }
 
