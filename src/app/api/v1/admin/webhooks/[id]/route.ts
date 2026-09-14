@@ -10,6 +10,7 @@ import {
 } from "../../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
+import { classifyWebhookUrl } from "@/lib/integrations/ssrf-guard";
 import {
   WEBHOOK_EVENT_CATALOG,
   webhookView,
@@ -66,6 +67,16 @@ export async function PATCH(
     const existing = await db.webhookEndpoint.findUnique({ where: { id } });
     if (!existing) {
       return fail("WEBHOOK_NOT_FOUND", `No webhook endpoint with id ${id}`, 404);
+    }
+
+    // P1-010 (SSRF): an updated URL re-passes admission-time egress
+    // classification (same policy as creation — rotation cannot be used to
+    // smuggle a loopback/metadata target into the stored endpoint).
+    if (parsed.data.url !== undefined) {
+      const urlCheck = classifyWebhookUrl(parsed.data.url);
+      if (!urlCheck.ok) {
+        return fail("SSRF_BLOCKED", urlCheck.reason, 400);
+      }
     }
 
     const data: Record<string, unknown> = {};

@@ -10,6 +10,7 @@ import {
 } from "../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
+import { classifyWebhookUrl } from "@/lib/integrations/ssrf-guard";
 import {
   NOTIFICATION_CHANNEL_TYPES,
   channelView,
@@ -98,6 +99,14 @@ export async function POST(request: Request) {
     }
     if (type === "WEBHOOK" && !config.url) {
       return fail("INVALID_BODY", "WEBHOOK channels require config.url", 400);
+    }
+    // P1-010 (SSRF): the channel's webhook target passes the same
+    // admission-time egress classification as webhook endpoints.
+    if (config.url) {
+      const urlCheck = classifyWebhookUrl(config.url);
+      if (!urlCheck.ok) {
+        return fail("SSRF_BLOCKED", urlCheck.reason, 400);
+      }
     }
 
     const row = await db.notificationChannel.create({

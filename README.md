@@ -409,6 +409,33 @@ UTC-vs-Riyadh weekday/hour disagreements the audit flagged, window
 boundaries, the ICU midnight-hour fold, override + fail-tight, factor
 detail).
 
+**LANDED — P1-010 (audit SEC tier): webhook egress SSRF guard.** The webhook
+and notification-channel surfaces accepted `z.string().url()` + http(s) —
+nothing stopped a stored endpoint from aiming the signed delivery at the
+app's own loopback services, the private network behind it, or the cloud
+metadata address. Egress is now enforced at BOTH planes by one classifier
+(`src/lib/integrations/ssrf-guard.ts`): ADMISSION (webhook create/PATCH,
+channel create/PATCH) refuses localhost/`*.localhost`, every standard
+non-routable range (v4: 0/8, 10/8, 100.64/10, 127/8, 169.254/16 incl.
+metadata, 172.16/12, 192.168/16, doc/benchmark/multicast/reserved; v6: ::,
+::1, IPv4-mapped under the v4 rules, NAT64, discard, 2001:db8::/32, ULA,
+link-local, multicast), and the encoded IP literals the OS resolver would
+read as loopback (decimal `2130706433`, hex `0x7f000001`, octal
+`0177.0.0.1`, partial `127.1`) — refused `400 SSRF_BLOCKED` with the precise
+reason, userinfo credentials and non-http(s) schemes included. DELIVERY
+(`deliverSignedPost`) re-classifies and DNS-resolves every address of the
+hostname immediately before the fetch (the audit's DNS re-check) and refuses
+redirects outright (`redirect: "error"` — a 3xx is a recorded outcome, never
+a hop), so a public-looking name that resolves into blocked space or a
+redirect bounce cannot bypass admission. A refused delivery never touches
+the network and records the `SSRF_BLOCKED` outcome on the row. Residual
+risk documented: the theoretical DNS-rebinding TOCTOU between lookup and
+connect (full closure requires address-pinned dispatchers). Suite 258 → 324
+(`tests/audit/ssrf.test.ts`, 66 pins). Sandbox E2E over live HTTP (7/7):
+metadata URL and decimal-encoded loopback refused `SSRF_BLOCKED`, public URL
+accepted, PATCH rotation to loopback refused with the stored URL untouched,
+channel `http://[::1]/` refused.
+
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
 not); the demo dataset is never committed (rebuild via the seed above — it runs

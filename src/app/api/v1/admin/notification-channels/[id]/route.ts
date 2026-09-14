@@ -10,6 +10,7 @@ import {
 } from "../../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
+import { classifyWebhookUrl } from "@/lib/integrations/ssrf-guard";
 import { channelView } from "@/lib/integrations/webhooks";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +60,15 @@ export async function PATCH(
     const existing = await db.notificationChannel.findUnique({ where: { id } });
     if (!existing) {
       return fail("CHANNEL_NOT_FOUND", `No notification channel with id ${id}`, 404);
+    }
+
+    // P1-010 (SSRF): an updated WEBHOOK channel URL re-passes the
+    // admission-time egress classification (same policy as creation).
+    if (parsed.data.config?.url !== undefined) {
+      const urlCheck = classifyWebhookUrl(parsed.data.config.url);
+      if (!urlCheck.ok) {
+        return fail("SSRF_BLOCKED", urlCheck.reason, 400);
+      }
     }
 
     const data: Record<string, unknown> = {};

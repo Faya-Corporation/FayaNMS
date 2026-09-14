@@ -12,6 +12,7 @@ import {
 } from "../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
+import { classifyWebhookUrl } from "@/lib/integrations/ssrf-guard";
 import {
   WEBHOOK_EVENT_CATALOG,
   webhookView,
@@ -87,6 +88,14 @@ export async function POST(request: Request) {
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
       return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
+    }
+
+    // P1-010 (SSRF): admission-time egress classification — the stored URL
+    // may never name loopback / private / link-local / metadata space (nor
+    // any encoded IP literal the OS resolver would read as such).
+    const urlCheck = classifyWebhookUrl(parsed.data.url);
+    if (!urlCheck.ok) {
+      return fail("SSRF_BLOCKED", urlCheck.reason, 400);
     }
 
     const secret = randomBytes(32).toString("hex");

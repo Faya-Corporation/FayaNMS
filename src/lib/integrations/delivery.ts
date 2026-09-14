@@ -1,13 +1,26 @@
 import { createHmac } from "node:crypto";
 
+import {
+  DELIVERY_REDIRECT_POLICY,
+  resolveAndValidateWebhookUrl,
+} from "./ssrf-guard";
+
 /**
- * Signed webhook delivery (Task 7-b).
+ * Signed webhook delivery (Task 7-b) — now with SSRF egress control
+ * (P1-010, external ULTRA audit).
  *
  * Demo-safe POST with HMAC-SHA256 request signing and a hard 5s timeout:
  *   - body: serialized JSON payload,
  *   - header X-Faya-Signature: sha256=<hex hmac of the raw body>,
- *   - a network failure is a recorded OUTCOME (never a thrown 500) — the
- *     caller persists lastStatus/lastStatusCode/lastError on the row.
+ *   - EGRESS: the target is re-classified and DNS-resolved immediately
+ *     before the fetch (`resolveAndValidateWebhookUrl`) — loopback,
+ *     private, link-local/metadata and mapped/encoded addresses never
+ *     reach the network; redirects are refused outright
+ *     (`redirect: "error"`) so a public endpoint cannot bounce the request
+ *     at an internal address,
+ *   - a network failure (or an SSRF/DNS refusal — both never attempted)
+ *     is a recorded OUTCOME (never a thrown 500) — the caller persists
+ *     lastStatus/lastStatusCode/lastError on the row.
  */
 
 export const SIGNATURE_HEADER = "X-Faya-Signature";
@@ -41,6 +54,17 @@ export async function deliverSignedPost(
   const timer = setTimeout(() => controller.abort(), DELIVERY_TIMEOUT_MS);
 
   try {
+    // Egress gate (P1-010): resolve + classify BEFORE any byte is sent.
+    const egress = await resolveAndValidateWebhookUrl(url);
+    if (!egress.ok) {
+      return {
+        delivered: false,
+        status: "FAILED",
+        statusCode: null,
+        error: egress.error,
+      };
+    }
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -51,6 +75,9 @@ export async function deliverSignedPost(
       body,
       signal: controller.signal,
       cache: "no-store",
+      // P1-010: a 3xx is an outcome, never a hop — the redirect target was
+      // never validated and following it would bypass the egress gate.
+      redirect: DELIVERY_REDIRECT_POLICY,
     });
     // Drain (bounded by the same abort signal) so sockets are released.
     try {
@@ -63,7 +90,11 @@ export async function deliverSignedPost(
       delivered,
       status: delivered ? "DELIVERED" : "REJECTED",
       statusCode: response.status,
-      error: delivered ? null : `Endpoint answered HTTP ${response.status}`,
+      error: delivered
+        ? null
+        : response.status >= 300 && response.status < 400
+          ? `Endpoint answered redirect HTTP ${response.status} — redirects are refused by egress policy`
+          : `Endpoint answered HTTP ${response.status}`,
       durationMs: Date.now() - started,
     };
   } catch (error) {

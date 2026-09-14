@@ -568,6 +568,15 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    scoring by changing the host clock. The audit trail stamps
    `riskPolicyVersion`/`riskTimezone` on every CHANGE_CREATED/CHANGE_UPDATED
    event so the policy generation is auditable at decision time.
+14. **Webhook egress SSRF guard (P1-010, audit §6)**: webhook endpoints and
+   WEBHOOK notification channels can only point at public http(s) targets —
+   admission refuses loopback/private/link-local/metadata addresses (and the
+   encoded-IP forms resolvers accept) with `400 SSRF_BLOCKED`, and the signed
+   delivery re-checks the resolved addresses and refuses redirects right
+   before every fetch. This is also a host-protection control: the container
+   network behind the compose stack (postgres, worker :3030, the host's own
+   loopback) is exactly the space the guard refuses to let webhook payloads
+   reach from the app plane.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 
