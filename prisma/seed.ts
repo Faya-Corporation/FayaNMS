@@ -16,6 +16,7 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
+import { encryptAtRest, webhookSecretAad } from "../src/lib/config/crypto";
 
 // Task 7-a: the storable scrypt hash format lives in ONE place (the app's
 // auth helper) — the seed reuses it so seeded users can actually sign in.
@@ -1428,8 +1429,14 @@ async function seedReference() {
   await db.backupPolicy.createMany({ data: BACKUP_POLICIES });
   await db.reportSchedule.createMany({ data: REPORT_SCHEDULES });
   await db.setting.createMany({ data: SETTINGS });
-  // Task 7-b — integrations demo fixtures.
-  await db.webhookEndpoint.createMany({ data: WEBHOOKS });
+  // Task 7-b — integrations demo fixtures. P1-011: signing secrets are
+  // KEK-encrypted at rest (AAD-bound to the endpoint id), never plaintext.
+  await db.webhookEndpoint.createMany({
+    data: WEBHOOKS.map((w) => ({
+      ...w,
+      secret: encryptAtRest(w.secret, webhookSecretAad(w.id)),
+    })),
+  });
   await db.notificationChannel.createMany({ data: NOTIFICATION_CHANNELS });
 }
 

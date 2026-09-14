@@ -1,3 +1,4 @@
+import { decryptAtRest, webhookSecretAad } from "@/lib/config/crypto";
 import { maskSecret } from "@/lib/integrations/webhook-sign";
 
 /**
@@ -33,7 +34,13 @@ function parseEvents(eventsJson: string): string[] {
   return [];
 }
 
-/** Serialize a WebhookEndpoint row WITHOUT ever exposing the raw secret. */
+/** Serialize a WebhookEndpoint row WITHOUT ever exposing the raw secret.
+ *
+ *  P1-011 (secret at rest): the stored value is the KEK-encrypted envelope
+ *  (enc1:...) — masking runs on the DECRYPTED secret so the view shows the
+ *  last 8 characters of the PLAINTEXT, not of the envelope. Legacy rows
+ *  (plaintext stored before P1-011) decrypt as pass-through and mask
+ *  identically. */
 export function webhookView(row: {
   id: string;
   name: string;
@@ -47,11 +54,12 @@ export function webhookView(row: {
   lastError: string | null;
   createdAt: Date;
 }) {
+  const signingSecret = decryptAtRest(row.secret, webhookSecretAad(row.id));
   return {
     id: row.id,
     name: row.name,
     url: row.url,
-    secretMasked: maskSecret(row.secret),
+    secretMasked: maskSecret(signingSecret),
     events: parseEvents(row.eventsJson),
     isActive: row.isActive,
     lastStatus: row.lastStatus,
@@ -62,6 +70,16 @@ export function webhookView(row: {
     lastError: row.lastError,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/**
+ * The endpoint's PLAINTEXT signing secret for the delivery path (P1-011):
+ * callers (webhook dispatch) NEVER read the secret column directly — they
+ * resolve it through this decrypt-or-passthrough helper, which fails loudly
+ * on tampered envelopes or a foreign keyId.
+ */
+export function webhookSigningSecret(row: { id: string; secret: string }): string {
+  return decryptAtRest(row.secret, webhookSecretAad(row.id));
 }
 
 /** Notification channel shared catalog + serialization (same view). */

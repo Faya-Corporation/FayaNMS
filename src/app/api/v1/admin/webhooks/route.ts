@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { z } from "zod";
 
@@ -12,6 +12,7 @@ import {
 } from "../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
+import { encryptAtRest, webhookSecretAad } from "@/lib/config/crypto";
 import { classifyWebhookUrl } from "@/lib/integrations/ssrf-guard";
 import {
   WEBHOOK_EVENT_CATALOG,
@@ -98,12 +99,18 @@ export async function POST(request: Request) {
       return fail("SSRF_BLOCKED", urlCheck.reason, 400);
     }
 
+    // P1-011 (secret at rest): the HMAC signing secret is encrypted under
+    // the deployment KEK with AAD binding it to THIS endpoint row before it
+    // ever touches the database; the plaintext is returned exactly once.
+    // The id is pre-generated so the AAD context exists before the insert.
+    const endpointId = randomUUID();
     const secret = randomBytes(32).toString("hex");
     const row = await db.webhookEndpoint.create({
       data: {
+        id: endpointId,
         name: parsed.data.name,
         url: parsed.data.url,
-        secret,
+        secret: encryptAtRest(secret, webhookSecretAad(endpointId)),
         eventsJson: JSON.stringify(parsed.data.events),
         isActive: parsed.data.isActive ?? true,
       },

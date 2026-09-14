@@ -239,3 +239,63 @@ function verifyPlaintextDigest(rawText: string, expected: string | null): void {
     );
   }
 }
+
+/* ───────────────────────────────────────────────────────────────────────
+ * Small-value secrets at rest (P1-011 — external ULTRA audit).
+ *
+ * The snapshot envelope above is DEK-per-row (proportionate for large
+ * configuration texts). Short high-entropy secrets (webhook HMAC signing
+ * keys) use a DIRECT AES-256-GCM encryption under the master key with a
+ * fresh IV per value and AAD binding the ciphertext to its row: the stored
+ * form is the versioned envelope string
+ *
+ *   enc1:<keyId>:<ivB64>:<tagB64>:<ctB64>
+ *
+ * stored in the SAME column the plaintext used to occupy — no schema
+ * change, and values without the prefix are treated as legacy plaintext
+ * (pass-through decrypt), mirroring the snapshot legacy policy, until the
+ * migration script (scripts/encrypt-webhook-secrets.ts) re-encrypts them.
+ *
+ * AAD binding means a ciphertext transplanted onto another row fails GCM
+ * authentication even when keys match; a keyId in the envelope that the
+ * current deployment does not hold fails loudly
+ * (SECRET_AT_REST_KEY_UNAVAILABLE) instead of decrypting garbage.
+ * ───────────────────────────────────────────────────────────────────── */
+
+const AT_REST_PREFIX = "enc1:";
+
+/** AAD context for a webhook endpoint signing secret. */
+export function webhookSecretAad(endpointId: string): string {
+  return `webhook-secret|v1|${endpointId}`;
+}
+
+/**
+ * Encrypt a short secret at rest under the master key (AES-256-GCM, fresh
+ * IV, AAD-bound). Returns the versioned envelope for the secret column.
+ */
+export function encryptAtRest(plain: string, aad: string): string {
+  const { key, keyId } = masterKeyMaterial();
+  const { ct, iv, tag } = gcmEncrypt(key, plain, aad);
+  return `${AT_REST_PREFIX}${keyId}:${iv.toString("base64")}:${tag.toString("base64")}:${ct.toString("base64")}`;
+}
+
+/**
+ * Decrypt an at-rest secret. Values WITHOUT the enc1: prefix are legacy
+ * plaintext and pass through untouched (same legacy policy as snapshots).
+ * Throws on tampered ciphertext, a mismatched AAD context (transplanted
+ * ciphertext), or an envelope encrypted under an unavailable keyId.
+ */
+export function decryptAtRest(stored: string, aad: string): string {
+  if (!stored.startsWith(AT_REST_PREFIX)) return stored; // legacy plaintext
+  const [keyId, ivB64, tagB64, ctB64] = stored.slice(AT_REST_PREFIX.length).split(":");
+  if (!keyId || !ivB64 || !tagB64 || !ctB64) {
+    throw new Error("SECRET_AT_REST_MALFORMED — incomplete encryption envelope.");
+  }
+  const { key, keyId: currentKeyId } = masterKeyMaterial();
+  if (keyId !== currentKeyId) {
+    throw new Error(
+      `SECRET_AT_REST_KEY_UNAVAILABLE — envelope was encrypted under key "${keyId}" but this deployment holds "${currentKeyId}".`
+    );
+  }
+  return gcmDecrypt(key, ctB64, ivB64, tagB64, aad);
+}

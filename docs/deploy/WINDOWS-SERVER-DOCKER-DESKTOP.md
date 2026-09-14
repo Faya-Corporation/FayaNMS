@@ -577,6 +577,15 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    network behind the compose stack (postgres, worker :3030, the host's own
    loopback) is exactly the space the guard refuses to let webhook payloads
    reach from the app plane.
+15. **Webhook secrets encrypted at rest (P1-011, audit §6)**: the HMAC
+   signing secret of every webhook endpoint is stored KEK-encrypted
+   (AES-256-GCM, row-id-bound AAD, `enc1:` envelope in the same column) — a
+   DB dump alone no longer reveals a key that forges deliveries. The KEK
+   (`FAYANMS_CONFIG_ENC_KEY`) is the crown jewel for THIS surface too
+   (item 2); after a KEK rotation run
+   `bun scripts/encrypt-webhook-secrets.ts` once against the upgraded
+   deployment to re-encrypt every envelope under the new keyId (it is
+   idempotent and refuses envelopes minted by keys it does not hold).
 
 ## Explicitly NOT covered here (tracked elsewhere)
 

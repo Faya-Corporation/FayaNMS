@@ -436,6 +436,29 @@ metadata URL and decimal-encoded loopback refused `SSRF_BLOCKED`, public URL
 accepted, PATCH rotation to loopback refused with the stored URL untouched,
 channel `http://[::1]/` refused.
 
+**LANDED — P1-011 (audit SEC tier): webhook signing secrets encrypted at
+rest.** `WebhookEndpoint.secret` stored the raw HMAC signing key in
+plaintext — a dump, replica or backup exposed the value that forges valid
+delivery signatures. New creations encrypt the secret under the deployment
+KEK (`FAYANMS_CONFIG_ENC_KEY`) with AES-256-GCM, a fresh IV per value and
+AAD binding the ciphertext to the endpoint's row id, storing the versioned
+envelope `enc1:<keyId>:<iv>:<tag>:<ct>` in the same column (no schema
+change): a ciphertext transplanted onto another endpoint fails
+authentication, a tampered envelope fails authentication, and an envelope
+minted under an unavailable keyId fails loudly
+(`SECRET_AT_REST_KEY_UNAVAILABLE`) instead of decrypting garbage. The
+plaintext is still returned exactly once at creation; the admin view masks
+the DECRYPTED plaintext (last 8 chars of the real secret, never envelope
+bytes); the delivery path resolves the signing secret only through
+`webhookSigningSecret()` (decrypt-or-passthrough). Legacy plaintext rows
+decrypt as pass-through (snapshot legacy policy) and
+`scripts/encrypt-webhook-secrets.ts` re-encrypts them in place — idempotent,
+KEK-rotation aware. The seed now writes encrypted demo secrets. Suite 324 →
+335 (`tests/audit/webhook-secret-at-rest.test.ts`, 11 pins). Sandbox E2E
+over live HTTP (10/10): stored column is an envelope with zero plaintext
+residue, once-only secret matches the decrypt path, masked view stable
+across PATCH, legacy row re-encrypts and resolves identically.
+
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
 not); the demo dataset is never committed (rebuild via the seed above — it runs

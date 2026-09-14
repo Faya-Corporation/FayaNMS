@@ -2296,3 +2296,26 @@ Stage Summary:
 - Honest posture: DNS-rebinding TOCTOU between lookup and connect is documented residual (address-pinned dispatchers = future hardening); CI runs #34-#41 remain red from GitHub-side runner unavailability only.
 - Next executable steps: P1-011 (webhook secret at rest under the KEK), P1-012 (API-client bearer auth wiring), P1-005/P1-007 (vault + service identity), CERT-006 (Sophos SFOS WebAPI transport).
 - Artifacts: this commit (src/lib/integrations/ssrf-guard.ts; delivery.ts egress wiring; webhook + channel routes ×4; tests/audit/ssrf.test.ts; README + deploy doc).
+
+---
+Task ID: R29-sec011
+Agent: Orchestrator (Z.ai Code)
+Task: "keep going" — audit SEC tier item 2 — P1-011 (webhook secret plaintext in DB → KEK-encrypted at rest)
+
+Work Log:
+- AUDIT FIRST: the finding was one line (WebhookEndpoint.secret String plaintext), but the honest surface is the secret's whole lifecycle: creation (plaintext returned ONCE — keep), storage (encrypt), view (maskSecret masked the STORED string — with an envelope stored, masking must run on the DECRYPTED plaintext or the UI would show envelope bytes), delivery (no caller today — but the fanout must resolve through one decrypt path), seed (writes demo secrets per run), and existing deployments (legacy rows need an in-place migration).
+- CRYPTO (src/lib/config/crypto.ts — the KEK module): generic small-value at-rest pair encryptAtRest/decryptAtRest — AES-256-GCM under the master key, fresh IV per value, AAD context binding the ciphertext to its row, stored as the versioned envelope enc1:<keyId>:<ivB64>:<tagB64>:<ctB64> in the SAME column (no schema change, no migration for the column itself). Legacy policy mirrors snapshots: values without the prefix pass through as plaintext. Foreign keyId refuses loudly (SECRET_AT_REST_KEY_UNAVAILABLE), truncated envelope refuses (SECRET_AT_REST_MALFORMED), transplanted ciphertext fails GCM auth. webhookSecretAad(endpointId) = "webhook-secret|v1|<id>".
+- CREATE PATH (webhooks/route.ts POST): the endpoint id is now PRE-GENERATED (randomUUID) so the AAD context exists before the insert; the 64-hex signing secret is encrypted before it ever touches the DB; secretOnce still returns the plaintext exactly once.
+- VIEW + DELIVERY (integrations/webhooks.ts): webhookView masks decryptAtRest(...) — the admin UI keeps showing the plaintext's last 8 chars; NEW webhookSigningSecret(row) is the ONLY sanctioned resolution path for future dispatch (decrypt-or-passthrough, loud failures).
+- SEED: demo webhook secrets written as envelopes (env KEK available to the seed; re-run verified enc1: at rest).
+- MIGRATION: NEW scripts/encrypt-webhook-secrets.ts — re-encrypts every legacy row in place (idempotent: skips enc1: rows; KEK-rotation aware: bump FAYANMS_CONFIG_ENC_KEY_ID + re-run re-encrypts everything under the new key).
+- TESTS: NEW tests/audit/webhook-secret-at-rest.test.ts (11 pins): roundtrip, envelope shape + zero-plaintext, fresh IV per encryption, transplant refused, tamper refused, legacy pass-through, foreign-keyId loud failure, truncated-envelope loud failure, mask-on-decrypted (real tail, never envelope tail), webhookSigningSecret resolution, legacy-row resolution. Suite 324 → 335 (2,156 expects).
+- SANDBOX E2E (live HTTP; probe rows deleted): create → stored column is an envelope with the once-shown plaintext NOWHERE in it; masked view = plaintext last-8; webhookSigningSecret decrypts the raw row to the exact secretOnce; PATCH rename keeps the masked view stable; a simulated legacy plaintext row re-encrypts to an envelope and decrypts identically. E2E-VERDICT: ALL-PASS (10/10).
+- GATES: lint 0 · tsc 0 (src+worker) · bun test 335/335 · prisma validate OK · drift guard exit 0 · seed OK (encrypted demo secrets) · build:gate PASS.
+- Docs synced: README (full P1-011 LANDED paragraph), deploy doc (security note 15: KEK is the crown jewel for this surface too; KEK-rotation runbook via the migration script), .env.example unchanged (reuses FAYANMS_CONFIG_ENC_KEY/KEY_ID).
+
+Stage Summary:
+- P1-011 LANDED AND E2E-PROVEN: a database dump no longer contains any usable webhook signing key — new secrets are written as row-bound KEK envelopes, the view and delivery paths resolve through the single decrypt helper, legacy rows are pass-through compatible with an idempotent in-place migration, and the demo world re-seeds encrypted. Suite 335 / 2,156 expects; all local gate equivalents green.
+- Honest posture: the envelope's keyId enables rotation but a full per-keyId keyring remains a documented Phase 21 upgrade; CI runs #34-#41 remain red from GitHub-side runner unavailability only.
+- Next executable steps: P1-012 (API-client bearer auth wiring + lastUsedAt), P1-005/P1-007 (vault + asymmetric service identity), CERT-006 (Sophos SFOS WebAPI transport).
+- Artifacts: this commit (crypto.ts at-rest pair; webhooks route create path; integrations/webhooks.ts view+resolver; seed encryption; scripts/encrypt-webhook-secrets.ts; tests/audit/webhook-secret-at-rest.test.ts; README + deploy doc).
