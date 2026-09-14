@@ -2341,3 +2341,15 @@ Stage Summary:
 - Honest posture: read scopes are catalog-reserved until read routes grow handler-level gates; ChangeRequest.requesterId remains human-only by design (accountability invariant); CI runs #34-#41 remain red from GitHub-side runner unavailability only.
 - Next executable steps: P1-005 (vault hardening), P1-007 (asymmetric service identity), CERT-006 (Sophos SFOS WebAPI transport).
 - Artifacts: this commit (src/lib/auth/api-client-auth.ts; session.ts requirePermission opt-in; proxy.ts API-client plane; alerts/[id]/acknowledge certified opt-in; api-clients route docs; tests/audit/api-client-auth.test.ts; README).
+
+---
+Task ID: R29-sec010-012-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commits cc3996b (P1-010), 76bb398 (P1-011), 613dee6 (P1-012) — honest evidence record
+
+Work Log:
+- Pushed cc3996b, 76bb398 and 613dee6 in sequence; each push's gate run failed with the IDENTICAL infrastructure signature as #34-#41: gate failure with ZERO steps executed, no runner ever assigned, scan skipped — GitHub-hosted runner unavailability for this private repo (capacity/minutes), not a gate or scanner finding.
+- Every local equivalent of the gate ran green on each exact commit before push: lint 0 · tsc 0 (src+worker) · bun test 324 → 335 → 353/353 · prisma validate + drift guard exit 0 (per-commit for 010/011) · seed OK (re-run for 011's encrypted demo secrets) · build:gate PASS (010, 011, 012) · plus the sandbox E2Es (7/7, 10/10, 11/11) recorded per item.
+
+Stage Summary:
+- TRUTHFUL CI STATE for cc3996b/76bb398/613dee6: locally gate-proven, CI-blocked by infrastructure only. User-side follow-up (cannot be done from the sandbox): verify GitHub Actions minutes/billing for the account, then re-run the affected runs from the Actions UI — the workflow is unchanged since runs #28-#33 were green; no code action is required.
