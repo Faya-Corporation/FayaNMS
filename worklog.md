@@ -2374,3 +2374,15 @@ Stage Summary:
 - Honest posture: the file provider's permissive-mode warning is deliberately fail-open on the warning only (documented, Windows bind-mount rationale); exec stderr tails can surface in worker error messages (operator controls the command; stdout/secret never surfaces); CI remains infra-blocked as recorded in the R29 addendum.
 - Next executable steps: P1-007 (asymmetric service identity — HS256 shared-secret JWT trust), CERT-006 (Sophos SFOS WebAPI transport).
 - Artifacts: this commit (mini-services/worker/vault.ts rewrite; awaited call sites in adapter-router/runner/index/certify; tests/audit/vault-providers.test.ts; tests/audit/ssh-hostkey-guard.test.ts async conversions; README; deploy doc note 16; .env.example).
+
+---
+Task ID: R30-sec-p1-005-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 96944f1 (P1-005) — honest evidence record
+
+Work Log:
+- Pushed 96944f1; run 34905505198 failed with the IDENTICAL infrastructure signature as runs #34-#42: gate failure with ZERO steps executed, no runner ever assigned (runner_name empty), scan skipped — GitHub-hosted runner unavailability for this private repo (capacity/minutes), not a gate or scanner finding. The workflow file is unchanged since runs #28-#33 were green.
+- Every local equivalent of the gate ran green on the exact commit before push: lint 0 · tsc 0 · bun test 374/374 (2,264 expects) · drift guard exit 0 · build:gate PASS · plus the 21-pin vault suite and the 5/5 live-worker E2E recorded in the R30 entry.
+
+Stage Summary:
+- TRUTHFUL CI STATE for 96944f1: locally gate-proven, CI-blocked by infrastructure only. API re-run issued (HTTP 201) for this run as for prior ones. User-side follow-up (cannot be done from the sandbox): verify GitHub Actions minutes/billing for the account, then re-run the affected runs from the Actions UI; no code action is required.
