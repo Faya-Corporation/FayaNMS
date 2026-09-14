@@ -2189,3 +2189,15 @@ Stage Summary:
 - Honest posture: live full-config restore remains refused until per-flavor vendor certification (SAFE-007's boundary, now with truthful wording); the commit-echo mismatch branch is defensive (the worker's pre-commit digest gate makes it unreachable in practice); restore VALIDATE asserts the commit echo rather than a device re-read (simulator plane is stateless by design — a live read-back path arrives with certification); CI runs #34/#35 remain red from GitHub-side runner unavailability (zero steps executed, no runner assigned — re-runs attempted via API, same signature) — user-side billing/minutes check + UI re-run is the path to a green run; all local gate equivalents are green on this commit.
 - Next executable step per the audit §16 order: the P1/P2 tiers (POL-001/002/003 approval-quorum + expiry, SEC items, OPS-001 branch-protection restoration — settings-side), hardware certification of the live plane, Sophos SFOS WebAPI transport.
 - Artifacts: this commit (prisma schema + migration 20260914195652_restore_target; src/lib/change/restore-op.ts; worker /simulate/restore; engine restore executors + dispatch; restore-route stamping + approval provisioning; live-plan wording; tests/audit/restore-op.test.ts; README + runbook). E2E evidence ephemeral (driver + fixtures deleted; RESTORE_APPLIED/RESTORE_REFUSED/APPLY_FAIL_FAST audit events retained in the dev DB as honest history).
+
+---
+Task ID: R26-safe008009-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 1caacca (SAFE-008/009) — honest evidence record
+
+Work Log:
+- Pushed 1caacca; run #36 picked it up and failed with the IDENTICAL infrastructure signature as #34/#35: gate failure with ZERO steps executed, no runner ever assigned (runner: ''), scan skipped — GitHub-hosted runner unavailability for this private repo (capacity/minutes), not a scanner or gate finding. A third API re-run attempt this session confirmed the pattern persists.
+- Every local equivalent of the gate ran green on this exact commit before push: lint 0 · tsc 0 (src+scripts+mini-services) · bun test 216/216 (1,963 expects) · prisma validate + migrate deploy + drift guard exit 0 · build:gate PASS · plus the 3/3 sandbox E2E recorded in R26.
+
+Stage Summary:
+- TRUTHFUL CI STATE for 1caacca: locally gate-proven, CI-blocked by infrastructure only. User-side follow-up (cannot be done from the sandbox): verify GitHub Actions minutes/billing for the account, then re-run runs #34/#35/#36 from the Actions UI — the workflow is unchanged since runs #28-#33 were green; no code action is required.
