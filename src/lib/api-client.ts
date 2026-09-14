@@ -798,13 +798,28 @@ export interface ChangeDetailStep {
   finishedAt: string | null;
 }
 
+/** One bindable decision (POL-001/002/003) in a level's approval history. */
+export interface ChangeDetailApprovalDecision {
+  id: string;
+  decision: string; // APPROVED | REJECTED
+  approverName: string | null;
+  decidedAt: string;
+  /** Validity horizon (POL-003) — APPROVED decisions only. */
+  expiresAt: string | null;
+  comment: string | null;
+}
+
 export interface ChangeDetailApproval {
   id: string;
   level: string;
   status: string;
+  /** POL-001 — distinct approvers required (CAB on CRITICAL: 2). */
+  quorumRequired: number;
   approverName: string | null;
   decidedAt: string | null;
   comment: string | null;
+  /** Bindable decision history, newest first. */
+  decisions: ChangeDetailApprovalDecision[];
 }
 
 export interface ChangeDetailSnapshot {
@@ -904,7 +919,23 @@ export interface ApprovalDecisionResult {
     status: string;
     riskLevel: string;
   };
-  approvals: { level: string; status: string }[];
+  /** The recorded bindable decision (POL-002 fingerprint + POL-003 expiry). */
+  decision: {
+    level: string;
+    decision: string;
+    approver: string;
+    decidedAt: string;
+    expiresAt: string | null;
+    fingerprint: string;
+  };
+  /** Per-level quorum verdicts after the decision (POL-001). */
+  quorum: {
+    level: string;
+    state: string;
+    distinctApprovers: number;
+    quorumRequired: number;
+    earliestExpiry: string | null;
+  }[];
   selfApproval: boolean;
   audit: { action: string; correlationId: string };
   message: string;

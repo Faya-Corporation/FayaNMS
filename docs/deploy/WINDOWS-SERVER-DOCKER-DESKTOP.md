@@ -457,6 +457,10 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 | Execute answers `409 EXECUTION_IN_FLIGHT` | single-flight guard (SAFE-003): this change ALREADY has a queued/running execution (double-click or retry while the first job is alive) | Follow the active job named in the error (id + correlation) in the Job Center instead of re-queuing; the lease auto-releases when the execution reaches a terminal state |
 | Change driver logs `409 DEVICE_WRITE_LOCKED … (held by change …)` | per-device write lock (SAFE-005): another executing change currently owns a device in this change's scope — one change, one device, one step at a time | Expected under contention: the job requeues automatically (30 s × attempts backoff) and resumes when the holder's step completes; if the holder is wedged, the tick reaper / 15-min lock expiry clears it — investigate the HOLDING change first |
 | Restore change fails with `RESTORE_TARGET_UNRESOLVABLE` (apply step, devices SKIPPED) | fail-closed target guard (SAFE-008): the approved snapshot is gone (deleted → FK SetNull), belongs to another device, or failed its stored digest | This is by design — the engine never guesses a substitute restore source. Re-file the restore from the device page against an existing snapshot; check `RESTORE_REFUSED` in the audit trail for the typed reason |
+| Execute answers `409 APPROVALS_PENDING` naming levels | bindable approval gate (POL-001): each level needs its quorum of DISTINCT approvers decided — CAB on CRITICAL changes needs TWO | Have the required approvers decide under their own accounts (one person can never fill two slots — a wildcard holder that already decided a level is refused `DECISION_STILL_VALID`) |
+| Execute answers `409 APPROVAL_EXPIRED` and the change moved back to AWAITING_APPROVAL | validity horizon (POL-003): quorum-counting approvals outlived their risk-tiered window (CRITICAL 14d · HIGH 30d · MEDIUM 90d · LOW 180d) | Expected protective behavior — run a fresh approval cycle (the same approvers can re-cast; their expired history is superseded), then execute again |
+| Execute answers `409 APPROVAL_FINGERPRINT_MISMATCH` (audit: `CHANGE_EXECUTE_FINGERPRINT_MISMATCH`) | fingerprint binding (POL-002): the change's current devices/operations/restore-target/schedule no longer hash to what the approvers approved — out-of-band edits are real drift | Re-approval required by design: an approval authorizes exactly the spec it saw. Audit the audit trail for WHO moved the spec, fix the intent, collect fresh approvals, execute |
+| Execute answers `409 APPROVALS_REBIND_REQUIRED` | the approval gate carries pre-POL data (APPROVED rows with no bindable decisions or no verifiable validity horizon) | One-time migration posture: re-approve the change under the bindable model; new changes always provision quorum-stamped rows and bindable decisions |
 | App can't reach postgres / connection refused | postgres not healthy yet, or topology override broke DNS | `docker compose ps` (health check), `docker compose logs postgres`; app retries are NOT automatic — `docker compose restart app` after postgres is healthy |
 | Worker logs "backend unreachable" loops | app not reachable at `NEXT_BASE_URL` (e.g. typo'd env override) | compose default `http://app:3000` (T5) is correct for the shipped stack — verify `WORKER_BASE_URL`/`NEXT_BASE_URL` overrides in the `--env-file`; the worker self-heals with backoff once reachable |
 | App routes report "Worker service unreachable" | worker not reachable at `WORKER_BASE_URL` | compose default `http://worker:3030` (T5); check `docker compose ps`/worker `HEALTHCHECK`, and that 3030 was never published/firewalled |
@@ -542,6 +546,20 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    transport is certified for bounded description-marker deltas only) — the refusal is
    a capability boundary, not a gap. Rollback of a failed restore = the job's
    pre-restore backup, exactly like any other change.
+12. **Bindable approvals (POL-001/002/003, audit §6 P1-001/P1-002)**: every
+   approval decision is a first-class record bound to the SHA-256 fingerprint
+   of the canonical approved spec and stamped with a risk-tiered validity
+   horizon (CRITICAL 14d · HIGH 30d · MEDIUM 90d · LOW 180d). A level is
+   satisfied by a quorum of DISTINCT approvers (CAB on CRITICAL changes: two
+   people — a wildcard holder that already decided the level is refused
+   `DECISION_STILL_VALID`, so no single person can satisfy a CAB quorum). The
+   execute gate re-verifies the fingerprint and the validity horizons inside
+   the single-flight transaction: spec drift after approval refuses
+   `APPROVAL_FINGERPRINT_MISMATCH`; lapsed approvals refuse
+   `APPROVAL_EXPIRED` and flip the change back to `AWAITING_APPROVAL` for a
+   fresh approval cycle (expired decisions may be superseded by the same
+   approvers; live ones cannot). Pre-POL approval data refuses
+   `APPROVALS_REBIND_REQUIRED` — the gate never silently bypasses.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 

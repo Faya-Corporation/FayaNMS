@@ -739,6 +739,36 @@ export function ChangeDetailView() {
                       ? ` · ${formatDate(approval.decidedAt, "MMM d HH:mm")}`
                       : ""}
                   </span>
+                  {/* POL-001 — quorum progress: a level with quorumRequired
+                      > 1 (CAB on CRITICAL changes) shows how many DISTINCT
+                      approvers have validly approved so far. */}
+                  {approval && approval.quorumRequired > 1 && (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
+                      {approval.decisions.filter(
+                        (d) =>
+                          d.decision === "APPROVED" &&
+                          d.expiresAt !== null &&
+                          new Date(d.expiresAt).getTime() > Date.now()
+                      ).length}/{approval.quorumRequired} distinct approvals
+                    </span>
+                  )}
+                  {/* POL-003 — validity horizon of the latest APPROVED
+                      decision, surfaced so approvers see the expiry. */}
+                  {approval?.decisions.some((d) => d.decision === "APPROVED" && d.expiresAt) && (
+                    <span className="text-xs text-muted-foreground">
+                      valid until{" "}
+                      {formatDate(
+                        approval.decisions
+                          .filter((d) => d.decision === "APPROVED" && d.expiresAt)
+                          .sort(
+                            (a, b) =>
+                              new Date(a.expiresAt ?? 0).getTime() -
+                              new Date(b.expiresAt ?? 0).getTime()
+                          )[0].expiresAt as string,
+                        "MMM d, yyyy"
+                      )}
+                    </span>
+                  )}
                   {approval?.comment && (
                     <p className="w-full text-xs text-muted-foreground">
                       “{approval.comment}”

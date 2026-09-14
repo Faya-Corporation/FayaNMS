@@ -6,6 +6,7 @@ import {
   scoreChangeServerSide,
 } from "../../_lib/change";
 import { approvalLevelsFor } from "@/lib/change/risk";
+import { quorumRequiredFor } from "@/lib/change/approval-policy";
 import {
   authErrorToFail,
   loadRolePermissions,
@@ -143,7 +144,22 @@ export async function GET(
     db.changeApproval.findMany({
       where: { changeId: change.id },
       orderBy: { level: "asc" },
-      include: { approver: { select: { name: true, email: true } } },
+      include: {
+        approver: { select: { name: true, email: true } },
+        // POL-001/002/003 — the bindable decision history (quorum progress,
+        // validity horizons). Newest first for display.
+        decisions: {
+          orderBy: { decidedAt: "desc" },
+          select: {
+            id: true,
+            decision: true,
+            approverName: true,
+            decidedAt: true,
+            expiresAt: true,
+            comment: true,
+          },
+        },
+      },
     }),
     db.configSnapshot.findMany({
       where: { changeId: change.id },
@@ -220,9 +236,18 @@ export async function GET(
       id: approval.id,
       level: approval.level,
       status: approval.status,
+      quorumRequired: approval.quorumRequired,
       approverName: approval.approver?.name ?? approval.approver?.email ?? null,
       decidedAt: approval.decidedAt,
       comment: approval.comment,
+      decisions: approval.decisions.map((decision) => ({
+        id: decision.id,
+        decision: decision.decision,
+        approverName: decision.approverName,
+        decidedAt: decision.decidedAt,
+        expiresAt: decision.expiresAt,
+        comment: decision.comment,
+      })),
     })),
     snapshots: snapshots.map((snapshot) => ({
       id: snapshot.id,
@@ -542,6 +567,7 @@ export async function PATCH(
               changeId: current.id,
               level,
               status: "PENDING",
+              quorumRequired: quorumRequiredFor(level, current.riskLevel),
             })),
           });
         }

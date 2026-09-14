@@ -21,6 +21,10 @@ import { Prisma, PrismaClient } from "@prisma/client";
 // auth helper) — the seed reuses it so seeded users can actually sign in.
 import { hashPassword } from "../src/lib/auth/password";
 import { ROLE_MATRIX } from "../src/lib/auth/role-matrix";
+// POL-001/002/003 — the seed stamps seeded approvals through the SAME pure
+// libs the API routes use, so the seeded world satisfies the bindable gate.
+import { approvalExpiryFor } from "../src/lib/change/approval-policy";
+import { approvalFingerprintFor } from "../src/lib/change/fingerprint";
 
 const db = new PrismaClient();
 
@@ -2074,6 +2078,75 @@ async function seedChanges() {
     { changeId: "chg-2026-00410", level: "MANAGER", status: "APPROVED", approverId: "usr-manager1", decidedAt: ago(4350), comment: "Approved with mandatory post-validation." },
   ];
   await db.changeApproval.createMany({ data: approvals });
+
+  // POL-001/002/003 — bindable approval history for the seeded APPROVED
+  // rows. Every decision carries the canonical spec fingerprint of its
+  // change (computed with the SAME lib the routes use) and a risk-tiered
+  // validity horizon, and each approved change is stamped with that
+  // fingerprint — the seeded world must satisfy the execute-time gate
+  // (APPROVAL_EXPIRED / APPROVAL_FINGERPRINT_MISMATCH) without special
+  // cases. PENDING rows stay decisionless (they are the live demo queue).
+  const approvedChangeIds = Array.from(
+    new Set(approvals.filter((a) => a.status === "APPROVED").map((a) => a.changeId))
+  );
+  for (const changeId of approvedChangeIds) {
+    const change = await db.changeRequest.findUnique({
+      where: { id: changeId },
+      select: {
+        id: true,
+        number: true,
+        type: true,
+        riskLevel: true,
+        restoreSnapshotId: true,
+        scheduledStart: true,
+        scheduledEnd: true,
+        devices: { select: { deviceId: true } },
+        steps: { select: { order: true, name: true, type: true } },
+      },
+    });
+    if (!change) continue;
+    const fingerprint = approvalFingerprintFor({
+      changeNumber: change.number,
+      changeType: change.type,
+      riskLevel: change.riskLevel,
+      deviceIds: change.devices.map((d) => d.deviceId),
+      operations: change.steps.map((s) => ({ order: s.order, name: s.name, type: s.type })),
+      restoreSnapshotId: change.restoreSnapshotId,
+      scheduledStart: change.scheduledStart,
+      scheduledEnd: change.scheduledEnd,
+    });
+
+    const rows = await db.changeApproval.findMany({
+      where: { changeId, status: "APPROVED" },
+      select: { id: true, approverId: true, decidedAt: true, comment: true },
+    });
+    const users = await db.user.findMany({
+      where: { id: { in: rows.map((r) => r.approverId).filter((v): v is string => !!v) } },
+      select: { id: true, name: true },
+    });
+    const nameOf = new Map(users.map((u) => [u.id, u.name]));
+
+    for (const row of rows) {
+      const decidedAt = row.decidedAt ?? new Date();
+      await db.changeApprovalDecision.create({
+        data: {
+          approvalId: row.id,
+          approverId: row.approverId,
+          approverName: row.approverId ? nameOf.get(row.approverId) ?? "Demo approver" : "Demo approver",
+          decision: "APPROVED",
+          fingerprint,
+          decidedAt,
+          expiresAt: approvalExpiryFor(change.riskLevel, "APPROVED", decidedAt),
+          comment: row.comment,
+        },
+      });
+    }
+
+    await db.changeRequest.update({
+      where: { id: changeId },
+      data: { approvalFingerprint: fingerprint },
+    });
+  }
 }
 
 async function seedIncidentsAndAlerts() {

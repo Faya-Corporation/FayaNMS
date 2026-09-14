@@ -351,6 +351,44 @@ every device SKIPPED, NO rollback, `RESTORE_REFUSED` audited; (C) demo-control
 pass (ROLLBACK/VALIDATE/BACKUP appended and PASSED), `APPLY_FAIL_FAST` + `CHANGE_FAILED`
 audited. E2E fixtures deleted after the run; audit events kept as history.
 
+**LANDED — POL-001/002/003 (audit remediation order item 7 / P1-001+P1-002):
+bindable approvals — CAB quorum, spec fingerprint, expiry.** The approval gate
+moved from "one row per level" to first-class BINDABLE decisions
+(`ChangeApprovalDecision` under each `ChangeApproval` level row, cached status
+re-derived by a single pure evaluator shared by the decision route and the
+execute gate — the two can never disagree):
+POL-001 — a level is satisfied by a QUORUM of DISTINCT approvers, policy 1
+everywhere except CAB on CRITICAL changes which requires TWO distinct
+approvers; one principal can never fill two slots (a wildcard holder that
+already decided the level gets `DECISION_STILL_VALID`, so even the admin
+cannot game the quorum);
+POL-002 — every decision carries SHA-256 over the canonical approved spec
+(versioned envelope: devices, typed operations, restore target, schedule;
+`src/lib/change/fingerprint.ts`, key-order/array-order independent); the
+change is stamped with the fingerprint at gate completion and the execute
+route re-computes it from the live rows inside the SAFE-003 transaction — ANY
+drift (out-of-band DB edits, restore-target movement) refuses
+`APPROVAL_FINGERPRINT_MISMATCH` with a `CHANGE_EXECUTE_FINGERPRINT_MISMATCH`
+audit and no job;
+POL-003 — APPROVED decisions carry a risk-tiered validity horizon (CRITICAL
+14d · HIGH 30d · MEDIUM 90d · LOW 180d); expired decisions stop counting, and
+execution with a lapsed quorum refuses `APPROVAL_EXPIRED` and flips the change
+back to `AWAITING_APPROVAL` in the same transaction
+(`CHANGE_APPROVALS_INVALIDATED` audit, stale fingerprint cleared) — the same
+approvers re-cast after expiry (re-approval loop; live decisions are
+re-cast-proof). Pre-POL approval data (APPROVED rows with no bindable
+decisions / no verifiable horizon) is `APPROVALS_REBIND_REQUIRED`, never a
+silent bypass. Provisioning sites stamp per-level `quorumRequired` (wizard
+submit, PATCH submit, restore flow); the seed provisions bindable decisions
+for its approved demo changes through the same libs. Suite 216 → 242
+(`tests/audit/approval-policy.test.ts`, 26 pins). Sandbox E2E (real stack,
+real sessions): CRITICAL flow — admin TECHNICAL+SECURITY+MANAGER+CAB(1st),
+re-cast refused 409, manager1 CAB(2nd) completes the quorum, engine runs the
+change to SUCCESSFUL; out-of-band step tamper after approval → execute refuses
+409 with no job created; aged-out approvals → execute refuses
+`APPROVAL_EXPIRED`, change flips AWAITING_APPROVAL, fresh cycle re-approves
+and drives to SUCCESSFUL. Driver deleted after the run; audit events kept.
+
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
 not); the demo dataset is never committed (rebuild via the seed above — it runs

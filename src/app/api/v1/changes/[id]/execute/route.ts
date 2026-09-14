@@ -6,6 +6,8 @@ import {
   executionLeaseExpiry,
   isUniqueConflict,
 } from "@/lib/change/execution-guard";
+import { loadApprovalGate } from "@/lib/change/approval-gate";
+import { APPROVAL_FINGERPRINT_UNBINDABLE } from "@/lib/change/fingerprint";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +22,23 @@ export const dynamic = "force-dynamic";
  * Guards:
  *   404 CHANGE_NOT_FOUND / 400 ACTOR_NOT_FOUND;
  *   409 INVALID_STATE — only APPROVED | SCHEDULED changes can be executed;
- *   409 APPROVALS_PENDING — every approval row must be APPROVED (or
- *     NOT_REQUIRED) before the engine may run;
+ *   409 APPROVALS_PENDING — the bindable approval gate (POL-001/002/003) is
+ *     not yet satisfied: every level needs its quorum of DISTINCT approvers
+ *     (CAB on CRITICAL changes: TWO distinct approvers);
+ *   409 APPROVAL_EXPIRED — the gate WAS satisfied but quorum-counting
+ *     decisions have passed their validity horizon (POL-003). Fail-closed:
+ *     the change is flipped back to AWAITING_APPROVAL in the same
+ *     transaction (CHANGE_APPROVALS_INVALIDATED audit) and a fresh approval
+ *     cycle is required;
+ *   409 APPROVALS_REBIND_REQUIRED — the gate carries pre-POL data (APPROVED
+ *     rows with no bindable decisions / approvals without verifiable
+ *     horizons). Fail-closed flip identical to the expiry path — re-approval
+ *     under the bindable model is required (never a silent bypass);
+ *   409 APPROVAL_FINGERPRINT_MISMATCH — POL-002: the change's CURRENT spec
+ *     (devices, operations, restore target, schedule) does not hash to the
+ *     approval fingerprint the gate was satisfied against — the approval
+ *     authorizes exactly the spec it saw, so execution refuses (audit
+ *     CHANGE_EXECUTE_FINGERPRINT_MISMATCH);
  *   409 EXECUTION_IN_FLIGHT — SAFE-003 single-flight: the change already
  *     carries a QUEUED/RUNNING CHANGE_EXECUTE job (a DB-enforced execution
  *     lease — the PK IS the lock — so even two racing POSTs can never both
@@ -37,10 +54,12 @@ export const dynamic = "force-dynamic";
  * until the worker claims the job and the step executor drives the state
  * machine (PRE_CHECK → EXECUTING → VALIDATING → SUCCESSFUL / ROLLBACK…).
  *
- * Transaction order (SAFE-003): job INSERT → lease INSERT → step injection
- * → audit. The lease INSERT is the serialization point — its P2002 fires
- * before any step row or audit event exists, and the losing transaction
- * rolls back its job row too, leaving exactly one execution behind.
+ * Transaction order (SAFE-003 + POL): approval-gate evaluation (refusal
+ * flips commit; everything is atomic with the queueing) → job INSERT →
+ * lease INSERT → step injection → audit. The lease INSERT is the
+ * serialization point — its P2002 fires before any step row or audit event
+ * exists, and the losing transaction rolls back its job row too, leaving
+ * exactly one execution behind.
  */
 const ID_MAX = 64;
 
@@ -104,29 +123,145 @@ export async function POST(
     );
   }
 
-  const approvals = await db.changeApproval.findMany({
-    where: { changeId: change.id },
-    select: { level: true, status: true },
-  });
-  const pending = approvals.filter((row) => row.status === "PENDING");
-  if (pending.length > 0) {
-    return fail(
-      "APPROVALS_PENDING",
-      `Approvals still pending: ${pending.map((row) => row.level).join(", ")} — decide them before executing`,
-      409
-    );
-  }
-
   const correlationId = newJobCorrelationId();
   const now = new Date();
 
-  // SAFE-003 — job creation, lease acquisition, step injection and audit all
-  // happen in ONE transaction; the lease INSERT (PK = changeId) is the
-  // DB-enforced single-flight serialization point.
+  /** The refusal payload produced inside the gate section of the tx. */
+  type GateRefusal = {
+    code: string;
+    message: string;
+    detail?: Record<string, unknown>;
+  };
+
+  // SAFE-003 + POL — gate evaluation, job creation, lease acquisition, step
+  // injection and audit all happen in ONE transaction; the lease INSERT
+  // (PK = changeId) is the DB-enforced single-flight serialization point.
+  // Refusal paths that MUTATE state (expiry/rebind flips, fingerprint
+  // audit) commit deliberately — fail-closed is still durable truth.
   let jobId: string;
   try {
     const result = await db.$transaction(
       async (tx) => {
+        // ── Bindable approval gate (POL-001/002/003) ──────────────────────
+        const gate = await loadApprovalGate(change.id, now, tx);
+        if (!gate) {
+          return fail("CHANGE_NOT_FOUND", "The requested change does not exist", 404) as never;
+        }
+
+        const verdict = gate.verdict;
+
+        if (verdict.state !== "SATISFIED") {
+          if (verdict.state === "EXPIRED" || verdict.state === "UNBINDABLE") {
+            // Fail-closed flip: the approval gate no longer holds (validity
+            // lapsed / pre-POL data) — return the change to
+            // AWAITING_APPROVAL and re-open every non-terminal level. The
+            // flip commits; the caller answers 409 with the truthful code.
+            const reason = verdict.state === "EXPIRED" ? "EXPIRED" : "REBIND_REQUIRED";
+            await tx.changeRequest.update({
+              where: { id: change.id },
+              data: { status: "AWAITING_APPROVAL", approvalFingerprint: null },
+            });
+            for (const level of verdict.levels) {
+              const row = gate.rows.find((r) => r.level === level.level);
+              if (!row || row.status === "NOT_REQUIRED" || row.status === "REJECTED") continue;
+              await tx.changeApproval.update({
+                where: { id: row.id },
+                data: { status: "PENDING" },
+              });
+            }
+            await tx.auditEvent.create({
+              data: {
+                actorId: actor.id,
+                actorName: actor.name ?? "Acting user",
+                action: "CHANGE_APPROVALS_INVALIDATED",
+                resourceType: "ChangeRequest",
+                resourceId: change.id,
+                resourceLabel: change.number,
+                result: "SUCCESS",
+                correlationId,
+                beforeJson: JSON.stringify({ status: change.status }),
+                afterJson: JSON.stringify({
+                  status: "AWAITING_APPROVAL",
+                  reason,
+                  levels: verdict.blocking,
+                  riskLevel: change.riskLevel,
+                  policy: "POL-001/002/003",
+                }),
+              },
+            });
+            const refusal: GateRefusal =
+              verdict.state === "EXPIRED"
+                ? {
+                    code: "APPROVAL_EXPIRED",
+                    message: `Approval validity lapsed on ${verdict.blocking.join(", ")} — approvals expire by risk policy (POL-003). The change returned to AWAITING_APPROVAL for a fresh approval cycle.`,
+                    detail: {
+                      expiredLevels: verdict.blocking,
+                      levels: verdict.levels.map((l) => ({
+                        level: l.level,
+                        state: l.state,
+                        earliestExpiry: l.earliestExpiry,
+                      })),
+                    },
+                  }
+                : {
+                    code: "APPROVALS_REBIND_REQUIRED",
+                    message: `The approval gate on ${verdict.blocking.join(", ")} carries pre-POL data (approvals without bindable decisions or verifiable validity) — re-approval under the bindable model is required (POL-001/002/003). The change returned to AWAITING_APPROVAL.`,
+                    detail: { unbindableLevels: verdict.blocking },
+                  };
+            return { refusal };
+          }
+          // PENDING (and defensive REJECTED) — plain refusal, no mutation.
+          const refusal: GateRefusal =
+            verdict.state === "PENDING"
+              ? {
+                  code: "APPROVALS_PENDING",
+                  message: `Approvals still pending: ${verdict.blocking.join(", ")} — decide them (quorum of distinct approvers per level) before executing`,
+                  detail: { pendingLevels: verdict.blocking },
+                }
+              : {
+                  code: "INVALID_STATE",
+                  message: `The approval gate is REJECTED on ${verdict.blocking.join(", ")} — the change cycle is over`,
+                };
+          return { refusal };
+        }
+
+        // POL-002 — the gate is satisfied; verify the binding. Both the
+        // change-level stamp AND every quorum-counting decision must hash
+        // to the CURRENT spec fingerprint.
+        const stampDrift =
+          gate.change.approvalFingerprint !== gate.currentFingerprint;
+        if (stampDrift || gate.mismatchedLevels.length > 0) {
+          await tx.auditEvent.create({
+            data: {
+              actorId: actor.id,
+              actorName: actor.name ?? "Acting user",
+              action: "CHANGE_EXECUTE_FINGERPRINT_MISMATCH",
+              resourceType: "ChangeRequest",
+              resourceId: change.id,
+              resourceLabel: change.number,
+              result: "FAILURE",
+              correlationId,
+              afterJson: JSON.stringify({
+                expected: gate.change.approvalFingerprint,
+                current: gate.currentFingerprint,
+                mismatchedLevels: gate.mismatchedLevels,
+                policy: "POL-002",
+              }),
+            },
+          });
+          const refusal: GateRefusal = {
+            code: "APPROVAL_FINGERPRINT_MISMATCH",
+            message: `${APPROVAL_FINGERPRINT_UNBINDABLE}: the approved spec no longer matches the change's current devices, operations, restore target or schedule — the approval authorizes exactly the spec it saw (POL-002). Re-approval is required.`,
+            detail: {
+              expected: gate.change.approvalFingerprint,
+              current: gate.currentFingerprint,
+              mismatchedLevels: gate.mismatchedLevels,
+            },
+          };
+          return { refusal };
+        }
+
+        // ── SAFE-003 single-flight queueing (unchanged contract) ─────────
         // Crash valve: a lease past its TTL may be taken over (its job could
         // never reach a terminal state — see the model docstring). Live
         // leases are never touched here.
@@ -175,7 +310,9 @@ export async function POST(
         // Stepless changes (some seeded rows ship without a plan): inject the
         // standard 5-step execution plan so the engine has real work to drive
         // and the timeline is meaningful. Changes authored via the wizard or
-        // the restore flow already carry their steps.
+        // the restore flow already carry their steps. Injection runs AFTER
+        // the fingerprint verification — the approved intent is the pre-
+        // injection spec, and injected default steps are engine-owned.
         if (change._count.steps === 0) {
           await tx.changeStep.createMany({
             data: [
@@ -203,15 +340,26 @@ export async function POST(
               failAt: failAt ?? null,
               riskLevel: change.riskLevel,
               singleFlight: "lease-acquired",
+              approvalFingerprint: gate.currentFingerprint,
             }),
           },
         });
 
-        return job;
+        return { job };
       },
       { maxWait: 5_000, timeout: 20_000 }
     );
-    jobId = result.id;
+
+    if ("refusal" in result && result.refusal) {
+      const refusal = result.refusal as GateRefusal;
+      return failWithDetail(
+        refusal.code,
+        refusal.message,
+        409,
+        refusal.detail
+      );
+    }
+    jobId = (result as { job: { id: string } }).job.id;
   } catch (error) {
     if (error instanceof ExecutionInFlightError) {
       // Name the execution that holds the lease so the operator can follow

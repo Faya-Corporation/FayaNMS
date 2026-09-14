@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { approvalLevelsFor } from "@/lib/change/risk";
+import { quorumRequiredFor } from "@/lib/change/approval-policy";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { z } from "zod";
@@ -213,6 +214,7 @@ export async function POST(
           changeId: created.id,
           level,
           status: "PENDING" as const,
+          quorumRequired: quorumRequiredFor(level, riskLevel),
         })),
       });
 

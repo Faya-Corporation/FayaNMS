@@ -34,29 +34,30 @@ datasource db {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
   // role: admin | operator | engineer | auditor | manager | viewer
-  role      String   @default("viewer")
-  isActive  Boolean  @default(true)
+  role         String   @default("viewer")
+  isActive     Boolean  @default(true)
   // passwordHash is populated in the auth phase (roadmap 7-a); null = login disabled.
   // Plaintext secrets are never stored.
   passwordHash String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   configSnapshots   ConfigSnapshot[]
-  approvedBaselines ConfigBaseline[] @relation("BaselineApprover")
-  requestedChanges  ChangeRequest[]  @relation("ChangeRequester")
-  ownedChanges      ChangeRequest[]  @relation("ChangeOwner")
-  techOwnedChanges  ChangeRequest[]  @relation("ChangeTechnicalOwner")
+  approvedBaselines ConfigBaseline[]         @relation("BaselineApprover")
+  requestedChanges  ChangeRequest[]          @relation("ChangeRequester")
+  ownedChanges      ChangeRequest[]          @relation("ChangeOwner")
+  techOwnedChanges  ChangeRequest[]          @relation("ChangeTechnicalOwner")
   approvals         ChangeApproval[]
-  ownedIncidents    Incident[]       @relation("IncidentOwner")
+  approvalDecisions ChangeApprovalDecision[]
+  ownedIncidents    Incident[]               @relation("IncidentOwner")
   incidentEvents    IncidentEvent[]
-  ackedAlerts       Alert[]          @relation("AlertAcknowledger")
-  assignedAlerts    Alert[]          @relation("AlertAssignee")
-  notifications     Notification[]   @relation("NotificationRecipient")
+  ackedAlerts       Alert[]                  @relation("AlertAcknowledger")
+  assignedAlerts    Alert[]                  @relation("AlertAssignee")
+  notifications     Notification[]           @relation("NotificationRecipient")
   auditEvents       AuditEvent[]
 
   @@index([role])
@@ -113,45 +114,45 @@ model Vendor {
 }
 
 model Device {
-  id                 String   @id @default(cuid())
-  hostname           String   @unique
-  mgmtIp             String
-  displayName        String?
-  vendorId           String
-  vendor             Vendor   @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  id                  String             @id @default(cuid())
+  hostname            String             @unique
+  mgmtIp              String
+  displayName         String?
+  vendorId            String
+  vendor              Vendor             @relation(fields: [vendorId], references: [id], onDelete: Restrict)
   // dataSource: SIMULATOR | LIVE_SSH (Phase 22 slice 1, 2026-09-13 — read-only SSH).
   // LIVE_SSH devices are reached by the worker over REAL SSH (exec-only,
   // read-only command allowlist). They REQUIRE a linked CredentialProfile
   // (username/port/secretRef travel in job payloads — never the secret) and
   // a worker-side vault entry for the secretRef (FAYANMS_VAULT_* env).
-  dataSource         String   @default("SIMULATOR")
+  dataSource          String             @default("SIMULATOR")
   credentialProfileId String?
-  credentialProfile  CredentialProfile? @relation(fields: [credentialProfileId], references: [id], onDelete: SetNull)
-  platform           String?
-  model              String?
-  serialNumber       String?
-  firmware           String?
+  credentialProfile   CredentialProfile? @relation(fields: [credentialProfileId], references: [id], onDelete: SetNull)
+  platform            String?
+  model               String?
+  serialNumber        String?
+  firmware            String?
   // role: CORE_ROUTER | EDGE_ROUTER | BRANCH_ROUTER | FIREWALL | CORE_SWITCH |
   //       ACCESS_SWITCH | TOP_OF_RACK | WIRELESS_CONTROLLER | LOAD_BALANCER | WAN_GATEWAY
-  role               String?
-  siteId             String?
-  site               Site?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  role                String?
+  siteId              String?
+  site                Site?              @relation(fields: [siteId], references: [id], onDelete: SetNull)
   // status: ONLINE | OFFLINE | DEGRADED | MAINTENANCE | UNKNOWN | UNMANAGED
-  status             String   @default("UNKNOWN")
+  status              String             @default("UNKNOWN")
   // criticality: LOW | MEDIUM | HIGH | CRITICAL
-  criticality        String   @default("MEDIUM")
-  healthScore        Int      @default(100)
-  uptimeSeconds      BigInt?
-  lastSeen           DateTime?
-  lastBackupAt       DateTime?
-  lastConfigChangeAt DateTime?
+  criticality         String             @default("MEDIUM")
+  healthScore         Int                @default(100)
+  uptimeSeconds       BigInt?
+  lastSeen            DateTime?
+  lastBackupAt        DateTime?
+  lastConfigChangeAt  DateTime?
   // backupCompliance: COMPLIANT | OVERDUE | FAILED | NEVER_BACKED_UP | UNKNOWN
-  backupCompliance   String   @default("UNKNOWN")
+  backupCompliance    String             @default("UNKNOWN")
   // tagsJson: JSON array of strings, e.g. ["core","bgp","hsrp"]
-  tagsJson           String?
-  notes              String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  tagsJson            String?
+  notes               String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   interfaces  DeviceInterface[]
   snapshots   ConfigSnapshot[]
@@ -178,23 +179,23 @@ model Device {
 }
 
 model DeviceInterface {
-  id           String    @id @default(cuid())
-  deviceId     String
-  device       Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  name         String
+  id             String         @id @default(cuid())
+  deviceId       String
+  device         Device         @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  name           String
   // adminStatus: UP | DOWN | TESTING
-  adminStatus  String    @default("UP")
+  adminStatus    String         @default("UP")
   // operStatus: UP | DOWN | TESTING | UNKNOWN | DORMANT | NOT_PRESENT | LOWER_LAYER_DOWN
-  operStatus   String    @default("DOWN")
-  speedMbps    Int?
-  macAddress   String?
-  description  String?
-  vlan         Int?
-  mtu          Int?
+  operStatus     String         @default("DOWN")
+  speedMbps      Int?
+  macAddress     String?
+  description    String?
+  vlan           Int?
+  mtu            Int?
   countersInBps  BigInt?
   countersOutBps BigInt?
-  lastFlapAt   DateTime?
-  metricSamples MetricSample[]
+  lastFlapAt     DateTime?
+  metricSamples  MetricSample[]
 
   @@unique([deviceId, name])
   @@index([deviceId, operStatus])
@@ -214,7 +215,7 @@ model CredentialProfile {
   notes         String?
 
   // LIVE_SSH devices using this profile (Phase 22 slice 1)
-  devices       Device[]
+  devices Device[]
 }
 
 // SAFE-001 (audit P0-001, 2026-09-13): SSH host-key enrollment + pinning.
@@ -227,34 +228,34 @@ model CredentialProfile {
 // enrollment probe. The fingerprint is the OpenSSH-style
 // "SHA256:<base64(no padding)>" of the server's public key blob.
 model SshHostKey {
-  id          String   @id @default(cuid())
+  id             String    @id @default(cuid())
   // Endpoint coordinates (credential port) — e.g. mgmtIp 10.20.0.1 + port 22.
-  host        String
-  port        Int
+  host           String
+  port           Int
   // Key algorithm as presented by the server, e.g. "ssh-ed25519".
-  keyType     String
+  keyType        String
   // OpenSSH-style fingerprint: SHA256:<43 base64 chars, no padding>.
-  fingerprint String
+  fingerprint    String
   // Base64 of the raw public key blob (audit/rotation display; the worker
   // enforces on the FINGERPRINT, never on this column).
-  hostKeyBase64 String
-  enrolledAt  DateTime @default(now())
-  enrolledBy  String
+  hostKeyBase64  String
+  enrolledAt     DateTime  @default(now())
+  enrolledBy     String
   lastVerifiedAt DateTime?
-  notes       String?
+  notes          String?
 
   @@unique([host, port])
   @@index([host])
 }
 
 model BackupPolicy {
-  id         String  @id @default(cuid())
-  name       String  @unique
-  cronExpr   String
+  id            String  @id @default(cuid())
+  name          String  @unique
+  cronExpr      String
   // scopeJson: JSON object, e.g. {"siteCodes":["*"],"criticality":["CRITICAL"],"excludeStatuses":["UNMANAGED"]}
-  scopeJson  String
-  retentionDays Int  @default(90)
-  isActive   Boolean @default(true)
+  scopeJson     String
+  retentionDays Int     @default(90)
+  isActive      Boolean @default(true)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -355,21 +356,21 @@ model DriftRecord {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model ChangeRequest {
-  id          String  @id @default(cuid())
+  id                  String          @id @default(cuid())
   // number format: CHG-YYYY-NNNNN
-  number      String  @unique
-  title       String
-  description String?
+  number              String          @unique
+  title               String
+  description         String?
   // type: STANDARD | NORMAL | EMERGENCY
-  type        String  @default("NORMAL")
+  type                String          @default("NORMAL")
   // status: DRAFT | PLANNING | TECHNICAL_REVIEW | AWAITING_APPROVAL | APPROVED |
   //         SCHEDULED | PRE_CHECK | EXECUTING | VALIDATING | SUCCESSFUL | POST_REVIEW |
   //         CLOSED | FAILED | ROLLBACK | ROLLBACK_FAILED | REJECTED | CANCELLED |
   //         EXPIRED | PARTIAL_SUCCESS
-  status      String  @default("DRAFT")
-  riskScore   Int     @default(0)
+  status              String          @default("DRAFT")
+  riskScore           Int             @default(0)
   // riskLevel: LOW (<21) | MEDIUM (<41) | HIGH (<71) | CRITICAL (>=71)
-  riskLevel   String  @default("LOW")
+  riskLevel           String          @default("LOW")
   // operationKind: typed executable intent (SAFE-007/SAFE-008). GENERIC =
   // wizard/standard changes; RESTORE_SNAPSHOT = the guarded restore-to-snapshot
   // flow. SAFE-008: a restore change carries its approved target on
@@ -379,41 +380,49 @@ model ChangeRequest {
   // its certified transport surface is bounded description-marker deltas,
   // not full-config pushes — vendor certification is a separate gate
   // (LIVE_RESTORE_NOT_CERTIFIED in src/lib/change/live-plan.ts).
-  operationKind String @default("GENERIC")
+  operationKind       String          @default("GENERIC")
   // SAFE-008 — the approved restore target (ConfigSnapshot id). Set ONCE at
   // creation by the guarded restore route; never updated afterwards (the
   // approver approves exactly this target). SetNull on snapshot deletion —
   // the engine then refuses execution (RESTORE_TARGET_UNRESOLVABLE) instead
   // of guessing a substitute. Null on GENERIC changes.
-  restoreSnapshotId String?
-  restoreSnapshot   ConfigSnapshot? @relation("RestoreTarget", fields: [restoreSnapshotId], references: [id], onDelete: SetNull)
-  requesterId String
-  requester   User    @relation("ChangeRequester", fields: [requesterId], references: [id], onDelete: Restrict)
-  ownerId     String?
-  owner       User?   @relation("ChangeOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  technicalOwnerId String?
-  technicalOwner   User? @relation("ChangeTechnicalOwner", fields: [technicalOwnerId], references: [id], onDelete: SetNull)
-  siteId      String?
-  site        Site?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  scheduledStart DateTime?
-  scheduledEnd   DateTime?
-  implementationPlan String?
-  validationPlan     String?
-  rollbackPlan       String?
+  restoreSnapshotId   String?
+  restoreSnapshot     ConfigSnapshot? @relation("RestoreTarget", fields: [restoreSnapshotId], references: [id], onDelete: SetNull)
+  // POL-002 — the approval fingerprint stamped when the approval gate
+  // completes: SHA-256 over the canonical approved spec (devices, typed
+  // operations, restore target, schedule — see src/lib/change/fingerprint.ts).
+  // Every bindable approval decision carries the same value; the execute
+  // route re-computes it from the live spec and refuses to run on ANY drift
+  // (APPROVAL_FINGERPRINT_MISMATCH) — an approval authorizes exactly the
+  // bytes it saw, never whatever the row happens to hold later.
+  approvalFingerprint String?
+  requesterId         String
+  requester           User            @relation("ChangeRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  ownerId             String?
+  owner               User?           @relation("ChangeOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  technicalOwnerId    String?
+  technicalOwner      User?           @relation("ChangeTechnicalOwner", fields: [technicalOwnerId], references: [id], onDelete: SetNull)
+  siteId              String?
+  site                Site?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  scheduledStart      DateTime?
+  scheduledEnd        DateTime?
+  implementationPlan  String?
+  validationPlan      String?
+  rollbackPlan        String?
   // preChecksJson: JSON array of {name, status, detail} objects
-  preChecksJson      String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  preChecksJson       String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
-  devices      ChangeDevice[]
-  steps        ChangeStep[]
-  approvals    ChangeApproval[]
-  snapshots    ConfigSnapshot[]
-  incidents    Incident[]
+  devices            ChangeDevice[]
+  steps              ChangeStep[]
+  approvals          ChangeApproval[]
+  snapshots          ConfigSnapshot[]
+  incidents          Incident[]
   maintenanceWindows MaintenanceWindow[]
   // SAFE-003: at most ONE live execution lease per change — the DB-enforced
   // single-flight guard for queued/running CHANGE_EXECUTE jobs.
-  executionLease ChangeExecutionLease?
+  executionLease     ChangeExecutionLease?
 
   @@index([status])
   @@index([requesterId])
@@ -436,17 +445,17 @@ model ChangeDevice {
 }
 
 model ChangeStep {
-  id        String        @id @default(cuid())
-  changeId  String
-  change    ChangeRequest @relation(fields: [changeId], references: [id], onDelete: Cascade)
-  order     Int
-  name      String
+  id         String        @id @default(cuid())
+  changeId   String
+  change     ChangeRequest @relation(fields: [changeId], references: [id], onDelete: Cascade)
+  order      Int
+  name       String
   // type: CHECK | BACKUP | APPLY | VALIDATE | ROLLBACK
-  type      String        @default("APPLY")
+  type       String        @default("APPLY")
   // status: PENDING | RUNNING | PASSED | FAILED | SKIPPED
-  status    String        @default("PENDING")
-  output    String?
-  error     String?
+  status     String        @default("PENDING")
+  output     String?
+  error      String?
   startedAt  DateTime?
   finishedAt DateTime?
 
@@ -455,21 +464,63 @@ model ChangeStep {
 }
 
 model ChangeApproval {
-  id         String        @id @default(cuid())
-  changeId   String
-  change     ChangeRequest @relation(fields: [changeId], references: [id], onDelete: Cascade)
+  id             String                   @id @default(cuid())
+  changeId       String
+  change         ChangeRequest            @relation(fields: [changeId], references: [id], onDelete: Cascade)
   // level: TECHNICAL | SECURITY | MANAGER | CAB
-  level      String        @default("TECHNICAL")
-  // status: PENDING | APPROVED | REJECTED | NOT_REQUIRED
-  status     String        @default("PENDING")
-  approverId String?
-  approver   User?         @relation(fields: [approverId], references: [id], onDelete: SetNull)
-  decidedAt  DateTime?
-  comment    String?
+  level          String                   @default("TECHNICAL")
+  // status: PENDING | APPROVED | REJECTED | NOT_REQUIRED — the CACHED level
+  // state, re-derived from the bindable decisions below on every decision
+  // POST and every execute-time gate check (POL-001/002/003). Kept as a
+  // column so every existing reader (approvals queue, change detail, execute
+  // gate) renders without joining decisions.
+  status         String                   @default("PENDING")
+  // POL-001 — how many DISTINCT approvers must APPROVE this level before it
+  // counts as satisfied. Policy: 1 everywhere except CAB on CRITICAL
+  // changes, which requires a two-person quorum
+  // (quorumRequiredFor in src/lib/change/approval-policy.ts).
+  quorumRequired Int                      @default(1)
+  // Legacy single-decision mirror (latest decision) for pre-POL readers —
+  // the authoritative record is the ChangeApprovalDecision history below.
+  approverId     String?
+  approver       User?                    @relation(fields: [approverId], references: [id], onDelete: SetNull)
+  decidedAt      DateTime?
+  comment        String?
+  decisions      ChangeApprovalDecision[]
 
   @@unique([changeId, level])
   @@index([approverId])
   @@index([status])
+}
+
+model ChangeApprovalDecision {
+  id           String         @id @default(cuid())
+  approvalId   String
+  approval     ChangeApproval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  approverId   String?
+  approver     User?          @relation(fields: [approverId], references: [id], onDelete: SetNull)
+  // Denormalized approver label — survives user deletion (SetNull) so the
+  // approval history stays truthful (same posture as AuditEvent.actorName).
+  approverName String?
+  // decision: APPROVED | REJECTED
+  decision     String
+  // POL-002 — SHA-256 of the canonical approved spec AT DECISION TIME. The
+  // execute gate verifies every satisfied decision still carries the
+  // change's CURRENT fingerprint: an approval cast against a different spec
+  // never authorizes this spec.
+  fingerprint  String
+  decidedAt    DateTime       @default(now())
+  // POL-003 — validity horizon (APPROVED only): decidedAt + the risk-tiered
+  // validity window (approvalValidityFor in approval-policy.ts). An expired
+  // decision stops counting toward the quorum; execution then refuses
+  // fail-closed (APPROVAL_EXPIRED) and flips the change back to
+  // AWAITING_APPROVAL for a fresh approval cycle. Null on REJECTED
+  // decisions (a rejection needs no horizon — it ends the cycle).
+  expiresAt    DateTime?
+  comment      String?
+
+  @@index([approvalId])
+  @@index([approverId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -477,35 +528,35 @@ model ChangeApproval {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Incident {
-  id          String  @id @default(cuid())
+  id               String         @id @default(cuid())
   // number format: INC-YYYY-NNNNN
-  number      String  @unique
-  title       String
-  description String?
+  number           String         @unique
+  title            String
+  description      String?
   // severity: SEV1 | SEV2 | SEV3 | SEV4
-  severity    String  @default("SEV3")
-  priority    String? // P1 | P2 | P3 | P4
+  severity         String         @default("SEV3")
+  priority         String? // P1 | P2 | P3 | P4
   // status: NEW | ACKNOWLEDGED | ASSIGNED | INVESTIGATING | MITIGATING | MONITORING |
   //         RESOLVED | POST_INCIDENT_REVIEW | CLOSED
-  status      String  @default("NEW")
+  status           String         @default("NEW")
   // source: ALERT | SNMP_TRAP | SYSLOG | WEBHOOK | FAILED_CHANGE | DRIFT | FAILED_BACKUP | MANUAL
-  source      String  @default("ALERT")
-  siteId      String?
-  site        Site?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  ownerTeam   String?
-  ownerId     String?
-  owner       User?   @relation("IncidentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  changeId    String?
-  change      ChangeRequest? @relation(fields: [changeId], references: [id], onDelete: SetNull)
-  slaDueAt       DateTime?
-  acknowledgedAt DateTime?
-  resolvedAt     DateTime?
-  closedAt       DateTime?
-  rootCause          String?
-  correctiveAction   String?
-  preventiveAction   String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  source           String         @default("ALERT")
+  siteId           String?
+  site             Site?          @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  ownerTeam        String?
+  ownerId          String?
+  owner            User?          @relation("IncidentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  changeId         String?
+  change           ChangeRequest? @relation(fields: [changeId], references: [id], onDelete: SetNull)
+  slaDueAt         DateTime?
+  acknowledgedAt   DateTime?
+  resolvedAt       DateTime?
+  closedAt         DateTime?
+  rootCause        String?
+  correctiveAction String?
+  preventiveAction String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   devices IncidentDevice[]
   events  IncidentEvent[]
@@ -546,38 +597,38 @@ model IncidentEvent {
 }
 
 model Alert {
-  id         String     @id @default(cuid())
-  deviceId   String
-  device     Device     @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  ruleId     String?
-  rule       AlertRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  id               String     @id @default(cuid())
+  deviceId         String
+  device           Device     @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  ruleId           String?
+  rule             AlertRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
   // severity: CRITICAL | HIGH | MEDIUM | LOW | INFO
-  severity   String     @default("MEDIUM")
-  message    String
+  severity         String     @default("MEDIUM")
+  message          String
   // status: ACTIVE | ACKNOWLEDGED | SUPPRESSED | RESOLVED
-  status     String     @default("ACTIVE")
-  firstSeen  DateTime   @default(now())
-  lastSeen   DateTime   @default(now())
-  count      Int        @default(1)
-  incidentId String?
-  incident   Incident?  @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  status           String     @default("ACTIVE")
+  firstSeen        DateTime   @default(now())
+  lastSeen         DateTime   @default(now())
+  count            Int        @default(1)
+  incidentId       String?
+  incident         Incident?  @relation(fields: [incidentId], references: [id], onDelete: SetNull)
   acknowledgedById String?
-  acknowledgedBy   User?    @relation("AlertAcknowledger", fields: [acknowledgedById], references: [id], onDelete: SetNull)
+  acknowledgedBy   User?      @relation("AlertAcknowledger", fields: [acknowledgedById], references: [id], onDelete: SetNull)
   acknowledgedAt   DateTime?
   // Task 5-a — alert engine grouping/dedup/suppression/assignment.
   // dedupKey: engine fingerprint "<deviceId>:<metric>:<ruleId|adhoc>" — the
   // evaluator dedupes on this instead of creating duplicate rows.
-  dedupKey   String?
+  dedupKey         String?
   // Root/child grouping: a device-down (AVAILABILITY) root alert owns the
   // dependent alerts fired on the same device while it was unreachable.
-  parentAlertId String?
-  parentAlert   Alert?   @relation("AlertGrouping", fields: [parentAlertId], references: [id], onDelete: SetNull)
-  childAlerts   Alert[]  @relation("AlertGrouping")
+  parentAlertId    String?
+  parentAlert      Alert?     @relation("AlertGrouping", fields: [parentAlertId], references: [id], onDelete: SetNull)
+  childAlerts      Alert[]    @relation("AlertGrouping")
   // Why the alert is SUPPRESSED: "Maintenance window: <name>" or
   // "Suppressed by root alert: <id>" or a manual reason.
-  suppressReason String?
-  assignedToId String?
-  assignedTo   User?     @relation("AlertAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  suppressReason   String?
+  assignedToId     String?
+  assignedTo       User?      @relation("AlertAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   @@index([deviceId, status])
   @@index([status])
@@ -591,20 +642,20 @@ model Alert {
 }
 
 model AlertRule {
-  id        String  @id @default(cuid())
-  name      String  @unique
+  id              String  @id @default(cuid())
+  name            String  @unique
   // metric: CPU | MEMORY | LATENCY_MS | PACKET_LOSS | UTILIZATION_IN | UTILIZATION_OUT |
   //         SESSIONS | TEMPERATURE — plus pseudo-metric AVAILABILITY (device-down detection)
-  metric    String
+  metric          String
   // operator: GT | LT | GTE | LTE | EQ
-  operator  String  @default("GT")
-  threshold Float
-  durationMinutes Int @default(5)
+  operator        String  @default("GT")
+  threshold       Float
+  durationMinutes Int     @default(5)
   // severity: CRITICAL | HIGH | MEDIUM | LOW | INFO
-  severity  String  @default("MEDIUM")
+  severity        String  @default("MEDIUM")
   // scopeJson: JSON object, e.g. {"siteCodes":["HQ-SAN"],"deviceRoles":["CORE_ROUTER"]}
-  scopeJson String?
-  isActive  Boolean @default(true)
+  scopeJson       String?
+  isActive        Boolean @default(true)
 
   alerts Alert[]
 
@@ -637,16 +688,16 @@ model MaintenanceWindow {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model MetricSample {
-  id         String           @id @default(cuid())
-  deviceId   String
-  device     Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  id          String           @id @default(cuid())
+  deviceId    String
+  device      Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   interfaceId String?
-  interface  DeviceInterface? @relation(fields: [interfaceId], references: [id], onDelete: SetNull)
+  interface   DeviceInterface? @relation(fields: [interfaceId], references: [id], onDelete: SetNull)
   // metric: CPU | MEMORY | LATENCY_MS | PACKET_LOSS | UTILIZATION_IN | UTILIZATION_OUT |
   //         SESSIONS | TEMPERATURE
-  metric     String
-  value      Float
-  ts         DateTime
+  metric      String
+  value       Float
+  ts          DateTime
 
   @@index([deviceId, metric, ts])
   @@index([ts])
@@ -674,51 +725,51 @@ model MetricRollup {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Notification {
-  id     String  @id @default(cuid())
+  id        String    @id @default(cuid())
   // null = broadcast (visible to every operator in the demo shell)
-  userId String?
-  user   User?   @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?     @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
   // kind: ALERT | INCIDENT | CHANGE | JOB | SYSTEM (design §74 — the
   // notifications center is a separate surface from the operational alert
   // stream; the two systems are never mixed)
-  kind   String  @default("SYSTEM")
-  title  String
-  body   String
+  kind      String    @default("SYSTEM")
+  title     String
+  body      String
   // link: a view key (e.g. "ops.alerts") or href the item deep-links to
-  link   String?
+  link      String?
   // severity: CRITICAL | HIGH | MEDIUM | LOW | INFO | SEV1..SEV4 (render hint)
-  severity String?
-  readAt DateTime?
-  createdAt DateTime @default(now())
+  severity  String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([userId, createdAt])
   @@index([readAt])
 }
 
 model JobExecution {
-  id         String    @id @default(cuid())
+  id            String    @id @default(cuid())
   // type: DISCOVERY | CONFIG_BACKUP | CONFIG_RESTORE | CONFIG_APPLY | VALIDATION |
   //       INVENTORY_POLL | METRIC_POLL | REPORT_GENERATION | NOTIFICATION |
   //       DRIFT_CHECK | CHANGE_EXECUTE | ALERT_EVALUATION
-  type       String
+  type          String
   // targetType: DEVICE | SITE | POLICY | SYSTEM
-  targetType String?
-  targetId   String?
+  targetType    String?
+  targetId      String?
   // status: QUEUED | RUNNING | SUCCEEDED | FAILED | DEAD | CANCELLED
-  status     String    @default("QUEUED")
-  progress   Int       @default(0)
-  priority   Int       @default(5)
-  attempts   Int       @default(0)
-  maxAttempts Int      @default(3)
+  status        String    @default("QUEUED")
+  progress      Int       @default(0)
+  priority      Int       @default(5)
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(3)
   // payloadJson / resultJson: serialized JSON
-  payloadJson String?
-  resultJson  String?
-  error      String?
+  payloadJson   String?
+  resultJson    String?
+  error         String?
   correlationId String
-  scheduledAt DateTime?
-  startedAt   DateTime?
-  finishedAt  DateTime?
-  createdAt  DateTime  @default(now())
+  scheduledAt   DateTime?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime  @default(now())
 
   snapshots ConfigSnapshot[]
 
@@ -734,37 +785,32 @@ model JobExecution {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model AuditEvent {
-  id         String   @id @default(cuid())
-  actorId    String?
-  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  actorName  String
+  id            String   @id @default(cuid())
+  actorId       String?
+  actor         User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorName     String
   // action: open set of verbs, e.g. DEVICE_CREATED | DEVICE_UPDATED | CONFIG_BACKUP |
   //         CONFIG_DOWNLOAD | CHANGE_CREATED | CHANGE_APPROVED | CHANGE_EXECUTED |
   //         BASELINE_APPROVED | DRIFT_DETECTED | INCIDENT_CREATED | ALERT_ACKNOWLEDGED |
   //         USER_LOGIN | LOGIN_FAILED | SETTINGS_UPDATED
-  action     String
-  resourceType String
-  resourceId   String?
+  action        String
+  resourceType  String
+  resourceId    String?
   resourceLabel String?
   // result: SUCCESS | FAILURE
-  result     String   @default("SUCCESS")
-  ip         String?
-  userAgent  String?
+  result        String   @default("SUCCESS")
+  ip            String?
+  userAgent     String?
   correlationId String?
   // beforeJson / afterJson: serialized JSON snapshots of the resource
-  beforeJson String?
-  afterJson  String?
+  beforeJson    String?
+  afterJson     String?
   // Audit hash chain (Task 7-b): hash = sha256(prevHash + canonical payload).
   // Nullable during backfill; the chain verifier treats nulls as chain gaps.
-  hash      String?
-  prevHash  String?
-  createdAt DateTime @default(now())
+  hash          String?
+  prevHash      String?
+  createdAt     DateTime @default(now())
 
-  @@index([createdAt])
-  @@index([resourceType])
-  @@index([actorId])
-  @@index([action])
-  @@index([correlationId])
   // P19 / audit AUD-001 — DB-level fork protection: in a linear chain every
   // row's prevHash is unique (it equals the previous row's hash). The unique
   // index makes a fork PHYSICALLY IMPOSSIBLE across processes: two writers
@@ -772,21 +818,26 @@ model AuditEvent {
   // re-stamps onto the new tail (retry in src/lib/db.ts). Multiple NULLs are
   // legal (pre-chain rows) — SQLite UNIQUE treats NULLs as distinct.
   @@unique([prevHash])
+  @@index([createdAt])
+  @@index([resourceType])
+  @@index([actorId])
+  @@index([action])
+  @@index([correlationId])
 }
 
 model ReportSchedule {
-  id          String    @id @default(cuid())
-  name        String
+  id             String    @id @default(cuid())
+  name           String
   // reportType: AVAILABILITY | BACKUP_COMPLIANCE | CHANGE_SUMMARY | INCIDENT_SUMMARY | CAPACITY
-  reportType  String
+  reportType     String
   // frequency: DAILY | WEEKLY | MONTHLY | QUARTERLY
-  frequency   String    @default("WEEKLY")
+  frequency      String    @default("WEEKLY")
   // format: PDF | XLSX | CSV | JSON
-  format      String    @default("PDF")
+  format         String    @default("PDF")
   // recipientsJson: JSON array of email addresses
   recipientsJson String
-  isActive    Boolean   @default(true)
-  lastRunAt   DateTime?
+  isActive       Boolean   @default(true)
+  lastRunAt      DateTime?
 
   @@index([isActive])
 }
@@ -804,70 +855,70 @@ model Setting {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model ApiClient {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
   // tokenHash: sha256 of the bearer token — the plaintext token is shown ONCE
   // at creation and never stored (same posture as CredentialProfile).
-  tokenHash   String   @unique
+  tokenHash   String    @unique
   tokenPrefix String
   // scopes: JSON array, e.g. ["metrics.read","devices.read","alerts.write"]
   scopesJson  String
-  isActive    Boolean  @default(true)
+  isActive    Boolean   @default(true)
   lastUsedAt  DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   createdBy   String?
 
   @@index([isActive])
 }
 
 model WebhookEndpoint {
-  id          String   @id @default(cuid())
-  name        String
-  url         String
+  id              String    @id @default(cuid())
+  name            String
+  url             String
   // secret: HMAC-SHA256 signing secret (masked in API responses)
-  secret      String
+  secret          String
   // events: JSON array of subscribed event keys, e.g. ["alert.fired","incident.created"]
-  eventsJson  String
-  isActive    Boolean  @default(true)
+  eventsJson      String
+  isActive        Boolean   @default(true)
   // last delivery bookkeeping (demo-safe: deliveries recorded, network calls timeout-bounded)
-  lastStatus  String?
-  lastStatusCode Int?
+  lastStatus      String?
+  lastStatusCode  Int?
   lastDeliveredAt DateTime?
-  lastError   String?
-  createdAt   DateTime @default(now())
+  lastError       String?
+  createdAt       DateTime  @default(now())
 
   @@index([isActive])
 }
 
 model NotificationChannel {
-  id          String   @id @default(cuid())
-  name        String
+  id             String    @id @default(cuid())
+  name           String
   // type: EMAIL | WEBHOOK
-  type        String
+  type           String
   // configJson: EMAIL {address,displayName?} | WEBHOOK {url} — secrets masked in responses
-  configJson  String
-  isActive    Boolean  @default(true)
-  lastTestAt  DateTime?
+  configJson     String
+  isActive       Boolean   @default(true)
+  lastTestAt     DateTime?
   lastTestResult String?
-  createdAt   DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
   @@index([type])
 }
 
 model Collector {
-  id          String   @id @default(cuid())
-  name        String   @unique
+  id               String    @id @default(cuid())
+  name             String    @unique
   // kind: POLLER | CONFIG_COLLECTOR | ALERT_ENGINE | RETENTION
-  kind        String
+  kind             String
   // status: ONLINE | OFFLINE | DEGRADED
-  status      String   @default("ONLINE")
+  status           String    @default("ONLINE")
   // capabilities: JSON array, e.g. ["CONFIG_BACKUP","DRIFT_CHECK"]
   capabilitiesJson String
-  host        String?
-  lastSeenAt  DateTime?
+  host             String?
+  lastSeenAt       DateTime?
   // statsJson: { jobsCompleted, uptimeSec, version? }
-  statsJson   String?
-  createdAt   DateTime @default(now())
+  statsJson        String?
+  createdAt        DateTime  @default(now())
 
   @@index([kind])
 }
@@ -877,28 +928,28 @@ model Collector {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model ZtpClaim {
-  id         String   @id @default(cuid())
+  id          String   @id @default(cuid())
   // Factory/asset serial of the device being claimed — unique across claims.
-  serial     String   @unique
-  hostname   String
+  serial      String   @unique
+  hostname    String
   // vendorKey: Vendor.key of the seeded vendor set (cisco | fortinet | sophos |
   //            hpe | juniper | palo | generic)
-  vendorKey  String
-  model      String
+  vendorKey   String
+  model       String
   // templateId: id of a ZTP_TEMPLATES entry (src/lib/ztp/templates.ts); must
   //             match the claim's vendorKey at creation time.
-  templateId String
+  templateId  String
   // Plain scalar references (no FK relations, per the phase contract):
   //   siteId      → Site.id when the claim targets a known site
   //   deviceId    → Device.id once provisioning succeeds (evaluate-in-Next)
-  siteId     String?
-  deviceId   String?
+  siteId      String?
+  deviceId    String?
   // status: pending | provisioning | provisioned | failed
-  status     String   @default("pending")
+  status      String   @default("pending")
   // requestedBy: email or name of the requester (optional, display-only)
   requestedBy String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([status])
   @@index([vendorKey])
@@ -909,27 +960,27 @@ model ZtpClaim {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model CmdbItem {
-  id          String  @id @default(cuid())
+  id          String   @id @default(cuid())
   // Human-facing CI identifier, unique — format CI-000NNN (auto-assigned by
   // the create API as the next free number; the seed pins stable values).
-  ciId        String  @unique
-  name        String  @unique
+  ciId        String   @unique
+  name        String   @unique
   // ciType: device | interface | service | application | site | circuit
   ciType      String
   // status: active | planned | retired | maintenance
-  status      String  @default("active")
+  status      String   @default("active")
   // criticality: low | medium | high | critical
-  criticality String  @default("medium")
+  criticality String   @default("medium")
   // environment: production | staging | lab
-  environment String  @default("production")
+  environment String   @default("production")
   // serviceTier: tier-1 | tier-2 | tier-3
-  serviceTier String  @default("tier-2")
+  serviceTier String   @default("tier-2")
   description String?
   // Optional link to a real inventory Device — one CI per device (DB-level
   // unique). SetNull per schema rule 4: deleting a device keeps the CI
   // record (procurement history) but drops the link.
-  deviceId    String? @unique
-  device      Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  deviceId    String?  @unique
+  device      Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   // Plain scalar reference matching Site.code (HQ-SAN | DC-ADN | BR1-HOD |
   // BR2-MUK) — display-friendly site linkage, same convention as the DR
   // matrix (src/lib/ha/topology.ts) which keys sites by code.
@@ -950,19 +1001,19 @@ model CmdbItem {
 }
 
 model CmdbRelation {
-  id        String   @id @default(cuid())
+  id           String   @id @default(cuid())
   // Directed edge source → target. Semantics per relationType (documented in
   // the impact route): "A runs_on B" = A is hosted on B, "A depends_on B" =
   // A requires B to function, "A part_of B" = A is a component of B,
   // "A connects_to B" = physical/logical link, "A monitored_by B" = B
   // watches A's health.
-  sourceId  String
-  source    CmdbItem @relation("CmdbSource", fields: [sourceId], references: [id], onDelete: Cascade)
-  targetId  String
-  target    CmdbItem @relation("CmdbTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  sourceId     String
+  source       CmdbItem @relation("CmdbSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  targetId     String
+  target       CmdbItem @relation("CmdbTarget", fields: [targetId], references: [id], onDelete: Cascade)
   // relationType: runs_on | connects_to | part_of | depends_on | monitored_by
   relationType String
-  createdAt DateTime @default(now())
+  createdAt    DateTime @default(now())
 
   @@unique([sourceId, targetId, relationType])
   @@index([sourceId])
@@ -976,13 +1027,11 @@ model CmdbRelation {
 
 /**
  * SAFE-003 — execution single-flight lease.
- *
  * At most ONE row can exist per changeId (the primary key IS the lock), so
  * two concurrent POST /changes/[id]/execute can never both queue a
  * CHANGE_EXECUTE job: exactly one lease INSERT commits, the loser dies with
  * a P2002 unique violation inside its transaction (job INSERT + audit roll
  * back with it) and the route answers 409 EXECUTION_IN_FLIGHT.
- *
  * Lifecycle: acquired by the execute route (job creation + lease in one
  * transaction), released when the job reaches a TERMINAL state
  * (SUCCEEDED / terminal FAILED / CANCELLED / scheduler-reaped) — a requeued
@@ -992,10 +1041,10 @@ model CmdbRelation {
  * older than 15 min is FAILED and releases its lease).
  */
 model ChangeExecutionLease {
-  changeId   String   @id
+  changeId   String        @id
   change     ChangeRequest @relation(fields: [changeId], references: [id], onDelete: Cascade)
   jobId      String
-  acquiredAt DateTime @default(now())
+  acquiredAt DateTime      @default(now())
   expiresAt  DateTime
 
   @@index([jobId])
@@ -1004,7 +1053,6 @@ model ChangeExecutionLease {
 
 /**
  * SAFE-005 — exclusive per-device write lock.
- *
  * ONE row per deviceId (@unique — the lock): while a change executes a step
  * (CHECK probe / BACKUP fetch / APPLY / VALIDATE / ROLLBACK), it holds the
  * lock on every device in the change's scope, so two concurrent changes can

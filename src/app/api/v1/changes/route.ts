@@ -17,6 +17,7 @@ import {
 import { resolveActingUser } from "../_lib/actor";
 import { requirePermission, authErrorToFail } from "@/lib/auth/session";
 import { approvalLevelsFor } from "@/lib/change/risk";
+import { quorumRequiredFor } from "@/lib/change/approval-policy";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -312,13 +313,16 @@ export async function POST(request: Request) {
       });
 
       if (submit) {
-        // One PENDING approval per policy level. Fresh change ⇒ no existing
-        // rows, so no skipDuplicates needed (unsupported on SQLite anyway).
+        // One PENDING approval per policy level, each stamped with its
+        // quorum (POL-001 — CAB on CRITICAL changes requires two distinct
+        // approvers). Fresh change ⇒ no existing rows, so no skipDuplicates
+        // needed (unsupported on SQLite anyway).
         await tx.changeApproval.createMany({
           data: approvalLevelsFor(risk.level).map((level) => ({
             changeId: created.id,
             level,
             status: "PENDING",
+            quorumRequired: quorumRequiredFor(level, risk.level),
           })),
         });
       }

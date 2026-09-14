@@ -37,6 +37,20 @@ Policy decisions recorded (audit §6/§7/§8/§36):
   officer role exists (one manager cannot fake SECURITY approval).
 - Multi-level separation of duties: one principal cannot decide two
   different levels of the same change unless they hold `*`.
+- Bindable approvals (POL-001/002/003 — audit §6 P1-001/P1-002, landed
+  2026-09-14): every decision is a `ChangeApprovalDecision` row bound to the
+  SHA-256 fingerprint of the canonical approved spec and carrying a
+  risk-tiered validity horizon (CRITICAL 14d · HIGH 30d · MEDIUM 90d ·
+  LOW 180d). A level is satisfied by a QUORUM of DISTINCT approvers — 1
+  everywhere except CAB on CRITICAL changes, which requires TWO distinct
+  approvers; one principal can never fill two slots (a wildcard holder that
+  already decided the level gets `DECISION_STILL_VALID`). The execute route
+  re-computes the fingerprint inside the SAFE-003 transaction and refuses
+  `APPROVAL_FINGERPRINT_MISMATCH` on any spec drift; a lapsed quorum refuses
+  `APPROVAL_EXPIRED` and flips the change back to `AWAITING_APPROVAL`
+  (`CHANGE_APPROVALS_INVALIDATED` audit) for a fresh approval cycle.
+  Pre-POL approval data refuses `APPROVALS_REBIND_REQUIRED` — never a silent
+  bypass.
 
 ## 2. Mutation endpoints → permission
 
@@ -62,7 +76,11 @@ allowlist (§4) does not silently grow.
 Additional approval guards (server-authoritative): requester self-approval
 blocked for HIGH/CRITICAL (SoD); one principal cannot decide two distinct
 levels of one change unless wildcard; disabled accounts and expired sessions
-are rejected by `requireUser` before entitlement is evaluated.
+are rejected by `requireUser` before entitlement is evaluated; bindable-approval
+guards (POL-001/002/003): quorum of distinct approvers per level, re-cast
+blocked while a decision is live (`DECISION_STILL_VALID`), fingerprint and
+validity re-verified at execute time (`APPROVAL_FINGERPRINT_MISMATCH`,
+`APPROVAL_EXPIRED`, `APPROVALS_REBIND_REQUIRED`).
 
 ### 2.2 Configuration / devices
 
@@ -166,9 +184,6 @@ build.
 
 ## 5. Known limitations (honest disclosure)
 
-- Approval-level entitlements are role/permission-based; CAB QUORUM
-  (minimum_distinct_approvers ≥ 2) and approval-expiry fingerprints
-  (audit §37/§38) are Phase 21 policy work.
 - Resource-level scoping (site/device-group) is not yet part of
   `requirePermission` — audit §10 target model; permissions are currently
   global per role.
