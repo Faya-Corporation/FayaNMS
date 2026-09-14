@@ -2478,3 +2478,16 @@ Stage Summary:
 - Honest posture: FAYANMS_DB_QUERY_LOG=true remains a deliberate operator exposure (documented, default off); db:push:force intentionally preserves the destructive capability under an honest name (dev scratch resets need it); the blocklist approach refuses KNOWN repo-public material — it is not a substitute for generating fresh secrets, which the deploy note 19 states explicitly.
 - Next executable steps: none remain from the confirmed-finding backlog inside this sandbox — candidates are user-side (OPS-001 settings restoration, CI billing/minutes check + re-runs, physical hardware certification).
 - Artifacts: this commit (src/lib/db-log.ts; src/lib/db.ts; src/lib/startup/security-policy.ts; package.json; tests/audit/config-hygiene.test.ts; README; deploy note 19; .env.example).
+---
+Task ID: R33-config-hygiene-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit cbe2f58 (P2-1/P2-3/P1-019) — honest evidence record
+
+Work Log:
+- Pushed cbe2f58; run 34910689985 failed with the IDENTICAL infrastructure signature as runs #34-#45: gate "failure" with ZERO steps executed, no runner ever assigned (runner_name empty), scan skipped — GitHub-hosted runner unavailability for this private repo (capacity/minutes), not a gate or scanner finding. The workflow file is unchanged since runs #28-#33 were green.
+- Every local equivalent of the gate ran green on the exact commit before push: lint 0 · tsc --noEmit FULL (unfiltered) 0 · bun test 419/419 (2,401 expects) · drift guard exit 0 on a fresh shadow DB · build:gate PASS · plus the 12-pin config-hygiene governance suite recorded in the R33 entry.
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for cbe2f58: locally gate-proven, CI-blocked by infrastructure only. User-side follow-up (cannot be done from the sandbox): verify GitHub Actions minutes/billing for the account, then re-run the affected runs from the Actions UI; no code action is required.
+- Backlog status after this increment: every sandbox-actionable CONFIRMED finding of the external ULTRA audit is now closed (P0 tier via SAFE-001..009, P1 tier via POL-001/002/003 + P1-003/005/007/010/011/012, P2 tier + P1-019 via this commit, CERT tier via CERT-006). Remaining items are non-sandbox by nature: OPS-001 branch-protection restoration (settings-side), physical-hardware certification of the live plane, CI runner availability (user-side).
