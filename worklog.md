@@ -2409,3 +2409,15 @@ Stage Summary:
 - Honest posture: the live sandbox proved Phase 1 (both algs accepted, EdDSA minted and verified in both directions); Phase 2 semantics are pinned by unit tests (SERVICE_ALG_REJECTED/WORKER_ALG_REJECTED) and not forced onto the live sandbox because .env supplies the shared secret by design (documented default state).
 - Next executable steps: CERT-006 (Sophos SFOS WebAPI transport) — the last item of the user's ordered SEC/CERT tier.
 - Artifacts: this commit (src/lib/auth/service-jwt.ts EdDSA core; src/lib/auth/service-auth.ts mint precedence; mini-services/worker/service-token.ts + control-auth.ts mirrors; scripts/generate-service-keys.ts + keys:service script; tests/auth/service-identity.test.ts; README; deploy note 17; .env.example).
+
+---
+Task ID: R31-sec-p1-007-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit e114e2a (P1-007) — honest evidence record
+
+Work Log:
+- Pushed e114e2a; run 34906764007 failed with the IDENTICAL infrastructure signature as runs #34-#43: gate failure with ZERO steps executed, no runner ever assigned (runner_name empty), scan skipped — GitHub-hosted runner unavailability for this private repo (capacity/minutes), not a gate or scanner finding. The workflow file is unchanged since runs #28-#33 were green.
+- Every local equivalent of the gate ran green on the exact commit before push: lint 0 · tsc 0 · bun test 398/398 (2,325 expects) · drift guard exit 0 · build:gate PASS · plus the 24-pin service-identity suite and the 5/5 live two-plane E2E recorded in the R31 entry.
+
+Stage Summary:
+- TRUTHFUL CI STATE for e114e2a: locally gate-proven, CI-blocked by infrastructure only. API re-run issued (HTTP 201). User-side follow-up (cannot be done from the sandbox): verify GitHub Actions minutes/billing, then re-run from the Actions UI; no code action is required.
