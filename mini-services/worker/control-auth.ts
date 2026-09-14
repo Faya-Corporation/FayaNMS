@@ -1,23 +1,40 @@
 /**
  * FayaNMS worker — control-plane token verifier (Phase 19-C / audit
- * GATEWAY-101 + SVC-101).
+ * GATEWAY-101 + SVC-101; P1-007 asymmetric service identity).
  *
  * The worker's HTTP surface is reachable through the sandbox gateway
  * (XTransformPort=3030), so /simulate/* and /capabilities no longer answer
- * anonymous requests: callers must present a short-lived HS256 service JWT
- * signed with the SHARED secret (FAYANMS_SERVICE_SECRET from the repo-root
- * .env), audience "fayanms:internal", issuer allowlisted to the Next.js
- * control plane ("fayanms:control") and — for the simulator mutation
- * endpoints — carrying the "simulate" scope.
+ * anonymous requests: callers must present a short-lived service JWT,
+ * audience "fayanms:internal", issuer allowlisted to the Next.js control
+ * plane ("fayanms:control") and — for the simulator mutation endpoints —
+ * carrying the "simulate" scope.
+ *
+ * P1-007 (ULTRA audit: "HS256 shared-secret only; holder of the secret can
+ * mint any token"): the worker verifies ASYMMETRIC control-plane identity.
+ * With FAYANMS_SERVICE_PUBLIC_KEYS configured (the CONTROL side's Ed25519
+ * public key — SPKI DER base64, comma-separated rotation list, PEM
+ * tolerated), alg-EdDSA tokens are verified with crypto.verify: the worker
+ * holds NO minting capability for control identities. HS256 remains
+ * accepted while the shared secret is still configured (rotation Phase 1);
+ * removing FAYANMS_SERVICE_SECRET everywhere completes Phase 2 — symmetric
+ * tokens are then refused (WORKER_ALG_REJECTED), and a leaked worker-side
+ * secret no longer mints control-plane identities. A malformed configured
+ * key is a misconfiguration, not a soft skip (WORKER_KEYS_MISCONFIGURED).
  *
  * /health stays open (liveness probe; counters only, no device surface).
  *
  * Zero external dependencies: same wire format as the Next.js verifier
- * (src/lib/auth/service-auth.ts) and the worker's own signer
+ * (src/lib/auth/service-jwt.ts) and the worker's own signer
  * (service-token.ts).
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import {
+  createHmac,
+  createPublicKey,
+  timingSafeEqual,
+  verify as cryptoVerify,
+  type KeyObject,
+} from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -39,19 +56,22 @@ export interface ControlVerifyResult {
   message: string;
 }
 
-function readRootEnvSecret(): string | null {
-  if (process.env.FAYANMS_SERVICE_SECRET) {
-    return process.env.FAYANMS_SERVICE_SECRET.trim();
+/**
+ * Read an env value from process.env first, then the repo-root .env, with
+ * dotenv-style quote tolerance and escaped-\n PEM support.
+ */
+function readRootEnvValue(key: string): string | null {
+  const fromProcess = process.env[key];
+  if (typeof fromProcess === "string" && fromProcess.trim()) {
+    return fromProcess.trim();
   }
   try {
     const envPath = join(import.meta.dir, "..", "..", ".env");
     const text = readFileSync(envPath, "utf8");
     for (const line of text.split("\n")) {
-      const match = /^FAYANMS_SERVICE_SECRET=(.+)$/.exec(line.trim());
+      const match = new RegExp(`^${key}=(.+)$`).exec(line.trim());
       if (match) {
         let value = match[1].trim();
-        // Tolerate dotenv-style quoting (Phase 22 lesson: a quoted value in
-        // .env must not leak its quote characters into the HMAC secret).
         if (
           (value.startsWith('"') && value.endsWith('"')) ||
           (value.startsWith("'") && value.endsWith("'"))
@@ -65,6 +85,30 @@ function readRootEnvSecret(): string | null {
     /* .env unreadable — fall through */
   }
   return null;
+}
+
+/**
+ * The configured Ed25519 public keys for verifying CONTROL-plane tokens.
+ * Throws on malformed material — callers map that to
+ * WORKER_KEYS_MISCONFIGURED (fail-tight, never silently dropped).
+ */
+function configuredPublicKeys(): KeyObject[] {
+  const raw = readRootEnvValue("FAYANMS_SERVICE_PUBLIC_KEYS");
+  if (!raw) return [];
+  const keys: KeyObject[] = [];
+  for (const entryRaw of raw.split(",")) {
+    const entry = entryRaw.trim();
+    if (!entry) continue;
+    const pem = entry.includes("\\n") ? entry.replaceAll("\\n", "\n") : entry;
+    if (pem.startsWith("-----BEGIN")) {
+      keys.push(createPublicKey(pem));
+      continue;
+    }
+    keys.push(
+      createPublicKey({ key: Buffer.from(entry, "base64"), format: "der", type: "spki" })
+    );
+  }
+  return keys;
 }
 
 function b64urlToJson(part: string): Record<string, unknown> | null {
@@ -100,32 +144,77 @@ export function verifyControlToken(
       message: "This worker endpoint requires a Bearer service token.",
     };
   }
-  const secret = readRootEnvSecret();
-  if (!secret) {
+
+  let secrets: string[] = [];
+  let publicKeys: KeyObject[] = [];
+  const sharedSecret = readRootEnvValue("FAYANMS_SERVICE_SECRET");
+  if (sharedSecret) secrets.push(sharedSecret);
+  try {
+    publicKeys = configuredPublicKeys();
+  } catch {
+    return {
+      ok: false,
+      code: "WORKER_KEYS_MISCONFIGURED",
+      message: "FAYANMS_SERVICE_PUBLIC_KEYS contains malformed key material (expected SPKI DER base64 or PEM).",
+    };
+  }
+  if (secrets.length === 0 && publicKeys.length === 0) {
     return {
       ok: false,
       code: "WORKER_UNCONFIGURED",
-      message: "FAYANMS_SERVICE_SECRET is not configured on the worker.",
+      message: "No service trust plane is configured on the worker — set FAYANMS_SERVICE_PUBLIC_KEYS (Ed25519 control identity) and/or FAYANMS_SERVICE_SECRET (legacy symmetric).",
     };
   }
+
   const parts = match[1].split(".");
   if (parts.length !== 3) {
     return { ok: false, code: "WORKER_TOKEN_MALFORMED", message: "Token is not a compact JWS." };
   }
   const [headPart, bodyPart, sigPart] = parts;
   const headerJson = b64urlToJson(headPart);
-  if (!headerJson || headerJson.alg !== "HS256" || headerJson.typ !== "JWT") {
+  if (
+    !headerJson ||
+    headerJson.typ !== "JWT" ||
+    (headerJson.alg !== "HS256" && headerJson.alg !== "EdDSA")
+  ) {
     return {
       ok: false,
       code: "WORKER_TOKEN_MALFORMED",
-      message: "Token header must be {alg:HS256,typ:JWT}.",
+      message: 'Token header must be {alg:"HS256"|"EdDSA",typ:"JWT"}.',
     };
   }
-  const expected = createHmac("sha256", secret)
-    .update(`${headPart}.${bodyPart}`)
-    .digest();
+  const signingInput = `${headPart}.${bodyPart}`;
   const presented = Buffer.from(sigPart, "base64url");
-  if (!timingSafeEqualBuffer(expected, presented)) {
+  let signatureValid = false;
+  if (headerJson.alg === "EdDSA") {
+    if (publicKeys.length === 0) {
+      return {
+        ok: false,
+        code: "WORKER_ALG_REJECTED",
+        message: "EdDSA control tokens are not accepted — no FAYANMS_SERVICE_PUBLIC_KEYS configured on this worker.",
+      };
+    }
+    signatureValid = publicKeys.some((key) => {
+      try {
+        return cryptoVerify(null, Buffer.from(signingInput), key, presented);
+      } catch {
+        return false;
+      }
+    });
+  } else {
+    if (secrets.length === 0) {
+      return {
+        ok: false,
+        code: "WORKER_ALG_REJECTED",
+        message: "HS256 control tokens are not accepted — the symmetric plane is retired on this worker.",
+      };
+    }
+    const expected = createHmac("sha256", sharedSecret as string)
+      .update(signingInput)
+      .digest();
+    signatureValid = timingSafeEqualBuffer(expected, presented);
+  }
+  if (!signatureValid) {
     return { ok: false, code: "WORKER_TOKEN_INVALID", message: "Token signature verification failed." };
   }
   const payload = b64urlToJson(bodyPart);

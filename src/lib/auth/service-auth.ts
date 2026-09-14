@@ -1,9 +1,10 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac, randomUUID, sign as ed25519Sign } from "node:crypto";
 
 import { AuthError } from "@/lib/auth/session";
 import {
   bearerTokenOf,
   verifyServiceToken,
+  getServiceSigningKey,
   SERVICE_AUDIENCE,
   getServiceIssuers,
   getServiceSecrets,
@@ -107,11 +108,15 @@ export async function currentRequestIsServiceAuth(): Promise<boolean> {
 }
 
 /**
- * Mint a short-lived HS256 service JWT (Phase 19-C): the Next.js server
- * uses this to authenticate its OWN outbound calls to the worker's HTTP
- * surface (/simulate/*, /capabilities) — the mirror image of the worker
- * signing tokens for the Next.js job-engine routes. SERVER-ONLY: reads
- * FAYANMS_SERVICE_SECRET from the process environment.
+ * Mint a short-lived service JWT (Phase 19-C; P1-007 asymmetric identity).
+ *
+ * Trust PREFERENCE: when FAYANMS_SERVICE_PRIVATE_KEY is configured the
+ * token is Ed25519 (alg "EdDSA") — verifiers holding only the matching
+ * FAYANMS_SERVICE_PUBLIC_KEYS can authenticate it but can NEVER mint one.
+ * Without a private key the legacy HS256 shared-secret path is used
+ * (Phase 1 of the rotation; removing FAYANMS_SERVICE_SECRET everywhere
+ * completes Phase 2 and structurally kills symmetric tokens). SERVER-ONLY:
+ * reads the key material from the process environment.
  */
 export function mintServiceToken(options: {
   issuer?: string;
@@ -119,17 +124,10 @@ export function mintServiceToken(options: {
   scopes: ServiceScope[];
   ttlSeconds?: number;
 }): string {
-  const secret = getServiceSecrets()[0];
-  if (!secret) {
-    throw new Error(
-      "FAYANMS_SERVICE_SECRET is not configured — cannot mint a service token."
-    );
-  }
   const nowS = Math.floor(Date.now() / 1000);
   const ttl = options.ttlSeconds ?? 300;
-  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString(
-    "base64url"
-  );
+  const header = (alg: string): string =>
+    Buffer.from(JSON.stringify({ alg, typ: "JWT" })).toString("base64url");
   const payload = Buffer.from(
     JSON.stringify({
       iss: options.issuer ?? "fayanms:control",
@@ -141,10 +139,26 @@ export function mintServiceToken(options: {
       scopes: options.scopes,
     })
   ).toString("base64url");
+  const signingInput = `${header("EdDSA")}.${payload}`;
+
+  const signingKey = getServiceSigningKey();
+  if (signingKey) {
+    // Asymmetric identity (P1-007): the signature is produced with the
+    // private key; verifiers need only the public half. Ed25519 signs with
+    // a null digest per RFC 8032 / node docs.
+    return `${signingInput}.${ed25519Sign(null, Buffer.from(signingInput), signingKey).toString("base64url")}`;
+  }
+
+  const secret = getServiceSecrets()[0];
+  if (!secret) {
+    throw new Error(
+      "Neither FAYANMS_SERVICE_PRIVATE_KEY nor FAYANMS_SERVICE_SECRET is configured — cannot mint a service token."
+    );
+  }
   const signature = createHmac("sha256", secret)
-    .update(`${header}.${payload}`)
+    .update(`${header("HS256")}.${payload}`)
     .digest("base64url");
-  return `${header}.${payload}.${signature}`;
+  return `${header("HS256")}.${payload}.${signature}`;
 }
 
 /**

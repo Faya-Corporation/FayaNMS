@@ -605,6 +605,28 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    vault CLI (SIGTERM, then SIGKILL) before the SSH session can stall the
    worker. References never encode a provider — switching backends never
    silently re-interprets an existing reference.
+17. **Asymmetric service identity (P1-007, audit §6)**: the internal
+   service-JWT plane is no longer HS256-shared-secret trust (where the
+   holder of the secret could mint ANY identity). Tokens may be Ed25519
+   (`alg: "EdDSA"`) verified against a public-key set — verifiers can
+   authenticate but never mint. Run the two-phase, flag-free rotation:
+   **Phase 1** — generate keypairs with `bun run keys:service` (once per
+   side; the recommended topology is one CONTROL keypair on the Next.js
+   app and one WORKER keypair on the worker, each side holding only the
+   other's public key); set `FAYANMS_SERVICE_PRIVATE_KEY` on each minter
+   and `FAYANMS_SERVICE_PUBLIC_KEYS` on each verifier (comma-separated,
+   so old and new keys can overlap during rotation). Both algorithms are
+   accepted and minters emit EdDSA immediately. **Phase 2** — remove
+   `FAYANMS_SERVICE_SECRET(S)` from every process (`.env.production`,
+   compose env, CI): symmetric tokens are then refused outright
+   (`SERVICE_ALG_REJECTED`/`WORKER_ALG_REJECTED`) and a leaked shared
+   secret no longer mints anything. Protect the private keys like every
+   other crown jewel in item 2 — they are the ONLY minting capability
+   once Phase 2 completes. `FAYANMS_SERVICE_ISSUERS` must include each
+   issuer the verifier expects (`fayanms:control,fayanms:worker` covers
+   the two-plane topology). If a key rotates without a process restart,
+   clear the worker's token cache via a restart (or call
+   `resetServiceTokenCache()` programmatically).
 
 ## Explicitly NOT covered here (tracked elsewhere)
 

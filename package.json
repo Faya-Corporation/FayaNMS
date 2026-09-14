@@ -13,6 +13,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "keys:service": "bun scripts/generate-service-keys.ts",
     "db:reset": "prisma migrate reset",
     "brand:validate": "bun scripts/validate-brand-assets.ts",
     "brand:validate-icons": "bun scripts/validate-icon-registry.ts",

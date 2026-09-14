@@ -532,6 +532,47 @@ entry → 400 `CREDENTIAL_UNRESOLVED` naming the env var; operator-set entry
 downstream to the SSH transport (`SSH_UNREACHABLE`, port 1 refused); the
 resolved secret value never crosses the wire.
 
+**LANDED — P1-007 (audit SEC tier): asymmetric service identity — the machine
+plane is no longer HS256-shared-secret trust.**
+The audit pinned the finding precisely: with HS256-only, whoever holds the
+shared secret can mint ANY token with ANY identity. The service-JWT core
+(`src/lib/auth/service-jwt.ts`, still node:crypto-only so the proxy gate
+keeps its dependency-free graph) now supports **Ed25519 (alg "EdDSA")**
+verified against a public-key set: verifiers hold NO minting capability —
+public material authenticates, only the private key mints. HS256 remains
+accepted while the symmetric secret is still configured, which makes the
+rotation a **flag-free two-phase runbook** (deploy doc note 17, generator
+`bun run keys:service`): Phase 1 — put `FAYANMS_SERVICE_PUBLIC_KEYS`
+(SPKI DER base64, comma-separated rotation list) on every verifier and
+`FAYANMS_SERVICE_PRIVATE_KEY` (PKCS8 PEM, escaped newlines tolerated) on
+every minter; both algorithms are accepted and minters prefer EdDSA
+immediately. Phase 2 — remove `FAYANMS_SERVICE_SECRET(S)` everywhere; HS256
+becomes structurally impossible (`SERVICE_ALG_REJECTED` /
+`WORKER_ALG_REJECTED`) and the shared-secret holder's minting power is
+gone. The worker mirrors the same contract dependency-free
+(`service-token.ts` mint precedence, `control-auth.ts` Ed25519 verification
+of the CONTROL identity — in the recommended two-plane topology each side
+has its OWN keypair and only ever holds the other side's public half).
+Fail-tight throughout: a malformed configured key is
+`SERVICE_KEYS_MISCONFIGURED`/`WORKER_KEYS_MISCONFIGURED`, never a silently
+dropped rotation entry; alg confusion (`none`/`HS384`/`RS256`) stays
+`SERVICE_TOKEN_MALFORMED`; every prior pin (audience, expiry ±30 s, iat,
+issuer allowlist, scopes) applies to EdDSA tokens identically.
+`resetServiceTokenCache()` lets an operator re-mint after key rotation
+without a process restart. Suite 374 → 398
+(`tests/auth/service-identity.test.ts`, 24 pins: minting preference, Phase-1
+coexistence, Phase-2 endpoint refusal, foreign-keypair refusal, rotation
+overlap, tamper/alg-confusion/misconfigured-key taxonomy, scope enforcement
+on the EdDSA path, and the full two-plane loop where a worker-minted token
+verifies on the Next side against the worker public key only). Sandbox E2E
+over the live two-process configuration (5/5): both processes restarted
+with real generated keypairs — worker→Next job claims pass with zero
+failures (worker EdDSA verified by Next holding only the worker public
+key), and the real UI flow `POST /api/v1/devices/test-connection` returns
+`reachable: true, latency 877 ms` (Next EdDSA minted via `mintServiceToken`
+and verified by the worker holding only the control public key). The
+sandbox was then restored to its documented default (shared-secret config).
+
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
 not); the demo dataset is never committed (rebuild via the seed above — it runs

@@ -1,5 +1,6 @@
 /**
- * Pure service-JWT verification core (SAFE-002 refactor).
+ * Pure service-JWT verification core (SAFE-002 refactor; P1-007 asymmetric
+ * service identity).
  *
  * Extracted from src/lib/auth/service-auth.ts so the proxy gate
  * (src/proxy.ts) can verify the machine plane WITHOUT importing the
@@ -7,21 +8,60 @@
  * This module imports ONLY node:crypto — safe for the middleware/proxy
  * module graph, and unit-testable in isolation.
  *
- * Token contract (Phase 19 / audit SEC-002):
- *   header  { alg: "HS256", typ: "JWT" }
+ * Token contract (Phase 19 / audit SEC-002; P1-007 ULTRA audit):
+ *   header  { alg: "HS256" | "EdDSA", typ: "JWT" }
  *   payload { iss, sub, aud: "fayanms:internal", iat, exp, jti, scopes }
  *
+ * P1-007 (ULTRA audit: "HS256 shared-secret only; holder of the secret can
+ * mint any token"): the machine plane now supports ASYMMETRIC service
+ * identity. Ed25519 (alg "EdDSA") tokens are verified against a public-key
+ * set, so verifiers hold NO minting capability — whoever holds only public
+ * material can authenticate but can never mint. HS256 remains accepted
+ * while the symmetric secret is still configured, which makes the rotation
+ * a two-phase, flag-free operation:
+ *
+ *   Phase 1 (introduce): set FAYANMS_SERVICE_PUBLIC_KEYS on every verifier
+ *     and FAYANMS_SERVICE_PRIVATE_KEY on every minter. Both algorithms are
+ *     accepted; minters PREFER the private key and emit EdDSA immediately.
+ *   Phase 2 (complete): remove FAYANMS_SERVICE_SECRET(S) from every
+ *     process. HS256 becomes structurally impossible (SERVICE_ALG_REJECTED)
+ *     and the shared-secret holder's minting power is gone.
+ *
  * Verification enforces, in order:
- *   1. well-formed compact JWT with alg "HS256";
- *   2. signature valid against ANY accepted secret (current + rotation
- *      list, timing-safe compare);
- *   3. audience exactly "fayanms:internal";
- *   4. not expired / not issued in the future (± 30 s clock skew);
- *   5. iss/sub present and issuer allowlisted (a shared symmetric secret
- *      alone would let any holder mint tokens with arbitrary identities).
+ *   1. well-formed compact JWT with alg "HS256" or "EdDSA" (typ "JWT");
+ *   2. the presented alg's trust plane is CONFIGURED (EdDSA needs
+ *      FAYANMS_SERVICE_PUBLIC_KEYS; HS256 needs FAYANMS_SERVICE_SECRET(S))
+ *      — otherwise SERVICE_ALG_REJECTED, never a silent fallthrough;
+ *   3. signature valid: Ed25519 (crypto.verify against ANY configured
+ *      public key — the rotation list) or HMAC-SHA256 against ANY accepted
+ *      secret (current + rotation list, timing-safe compare);
+ *   4. audience exactly "fayanms:internal";
+ *   5. not expired / not issued in the future (± 30 s clock skew);
+ *   6. iss/sub present and issuer allowlisted (a shared symmetric secret
+ *      alone would let any holder mint tokens with arbitrary identities —
+ *      with asymmetric keys the issuer allowlist is defense in depth).
+ *
+ * Key material encoding (operator contract, see scripts/generate-service-
+ * keys.ts):
+ *   FAYANMS_SERVICE_PUBLIC_KEYS — comma-separated Ed25519 public keys in
+ *     SPKI DER base64 (the generator's default output); a full PEM is also
+ *     tolerated (may carry escaped \n newlines).
+ *   FAYANMS_SERVICE_PRIVATE_KEY — PKCS8 PEM (escaped \n newlines allowed
+ *     for single-line env values).
+ *   A MALFORMED configured key is a misconfiguration, not a soft skip:
+ *   verification refuses with SERVICE_KEYS_MISCONFIGURED (fail-tight — a
+ *   silently-dropped rotated key would fake trust, not weaken it).
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import {
+  createHmac,
+  createPrivateKey,
+  createPublicKey,
+  sign as cryptoSign,
+  timingSafeEqual,
+  verify as cryptoVerify,
+  type KeyObject,
+} from "node:crypto";
 
 export const SERVICE_AUDIENCE = "fayanms:internal";
 const CLOCK_SKEW_S = 30;
@@ -30,7 +70,7 @@ const CLOCK_SKEW_S = 30;
  * Issuer allowlist (Phase 19-C / audit SVC-101 §11.3). Override with
  * FAYANMS_SERVICE_ISSUERS (comma list) when additional machine identities
  * are introduced; each issuer must still present a valid signature under a
- * configured secret.
+ * configured secret (HS256) or public key (EdDSA).
  */
 export function getServiceIssuers(): string[] {
   const raw = process.env.FAYANMS_SERVICE_ISSUERS?.trim();
@@ -50,6 +90,74 @@ export function getServiceSecrets(): string[] {
     if (value && !secrets.includes(value)) secrets.push(value);
   }
   return secrets;
+}
+
+/** Tolerate escaped newlines in single-line env values (PEM material). */
+function unescapePem(value: string): string {
+  return value.includes("\\n") ? value.replaceAll("\\n", "\n") : value;
+}
+
+/**
+ * The configured Ed25519 PUBLIC keys (rotation list). Parsed once per raw
+ * configuration value; a malformed entry throws — callers map that to
+ * SERVICE_KEYS_MISCONFIGURED (fail-tight, never silently dropped).
+ */
+export function parseServicePublicKeys(raw: string): KeyObject[] {
+  const keys: KeyObject[] = [];
+  for (const entryRaw of raw.split(",")) {
+    const entry = entryRaw.trim();
+    if (!entry) continue;
+    if (entry.startsWith("-----BEGIN")) {
+      keys.push(createPublicKey(unescapePem(entry)));
+      continue;
+    }
+    keys.push(
+      createPublicKey({
+        key: Buffer.from(entry, "base64"),
+        format: "der",
+        type: "spki",
+      }),
+    );
+  }
+  return keys;
+}
+
+let publicKeysCache: { raw: string; keys: KeyObject[] } | null = null;
+
+/**
+ * Configured Ed25519 public keys for VERIFYING machine tokens. Empty when
+ * the asymmetric plane is not configured (HS256-only deployment).
+ */
+export function getServicePublicKeys(): KeyObject[] {
+  const raw = (process.env.FAYANMS_SERVICE_PUBLIC_KEYS ?? "").trim();
+  if (!raw) {
+    publicKeysCache = null;
+    return [];
+  }
+  if (publicKeysCache?.raw === raw) return publicKeysCache.keys;
+  const keys = parseServicePublicKeys(raw); // throws on malformed entries
+  publicKeysCache = { raw, keys };
+  return keys;
+}
+
+let signingKeyCache: { raw: string; key: KeyObject } | null = null;
+
+/**
+ * The configured Ed25519 PRIVATE key for MINTING machine tokens (the
+ * control plane's own identity). Null when absent — minting then falls
+ * back to HS256 (Phase 1 of the rotation), never silently when EdDSA is
+ * expected (callers surface the fallback explicitly).
+ */
+export function getServiceSigningKey(): KeyObject | null {
+  const raw = (process.env.FAYANMS_SERVICE_PRIVATE_KEY ?? "").trim();
+  if (!raw) {
+    signingKeyCache = null;
+    return null;
+  }
+  if (signingKeyCache?.raw === raw) return signingKeyCache.key;
+  const key = createPrivateKey(unescapePem(raw));
+  signingKeyCache = { raw, key };
+  return key;
 }
 
 export interface ServicePrincipal {
@@ -91,10 +199,29 @@ function timingSafeEqualBuffer(a: Buffer, b: Buffer): boolean {
   return timingSafeEqual(a, b);
 }
 
-/** Verify a compact JWS; returns the payload or a precise failure. */
+function ed25519Sign(signingInput: string, key: KeyObject): Buffer {
+  return cryptoSign(null, Buffer.from(signingInput), key);
+}
+
+function ed25519Verify(signingInput: string, signature: Buffer, keys: KeyObject[]): boolean {
+  return keys.some((key) => {
+    try {
+      return cryptoVerify(null, Buffer.from(signingInput), key, signature);
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * Verify a compact JWS against the configured trust planes (secrets for
+ * HS256, public keys for EdDSA). Returns the payload or a precise failure.
+ * The caller guarantees at least one plane is configured.
+ */
 function verifyServiceJwt(
   token: string,
-  secrets: string[]
+  secrets: string[],
+  publicKeys: KeyObject[]
 ): { ok: true; payload: Record<string, unknown> } | { ok: false; code: string; message: string } {
   const parts = token.split(".");
   if (parts.length !== 3) {
@@ -102,14 +229,41 @@ function verifyServiceJwt(
   }
   const [headPart, bodyPart, sigPart] = parts;
   const header = b64urlToJson(headPart);
-  if (!header || header.alg !== "HS256" || header.typ !== "JWT") {
-    return { ok: false, code: "SERVICE_TOKEN_MALFORMED", message: "Service token header must be {alg:HS256,typ:JWT}." };
+  if (!header || header.typ !== "JWT" || (header.alg !== "HS256" && header.alg !== "EdDSA")) {
+    return { ok: false, code: "SERVICE_TOKEN_MALFORMED", message: 'Service token header must be {alg:"HS256"|"EdDSA",typ:"JWT"}.' };
   }
   const signature = Buffer.from(sigPart, "base64url");
   const signingInput = `${headPart}.${bodyPart}`;
-  const valid = secrets.some((secret) =>
-    timingSafeEqualBuffer(signature, hmac(signingInput, secret))
-  );
+  let valid = false;
+  if (header.alg === "EdDSA") {
+    if (publicKeys.length === 0) {
+      return {
+        ok: false,
+        code: "SERVICE_ALG_REJECTED",
+        message: "EdDSA service tokens are not accepted — no FAYANMS_SERVICE_PUBLIC_KEYS configured on this verifier.",
+      };
+    }
+    try {
+      valid = ed25519Verify(signingInput, signature, publicKeys);
+    } catch {
+      return {
+        ok: false,
+        code: "SERVICE_KEYS_MISCONFIGURED",
+        message: "FAYANMS_SERVICE_PUBLIC_KEYS contains malformed key material (expected SPKI DER base64 or PEM).",
+      };
+    }
+  } else {
+    if (secrets.length === 0) {
+      return {
+        ok: false,
+        code: "SERVICE_ALG_REJECTED",
+        message: "HS256 service tokens are not accepted — the symmetric plane is retired (FAYANMS_SERVICE_SECRET removed).",
+      };
+    }
+    valid = secrets.some((secret) =>
+      timingSafeEqualBuffer(signature, hmac(signingInput, secret))
+    );
+  }
   if (!valid) {
     return { ok: false, code: "SERVICE_TOKEN_INVALID", message: "Service token signature verification failed." };
   }
@@ -142,15 +296,26 @@ function verifyServiceJwt(
  * no scope) and the route handlers (authenticateServiceRequest + scope).
  */
 export function verifyServiceToken(token: string): ServiceAuthResult {
-  const secrets = getServiceSecrets();
-  if (secrets.length === 0) {
+  let secrets: string[] = [];
+  let publicKeys: KeyObject[] = [];
+  try {
+    secrets = getServiceSecrets();
+    publicKeys = getServicePublicKeys();
+  } catch {
+    return {
+      ok: false,
+      code: "SERVICE_KEYS_MISCONFIGURED",
+      message: "Configured service key material is malformed (FAYANMS_SERVICE_PUBLIC_KEYS / FAYANMS_SERVICE_PRIVATE_KEY).",
+    };
+  }
+  if (secrets.length === 0 && publicKeys.length === 0) {
     return {
       ok: false,
       code: "SERVICE_UNCONFIGURED",
-      message: "FAYANMS_SERVICE_SECRET is not configured on the server.",
+      message: "No service trust plane is configured — set FAYANMS_SERVICE_PUBLIC_KEYS (Ed25519) and/or FAYANMS_SERVICE_SECRET (symmetric).",
     };
   }
-  const verified = verifyServiceJwt(token, secrets);
+  const verified = verifyServiceJwt(token, secrets, publicKeys);
   if (!verified.ok) return verified;
 
   const payload = verified.payload;
