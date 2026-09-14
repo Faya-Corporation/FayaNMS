@@ -58,8 +58,9 @@ interface LiveFlavor {
  *          curly-brace — the same shape the simulator adapter and the
  *          app-side anchor extractor speak) and Palo Alto PAN-OS
  *          (`show config running`, set-style).
- * Sophos SFOS is deliberately NOT here: the SFOS SSH CLI has no read-only
- * full-config dump — that flavor needs the WebAPI transport (open item).
+ * Sophos SFOS is NOT here BY DESIGN: the SFOS SSH CLI has no read-only
+ * full-config dump — that vendor rides the WebAPI transport over TLS
+ * (CERT-006, see live-webapi.ts).
  */
 export const LIVE_SSH_FLAVORS: Record<string, LiveFlavor> = {
   cisco: {

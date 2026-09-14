@@ -573,6 +573,45 @@ key), and the real UI flow `POST /api/v1/devices/test-connection` returns
 and verified by the worker holding only the control public key). The
 sandbox was then restored to its documented default (shared-secret config).
 
+**LANDED — CERT-006 (audit CERT tier): Sophos SFOS joins the live plane over
+a REAL WebAPI transport — the vendor whose SSH CLI has no read-only
+full-config dump.**
+The live plane's transport is now vendor-determined: the five CLI vendors
+ride SSH exec (SAFE-001 host-key pinning) and sophos rides the device
+WebAPI over TLS (`sophos-sfos-webapi`). The transport
+(`mini-services/worker/webapi-transport.ts`) is READ-ONLY by construction —
+a hardcoded two-action allowlist (`GetAuthStatus` probe, `GetConfig`
+collection; no mutation-flavored action can exist, pinned by tests), the
+api-key resolved worker-side from the vault via the SAME secretRef
+pipeline, and TLS certificate verification ALWAYS ON: no
+`rejectUnauthorized:false` exists anywhere, the default anchor is the
+worker's system CA store, private/self-signed device certificates are
+enrolled worker-side via `FAYANMS_WEBAPI_CA_PEM` (path or inline PEM — the
+HTTPS analog of host-key enrollment), and a TLS failure refuses the request
+BEFORE the api-key is transmitted. Because there is no SSH handshake, the
+adapter router routes sophos INSTEAD of the SSH pin gate and the host-key
+enrollment page refuses sophos devices typed
+(`SSH_HOSTKEY_NOT_APPLICABLE`). The app-side credential invariant got
+stronger and transport-aware: LIVE_SSH + sophos requires an `API_TOKEN`
+profile (the WebAPI api-key), LIVE_SSH + the CLI vendors still require
+`SSH_PASSWORD` (`tests/audit/sfos-webapi.test.ts` pins the vendor↔type
+coupling on BOTH the app and worker sides). Certification follows the
+established discipline — `harness/sfos-webapi.ts` is a REAL loopback HTTPS
+server (committed test-only TLS material under `harness/tls/`) speaking
+the SFOS envelope, and the CI certification driver grew a sophos section:
+untrusted-cert refusal with a wire audit proving NO credential crossed the
+rejected connection, CA-enrollment flow, unreadable-CA typed failure,
+connect + collection over the real TLS channel with authentic payloads and
+the normalization contract, typed wrong-api-key refusals on both actions,
+malformed-response taxonomy, read-only capability assertions, the
+`/simulate/connect` control-token surface, and a wire audit proving only
+the two read-only actions ever left (certify exit 0, six certified
+flavors). Sandbox E2E over the FULL stack (8/8): API_TOKEN profile +
+sophos LIVE device created through the real app API, the
+SSH_PASSWORD-on-sophos refusal enforced, test-connection reaching the
+device over verified TLS, and a CONFIG_BACKUP job claimed by the worker
+and SUCCEEDED with the snapshot stored from the WebAPI collection.
+
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
 not); the demo dataset is never committed (rebuild via the seed above — it runs

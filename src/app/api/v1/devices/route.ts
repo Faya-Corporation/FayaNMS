@@ -10,6 +10,7 @@ import {
   requestContext,
 } from "../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { requiredLiveCredentialType } from "@/lib/devices/live-transport";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -222,8 +223,11 @@ export async function POST(request: Request) {
     linkedProfileType = profile.type;
   }
 
-  // Phase 22 slice 2 — data-plane invariants (fail-closed): a LIVE_SSH
-  // device can never be created without a usable SSH credential profile.
+  // Phase 22 slice 2 / CERT-006 — data-plane invariants (fail-closed): a
+  // LIVE_SSH device can never be created without a usable credential
+  // profile whose TYPE matches the vendor's live transport (transport is
+  // vendor-determined: SSH_PASSWORD for the SSH CLI vendors, API_TOKEN —
+  // the WebAPI api-key — for sophos's WebAPI transport).
   if (data.dataSource === "LIVE_SSH") {
     if (!data.credentialProfileId) {
       return fail(
@@ -233,12 +237,14 @@ export async function POST(request: Request) {
         requestContext(request),
       );
     }
-    // The live transport is SSH exec with password auth; key/API/SNMP
-    // profiles cannot drive it yet (honest scope — future transports).
-    if (linkedProfileType !== "SSH_PASSWORD") {
+    // The live transport is vendor-determined (CERT-006): SSH exec with
+    // password auth for the CLI vendors; the SFOS WebAPI (api-key) for
+    // sophos. Key/SNMP profiles cannot drive either transport yet.
+    const requiredType = requiredLiveCredentialType(vendor.key);
+    if (linkedProfileType !== requiredType) {
       return fail(
         "CREDENTIAL_TYPE_UNSUPPORTED",
-        `LIVE_SSH currently supports SSH_PASSWORD credential profiles only (got ${linkedProfileType ?? "unknown"})`,
+        `LIVE_SSH for vendor "${vendor.key}" requires a ${requiredType} credential profile (got ${linkedProfileType ?? "unknown"})`,
         400,
         requestContext(request),
       );

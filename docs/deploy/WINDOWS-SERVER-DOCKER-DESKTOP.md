@@ -627,6 +627,25 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    the two-plane topology). If a key rotates without a process restart,
    clear the worker's token cache via a restart (or call
    `resetServiceTokenCache()` programmatically).
+18. **SFOS WebAPI transport + TLS trust (CERT-006, audit §6)**: sophos
+   devices drive the live plane over the device WebAPI (TLS, JSON
+   envelope: GetAuthStatus probe + GetConfig collection — a hardcoded
+   two-action READ-ONLY allowlist; there is no code path that mutates an
+   SFOS device, and apply/restore/rollback stay simulator-only). Because
+   there is no SSH handshake, host-key pinning does not apply to sophos —
+   the trust gate is TLS certificate verification, which is ALWAYS on
+   (there is no bypass flag anywhere in the transport): the default anchor
+   is the worker's system CA store, and devices with private/self-signed
+   certificates are enrolled worker-side via `FAYANMS_WEBAPI_CA_PEM`
+   (a PATH to a PEM file or inline PEM with escaped newlines — the HTTPS
+   analog of host-key enrollment). A TLS failure refuses the request
+   BEFORE the api-key is ever transmitted. The linked credential profile
+   must be type API_TOKEN (its secret is the WebAPI api-key, resolved
+   worker-side from the vault like every other device secret); the
+   app-side invariant enforces the vendor↔profile-type coupling
+   (SSH_PASSWORD for the five CLI vendors, API_TOKEN for sophos) and the
+   host-key enrollment page refuses sophos devices typed
+   (`SSH_HOSTKEY_NOT_APPLICABLE`).
 
 ## Explicitly NOT covered here (tracked elsewhere)
 
@@ -658,8 +677,8 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
   self-throttle mid-run. SAFE-001 (same day) added host-key pinning to EVERY live
   connection (backups, probes and all change steps) — an endpoint whose key is not
   enrolled, or whose key does not match the pin, fails closed before authentication.
-  STILL OPEN: physical-hardware certification of the live plane
-  and the sophos WebAPI transport.
+  STILL OPEN: physical-hardware certification of the live plane (CERT-006
+  closed the sophos transport gap below — sophos rides the WebAPI, not SSH).
 - HA/multi-node (the architecture is deliberately single-node PostgreSQL today).
 
 ---

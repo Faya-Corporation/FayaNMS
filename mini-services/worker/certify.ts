@@ -39,9 +39,13 @@
  * Plus: /live/fetch-config and /live/apply without a credential → 400.
  *
  * Certified flavors (slice 3): cisco (IOS), fortinet (FortiOS), hpe
- * (AOS-CX), juniper (Junos OS), palo (PAN-OS). Sophos is deliberately
- * uncertified — SFOS has no read-only SSH config dump; it needs a future
- * WebAPI transport.
+ * (AOS-CX), juniper (Junos OS), palo (PAN-OS). CERT-006 adds sophos over
+ * the SFOS WEBAPI transport (a REAL loopback HTTPS harness speaking the
+ * SFOS envelope — harness/sfos-webapi.ts): fail-closed TLS (untrusted cert
+ * → WEBAPI_TLS_UNTRUSTED BEFORE any credential is sent), CA-pinned trust,
+ * typed auth failure, read-only action allowlist, routing (sophos rides
+ * the WebAPI adapter with NO SSH pin gate), and the HTTP surface the
+ * test-connection flow uses.
  *
  * Exit code 0 = certified. Any failed check exits 1 with the CERT report.
  * Run: bun mini-services/worker/certify.ts
@@ -62,6 +66,17 @@ import {
   startIosSshHarness,
   type IOSHarness,
 } from "./harness/ios-sshd";
+import {
+  SFOS_HARNESS_API_KEY,
+  SFOS_HARNESS_CONFIG,
+  startSfosWebApiHarness,
+} from "./harness/sfos-webapi";
+import {
+  WebApiError,
+  webApiFetchConfigText,
+  webApiProbe,
+} from "./webapi-transport";
+import { resolveLiveWebApiFlavor } from "./live-webapi";
 import {
   startFortiosSshHarness,
   type FortiosHarness,
@@ -532,6 +547,197 @@ async function main(): Promise<void> {
       );
     }
 
+    // ──────────────────────────────────────────────────────────────────
+    // CERT-006 — sophos over the SFOS WebAPI transport (read-only TLS)
+    // ──────────────────────────────────────────────────────────────────
+    console.log("\n── flavor: sophos (sophos-sfos-webapi, CERT-006) ──");
+    {
+      const { handle } = await import("./index");
+      const webApiHarness = await startSfosWebApiHarness();
+      console.log(`harness: real HTTPS server on 127.0.0.1:${webApiHarness.port} (HARNESS-SFOS-01)`);
+      process.env.FAYANMS_VAULT_WEBAPI_HARNESS = SFOS_HARNESS_API_KEY;
+      const webApiVaultRef = "vault://webapi/harness";
+      const webApiTarget = liveTarget("HARNESS-SFOS-01", "sophos");
+      const webApiCredential = parseTargetCredential({
+        username: "api",
+        port: webApiHarness.port,
+        secretRef: webApiVaultRef,
+      });
+
+      // ── 1. TLS fail-closed FIRST: without the pinned CA the self-signed
+      // harness cert is untrusted and the transport must refuse BEFORE any
+      // credential is sent (the request body IS the credential carrier).
+      const requestsBefore = webApiHarness.requests.length;
+      try {
+        await webApiProbe(
+          { host: "127.0.0.1", port: webApiHarness.port, apiKey: SFOS_HARNESS_API_KEY },
+          4000,
+        );
+        check("sophos: untrusted TLS refused (WEBAPI_TLS_UNTRUSTED)", false, "probe unexpectedly succeeded");
+      } catch (err) {
+        check(
+          "sophos: untrusted TLS refused (WEBAPI_TLS_UNTRUSTED)",
+          err instanceof WebApiError && err.code === "WEBAPI_TLS_UNTRUSTED",
+          errorCode(err),
+        );
+        check(
+          "sophos: NO credential crossed the wire on the refused connection",
+          webApiHarness.requests.length === requestsBefore,
+        );
+      }
+
+      // ── 2. CA enrollment (the worker-side trust pin) — now the flow works.
+      process.env.FAYANMS_WEBAPI_CA_PEM = "/nonexistent/cert.pem";
+      try {
+        await webApiProbe(
+          { host: "127.0.0.1", port: webApiHarness.port, apiKey: SFOS_HARNESS_API_KEY },
+          4000,
+        );
+        check("sophos: unreadable FAYANMS_WEBAPI_CA_PEM fails typed", false, "probe unexpectedly succeeded");
+      } catch (err) {
+        check(
+          "sophos: unreadable FAYANMS_WEBAPI_CA_PEM fails typed",
+          err instanceof WebApiError && err.code === "WEBAPI_TLS_CA_UNREADABLE",
+          errorCode(err),
+        );
+      }
+      process.env.FAYANMS_WEBAPI_CA_PEM = webApiHarness.caPem;
+
+      // ── 3. routing: sophos rides the WebAPI adapter with NO SSH pin gate.
+      const webApiLive = await resolveAdapter(webApiTarget, webApiCredential);
+      check(
+        "sophos: LIVE_SSH routes to the WebAPI adapter (no SSH pin required)",
+        webApiLive.adapter === "sophos-sfos-webapi",
+        webApiLive.adapter,
+      );
+      check(
+        "sophos: flavor registry agrees (configFlavor matches the simulator for uniform diffs)",
+        resolveLiveWebApiFlavor("sophos").configFlavor === webApiLive.configFlavor &&
+          webApiLive.configFlavor === "sfos",
+      );
+      check(
+        "sophos: capabilities stay read-only (no apply/restore/rollback)",
+        webApiLive.capabilities.includes("connect") &&
+          webApiLive.capabilities.includes("backup_config") &&
+          !webApiLive.capabilities.some((c) => /apply|restore|rollback/i.test(c)),
+        webApiLive.capabilities.join(","),
+      );
+
+      // ── 4. connect over the REAL TLS channel ──
+      const webApiConn = await webApiLive.connect(webApiTarget);
+      check(
+        "sophos: connect over real TLS",
+        Number.isFinite(webApiConn.latencyMs) && webApiConn.latencyMs >= 0,
+        `${webApiConn.latencyMs} ms (${webApiConn.negotiated})`,
+      );
+
+      // ── 5. config collection over the REAL TLS channel ──
+      const webApiCfg = await webApiLive.fetchConfig(webApiTarget);
+      check(
+        "sophos: raw config is the device payload (authentic body)",
+        webApiCfg.rawText.includes("HARNESS-SFOS-01") &&
+          webApiCfg.rawText.includes("SFOS-CONFIG-MARKER-HARNESS"),
+      );
+      check(
+        "sophos: normalization contract holds",
+        webApiCfg.normalizedText.length > 0,
+        `${webApiCfg.normalizedText.split("\n").length} lines`,
+      );
+
+      // ── 6. direct transport checks: auth failure is typed ──
+      try {
+        await webApiProbe(
+          { host: "127.0.0.1", port: webApiHarness.port, apiKey: "wrong-key-on-purpose" },
+          4000,
+        );
+        check("sophos: wrong api-key refused (WEBAPI_ACTION_FAILED)", false, "probe unexpectedly succeeded");
+      } catch (err) {
+        check(
+          "sophos: wrong api-key refused (WEBAPI_ACTION_FAILED)",
+          err instanceof WebApiError && err.code === "WEBAPI_ACTION_FAILED",
+          errorCode(err),
+        );
+      }
+      try {
+        await webApiFetchConfigText(
+          { host: "127.0.0.1", port: webApiHarness.port, apiKey: "wrong-key-on-purpose" },
+          4000,
+        );
+        check("sophos: wrong api-key on GetConfig refused too", false, "fetch unexpectedly succeeded");
+      } catch (err) {
+        check(
+          "sophos: wrong api-key on GetConfig refused too",
+          err instanceof WebApiError && err.code === "WEBAPI_ACTION_FAILED",
+          errorCode(err),
+        );
+      }
+
+      // ── 7. malformed-response path (a second harness serving garbage) ──
+      const malformedHarness = await startSfosWebApiHarness({ malformed: true });
+      process.env.FAYANMS_WEBAPI_CA_PEM = malformedHarness.caPem;
+      try {
+        await webApiProbe(
+          { host: "127.0.0.1", port: malformedHarness.port, apiKey: SFOS_HARNESS_API_KEY },
+          4000,
+        );
+        check("sophos: malformed response refused (WEBAPI_MALFORMED_RESPONSE)", false, "probe unexpectedly succeeded");
+      } catch (err) {
+        check(
+          "sophos: malformed response refused (WEBAPI_MALFORMED_RESPONSE)",
+          err instanceof WebApiError && err.code === "WEBAPI_MALFORMED_RESPONSE",
+          errorCode(err),
+        );
+      }
+      await malformedHarness.stop();
+
+      // restore the GOOD harness CA before the HTTP surface check (the
+      // worker's handle() runs in THIS process and inherits the env).
+      process.env.FAYANMS_WEBAPI_CA_PEM = webApiHarness.caPem;
+
+      // ── 8. HTTP surface: the exact surface the test-connection flow uses
+      // (in-process handle() — the certify process carries the CA + vault
+      // env, mirroring how the SSH per-flavor HTTP checks run).
+      const sfosProbe = await handle(
+        new Request("http://worker/simulate/connect", {
+          method: "POST",
+          headers: {
+            authorization: serviceAuthHeader(),
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            vendor: "sophos",
+            host: "127.0.0.1",
+            dataSource: "LIVE_SSH",
+            deviceId: "cert-sfos-webapi",
+            credential: { username: "api", port: webApiHarness.port, secretRef: webApiVaultRef },
+          }),
+        }),
+      );
+      const sfosProbeJson = (await sfosProbe.json()) as Record<string, unknown>;
+      check(
+        "sophos: /simulate/connect answers over the WebAPI plane (control token)",
+        sfosProbe.status === 200 && sfosProbeJson.ok === true,
+        `status ${sfosProbe.status}`,
+      );
+
+      // ── 9. wire audit: ONLY the two read-only actions ever left, and the
+      // api-key rode every AUTHENTICATED request (no bypass exists).
+      const actions = new Set(webApiHarness.requests.map((r) => r.action));
+      check(
+        "sophos: wire carried ONLY the read-only action allowlist",
+        actions.size > 0 && [...actions].every((a) => a === "GetAuthStatus" || a === "GetConfig"),
+        [...actions].join(",") || "none",
+      );
+      check(
+        "sophos: every authenticated request carried the api-key",
+        webApiHarness.requests.every((r) => r.hasApiKey),
+      );
+
+      process.env.FAYANMS_WEBAPI_CA_PEM = "";
+      delete process.env.FAYANMS_WEBAPI_CA_PEM;
+      await webApiHarness.stop();
+    }
+
     console.log("\n── cross-cutting contracts ──");
 
     // Simulator routing unchanged (zero regression).
@@ -554,7 +760,7 @@ async function main(): Promise<void> {
       resolveVaultSecret("vault://ssh/missing-entry"),
     );
     await expectError(
-      "uncertified vendor (sophos) → FLAVOR_UNSUPPORTED",
+      "sophos is NOT an SSH flavor (CERT-006: it rides the WebAPI transport)",
       "FLAVOR_UNSUPPORTED",
       () => resolveLiveSshFlavor("sophos"),
     );

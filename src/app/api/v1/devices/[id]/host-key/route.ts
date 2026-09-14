@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { isLiveWebApiVendor } from "@/lib/devices/live-transport";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
@@ -82,6 +83,19 @@ async function loadEndpoint(deviceId: string): Promise<
       ok: false,
       code: "CREDENTIAL_REQUIRED",
       message: "Link an SSH credential profile first — enrollment pins the endpoint (host + credential port)",
+      status: 400,
+    };
+  }
+  // CERT-006: WebAPI vendors have NO SSH handshake to pin — their live
+  // transport rides fail-closed TLS verification (system CA store plus the
+  // worker-pinned FAYANMS_WEBAPI_CA_PEM). SSH host-key enrollment is
+  // inapplicable by construction; refusing typed beats a probe that could
+  // never reach an SSH endpoint.
+  if (isLiveWebApiVendor(device.vendor?.key)) {
+    return {
+      ok: false,
+      code: "SSH_HOSTKEY_NOT_APPLICABLE",
+      message: `Vendor "${device.vendor?.key}" drives the live plane over the SFOS WebAPI (TLS) — there is no SSH host key to enroll. Trust is the worker's TLS verification policy (FAYANMS_WEBAPI_CA_PEM for private CAs).`,
       status: 400,
     };
   }

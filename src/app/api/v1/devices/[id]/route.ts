@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { requiredLiveCredentialType } from "@/lib/devices/live-transport";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -176,7 +177,10 @@ export async function PATCH(
     return authFail;
   }
 
-  const current = await db.device.findUnique({ where: { id } });
+  const current = await db.device.findUnique({
+    where: { id },
+    include: { vendor: { select: { key: true } } },
+  });
   if (!current) {
     return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
   }
@@ -201,11 +205,13 @@ export async function PATCH(
     }
   }
 
-  // Phase 22 slice 2 — data-plane invariants, evaluated against the
-  // EFFECTIVE (patched) device state so partial updates cannot create an
-  // illegal state:
+  // Phase 22 slice 2 / CERT-006 — data-plane invariants, evaluated against
+  // the EFFECTIVE (patched) device state so partial updates cannot create
+  // an illegal state:
   //   LIVE_SSH ⇒ a credential profile is linked (fail-closed) and its type
-  //   is SSH_PASSWORD (the live transport is password-auth SSH exec).
+  //   matches the vendor's live transport (transport is vendor-determined:
+  //   SSH_PASSWORD for the SSH CLI vendors, API_TOKEN — the WebAPI
+  //   api-key — for sophos's WebAPI transport).
   const effectiveDataSource =
     data.dataSource ?? current.dataSource ?? "SIMULATOR";
   const effectiveCredentialId =
@@ -224,10 +230,11 @@ export async function PATCH(
       where: { id: effectiveCredentialId },
       select: { type: true },
     });
-    if (profile && profile.type !== "SSH_PASSWORD") {
+    const requiredType = requiredLiveCredentialType(current.vendor?.key);
+    if (profile && profile.type !== requiredType) {
       return fail(
         "CREDENTIAL_TYPE_UNSUPPORTED",
-        `LIVE_SSH currently supports SSH_PASSWORD credential profiles only (got ${profile.type})`,
+        `LIVE_SSH for vendor "${current.vendor?.key ?? "unknown"}" requires a ${requiredType} credential profile (got ${profile.type})`,
         400
       );
     }

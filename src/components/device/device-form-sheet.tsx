@@ -5,6 +5,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { LoaderCircle } from "lucide-react";
+import { isLiveWebApiVendor } from "@/lib/devices/live-transport";
 
 import { useMeta } from "@/hooks/api/use-meta";
 import { useCreateDevice, useUpdateDevice } from "@/hooks/api/use-devices";
@@ -131,6 +132,7 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
   // Subscribe to field values via useWatch (compiler-safe) instead of
   // form.watch(), which returns a function React Compiler cannot memoize.
   const vendorId = useWatch({ control: form.control, name: "vendorId" });
+  const liveWebApiVendor = isLiveWebApiVendor((meta.data?.vendors ?? []).find((v) => v.id === vendorId)?.key);
   const siteId = useWatch({ control: form.control, name: "siteId" });
   const criticality = useWatch({ control: form.control, name: "criticality" });
   const dataSource = useWatch({ control: form.control, name: "dataSource" });
@@ -394,7 +396,7 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
             )}
             <p className="text-xs text-muted-foreground">
               {isLive
-                ? "Required for live devices — use an SSH_PASSWORD profile and make sure its secret exists in the worker vault (FAYANMS_VAULT_*)."
+                ? `Required for live devices — use an ${liveWebApiVendor ? "API_TOKEN (the SFOS WebAPI api-key)" : "SSH_PASSWORD"} profile and make sure its secret exists in the worker vault (FAYANMS_VAULT_*).`
                 : "Managed in Administration → Credential Profiles — secrets stay in the vault, FayaNMS stores references only."}
             </p>
           </div>
