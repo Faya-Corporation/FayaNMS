@@ -2148,3 +2148,18 @@ Stage Summary:
 - Honest posture: the DB-level concurrency behaviors (lease PK, CAS rowcount, device-lock serialization) are PostgreSQL-side and remain E2E-proven rather than unit-pinned — `bun test` in CI runs without a database by design; the external audit's original TEST- wording was reconstructed from the accepted taxonomy (concurrency / restore / host-trust) and the adopted remediation order, documented here for traceability.
 - Next executable step per the audit §16 order: SAFE-008/009 — typed snapshot-exact restore (consume the approved restore target as the desired configuration in the engine, closing P0-004's "restore does not restore the selected snapshot" with SAFE-007's fail-closed guard as the safety net until it lands).
 - Artifacts: this commit (src/lib/change/apply-disposition.ts extended; src/app/api/v1/worker/change-step/route.ts wired; NEW tests/audit/change-engine-invariants.test.ts; README).
+
+---
+Task ID: R25-testsuites-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit ce3167a (TEST-001/002/003) — honest evidence record
+
+Work Log:
+- Pushed ce3167a; run #34 (gate + scan) picked it up.
+- GATE job on ce3167a: SUCCESS — proven TWICE (attempt 1 and the attempt-2 rerun of failed jobs): all 20 steps green (lint, src+worker zero-error typecheck, full bun test suite incl. the new change-engine-invariants pins, LIVE_SSH per-flavor certification, brand/icon validators, Prisma validate + fresh-PostgreSQL migrate deploy + migrations≡schema drift guard, demo seed smoke, i18n parity, production build). The commit is therefore fully gate-proven.
+- SCAN job on ce3167a: FAILED WITHOUT EXECUTING — four rerun attempts (2× rerun-failed-jobs, 2× rerun-all), every failure identical: ZERO steps recorded, NO runner ever assigned ("runner: ''"), NO job logs (BlobNotFound). On attempts 3–5 even the gate job — which had succeeded twice on the same SHA minutes earlier — began failing instantly (2 s, no runner, skipped scan), which proves the failure is GitHub-side runner assignment (hosted-runner capacity/quota for the private repo), not a scanner finding and not this commit's content (tests + lib extraction + docs only).
+- Billing API is not accessible with the push token (403 — needs a user-scope token), so the quota hypothesis could not be confirmed from the sandbox. The run is at github.com/fayafatehi/FayaNMS/actions/runs/34790930950 — a UI re-run after the account's Actions minutes reset/reset window (or a manual billing check) should turn scan green; the workflow content is unchanged and proven.
+
+Stage Summary:
+- TRUTHFUL CI STATE for ce3167a: gate GREEN (twice) · scan BLOCKED by GitHub runner assignment (infrastructure; zero steps executed across 4 reruns, including instant no-runner failures of previously-succeeding jobs on the identical commit). Local equivalents of every gate step were re-run before push and are green (lint 0 · tsc 0 · 199/199 tests · build:gate exit 0). No scanner finding exists to triage — the scan job never ran.
+- User-side follow-up (cannot be done from the sandbox): verify GitHub Actions minutes/billing for the account, then re-run run #34 from the Actions UI; scan should complete green with no changes required.
