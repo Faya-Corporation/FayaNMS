@@ -2666,3 +2666,16 @@ Stage Summary:
 - TASK-TEST-001-A landed as one focused commit: release-critical HTTP-level E2E certification against the real topology, a hard-gate CI job, AND the journey-found P1 login regression fixed — the single most valuable remediation of this session so far, because it proved that "all local gates green" was silently hiding a broken sign-in path at runtime.
 - Honest scope: visual/Playwright browser journeys (RTL parity, keyboard-only, axe) remain A11Y-001-A/browser-E2E authoring; CI e2e job execution is runner-blocked (CI-001).
 - Session progress: PHASE A (SEC-ENV-001) FIXED · PHASE B (SCALE-001) FIXED (API plane) · PHASE C (TEST-001) LANDED with a caught P1. Next: PHASE D — TASK-DEPLOY-001-A (HTTPS-by-default reference deployment + runtime boundaries).
+---
+Task ID: R39-test-001-a-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 3bbe969 (TASK-TEST-001-A) — honest evidence record
+
+Work Log:
+- Pushed 3bbe969; run completed "failure" with the IDENTICAL infrastructure signature as runs #34-#52 — now visible on ALL THREE jobs: gate failed with ZERO steps executed and an EMPTY runner_name; the NEW e2e job and scan both skipped (no runner was ever assigned). GitHub-hosted runner unavailability, not a gate/scanner/journey finding.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 549 across 30 files (543 pass + 6 e2e skips; 3,207 expects) · prisma validate OK · drift guard exit 0 · certify.ts exit 0 · build:gate exit 0 · PLUS the live E2E journeys 6/6 pass in 52.6 s against the real stack (app + worker + PostgreSQL + simulator plane).
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for 3bbe969: locally gate-proven INCLUDING live E2E; CI-blocked by infrastructure only. The journey-found P1 login regression (runtime sign-in 500 since R35) is fixed in 3bbe969.
+- TASK-TEST-001-A final report: COMPLETE. Starting HEAD 90e5a2f → ending HEAD 3bbe969. TEST-001: LANDED (HTTP-level journeys + CI gate; Playwright/visual browser layer remains a separate authoring task).
