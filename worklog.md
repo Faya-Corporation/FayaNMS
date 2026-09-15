@@ -2573,3 +2573,16 @@ Work Log:
 Stage Summary:
 - TASK-SVC-001-A landed as one focused commit: production service identity is now fully Ed25519-capable with ZERO symmetric material — the P1-007 Phase 2 end state is reachable, verified by a live production boot, 38 new pins, and the full gate loop. Audit status recorded honestly: SVC-001: FIXED. Next recommended task per the prompt §26: TASK-SEC-ENV-001-A (per-service secret scope split).
 - CI state to be recorded in the follow-up addendum per the standing loop.
+---
+Task ID: R36-svc-001-a-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit ca87a9a (TASK-SVC-001-A) — honest evidence record
+
+Work Log:
+- Pushed ca87a9a; run 34919009224 completed "failure" with the IDENTICAL infrastructure signature as runs #34-#49: job "gate" failed with ZERO steps executed and an EMPTY runner_name (no runner was ever assigned), job "scan" skipped — GitHub-hosted runner unavailability for this private repo (capacity/minutes), not a gate or scanner finding. The workflow file is unchanged since runs #28-#33 were green.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL (unfiltered) 0 · bun test tests/ 494/494 (3,039 expects — 38 new SVC-001-A pins) · bunx prisma validate OK · drift guard exit 0 on a fresh fayanms_shadow ("No difference detected") · bun mini-services/worker/certify.ts exit 0 (5 flavors, protocol-level) · build:gate exit 0 · PLUS the live production-boot proof (EdDSA-only env boots and serves; negative controls refuse per the §11 matrix).
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for ca87a9a: locally gate-proven (including a live boot), CI-blocked by infrastructure only. User-side follow-up (cannot be done from the sandbox): verify GitHub Actions minutes/billing for the account, then re-run the affected runs from the Actions UI; no code action is required.
+- TASK-SVC-001-A final report per the remediation prompt §26: COMPLETE. Starting HEAD 583138d → ending HEAD ca87a9a. Audit status: SVC-001: FIXED — Ed25519-only production identity is bootable and verified end-to-end. Next recommended task: TASK-SEC-ENV-001-A — Split application, worker, provision, and database secret scopes.
