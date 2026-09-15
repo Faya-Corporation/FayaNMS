@@ -26,10 +26,22 @@ import { preCheckCredentialsSignin } from "@/lib/auth/login-guard";
  */
 const handler = NextAuth(authOptions);
 
-async function POST(req: NextRequest) {
+/** Next 16 route context (params is a Promise; next-auth v4.24.15 awaits it). */
+interface NextAuthRouteContext {
+  params: Promise<{ nextauth: string[] }>;
+}
+
+/**
+ * TEST-001-A regression fix (found by the E2E login journey): the wrapper
+ * MUST forward the route context. NextAuth resolves the auth action by
+ * destructuring `nextauth` from ctx.params — a bare `handler(req)` passes
+ * undefined and 500s EVERY credentials sign-in at runtime (the unit tier
+ * mocked the handler and could not see this; the live journey could).
+ */
+async function POST(req: NextRequest, ctx?: NextAuthRouteContext) {
   const throttled = await preCheckCredentialsSignin(req);
   if (throttled) return throttled;
-  return handler(req);
+  return handler(req, ctx);
 }
 
 export { handler as GET, POST };

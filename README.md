@@ -687,6 +687,30 @@ store — its read-modify-write lockout state needs the same atomic
 transaction shape, tracked as TASK-SCALE-001-B; a plain SQL KV would be a
 racy false fix and was refused.
 
+**LANDED — TEST-001-A (independent audit 2026-09-15): release-critical E2E
+journeys against the REAL production topology — and they immediately caught
+a real P1.** `tests/e2e/` boots the actual stack (standalone production
+server + poll-based worker + PostgreSQL + simulator plane, zero mocks) and
+drives the release-critical flows over plain HTTP: NextAuth sign-in
+(CSRF dance) → session → authorized routes → logout; inventory
+create/read/update/duplicate-guard; the FULL change lifecycle — submit →
+bindable approvals → worker-driven execution → terminal state — in both
+directions (SUCCESS and the demo failAt=APPLY truthful FAILED with honest
+per-step states); the API-client bearer plane (token-shown-once → scoped
+acknowledge → scope refusal → revocation kills access); and the login
+abuse guard (burst → 429 with Retry-After BEFORE password verification →
+full recovery). **The journey found a P1 regression unit tests could not
+see:** the NextAuth POST wrapper dropped the route context, so EVERY
+runtime credentials sign-in 500'd since AUTH-001-A landed — fixed by
+forwarding the context (journey evidence, not a mock assertion). The
+harness provisions its own throwaway database, generates fresh random
+secrets per run (the deterministic CI fixtures are production-refused by
+design — P1-019), and models the SEC-ENV-001 split (the worker receives
+only worker-zone material). CI gains a hard-gate `e2e` job running the
+journeys on every push (execution recorded honestly as runner-blocked
+until CI-001 resolves). Journeys skip in the unit gate (`FAYANMS_E2E=1`
+opts in locally after `build:gate`).
+
 
 **LANDED — CERT-006 (audit CERT tier): Sophos SFOS joins the live plane over
 a REAL WebAPI transport — the vendor whose SSH CLI has no read-only

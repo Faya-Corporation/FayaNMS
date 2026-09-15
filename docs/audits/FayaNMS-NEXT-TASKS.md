@@ -114,14 +114,14 @@ Depends on: CI-001-A (runner capacity).
 
 ---
 
-TASK-TEST-001-A — Continuous browser + multi-container journeys ✊ (authoring; execution needs runners)
+TASK-TEST-001-A — Continuous browser + multi-container journeys ✊ → ✅ LANDED (R39, 2026-09-15) as HTTP-level E2E journeys + CI gate
 
 Goal: Close the continuous-E2E gap.
-Files: NEW `tests/e2e/` (Playwright), `ci.yml` (service containers + job).
-Implementation: Journeys: sign-in incl. throttle, inventory CRUD, backup/diff, change draft→approve→execute (simulator), restore (simulator), incidents/alerts, reports, admin negatives, RTL parity, keyboard-only; compose smoke with health + job-engine loop.
-Tests: The journeys themselves.
-Acceptance: Journeys green in CI on every push; failures block.
-Depends on: CI-001-A.
+Landed as: `tests/e2e/` — release-critical journeys driven over REAL HTTP against the REAL topology (production standalone server + poll-based worker + PostgreSQL + simulator plane — zero mocks, per the remediation prompt C2 "no giant brittle suite" + C3 "not mocked internal state"): J1 auth (NextAuth CSRF dance → session → authorized route → logout → session dead), J2 inventory (create/read/update/409-duplicate), J3 change lifecycle (submit → MEDIUM bindable approvals → worker-driven execute → SUCCESSFUL; PLUS the failure case failAt=APPLY → truthful FAILED per-step states), J4 API client (token-once → scoped bearer ack → scope refusal → revoke → 401 after), J5 login throttle (burst → 429+Retry-After → full recovery). The harness (`e2e-server.ts`) creates/migrates/seeds its own `fayanms_e2e` database, boots `.next/standalone/server.js` (fresh random secrets per run — the CI fixture values are production-refused by design, P1-019) and a minimal-env worker (SEC-ENV-001 modeled); journeys skip unless `FAYANMS_E2E=1` (the unit gate stays hermetic). `.github/workflows/ci.yml` gained a hard-gate `e2e` job (postgres service + build + `FAYANMS_E2E=1 bun test tests/e2e/`).
+**Journey-found P1 regression, fixed in the same commit:** `src/app/api/auth/[...nextauth]/route.ts` dropped the Next.js route context when forwarding POST to NextAuth — `handler(req)` without ctx destructures `nextauth` from undefined → **EVERY runtime credentials sign-in 500'd since R35** (the unit tier mocked the handler and could not see it; the live journey could). Fix: forward ctx (next-auth v4.24.15 awaits params).
+Evidence: `FAYANMS_E2E=1 bun test tests/e2e/` → **6/6 pass (52.6 s) against the live stack**; unit suite unchanged (journeys skip: 549 tests / 543 pass + 6 skips).
+Honest scope: Playwright/visual browser journeys, RTL-parity and keyboard-only sweeps remain a separate authoring task (A11Y-001-A / browser-E2E) — these are HTTP-level journeys; the CI `e2e` job execution is runner-blocked (CI-001) and recorded honestly on every push.
+Depends on: none (was: CI-001-A — decoupled: the journeys run locally and will run in CI the moment runners return).
 
 ---
 

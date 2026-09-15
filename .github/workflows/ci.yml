@@ -220,6 +220,55 @@ jobs:
       - name: Production build (typecheck-bypassing is disabled)
         run: bun run build:gate
 
+  # TEST-001-A (independent audit 2026-09-15): release-critical E2E journeys
+  # against the REAL topology — production app server (standalone build) +
+  # poll-based worker + PostgreSQL + simulator plane. NO mocks: the journeys
+  # drive NextAuth sign-in (CSRF dance), inventory CRUD, the full change
+  # lifecycle (submit → bindable approvals → worker-driven execute →
+  # terminal states, success AND truthful failure), the API-client bearer
+  # plane (create/scope/revoke), and the login abuse guard (burst → 429 →
+  # recovery). Fresh random secrets per run: the deterministic CI fixture
+  # values are REFUSED by the production startup policy (P1-019) — exactly
+  # as designed.
+  e2e:
+    runs-on: ubuntu-latest
+    needs: gate
+    continue-on-error: false # release-critical journeys are a hard gate
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fayanms
+          POSTGRES_DB: fayanms
+          POSTGRES_PASSWORD: fayanms-ci-only
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U fayanms -d fayanms"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: "postgresql://fayanms:fayanms-ci-only@localhost:5433/fayanms"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (SHA-pinned 2026-09-11)
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2 (SHA-pinned 2026-09-11)
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies (app + worker, frozen)
+        run: |
+          bun install --frozen-lockfile
+          cd mini-services/worker && bun install --frozen-lockfile
+
+      - name: Production build (standalone output, journeys' boot entry)
+        run: bun run build:gate
+
+      # The harness creates/migrates/seeds its OWN fayanms_e2e database and
+      # tears it down; the parent fayanms database is only the clone source.
+      - name: Run release-critical E2E journeys (app + worker + PG, no mocks)
+        run: FAYANMS_E2E=1 bun test tests/e2e/
+
   scan:
     runs-on: ubuntu-latest
     needs: gate
