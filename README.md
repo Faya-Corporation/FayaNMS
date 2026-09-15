@@ -682,10 +682,31 @@ dependency; protection is never silently removed). THE acceptance proof:
 two store clients on separate Prisma pools share one budget in tests
 (instance A draws 2 of 3; instance B sees the remainder and is limited on
 the 4th; symmetric in reverse) and 12 parallel hits never exceed a budget
-of 5. Honest scope: the login guard (AUTH-001-A) keeps its per-instance
-store — its read-modify-write lockout state needs the same atomic
-transaction shape, tracked as TASK-SCALE-001-B; a plain SQL KV would be a
-racy false fix and was refused.
+of 5.
+
+**LANDED — SCALE-001-B (independent audit 2026-09-15): distributed backend
+for the login guard's lockout state — the remaining AUTH-001 half is
+closed.** Under `FAYANMS_RATE_STORE=postgres` (the SAME knob as the API
+gate's shared store — one knob, both planes) every per-key
+read-modify-write of the login guard (prune → budget → escalate →
+upsert/delete) serializes on a per-key `pg_advisory_xact_lock` inside ONE
+transaction over a `LoginGuardState` row: budgets, lockouts, backoff
+escalation counts and the once-per-window telemetry rule are FLEET-WIDE —
+instance A's lockout is honored by instance B, a success reset anywhere
+resets everywhere, and 12 parallel failures across two instances record 12
+stamps with exactly one escalation (no lost updates, no double flips).
+Single-host default stays the bounded in-memory store (zero new infra);
+an unreachable shared store fails CLOSED (the pinned SCALE-001-A
+decision); retention is server-side (per-key rewrite + global stale sweep
+that never deletes an active lockout). The guard's decision logic is now
+one set of pure per-key mutators shared by BOTH backends — the memory path
+keeps its process-guaranteed semantics and every R35 pin. THE acceptance
+proof: two guard clients on separate Prisma pools — A locks, B honors;
+symmetric source throttling; cross-instance reset; fleet telemetry fires
+exactly once per window (`tests/audit/login-guard-distributed.test.ts`,
+20 tests). **AUTH-001 is now FIXED** (throttle/lockout/telemetry +
+fleet-wide state); the `/api/v1` gate has been fleet-wide since
+SCALE-001-A.
 
 **LANDED — TEST-001-A (independent audit 2026-09-15): release-critical E2E
 journeys against the REAL production topology — and they immediately caught

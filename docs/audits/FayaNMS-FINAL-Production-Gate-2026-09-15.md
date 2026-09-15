@@ -28,7 +28,7 @@ Release to "PRODUCTION READY" requires every ☐ below ticked with evidence. Do 
 
 ## D. Non-blocking authoring backlog (post-gate)
 
-- [ ] TASK-SCALE-001-B — distributed backend for the login guard's lockout state (atomic per-key transaction shape).
+- [x] TASK-SCALE-001-B — distributed backend for the login guard's lockout state (atomic per-key transaction shape). LANDED R46: `FAYANMS_RATE_STORE=postgres` makes the login plane fleet-wide (`LoginGuardState` + per-key advisory-lock tx); AUTH-001 FIXED end-to-end — `tests/audit/login-guard-distributed.test.ts` (20 pins, two-instance acceptance).
 - [ ] TASK-BROWSER-E2E — Playwright/visual journeys + axe a11y + RTL/keyboard sweeps on the rendering layer.
 
 ## E. Release ritual (every release, after A–C are green)

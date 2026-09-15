@@ -580,7 +580,8 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    HORIZONTALLY SCALED app sets `FAYANMS_RATE_STORE=postgres` — every instance
    then draws from ONE shared budget held in the same PostgreSQL the app already
    uses (per-key advisory-lock-serialized transactions; no new service; an
-   unreachable shared store fails CLOSED). SCALE-001-A, independent audit
+   unreachable shared store fails CLOSED). The SAME knob makes the login
+   guard's budgets fleet-wide (note 20). SCALE-001-A, independent audit
    2026-09-15.
 9. **Execution concurrency guards (SAFE-003/004/005, audit P0-003)** are device-control
    gates too: ONE queued/running execution per change (a DB lease — a racing execute
@@ -769,10 +770,17 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    or emitted; typed audit events (`SIGNIN_THROTTLED` / `SIGNIN_LOCKOUT`,
    at most one row per key per window) land in the audit trail with a NULL
    actor (pre-auth — no fabricated actor FK). The guard store is bounded
-   in-process memory (5,000-key cap, stale-first sweep) — behind a
-   load-balanced deployment the budgets are per-instance until
-   SCALE-001-A's shared store lands; single-instance deployments (this
-   runbook) are fully covered.
+   in-process memory by default (5,000-key cap, stale-first sweep) — fully
+   covering single-instance deployments (this runbook). A HORIZONTALLY
+   SCALED app sets `FAYANMS_RATE_STORE=postgres` (the SAME knob as the API
+   gate's shared store — one knob, both planes): every per-key
+   read-modify-write (prune → budget → escalate → upsert/delete) then
+   serializes on a per-key advisory xact lock inside ONE transaction
+   (LoginGuardState table), so budgets, lockouts, escalation counts and the
+   once-per-window telemetry rule are FLEET-WIDE — instance A's lockout is
+   honored by instance B, and a success reset anywhere resets everywhere.
+   An unreachable shared store fails CLOSED (the pinned SCALE-001-A
+   decision). TASK-SCALE-001-B, independent audit 2026-09-15.
 21. **Per-service secret scopes (SEC-ENV-001, independent audit 2026-09-15)**:
    one `.env.production` used to serve app + worker + provision as their
    runtime `env_file`, so the worker received the session secret and the KEK

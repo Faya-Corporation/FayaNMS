@@ -214,7 +214,12 @@ export function createPostgresRateStore(
 
 /* ────────────────────────────── resolution ──────────────────────────────── */
 
-function resolveStoreKind(env: NodeJS.ProcessEnv): "memory" | "postgres" {
+/**
+ * Resolve the shared-store KIND from an env (pure — reused by the login
+ * guard's store resolution, TASK-SCALE-001-B: one knob, both planes).
+ * Unknown values refuse — no silent fallback to a weaker posture.
+ */
+export function resolveRateStoreKind(env: NodeJS.ProcessEnv): "memory" | "postgres" {
   const raw = (env[RATE_STORE_ENV] ?? "").trim().toLowerCase();
   if (raw === "" || raw === "memory") return "memory";
   if (raw === "postgres" || raw === "postgresql") return "postgres";
@@ -228,7 +233,7 @@ function resolveStoreKind(env: NodeJS.ProcessEnv): "memory" | "postgres" {
 export function resolveRateStore(
   env: NodeJS.ProcessEnv = process.env
 ): SharedRateStore {
-  const kind = resolveStoreKind(env);
+  const kind = resolveRateStoreKind(env);
   if (kind === "postgres") return createPostgresRateStore();
   return createInMemoryRateStore();
 }

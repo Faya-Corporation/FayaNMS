@@ -1,6 +1,6 @@
-# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-15, R43)
+# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-15, R46)
 
-Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R43). ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, all of it outside the sandbox's control:
+Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R46). ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, all of it outside the sandbox's control:
 
 ## ACTIVE (only genuinely remaining work)
 
@@ -8,11 +8,10 @@ Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-P
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4)
 OWNER-CI-001 — Restore GitHub Actions runner capacity and obtain green gate+scan+e2e runs on the release SHA
 LAB-FUNC-001 / LAB-CERT-HW-001 — Execute the physical-device certification matrix (docs/certification/MATRIX.md §3); unlock the typed LIVE-restore decision
-TASK-SCALE-001-B — Distributed backend for the login guard's lockout state (same atomic per-key transaction shape as SCALE-001-A)
 TASK-BROWSER-E2E — Playwright/visual browser journeys + axe-core a11y + RTL/keyboard sweeps (the HTTP-level journey layer is landed; this is the rendering-layer pass)
 ```
 
-Everything else from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R43).
+Everything else from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R46). AUTH-001 is now FIXED end-to-end (R35 guard + R46 fleet-wide store).
 
 ---
 
@@ -60,13 +59,12 @@ Depends on: none (the AUTH-001-A store interface stays; the API gate had no shar
 
 ---
 
-TASK-SCALE-001-B — Distributed backend for the login guard's lockout state ✊
+TASK-SCALE-001-B — Distributed backend for the login guard's lockout state ✊ → ✅ LANDED (R46, 2026-09-15)
 
 Goal: Close the remaining AUTH-001 half: fleet-wide login budgets/lockout when 2+ app instances.
-Files: `src/lib/auth/login-guard.ts` (+ store), reuse `src/lib/api/rate-store.ts` patterns.
-Implementation: Give the guard an atomic per-key transaction path (the rate-store's `pg_advisory_xact_lock` + prune/count/decision shape) so read-modify-write lockout state cannot race across instances; keep the in-memory default; reuse `FAYANMS_RATE_STORE` or a dedicated knob.
-Tests: Two-client shared lockout test (instance A locks, instance B honors); concurrency pins.
-Acceptance: Login budgets mean one fleet budget under `FAYANMS_RATE_STORE=postgres`; AUTH-001 flips to FIXED.
+Landed as: `AtomicLoginGuardStore` — when `FAYANMS_RATE_STORE=postgres` (the SAME knob as the API gate's shared store; one knob, both planes) every per-key read-modify-write of the guard (prune → budget → escalate → upsert/delete) runs inside ONE `pg_advisory_xact_lock(hashtextextended(key))` transaction over a new `LoginGuardState` row (failures = bounded epoch-ms stamp array, lockoutUntil, lockoutCount, denialEmittedAt); the guard's decision logic was refactored into pure per-key mutators shared by BOTH backends (memory path keeps its process-guaranteed semantics and every R35 pin); success reset is an awaited atomic mutation; once-per-window telemetry rides on the shared state (fleet rule); fail-closed on store outage (pinned SCALE-001-A decision); retention server-side (per-key rewrite + global stale sweep that never deletes an active lockout; rows defensively parsed).
+Tests: `tests/audit/login-guard-distributed.test.ts` (20 pins: round-trip fidelity, upsert/delete/no-op outcomes, defensive parse, 12 parallel mutations no-lost-update, guard contract over the shared store incl. escalation 30→60 s and full decay, THE acceptance — A locks/B honors, symmetric source throttle, cross-instance reset, fleet telemetry exactly once per window, 12 parallel failures across BOTH instances → 12 stamps/1 escalation/1 event, fail-closed outage, pruneStale keeps active lockouts, resolution policy one-knob-both-planes); suite 580 → 600 (594 pass + 6 e2e skips; 3,354 expects); E2E journeys 6/6 live (J5 login throttle re-proven on the live stack).
+Acceptance: Login budgets mean one fleet budget under `FAYANMS_RATE_STORE=postgres`; **AUTH-001 flips to FIXED**.
 Depends on: SCALE-001-A (landed — same atomic pattern).
 
 ---

@@ -50,12 +50,18 @@
  *     state decays fully once the attack stops, and a successful login
  *     resets the (source, account) state immediately.
  *
- * RESOURCE SAFETY: bounded in-memory store — MAX_LOGIN_GUARD_KEYS keys
+ * RESOURCE SAFETY: bounded state — MAX_LOGIN_GUARD_KEYS keys
  * (stale-first sweep to half the cap when exceeded), MAX_FAILURE_STAMPS_PER_KEY
- * timestamps per key. The store sits behind the LoginGuardStore interface so
- * SCALE-001-A can slot a shared backend (Redis/Postgres) in without touching
- * call sites. Known, documented limitation: the in-memory default is
- * per-process — the shared store is a separate, explicitly tracked task.
+ * timestamps per key. The store sits behind the LoginGuardStore interface;
+ * TASK-SCALE-001-B added the shared backend: when FAYANMS_RATE_STORE=postgres
+ * (the SAME knob as the API gate's shared store — one knob, both planes),
+ * every per-key read-modify-write (prune → budget → escalate → upsert/
+ * delete) serializes on a per-key advisory xact lock inside ONE transaction,
+ * so login budgets and lockouts are FLEET-WIDE, not per-instance. An
+ * unreachable shared store fails CLOSED (the pinned SCALE-001-A decision —
+ * the DB is already a hard dependency; protection is never silently
+ * removed). A plain get/set KV over SQL is NOT atomic across instances and
+ * remains refused.
  *
  * TELEMETRY: typed audit events (SIGNIN_THROTTLED / SIGNIN_LOCKOUT) written
  * to the existing AuditEvent trail at most once per key per window (never a
@@ -67,6 +73,8 @@
 
 import { createHmac, randomUUID } from "node:crypto";
 
+import { PrismaClient } from "@prisma/client";
+
 import { NextResponse, type NextRequest } from "next/server";
 
 import { db } from "@/lib/db";
@@ -75,6 +83,7 @@ import {
   rateLimitedHeaders,
   resolveClientIp,
 } from "@/lib/api/rate-gate";
+import { resolveRateStoreKind } from "@/lib/api/rate-store";
 
 /* ───────────────────────────── policy constants ──────────────────────── */
 
@@ -152,6 +161,8 @@ export interface LoginKeyState {
 }
 
 export interface LoginGuardStore {
+  /** Which backend this store resolved to (observability + tests). */
+  readonly kind: "memory" | "postgres";
   get(key: string): LoginKeyState | undefined;
   set(key: string, state: LoginKeyState): void;
   delete(key: string): void;
@@ -160,16 +171,63 @@ export interface LoginGuardStore {
 }
 
 /**
- * Bounded in-memory default (single process). SCALE-001-A landed the shared
- * store for the API rate gate (rate-store.ts, FAYANMS_RATE_STORE=postgres);
- * a distributed backend for THIS guard's read-modify-write state needs the
- * same atomic per-key transaction shape — tracked as TASK-SCALE-001-B (a
- * plain get/set KV over SQL is NOT atomic across instances and is refused
- * as a false fix).
+ * Outcome of one per-key mutation. The mutator runs INSIDE the serialized
+ * critical section (transaction for the shared store, plain flow for the
+ * process-local one) and returns:
+ *   - { state: LoginKeyState } → upsert the key's state;
+ *   - { state: null }          → delete the key (decayed/reset state);
+ *   - { state: undefined }     → leave the key untouched (nothing to write);
+ * plus an optional `emit` action — the once-per-window telemetry decision is
+ * made INSIDE the serialized mutator (denialEmittedAt is part of the state,
+ * so the rule holds fleet-wide), while the sink is invoked by the guard
+ * AFTER the write lands — telemetry must never break or hold the decision
+ * path — and an optional `verdict`, the deny/allow short-circuit used by
+ * checkLoginAllowed.
+ */
+export interface LoginKeyMutatorOutcome {
+  state?: LoginKeyState | null;
+  emit?: LoginTelemetryAction;
+  verdict?: LoginVerdict;
+}
+
+export type LoginKeyMutator = (
+  state: LoginKeyState | undefined
+) => LoginKeyMutatorOutcome;
+
+/** Timing context for a mutation (drives the shared store's stale sweep). */
+export interface AtomicMutateContext {
+  nowMs: number;
+  windowMs: number;
+}
+
+/**
+ * A store whose per-key mutations are ATOMIC across processes — the
+ * Postgres implementation serializes pg_advisory_xact_lock → read →
+ * mutate → write inside ONE transaction (the exact shape SCALE-001-A uses
+ * for the API gate). The guard routes every state change through `mutate`
+ * when a store exposes it; a plain get/set KV over SQL is NOT atomic and
+ * remains refused as a false fix.
+ */
+export interface AtomicLoginGuardStore extends LoginGuardStore {
+  mutate(
+    key: string,
+    mutator: LoginKeyMutator,
+    ctx?: AtomicMutateContext
+  ): Promise<LoginKeyMutatorOutcome>;
+  /** Global stale sweep (direct-callable for deterministic tests). */
+  pruneStale(nowMs: number, windowMs: number): Promise<number>;
+}
+
+/**
+ * Bounded in-memory default (single process, zero new infra). The shared
+ * fleet-wide backend is createPostgresLoginGuardStore below — selected by
+ * resolveLoginGuardStore when FAYANMS_RATE_STORE=postgres (TASK-SCALE-001-B,
+ * the same knob as the API gate's shared store).
  */
 export function createMemoryLoginGuardStore(): LoginGuardStore {
   const map = new Map<string, LoginKeyState>();
   return {
+    kind: "memory",
     get: (key) => map.get(key),
     set: (key, state) => void map.set(key, state),
     delete: (key) => void map.delete(key),
@@ -178,7 +236,177 @@ export function createMemoryLoginGuardStore(): LoginGuardStore {
   };
 }
 
-let globalStore: LoginGuardStore = createMemoryLoginGuardStore();
+/* ───────────── Postgres shared store (TASK-SCALE-001-B) ───────────── */
+
+export interface PostgresLoginGuardStoreOptions {
+  /**
+   * Prisma client (defaults to the app's singleton `db`). Typed as the BASE
+   * `PrismaClient`: the exported `db` is an $extends-wrapped client (audit
+   * hash-chain stamping) whose extended type is not assignable to the base
+   * type — the same one honest boundary cast as the rate store; at runtime
+   * the extended client is a structural superset and every used delegate
+   * behaves identically.
+   */
+  client?: PrismaClient;
+  /** Transaction budget in ms (default 5 s; tests shorten it). */
+  transactionTimeoutMs?: number;
+  /** Probability of running the global stale sweep per mutation (default 0.01). */
+  pruneChance?: number;
+}
+
+/** Defensive row → state parse: never trust persisted stamp arrays. */
+function stateFromRow(row: {
+  failures: unknown;
+  lockoutUntil: Date;
+  lockoutCount: number;
+  denialEmittedAt: Date;
+}): LoginKeyState {
+  const list: unknown[] = Array.isArray(row.failures) ? row.failures : [];
+  const failures = list
+    .map((v) => (typeof v === "number" && Number.isFinite(v) ? Math.floor(v) : null))
+    .filter((v): v is number => v !== null);
+  return {
+    failures,
+    lockoutUntil: row.lockoutUntil.getTime(),
+    lockoutCount: row.lockoutCount,
+    denialEmittedAt: row.denialEmittedAt.getTime(),
+  };
+}
+
+function rowFields(state: LoginKeyState): {
+  failures: number[];
+  lockoutUntil: Date;
+  lockoutCount: number;
+  denialEmittedAt: Date;
+} {
+  return {
+    failures: state.failures,
+    lockoutUntil: new Date(state.lockoutUntil),
+    lockoutCount: state.lockoutCount,
+    denialEmittedAt: new Date(state.denialEmittedAt),
+  };
+}
+
+const EMPTY_ITERATOR: IterableIterator<[string, LoginKeyState]> = new Map<
+  string,
+  LoginKeyState
+>().entries();
+
+/**
+ * PostgreSQL-backed shared login-guard store (TASK-SCALE-001-B — the
+ * distributed backend for the lockout plane). Every mutation runs in ONE
+ * transaction:
+ *
+ *   1. pg_advisory_xact_lock(hashtextextended(key)) — serializes concurrent
+ *      mutations for the SAME key (other keys proceed untouched); the lock
+ *      is held until COMMIT, so the guard's read-modify-write (prune →
+ *      budget → escalate → upsert/delete) cannot interleave across app
+ *      instances — budgets and lockouts are fleet-wide;
+ *   2. load the key's row (defensively parsed — see stateFromRow);
+ *   3. run the mutator (pure + synchronous — no await points inside the
+ *      transaction, no partial writes);
+ *   4. apply the outcome: upsert | delete | leave untouched.
+ *
+ * FAILURE POLICY (pinned, documented): store errors propagate — fail-closed,
+ * identical to SCALE-001-A. The shared store is the same PostgreSQL the app
+ * already depends on; if it is down, sign-in cannot verify users anyway, and
+ * protection is never silently removed. The in-memory default has no remote
+ * failure mode.
+ *
+ * RETENTION: rows are rewritten per key on every hit and a global stale
+ * sweep (probabilistic per mutation, direct-callable as pruneStale for
+ * deterministic tests) deletes rows whose last activity left the window AND
+ * whose lockout has expired — a distinct-key flood cannot grow the table
+ * without bound. The process-local memory sweep never applies here.
+ *
+ * The inherited LoginGuardStore accessors are INERT by design — every state
+ * operation flows through the atomic `mutate` (recordLoginSuccess routes its
+ * reset through mutate too). They exist for interface parity and are pinned
+ * never to lie: get() reports undefined, size() reports 0 — which is what
+ * disables the memory-only key-cap sweep for this backend.
+ */
+export function createPostgresLoginGuardStore(
+  client: PrismaClient = db as unknown as PrismaClient,
+  options: PostgresLoginGuardStoreOptions = {}
+): AtomicLoginGuardStore {
+  const timeoutMs = options.transactionTimeoutMs ?? 5_000;
+  const pruneChance = options.pruneChance ?? 0.01;
+
+  const pruneStale = async (nowMs: number, windowMs: number): Promise<number> => {
+    const gone = await client.loginGuardState.deleteMany({
+      where: {
+        updatedAt: { lt: new Date(nowMs - windowMs) },
+        lockoutUntil: { lt: new Date(nowMs) },
+      },
+    });
+    return gone.count;
+  };
+
+  return {
+    kind: "postgres",
+    get: () => undefined,
+    set: () => undefined,
+    delete: () => undefined,
+    size: () => 0,
+    entries: () => EMPTY_ITERATOR,
+    async mutate(key, mutator, ctx) {
+      const outcome = await client.$transaction(
+        async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+          const row = await tx.loginGuardState.findUnique({ where: { key } });
+          const result = mutator(row ? stateFromRow(row) : undefined);
+          if (result.state === null) {
+            if (row) await tx.loginGuardState.delete({ where: { key } });
+            return result;
+          }
+          if (result.state) {
+            const data = rowFields(result.state);
+            await tx.loginGuardState.upsert({
+              where: { key },
+              create: { key, ...data },
+              update: data,
+            });
+          }
+          return result;
+        },
+        { timeout: timeoutMs }
+      );
+      if (ctx && Math.random() < pruneChance) {
+        // Fire-and-forget: retention never delays the decision path. Tests
+        // pass pruneChance: 0 for determinism and call pruneStale directly.
+        void pruneStale(ctx.nowMs, ctx.windowMs).catch(() => undefined);
+      }
+      return outcome;
+    },
+    pruneStale,
+  };
+}
+
+/**
+ * Resolve the login guard's store from an env (pure — tests and boot).
+ * FAYANMS_RATE_STORE is THE knob for both shared planes (API gate + login
+ * guard): unset/""/"memory" → bounded in-memory default (single-host
+ * posture); "postgres" → the atomic shared store. Unknown values refuse —
+ * no silent fallback to a weaker posture (resolution reuses the rate
+ * store's exact policy, so both planes can never disagree).
+ */
+export function resolveLoginGuardStore(
+  env: NodeJS.ProcessEnv = process.env
+): LoginGuardStore {
+  if (resolveRateStoreKind(env) === "postgres") return createPostgresLoginGuardStore();
+  return createMemoryLoginGuardStore();
+}
+
+/**
+ * Process-wide default store — resolved LAZILY from the ambient env on
+ * first use, then cached (mirrors the rate gate's getRateStore()).
+ */
+let globalStore: LoginGuardStore | undefined;
+
+function defaultStore(): LoginGuardStore {
+  if (globalStore === undefined) globalStore = resolveLoginGuardStore(process.env);
+  return globalStore;
+}
 
 /* ─────────────────────────── telemetry contract ──────────────────────── */
 
@@ -250,7 +478,7 @@ function resolveDeps(deps: LoginGuardDeps): {
   cfg: LoginGuardConfig;
 } {
   return {
-    store: deps.store ?? globalStore,
+    store: deps.store ?? defaultStore(),
     sink: deps.sink ?? defaultSink,
     cfg: parseLoginGuardEnv(deps.env ?? (process.env as LoginGuardEnv)),
   };
@@ -330,27 +558,22 @@ function backoffFor(lockoutCount: number): number {
   );
 }
 
-/** Once-per-window telemetry rule: bounded rows, no per-attempt storm. */
-async function maybeEmit(
+/**
+ * Once-per-window telemetry decision — made INSIDE the serialized mutator
+ * (denialEmittedAt is part of the state, so the rule holds fleet-wide); the
+ * sink itself is invoked by the guard after the write lands.
+ */
+function emissionFor(
   state: LoginKeyState,
   action: LoginTelemetryAction,
-  identity: LoginAttemptIdentity,
   now: number,
-  windowMs: number,
-  sink: LoginTelemetrySink
-): Promise<void> {
-  if (
-    state.denialEmittedAt !== 0 &&
-    now - state.denialEmittedAt < windowMs
-  ) {
-    return;
+  windowMs: number
+): LoginTelemetryAction | undefined {
+  if (state.denialEmittedAt !== 0 && now - state.denialEmittedAt < windowMs) {
+    return undefined;
   }
   state.denialEmittedAt = now;
-  await sink({
-    action,
-    sourceKey: identity.sourceKey,
-    accountHash: identity.accountHash,
-  });
+  return action;
 }
 
 /** Stale-first sweep; keeps the map at or below half the key cap. */
@@ -370,12 +593,136 @@ function sweepStore(
 
 /* ──────────────────────────── guard operations ───────────────────────── */
 
+/** Dispatch one per-key mutation; returns the mutator's verdict, if any. */
+async function applyKey(
+  store: LoginGuardStore,
+  key: string,
+  mutator: LoginKeyMutator,
+  identity: LoginAttemptIdentity,
+  sink: LoginTelemetrySink,
+  ctx: AtomicMutateContext
+): Promise<LoginVerdict | undefined> {
+  let outcome: LoginKeyMutatorOutcome;
+  if (typeof (store as AtomicLoginGuardStore).mutate === "function") {
+    // Shared store: the whole read-modify-write runs inside the store's
+    // per-key advisory-lock transaction (atomic across instances).
+    outcome = await (store as AtomicLoginGuardStore).mutate(key, mutator, ctx);
+  } else {
+    // Process-local store: single-threaded JS + no await between the read
+    // and the write — per-key atomicity is process-guaranteed.
+    outcome = mutator(store.get(key));
+    if (outcome.state === null) store.delete(key);
+    else if (outcome.state) store.set(key, outcome.state);
+  }
+  if (outcome.emit) {
+    await sink({
+      action: outcome.emit,
+      sourceKey: identity.sourceKey,
+      accountHash: identity.accountHash,
+    });
+  }
+  return outcome.verdict;
+}
+
+/* -- pure per-key decision mutators (identical logic for BOTH stores) -- */
+
+function sourceCheckMutator(cfg: LoginGuardConfig, now: number): LoginKeyMutator {
+  return (state) => {
+    if (!state) return {};
+    prune(state, now, cfg.windowMs);
+    if (state.failures.length >= cfg.maxPerSource) {
+      return {
+        state,
+        emit: emissionFor(state, "SIGNIN_THROTTLED", now, cfg.windowMs),
+        verdict: {
+          allowed: false,
+          retryAfterSec: retryFromOldest(state, now, cfg.windowMs),
+          reason: "source_throttled",
+        },
+      };
+    }
+    // Slid clean → drop the row; otherwise persist the pruned state.
+    return state.failures.length === 0 ? { state: null } : { state };
+  };
+}
+
+function accountCheckMutator(cfg: LoginGuardConfig, now: number): LoginKeyMutator {
+  return (state) => {
+    if (!state) return {};
+    prune(state, now, cfg.windowMs);
+    if (state.lockoutUntil > now) {
+      // Denied while locked: keep the window hot (drives escalation).
+      pushCapped(state, now);
+      return {
+        state,
+        emit: emissionFor(state, "SIGNIN_LOCKOUT", now, cfg.windowMs),
+        verdict: {
+          allowed: false,
+          retryAfterSec: Math.max(1, Math.ceil((state.lockoutUntil - now) / 1000)),
+          reason: "account_locked",
+        },
+      };
+    }
+    if (state.failures.length === 0 && state.lockoutCount > 0) {
+      // Window slid clean with no lockout pending → full decay.
+      state.lockoutCount = 0;
+      return { state: null, verdict: { allowed: true, retryAfterSec: 0, reason: "ok" } };
+    }
+    if (state.failures.length >= cfg.maxPerAccount) {
+      state.lockoutCount += 1;
+      const backoff = backoffFor(state.lockoutCount);
+      state.lockoutUntil = now + backoff;
+      pushCapped(state, now);
+      return {
+        state,
+        emit: emissionFor(state, "SIGNIN_LOCKOUT", now, cfg.windowMs),
+        verdict: {
+          allowed: false,
+          retryAfterSec: Math.max(1, Math.ceil(backoff / 1000)),
+          reason: "account_locked",
+        },
+      };
+    }
+    return { state };
+  };
+}
+
+function sourceFailureMutator(cfg: LoginGuardConfig, now: number): LoginKeyMutator {
+  return (state) => {
+    const base = state ?? emptyState();
+    prune(base, now, cfg.windowMs);
+    pushCapped(base, now);
+    const crossed = base.failures.length >= cfg.maxPerSource;
+    return {
+      state: base,
+      emit: crossed ? emissionFor(base, "SIGNIN_THROTTLED", now, cfg.windowMs) : undefined,
+    };
+  };
+}
+
+function accountFailureMutator(cfg: LoginGuardConfig, now: number): LoginKeyMutator {
+  return (state) => {
+    const base = state ?? emptyState();
+    prune(base, now, cfg.windowMs);
+    pushCapped(base, now);
+    let emit: LoginTelemetryAction | undefined;
+    if (base.lockoutUntil <= now && base.failures.length >= cfg.maxPerAccount) {
+      base.lockoutCount += 1;
+      base.lockoutUntil = now + backoffFor(base.lockoutCount);
+      emit = emissionFor(base, "SIGNIN_LOCKOUT", now, cfg.windowMs);
+    }
+    return { state: base, emit };
+  };
+}
+
 /**
  * Decide whether a credential sign-in attempt may proceed to verification.
  * Denied attempts on a LOCKED account are recorded (bounded) so sustained
  * hammering keeps the failure window hot and the backoff escalates; denied
  * attempts on a merely THROTTLED source consume no slots (truthful
- * Retry-After, mirroring the API gate's sliding-window semantics).
+ * Retry-After, mirroring the API gate's sliding-window semantics). Each
+ * dimension is one serialized per-key mutation — on the shared store the
+ * decision runs inside its transaction, so the verdict is fleet-coherent.
  */
 export async function checkLoginAllowed(
   identity: LoginAttemptIdentity,
@@ -384,65 +731,29 @@ export async function checkLoginAllowed(
 ): Promise<LoginVerdict> {
   const { store, sink, cfg } = resolveDeps(deps);
   const now = nowMs;
+  const ctx: AtomicMutateContext = { nowMs: now, windowMs: cfg.windowMs };
 
   // 1. Source dimension — plain sliding budget.
-  const sKey = sourceKeyOf(identity);
-  const src = store.get(sKey);
-  if (src) {
-    prune(src, now, cfg.windowMs);
-    if (src.failures.length >= cfg.maxPerSource) {
-      await maybeEmit(src, "SIGNIN_THROTTLED", identity, now, cfg.windowMs, sink);
-      store.set(sKey, src);
-      return {
-        allowed: false,
-        retryAfterSec: retryFromOldest(src, now, cfg.windowMs),
-        reason: "source_throttled",
-      };
-    }
-    if (src.failures.length === 0) store.delete(sKey);
-    else store.set(sKey, src);
-  }
+  const srcVerdict = await applyKey(
+    store,
+    sourceKeyOf(identity),
+    sourceCheckMutator(cfg, now),
+    identity,
+    sink,
+    ctx
+  );
+  if (srcVerdict) return srcVerdict;
 
   // 2. Account dimension — budget + escalating temporary lockout.
-  const aKey = accountKeyOf(identity);
-  const acct = store.get(aKey);
-  if (acct) {
-    prune(acct, now, cfg.windowMs);
-    if (acct.lockoutUntil > now) {
-      // Denied while locked: keep the window hot (drives escalation).
-      pushCapped(acct, now);
-      await maybeEmit(acct, "SIGNIN_LOCKOUT", identity, now, cfg.windowMs, sink);
-      store.set(aKey, acct);
-      return {
-        allowed: false,
-        retryAfterSec: Math.max(
-          1,
-          Math.ceil((acct.lockoutUntil - now) / 1000)
-        ),
-        reason: "account_locked",
-      };
-    }
-    if (acct.failures.length === 0 && acct.lockoutCount > 0) {
-      // Window slid clean with no lockout pending → full decay.
-      acct.lockoutCount = 0;
-      store.delete(aKey);
-      return { allowed: true, retryAfterSec: 0, reason: "ok" };
-    }
-    if (acct.failures.length >= cfg.maxPerAccount) {
-      acct.lockoutCount += 1;
-      const backoff = backoffFor(acct.lockoutCount);
-      acct.lockoutUntil = now + backoff;
-      pushCapped(acct, now);
-      await maybeEmit(acct, "SIGNIN_LOCKOUT", identity, now, cfg.windowMs, sink);
-      store.set(aKey, acct);
-      return {
-        allowed: false,
-        retryAfterSec: Math.max(1, Math.ceil(backoff / 1000)),
-        reason: "account_locked",
-      };
-    }
-    store.set(aKey, acct);
-  }
+  const acctVerdict = await applyKey(
+    store,
+    accountKeyOf(identity),
+    accountCheckMutator(cfg, now),
+    identity,
+    sink,
+    ctx
+  );
+  if (acctVerdict) return acctVerdict;
 
   return { allowed: true, retryAfterSec: 0, reason: "ok" };
 }
@@ -450,7 +761,8 @@ export async function checkLoginAllowed(
 /**
  * Record one FAILED verification (unknown account, disabled-hash account or
  * wrong password) against BOTH dimensions. Crossing either budget flips the
- * state and emits the typed telemetry event (once per key per window).
+ * state and emits the typed telemetry event (once per key per window — the
+ * rule rides on the shared state, so it holds across instances).
  */
 export async function recordLoginFailure(
   identity: LoginAttemptIdentity,
@@ -459,29 +771,30 @@ export async function recordLoginFailure(
 ): Promise<void> {
   const { store, sink, cfg } = resolveDeps(deps);
   const now = nowMs;
+  const ctx: AtomicMutateContext = { nowMs: now, windowMs: cfg.windowMs };
 
-  const sKey = sourceKeyOf(identity);
-  const src = store.get(sKey) ?? emptyState();
-  prune(src, now, cfg.windowMs);
-  pushCapped(src, now);
-  const sourceCrossed = src.failures.length >= cfg.maxPerSource;
-  store.set(sKey, src);
-  if (sourceCrossed) {
-    await maybeEmit(src, "SIGNIN_THROTTLED", identity, now, cfg.windowMs, sink);
-  }
+  await applyKey(
+    store,
+    sourceKeyOf(identity),
+    sourceFailureMutator(cfg, now),
+    identity,
+    sink,
+    ctx
+  );
+  await applyKey(
+    store,
+    accountKeyOf(identity),
+    accountFailureMutator(cfg, now),
+    identity,
+    sink,
+    ctx
+  );
 
-  const aKey = accountKeyOf(identity);
-  const acct = store.get(aKey) ?? emptyState();
-  prune(acct, now, cfg.windowMs);
-  pushCapped(acct, now);
-  if (acct.lockoutUntil <= now && acct.failures.length >= cfg.maxPerAccount) {
-    acct.lockoutCount += 1;
-    acct.lockoutUntil = now + backoffFor(acct.lockoutCount);
-    await maybeEmit(acct, "SIGNIN_LOCKOUT", identity, now, cfg.windowMs, sink);
-  }
-  store.set(aKey, acct);
-
-  if (store.size() > MAX_LOGIN_GUARD_KEYS) {
+  // Memory-only cap sweep (the shared store's retention is server-side).
+  if (
+    typeof (store as AtomicLoginGuardStore).mutate !== "function" &&
+    store.size() > MAX_LOGIN_GUARD_KEYS
+  ) {
     sweepStore(store, now, cfg.windowMs);
   }
 }
@@ -489,7 +802,9 @@ export async function recordLoginFailure(
 /**
  * Successful authentication: reset the (source, account) state immediately
  * (the intended reset policy — a legit user who fat-fingered a few times
- * starts from a clean budget after signing in).
+ * starts from a clean budget after signing in). On the shared store the
+ * reset is an awaited atomic mutation, so a concurrent instance sees it
+ * deterministically.
  */
 export async function recordLoginSuccess(
   identity: LoginAttemptIdentity,
@@ -497,8 +812,15 @@ export async function recordLoginSuccess(
   deps: LoginGuardDeps = {}
 ): Promise<void> {
   const { store } = resolveDeps(deps);
-  store.delete(sourceKeyOf(identity));
-  store.delete(accountKeyOf(identity));
+  const reset: LoginKeyMutator = () => ({ state: null });
+  if (typeof (store as AtomicLoginGuardStore).mutate === "function") {
+    const atomic = store as AtomicLoginGuardStore;
+    await atomic.mutate(sourceKeyOf(identity), reset);
+    await atomic.mutate(accountKeyOf(identity), reset);
+  } else {
+    store.delete(sourceKeyOf(identity));
+    store.delete(accountKeyOf(identity));
+  }
 }
 
 /* ─────────────────────────── test seams ──────────────────────────────── */

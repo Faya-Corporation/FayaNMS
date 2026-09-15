@@ -2850,3 +2850,19 @@ Work Log:
 Stage Summary:
 - TRUTHFUL CI STATE for 5dd52fb: locally gate-proven, CI-blocked by infrastructure only — the same signature honestly recorded on every one of the 11 pushes of this session.
 - REMEDIATION PROGRAM COMPLETE: 79/100 BLOCKED → 85/100 CONTROLLED PILOT. Remaining work is exclusively owner/infra/lab-side and documented with executable procedures.
+---
+Task ID: R46-scale-001-b
+Agent: Orchestrator (Z.ai Code)
+Task: "Complete Remaining Production Remediation in One Session" — post-gate authoring backlog: TASK-SCALE-001-B (distributed backend for the login guard's lockout state) as an independent, reviewable, green commit; AUTH-001 flips to FIXED.
+
+Work Log:
+- TDD: tests/audit/login-guard-distributed.test.ts FIRST — RED (missing exports/model) — then implemented to GREEN (20 pins).
+- Schema + migration 20260915223000_scale001b_login_guard_state: NEW `LoginGuardState` (key PK; failures = bounded epoch-ms JSON stamp array; lockoutUntil; lockoutCount; denialEmittedAt; updatedAt idx) — one row per guard key, never a raw identifier (src:<trusted-ip> / acct:<hmac-slice> keys unchanged).
+- `src/lib/api/rate-store.ts`: extracted + exported `resolveRateStoreKind(env)` (pure; same refusal policy) so both shared planes resolve from ONE knob.
+- `src/lib/auth/login-guard.ts`: NEW `AtomicLoginGuardStore` (mutate + pruneStale) — Postgres implementation serializes pg_advisory_xact_lock(hashtextextended(key)) → load (defensively parsed) → mutate → upsert/delete inside ONE transaction: budgets, lockouts, escalation counts and the once-per-window telemetry rule are FLEET-WIDE under FAYANMS_RATE_STORE=postgres (same knob as the API gate — one knob, both planes). Guard decision logic refactored into pure per-key mutators (source/account × check/failure) shared by BOTH backends — the memory path keeps its process-guaranteed semantics and every R35 pin (580 → 600 tests, 0 regressions). recordLoginSuccess routes its reset through an awaited atomic mutation (deterministic cross-instance visibility). Fail-closed on store outage (pinned SCALE-001-A decision); retention server-side (per-key rewrite + global stale sweep that never deletes an active lockout); process-local memory sweep stays memory-only.
+- Acceptance proof: two guard clients on SEPARATE Prisma pools — A locks, B honors (retryAfter 30 s); symmetric source throttle; cross-instance success reset; fleet telemetry exactly once per window; 12 parallel failures across BOTH instances → 12 stamps / exactly one escalation / one event.
+- Docs: README SCALE-001-B LANDED block (AUTH-001 now FIXED); deploy-doc notes 8 + 20 (fleet-wide contract); .env.example + env.app.production.example (one knob, both planes); NEXT-TASKS R46 restructure (ACTIVE backlog now owner/lab/browser-E2E only; TASK-SCALE-001-B → LANDED); FINAL gate doc section D ticked.
+- Gates on the exact final tree: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 600 across 34 files (594 pass + 6 e2e skips; 3,354 expects) · drift guard 0 (fresh fayanms_shadow) · certify.ts 0 (6 vendors) · build:gate 0 · E2E journeys 6/6 live (52.5 s — J5 login throttle re-proven on the live stack).
+
+Stage Summary:
+- TASK-SCALE-001-B final report: COMPLETE. Starting HEAD 201167c → this commit. AUTH-001: FIXED end-to-end (R35 guard + R46 fleet-wide store). The FINAL gate doc's authoring backlog now holds ONLY TASK-BROWSER-E2E; everything else is owner-side (GOV-001, CI-001) or lab-side (CERT-HW-001/FUNC-001) with published procedures.

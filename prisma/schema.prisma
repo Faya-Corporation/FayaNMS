@@ -1097,3 +1097,26 @@ model RateLimitHit {
   @@index([bucketKey, hitAt])
   @@index([hitAt])
 }
+
+/// TASK-SCALE-001-B (independent audit 2026-09-15) — shared login-guard
+/// state, the distributed backend for AUTH-001-A's lockout plane. One row
+/// per guard key ("src:<trusted-ip>" / "acct:<hmac-slice>" — never a raw
+/// email); `failures` holds the bounded failure-stamp array (epoch ms,
+/// window-pruned, per-key capped exactly like the in-memory store). Every
+/// read-modify-write serializes on a per-key advisory xact lock inside ONE
+/// transaction (prune → budget → escalate → upsert/delete), so lockout
+/// state cannot race across app instances: under FAYANMS_RATE_STORE=postgres
+/// the login budgets/lockouts are fleet-wide (same knob, same atomic shape
+/// as RateLimitHit). In-memory default stays zero-infra. Retention: rows
+/// are rewritten per key on every hit and a global stale sweep deletes rows
+/// whose last activity left the window AND whose lockout has expired.
+model LoginGuardState {
+  key             String   @id
+  failures        Json     @default("[]")
+  lockoutUntil    DateTime @default(now())
+  lockoutCount    Int      @default(0)
+  denialEmittedAt DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([updatedAt])
+}
