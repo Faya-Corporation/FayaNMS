@@ -110,7 +110,7 @@ export async function proxy(req: NextRequest) {
   // 2. Rate gate — BEFORE any handler can commit side effects (SAFE-002).
   const clientKey = resolveClientIp(req.headers);
   const kind = rateKind(req.method);
-  const decision = takeRateSlot(clientKey, kind);
+  const decision = await takeRateSlot(clientKey, kind);
   if (decision.limited) {
     const requestId = randomUUID();
     return NextResponse.json(

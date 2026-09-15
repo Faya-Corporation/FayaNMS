@@ -32,13 +32,22 @@
  *      header values cannot inflate bucket keys; unparseable values are
  *      collapsed to a stable "opaque:<sha256[:16]>" key.
  *
- * The store is a bounded in-memory sliding window (dependency-free).
- * Known, documented limitation: per-process — a horizontally scaled app
- * needs a shared store (Redis) before the budgets mean anything fleet-
- * wide. This is a hardening gate, not an abuse-proof quota.
+ * The store is resolved ONCE per process via the SCALE-001-A shared-rate
+ * store abstraction (src/lib/api/rate-store.ts):
+ *   - DEFAULT: bounded in-memory sliding window (dependency-free,
+ *     zero-infra single-host). Known, documented limitation: per-process —
+ *     a horizontally scaled app needs the shared store before the budgets
+ *     mean anything fleet-wide.
+ *   - OPT-IN (FAYANMS_RATE_STORE=postgres): PostgreSQL-backed shared store
+ *     (per-key advisory-lock-serialized transactions) so horizontally scaled
+ *     instances draw from ONE budget; an unreachable store fails CLOSED
+ *     (documented decision — it is the same DB the app already needs).
+ * This remains a hardening gate, not an abuse-proof quota.
  */
 
 import { createHash } from "node:crypto";
+
+import { getRateStore } from "@/lib/api/rate-store";
 
 export const RATE_WINDOW_MS = 60_000;
 export const RATE_LIMIT_GET = 300;
@@ -48,9 +57,6 @@ const MAX_KEY_TOKEN_LENGTH = 64;
 const KEY_TOKEN_PATTERN = /^[0-9A-Za-z:.[\]\-_]+$/;
 
 export type RateKind = "get" | "mutation";
-
-/** Sliding-window store: `${ip}:${kind}` → recent hit timestamps. */
-const rateBuckets = new Map<string, number[]>();
 
 /** Clamp-parse FAYANMS_TRUST_PROXY_HOPS (default 1, range 0..8). */
 export function getTrustedProxyHops(): number {
@@ -115,56 +121,31 @@ export interface RateDecision {
 }
 
 /**
- * Consume one slot for `${ip}:${kind}`. Returns the retry window when the
- * budget for the current sliding window is exhausted. `nowMs` is injectable
- * for deterministic tests; production callers omit it (Date.now()).
+ * Consume one slot for `${ip}:${kind}` against the ACTIVE store (in-memory
+ * default; PostgreSQL when FAYANMS_RATE_STORE=postgres — see rate-store.ts).
+ * Returns the retry window when the budget for the current sliding window is
+ * exhausted. `nowMs` is injectable for deterministic tests; production
+ * callers omit it (Date.now()).
  */
-export function takeRateSlot(
+export async function takeRateSlot(
   ip: string,
   kind: RateKind,
   nowMs: number = Date.now()
-): RateDecision {
-  const now = nowMs;
-  const key = `${ip}:${kind}`;
+): Promise<RateDecision> {
   const limit = kind === "get" ? RATE_LIMIT_GET : RATE_LIMIT_MUTATION;
-
-  // Bounded map: sweep stale keys once the bucket count grows past the cap.
-  if (rateBuckets.size > MAX_RATE_BUCKETS) {
-    for (const [bucketKey, stamps] of rateBuckets) {
-      const newest = stamps[stamps.length - 1];
-      if (newest === undefined || now - newest > RATE_WINDOW_MS) {
-        rateBuckets.delete(bucketKey);
-      }
-      if (rateBuckets.size <= MAX_RATE_BUCKETS / 2) break;
-    }
-  }
-
-  const stamps = (rateBuckets.get(key) ?? []).filter(
-    (stamp) => now - stamp < RATE_WINDOW_MS
-  );
-
-  if (stamps.length >= limit) {
-    const retryAfterSec = Math.max(
-      1,
-      Math.ceil((stamps[0] + RATE_WINDOW_MS - now) / 1000)
-    );
-    rateBuckets.set(key, stamps);
-    return { limited: true, retryAfterSec };
-  }
-
-  stamps.push(now);
-  rateBuckets.set(key, stamps);
-  return { limited: false, retryAfterSec: 0 };
+  const hit = await getRateStore().hit(`${ip}:${kind}`, limit, RATE_WINDOW_MS, nowMs);
+  return { limited: !hit.allowed, retryAfterSec: hit.retryAfterSec };
 }
 
-/** Test seam — drop every bucket (never used in request paths). */
-export function resetRateStoreForTests(): void {
-  rateBuckets.clear();
+/** Test seam — drop every recorded hit on the active store. */
+export async function resetRateStoreForTests(): Promise<void> {
+  await getRateStore().resetForTests?.();
 }
 
-/** Test seam — live bucket count (for the bounded-map sweep assertion). */
+/** Test seam — live bucket count (bounded-sweep pins; in-memory store only). */
 export function storeSizeForTests(): number {
-  return rateBuckets.size;
+  const store = getRateStore() as unknown as { sizeForTests?: number };
+  return store.sizeForTests ?? 0;
 }
 
 /** 429 envelope body — identical shape to the app's standard error envelope. */

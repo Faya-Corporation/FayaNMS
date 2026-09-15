@@ -42,10 +42,10 @@ import { NextRequest } from "next/server";
 const HOPS_ENV = "FAYANMS_TRUST_PROXY_HOPS";
 let savedHopsEnv: string | undefined;
 
-beforeEach(() => {
+beforeEach(async () => {
   savedHopsEnv = process.env[HOPS_ENV];
   delete process.env[HOPS_ENV]; // default hops = 1 unless a block sets it
-  resetRateStoreForTests();
+  await resetRateStoreForTests();
 });
 
 afterEach(() => {
@@ -96,7 +96,7 @@ function proxyRequest(
 }
 
 describe("SAFE-002 — rateKind classification", () => {
-  test("GET/HEAD are read traffic; everything else (and unknown) mutates", () => {
+  test("GET/HEAD are read traffic; everything else (and unknown) mutates", async () => {
     expect(rateKind("GET")).toBe("get");
     expect(rateKind("HEAD")).toBe("get");
     expect(rateKind("POST")).toBe("mutation");
@@ -109,13 +109,13 @@ describe("SAFE-002 — rateKind classification", () => {
 });
 
 describe("SAFE-002 — trusted-proxy hop configuration", () => {
-  test("default is 1 hop (single Caddy proxy), unset/blank env", () => {
+  test("default is 1 hop (single Caddy proxy), unset/blank env", async () => {
     expect(getTrustedProxyHops()).toBe(1);
     process.env[HOPS_ENV] = "  ";
     expect(getTrustedProxyHops()).toBe(1);
   });
 
-  test("parses, floors and clamps 0..8; garbage falls back to 1", () => {
+  test("parses, floors and clamps 0..8; garbage falls back to 1", async () => {
     process.env[HOPS_ENV] = "3";
     expect(getTrustedProxyHops()).toBe(3);
     process.env[HOPS_ENV] = "2.9";
@@ -130,17 +130,17 @@ describe("SAFE-002 — trusted-proxy hop configuration", () => {
 });
 
 describe("SAFE-002 — spoof-resistant client key", () => {
-  test("no proxy headers at all → shared 'local' bucket", () => {
+  test("no proxy headers at all → shared 'local' bucket", async () => {
     expect(resolveClientIp(headersOf({}))).toBe("local");
   });
 
-  test("single XFF entry (hops=1) → that entry", () => {
+  test("single XFF entry (hops=1) → that entry", async () => {
     expect(
       resolveClientIp(headersOf({ "x-forwarded-for": "203.0.113.7" }))
     ).toBe("203.0.113.7");
   });
 
-  test("P0-002 PIN: leftmost XFF entry is attacker-controlled and ignored", () => {
+  test("P0-002 PIN: leftmost XFF entry is attacker-controlled and ignored", async () => {
     // A proxy APPENDS the real client address; the leftmost value is
     // forgeable. The gate must pick the rightmost (hops=1).
     const headers = headersOf({
@@ -149,7 +149,7 @@ describe("SAFE-002 — spoof-resistant client key", () => {
     expect(resolveClientIp(headers)).toBe("203.0.113.7");
   });
 
-  test("hops=2 → client as seen by the second trusted proxy", () => {
+  test("hops=2 → client as seen by the second trusted proxy", async () => {
     process.env[HOPS_ENV] = "2";
     const headers = headersOf({
       "x-forwarded-for": "10.9.9.9, 198.51.100.9, 203.0.113.7",
@@ -157,14 +157,14 @@ describe("SAFE-002 — spoof-resistant client key", () => {
     expect(resolveClientIp(headers)).toBe("198.51.100.9");
   });
 
-  test("chain shorter than configured hops → leftmost (fail toward client)", () => {
+  test("chain shorter than configured hops → leftmost (fail toward client)", async () => {
     process.env[HOPS_ENV] = "3";
     expect(
       resolveClientIp(headersOf({ "x-forwarded-for": "203.0.113.7" }))
     ).toBe("203.0.113.7");
   });
 
-  test("hops=0 trusts nothing — XFF and X-Real-IP collapse to 'local'", () => {
+  test("hops=0 trusts nothing — XFF and X-Real-IP collapse to 'local'", async () => {
     process.env[HOPS_ENV] = "0";
     expect(
       resolveClientIp(
@@ -176,13 +176,13 @@ describe("SAFE-002 — spoof-resistant client key", () => {
     ).toBe("local");
   });
 
-  test("X-Real-IP fallback when XFF absent", () => {
+  test("X-Real-IP fallback when XFF absent", async () => {
     expect(
       resolveClientIp(headersOf({ "x-real-ip": "203.0.113.8" }))
     ).toBe("203.0.113.8");
   });
 
-  test("unparseable tokens collapse to a stable opaque key (no bucket inflation)", () => {
+  test("unparseable tokens collapse to a stable opaque key (no bucket inflation)", async () => {
     const evil = "multi word!! bogus token"; // spaces + punctuation = not a client address
     const first = resolveClientIp(headersOf({ "x-forwarded-for": evil }));
     const second = resolveClientIp(headersOf({ "x-forwarded-for": evil }));
@@ -191,13 +191,13 @@ describe("SAFE-002 — spoof-resistant client key", () => {
     expect(first.length).toBeLessThanOrEqual("opaque:".length + 16);
   });
 
-  test("oversized tokens are hashed, not stored verbatim", () => {
+  test("oversized tokens are hashed, not stored verbatim", async () => {
     const long = `${"a".repeat(100)}.9`; // valid charset but > 64 chars
     const key = resolveClientIp(headersOf({ "x-forwarded-for": long }));
     expect(key).toStartWith("opaque:");
   });
 
-  test("IPv6 brackets survive the charset filter verbatim", () => {
+  test("IPv6 brackets survive the charset filter verbatim", async () => {
     expect(
       resolveClientIp(headersOf({ "x-forwarded-for": "[2001:db8::1]" }))
     ).toBe("[2001:db8::1]");
@@ -205,74 +205,74 @@ describe("SAFE-002 — spoof-resistant client key", () => {
 });
 
 describe("SAFE-002 — sliding-window budgets", () => {
-  test("mutation budget: 120 pass, 121st is limited with a sane Retry-After", () => {
+  test("mutation budget: 120 pass, 121st is limited with a sane Retry-After", async () => {
     for (let i = 0; i < RATE_LIMIT_MUTATION; i += 1) {
-      expect(takeRateSlot("10.0.0.1", "mutation").limited).toBe(false);
+      expect((await takeRateSlot("10.0.0.1", "mutation")).limited).toBe(false);
     }
-    const decision = takeRateSlot("10.0.0.1", "mutation");
+    const decision = await takeRateSlot("10.0.0.1", "mutation");
     expect(decision.limited).toBe(true);
     expect(decision.retryAfterSec).toBeGreaterThanOrEqual(1);
     expect(decision.retryAfterSec).toBeLessThanOrEqual(60);
     // Still limited while the window is fresh (no slot consumed by rejects).
-    expect(takeRateSlot("10.0.0.1", "mutation").limited).toBe(true);
+    expect((await takeRateSlot("10.0.0.1", "mutation")).limited).toBe(true);
   });
 
-  test("GET budget: 300 pass, 301st is limited", () => {
+  test("GET budget: 300 pass, 301st is limited", async () => {
     for (let i = 0; i < RATE_LIMIT_GET; i += 1) {
-      expect(takeRateSlot("10.0.0.2", "get").limited).toBe(false);
+      expect((await takeRateSlot("10.0.0.2", "get")).limited).toBe(false);
     }
-    expect(takeRateSlot("10.0.0.2", "get").limited).toBe(true);
+    expect((await takeRateSlot("10.0.0.2", "get")).limited).toBe(true);
   });
 
-  test("per-IP isolation: exhausting one client never limits another", () => {
+  test("per-IP isolation: exhausting one client never limits another", async () => {
     for (let i = 0; i < RATE_LIMIT_MUTATION; i += 1) {
-      takeRateSlot("10.0.0.1", "mutation");
+      await takeRateSlot("10.0.0.1", "mutation");
     }
-    expect(takeRateSlot("10.0.0.1", "mutation").limited).toBe(true);
-    expect(takeRateSlot("10.0.0.3", "mutation").limited).toBe(false);
+    expect((await takeRateSlot("10.0.0.1", "mutation")).limited).toBe(true);
+    expect((await takeRateSlot("10.0.0.3", "mutation")).limited).toBe(false);
   });
 
-  test("per-kind isolation: exhausted mutations do not throttle reads", () => {
+  test("per-kind isolation: exhausted mutations do not throttle reads", async () => {
     for (let i = 0; i < RATE_LIMIT_MUTATION; i += 1) {
-      takeRateSlot("10.0.0.1", "mutation");
+      await takeRateSlot("10.0.0.1", "mutation");
     }
-    expect(takeRateSlot("10.0.0.1", "mutation").limited).toBe(true);
-    expect(takeRateSlot("10.0.0.1", "get").limited).toBe(false);
+    expect((await takeRateSlot("10.0.0.1", "mutation")).limited).toBe(true);
+    expect((await takeRateSlot("10.0.0.1", "get")).limited).toBe(false);
   });
 
-  test("window expiry: the budget frees after 60 s (deterministic clock)", () => {
+  test("window expiry: the budget frees after 60 s (deterministic clock)", async () => {
     const start = Date.now();
     for (let i = 0; i < RATE_LIMIT_MUTATION; i += 1) {
-      takeRateSlot("10.0.0.1", "mutation", start);
+      await takeRateSlot("10.0.0.1", "mutation", start);
     }
-    expect(takeRateSlot("10.0.0.1", "mutation", start).limited).toBe(true);
+    expect((await takeRateSlot("10.0.0.1", "mutation", start)).limited).toBe(true);
     // One millisecond past the window, every stale stamp is filtered out.
-    expect(takeRateSlot("10.0.0.1", "mutation", start + RATE_WINDOW_MS + 1).limited).toBe(false);
+    expect((await takeRateSlot("10.0.0.1", "mutation", start + RATE_WINDOW_MS + 1)).limited).toBe(false);
   });
 
-  test("bounded store: stale buckets are swept when the cap is exceeded", () => {
+  test("bounded store: stale buckets are swept when the cap is exceeded", async () => {
     const start = Date.now();
     // Backdate, then overfill with stale buckets.
     const backdated = start - 2 * RATE_WINDOW_MS;
     for (let i = 0; i < MAX_RATE_BUCKETS + 20; i += 1) {
-      takeRateSlot(`10.99.0.${i % 256}.${i}`, "get", backdated);
+      await takeRateSlot(`10.99.0.${i % 256}.${i}`, "get", backdated);
     }
     expect(storeSizeForTests()).toBeGreaterThan(MAX_RATE_BUCKETS);
     // One fresh hit triggers the sweep down to half the cap.
-    expect(takeRateSlot("10.0.0.9", "get", start).limited).toBe(false);
+    expect((await takeRateSlot("10.0.0.9", "get", start)).limited).toBe(false);
     expect(storeSizeForTests()).toBeLessThanOrEqual(MAX_RATE_BUCKETS / 2 + 1);
   });
 });
 
 describe("SAFE-002 — response builders are pure envelope builders", () => {
-  test("P0-002 PIN: ok() never rate-limits (400 calls > every budget)", () => {
+  test("P0-002 PIN: ok() never rate-limits (400 calls > every budget)", async () => {
     for (let i = 0; i < 400; i += 1) {
       const response = ok({ n: i });
       expect(response.status).toBe(200);
     }
   });
 
-  test("fail()/failWithDetail() never rate-limit and keep the envelope shape", () => {
+  test("fail()/failWithDetail() never rate-limit and keep the envelope shape", async () => {
     for (let i = 0; i < 300; i += 1) {
       const response = fail("NOPE", "nope", 409);
       expect(response.status).toBe(409);
@@ -299,7 +299,7 @@ describe("SAFE-002 — response builders are pure envelope builders", () => {
 });
 
 describe("SAFE-002 — 429 envelope contract", () => {
-  test("body and headers carry code, retry window and request id", () => {
+  test("body and headers carry code, retry window and request id", async () => {
     const body = rateLimitedBody(42, "req-1");
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("RATE_LIMITED");
@@ -313,7 +313,7 @@ describe("SAFE-002 — 429 envelope contract", () => {
 });
 
 describe("SAFE-002 — service-JWT core (machine-plane exemption fuel)", () => {
-  test("valid token verifies with its principal; expired does not", () => {
+  test("valid token verifies with its principal; expired does not", async () => {
     const good = verifyServiceToken(mintTestServiceToken());
     expect(good.ok).toBe(true);
     if (good.ok) {
@@ -326,7 +326,7 @@ describe("SAFE-002 — service-JWT core (machine-plane exemption fuel)", () => {
     if (!expired.ok) expect(expired.code).toBe("SERVICE_TOKEN_EXPIRED");
   });
 
-  test("tampered payload fails signature verification", () => {
+  test("tampered payload fails signature verification", async () => {
     const token = mintTestServiceToken();
     const [head, , sig] = token.split(".");
     const forgedBody = Buffer.from(
@@ -337,7 +337,7 @@ describe("SAFE-002 — service-JWT core (machine-plane exemption fuel)", () => {
     if (!result.ok) expect(result.code).toBe("SERVICE_TOKEN_INVALID");
   });
 
-  test("bearerTokenOf extracts the token or returns null", () => {
+  test("bearerTokenOf extracts the token or returns null", async () => {
     expect(bearerTokenOf("Bearer  abc.def.ghi")).toBe("abc.def.ghi");
     expect(bearerTokenOf("bearer abc")).toBe("abc");
     expect(bearerTokenOf("Basic dXNlcjpwYXNz")).toBeNull();
@@ -373,7 +373,7 @@ describe("SAFE-002 — proxy wiring (pre-handler order)", () => {
 
   test("verified service JWT bypasses the budget even when its bucket is exhausted", async () => {
     for (let i = 0; i < RATE_LIMIT_MUTATION; i += 1) {
-      takeRateSlot("10.0.0.1", "mutation");
+      await takeRateSlot("10.0.0.1", "mutation");
     }
     const req = proxyRequest("/api/v1/worker/claim", "POST", {
       "x-forwarded-for": "10.0.0.1",

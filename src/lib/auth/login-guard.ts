@@ -159,7 +159,14 @@ export interface LoginGuardStore {
   entries(): IterableIterator<[string, LoginKeyState]>;
 }
 
-/** Bounded in-memory default (single process; SCALE-001-A swaps backends). */
+/**
+ * Bounded in-memory default (single process). SCALE-001-A landed the shared
+ * store for the API rate gate (rate-store.ts, FAYANMS_RATE_STORE=postgres);
+ * a distributed backend for THIS guard's read-modify-write state needs the
+ * same atomic per-key transaction shape — tracked as TASK-SCALE-001-B (a
+ * plain get/set KV over SQL is NOT atomic across instances and is refused
+ * as a false fix).
+ */
 export function createMemoryLoginGuardStore(): LoginGuardStore {
   const map = new Map<string, LoginKeyState>();
   return {

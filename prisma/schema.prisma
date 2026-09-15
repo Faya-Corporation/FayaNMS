@@ -1080,3 +1080,20 @@ model DeviceWriteLock {
   @@index([stepId])
   @@index([expiresAt])
 }
+
+/// SCALE-001-A (independent audit 2026-09-15): one row per recorded hit of
+/// the SHARED distributed rate gate (FAYANMS_RATE_STORE=postgres, the opt-in
+/// store for horizontally scaled app instances — the in-memory default stays
+/// the zero-infra single-host posture). Per-key sliding windows are computed
+/// from hitAt; rows are pruned per key on every hit (window expiry) and by
+/// the global stale sweep, so retention stays bounded by (keys × budget).
+/// Atomicity: hits serialize on a per-key advisory xact lock inside one
+/// transaction (prune → count → insert), never GET/increment/SET.
+model RateLimitHit {
+  id        Int      @id @default(autoincrement())
+  bucketKey String
+  hitAt     DateTime @default(now())
+
+  @@index([bucketKey, hitAt])
+  @@index([hitAt])
+}

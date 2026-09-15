@@ -37,14 +37,25 @@ Depends on: none.
 
 ---
 
-TASK-SCALE-001-A — Shared rate-limit store ✊ (design + contract tests; Redis execution optional)
+TASK-SCALE-001-A — Shared rate-limit store ✊ → ✅ LANDED (R38, 2026-09-15) for the API gate plane
 
 Goal: Fleet-wide quotas when multi-instance; keep single-host default zero-infra.
-Files: `src/lib/api/rate-gate.ts` (+ NEW `src/lib/api/rate-store.ts`), `compose.yml` (optional redis, disabled default), docs.
-Implementation: Store interface (in-memory default; Redis/Postgres behind `FAYANMS_RATE_STORE`); atomic sliding-window; global `Retry-After`; documented fail behavior (pinned decision).
-Tests: Contract tests for both backends (Redis skipped when absent); two-client shared-budget test.
-Acceptance: Two store clients observe one shared budget in tests; behavior switch documented.
-Depends on: AUTH-001-A (reuses the guard's store interface).
+Landed as: `src/lib/api/rate-store.ts` — ONE store contract, two implementations: bounded in-memory default (identical gate semantics, zero new infra) and opt-in PostgreSQL shared store (`FAYANMS_RATE_STORE=postgres`) reusing the database the app already runs (no new service; a Redis service would add mandatory infra the single-host deployment does not run — the interface accepts further backends). Postgres hits serialize per key via `pg_advisory_xact_lock` and run prune → count → insert/deny in ONE transaction (no GET/increment/SET race); denied attempts consume no slots; per-key pruning + global stale sweep bound retention; unreachable store fails CLOSED (pinned, documented decision). `takeRateSlot` is now async over the resolved store; the proxy awaits it; unknown `FAYANMS_RATE_STORE` values refuse.
+Evidence: `tests/audit/rate-store.test.ts` (19 pins: shared contract over BOTH backends — budget/Retry-After-oldest-stamp/slide/key-isolation/no-slot-consumption/parallel-atomicity 12→5 — PLUS the acceptance: two clients on separate Prisma pools share ONE budget both directions; fail-closed outage; resolution policy incl. unknown-refusal); rate-gate suite converted to await (26 pins intact, incl. bounded-sweep + spoofing + proxy-wiring order).
+Honest scope: the LOGIN guard (AUTH-001-A) keeps its per-instance store — its read-modify-write lockout state needs the same atomic per-key transaction shape; a plain SQL KV would race across instances and was REFUSED as a false fix. Tracked as TASK-SCALE-001-B (below). Parent AUTH-001 remains PARTIALLY FIXED (distributed login plane pending).
+Audit status: **SCALE-001: FIXED for the API rate gate (the finding's named surface); login plane → TASK-SCALE-001-B.**
+Depends on: none (the AUTH-001-A store interface stays; the API gate had no shared seam before this).
+
+---
+
+TASK-SCALE-001-B — Distributed backend for the login guard's lockout state ✊
+
+Goal: Close the remaining AUTH-001 half: fleet-wide login budgets/lockout when 2+ app instances.
+Files: `src/lib/auth/login-guard.ts` (+ store), reuse `src/lib/api/rate-store.ts` patterns.
+Implementation: Give the guard an atomic per-key transaction path (the rate-store's `pg_advisory_xact_lock` + prune/count/decision shape) so read-modify-write lockout state cannot race across instances; keep the in-memory default; reuse `FAYANMS_RATE_STORE` or a dedicated knob.
+Tests: Two-client shared lockout test (instance A locks, instance B honors); concurrency pins.
+Acceptance: Login budgets mean one fleet budget under `FAYANMS_RATE_STORE=postgres`; AUTH-001 flips to FIXED.
+Depends on: SCALE-001-A (landed — same atomic pattern).
 
 ---
 

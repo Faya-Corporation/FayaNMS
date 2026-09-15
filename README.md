@@ -665,6 +665,28 @@ governance-pinned by `tests/audit/env-boundary.test.ts` (30 tests:
 compose env-file mapping, template zone purity, warning semantics,
 value-never-echoed, boot wiring).
 
+**LANDED — SCALE-001-A (independent audit 2026-09-15, finding SCALE-001):
+shared distributed rate-limit store — the `/api/v1` gate is no longer a
+process-local Map.** The gate now draws its sliding-window budgets from a
+store abstraction (`src/lib/api/rate-store.ts`) with two implementations:
+the bounded **in-memory** default (identical semantics, zero new infra —
+the documented single-host posture) and an opt-in **PostgreSQL** shared
+store (`FAYANMS_RATE_STORE=postgres`) for horizontally scaled instances:
+every instance then draws from ONE budget, held in the same database the
+app already uses — per-key `pg_advisory_xact_lock`-serialized transactions
+(prune → count → insert/deny in one commit; no GET/increment/SET race),
+per-key pruning plus a global stale sweep for bounded retention, denied
+attempts consume no slots (window stays truthful), and an unreachable
+store fails CLOSED (pinned decision — the DB is already a hard
+dependency; protection is never silently removed). THE acceptance proof:
+two store clients on separate Prisma pools share one budget in tests
+(instance A draws 2 of 3; instance B sees the remainder and is limited on
+the 4th; symmetric in reverse) and 12 parallel hits never exceed a budget
+of 5. Honest scope: the login guard (AUTH-001-A) keeps its per-instance
+store — its read-modify-write lockout state needs the same atomic
+transaction shape, tracked as TASK-SCALE-001-B; a plain SQL KV would be a
+racy false fix and was refused.
+
 
 **LANDED — CERT-006 (audit CERT tier): Sophos SFOS joins the live plane over
 a REAL WebAPI transport — the vendor whose SSH CLI has no read-only

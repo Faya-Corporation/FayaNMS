@@ -552,8 +552,12 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    the app (default 1 = this compose stack's single Caddy/Nginx; 0 = trust nothing,
    all callers share one conservative bucket). A VERIFIED service JWT (worker loops)
    is exempt; forged, rotated or absent-leftmost XFF entries cannot mint fresh
-   budgets. In-memory store (per-process): a horizontally scaled app needs a shared
-   store (Redis) before budgets mean anything fleet-wide.
+   budgets. Store: bounded in-memory by default (single-host posture). A
+   HORIZONTALLY SCALED app sets `FAYANMS_RATE_STORE=postgres` — every instance
+   then draws from ONE shared budget held in the same PostgreSQL the app already
+   uses (per-key advisory-lock-serialized transactions; no new service; an
+   unreachable shared store fails CLOSED). SCALE-001-A, independent audit
+   2026-09-15.
 9. **Execution concurrency guards (SAFE-003/004/005, audit P0-003)** are device-control
    gates too: ONE queued/running execution per change (a DB lease — a racing execute
    POST is refused `409 EXECUTION_IN_FLIGHT`), one atomic CAS step claim (a lost
