@@ -2927,3 +2927,16 @@ Work Log:
 
 Stage Summary:
 - TASK-DEMO-FLEET-001 final report: COMPLETE. Answer to the user: YES — real free public demo device monitoring is viable on the LIVE_SSH plane TODAY: TCP/22 reachability to Cisco DevNet's always-on devices is PROVEN, the tooling + procedure + governance are landed, and the only remaining input is a free per-user DevNet credential (user-side, minutes) to mint the first real-device auth/read evidence. T3 rows stay lab-gated with free operator-hosted VMs documented per vendor; honest classification preserved everywhere.
+---
+Task ID: R48-demo-fleet-001-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 3aa6ae2 (TASK-DEMO-FLEET-001) — honest evidence record
+
+Work Log:
+- Pushed 3aa6ae2; run 35036628793 completed "failure" with the IDENTICAL infrastructure signature as runs #34-#61: gate failed with ZERO steps executed and an EMPTY runner_name; scan + e2e + browser skipped (no runner ever assigned). GitHub-hosted runner unavailability, not a gate/scanner finding.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 614 pass + 12 skips (626 across 37 files; 3,428 expects) · drift guard 0 (fresh fayanms_shadow) · certify.ts 0 (6 vendors) · build:gate 0 · live render check via agent-browser (sign-in page fully rendered, zero console/page errors).
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for 3aa6ae2: locally gate-proven, CI-blocked by infrastructure only.
+- TASK-DEMO-FLEET-001: COMPLETE — the public demo device plane is landed and governed; real-device auth/read evidence is one free per-user DevNet credential away (`bun run demo:fleet -- --ssh`).
