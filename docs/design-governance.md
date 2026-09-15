@@ -21,7 +21,8 @@ Sources of truth:
 |---|---|---|---|
 | Neutrals | bg `#FAFAFA`, surface `#FFFFFF`, border `neutral-200`, text `neutral-950/600/500` | bg `#0A0A0A`, surface `#171717` (never absolute black), border `neutral-800`, text `neutral-50/400` | `--background --foreground --surface --surface-subtle --border --muted-foreground` |
 | Brand | primary `#2563EB` (hover `#1D4ED8`), accent `#0891B2` (dark `#22D3EE`) | same hues, accent brightened for dark-surface legibility | `--primary --primary-hover --brand-accent` |
-| Status families | success `#15803D` · warning `#B45309` · danger `#DC2626` · danger-orange `#EA580C` · info `#2563EB` · neutral `#525252` | brightened (`#4ADE80`, `#FBBF24`, `#F87171`, `#FB923C`, `#60A5FA`, `#A3A3A3`) | `--success --warning --danger --danger-orange --info --neutral` each with `-foreground` and `-subtle` (color-mix translucent fill) |
+| Status families | success `#166534` · warning `#92400E` · danger `#B91C1C` · danger-orange `#9A3412` · info `#1D4ED8` · neutral `#525252` (WCAG-AA ink values, TASK-BROWSER-E2E: status text on its own subtle fill must clear 4.5:1) | brightened (`#4ADE80`, `#FBBF24`, `#F87171`, `#FB923C`, `#60A5FA`, `#A3A3A3`) | `--success --warning --danger --danger-orange --info --neutral` each with `-foreground` and `-subtle` (color-mix translucent fill) |
+| Primary ink | `#1D4ED8` — AA text on primary-tinted fills (`bg-primary/10`); the brand `--primary` itself stays `#2563EB` | `#60A5FA` (brightened, like the dark status values) | `--primary-ink` |
 | Severity scale | aliases of the status families: Critical→danger, High→danger-orange, Medium→warning, Low→info, Info→neutral (identical mapping app-wide) | | `--severity-*` |
 | Charts | brand-first series: `#2563EB #0891B2 #16A34A #D97706 #7C3AED` | brightened variants | `--chart-1..5` |
 
@@ -31,6 +32,7 @@ Rules:
 - shadcn's `--accent` hover surface stays neutral on purpose.
 - Status is **never color-only**: badges always pair icon + text; dots pair with a visible label.
 - Use the `bg-*-subtle text-*` pairing for badge/pill fills so badges survive layering in both themes.
+- TEXT on a primary-tinted fill uses `text-primary-ink` (never `text-primary`) — the brand primary fails 4.5:1 on its own tint (TASK-BROWSER-E2E axe gate).
 
 ### 1.2 Spacing & density
 

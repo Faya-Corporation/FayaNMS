@@ -101,7 +101,7 @@ export function PerfRangeChips({
           className={cn(
             "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
             value === range.value
-              ? "bg-primary/10 text-primary"
+              ? "bg-primary/10 text-primary-ink"
               : "text-muted-foreground hover:bg-accent hover:text-foreground"
           )}
           key={range.value}
@@ -529,7 +529,7 @@ function TopUtilizersCard({
           />
         </div>
       ) : (
-        <ul className="max-h-96 overflow-y-auto">
+        <ul tabIndex={0} className="max-h-96 overflow-y-auto">
           {utilizers.map((utilizer) => {
             const tone =
               utilizer.utilPct > 80
@@ -729,7 +729,7 @@ function RetentionPanel() {
           ))}
         </div>
       ) : (
-        <div className="max-h-96 overflow-y-auto">
+        <div tabIndex={0} className="max-h-96 overflow-y-auto">
           <ul role="list">
             {TIER_ROWS.map(({ key, label, hint }) => {
               const value = getValue(key);

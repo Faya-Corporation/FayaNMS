@@ -1,17 +1,16 @@
-# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-15, R46)
+# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-15, R47)
 
-Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R46). ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, all of it outside the sandbox's control:
+Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R47). ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, ALL of it outside the sandbox's control:
 
 ## ACTIVE (only genuinely remaining work)
 
 ```text
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4)
-OWNER-CI-001 — Restore GitHub Actions runner capacity and obtain green gate+scan+e2e runs on the release SHA
+OWNER-CI-001 — Restore GitHub Actions runner capacity and obtain green gate+scan+e2e+browser runs on the release SHA
 LAB-FUNC-001 / LAB-CERT-HW-001 — Execute the physical-device certification matrix (docs/certification/MATRIX.md §3); unlock the typed LIVE-restore decision
-TASK-BROWSER-E2E — Playwright/visual browser journeys + axe-core a11y + RTL/keyboard sweeps (the HTTP-level journey layer is landed; this is the rendering-layer pass)
 ```
 
-Everything else from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R46). AUTH-001 is now FIXED end-to-end (R35 guard + R46 fleet-wide store).
+The authoring backlog is EMPTY: every code/doc task from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R47). AUTH-001 is FIXED end-to-end (R35 guard + R46 fleet-wide store); the rendering layer is continuously verified (R47 browser journeys + axe a11y, with the found WCAG-AA defects fixed at the token level).
 
 ---
 
@@ -151,6 +150,16 @@ Implementation: Vendor × firmware × capability matrix (auth, backup, drift, ch
 Tests: CI pins that README/deploy claims match the matrix exactly.
 Acceptance: Published matrix; claims ≡ evidence.
 Depends on: hardware lab access (non-sandbox).
+
+---
+
+TASK-BROWSER-E2E — Playwright/visual browser journeys + axe-core a11y + RTL/keyboard sweeps ✊ → ✅ LANDED (R47, 2026-09-15)
+
+Goal: Close the rendering-layer gap the HTTP-level journeys cannot see.
+Landed as: `tests/browser/browser-journeys.test.ts` — 6 journeys in real headless Chromium against the SAME real production topology (shared e2e harness, made liveness-aware so sequential journey files re-boot cleanly): B1 sign-in journey (wrong credentials → honest generic error; real credentials through the REAL NextAuth client flow → app shell; sign-out → gate); B2 dashboard render (search, job center, language switcher, sidebar nav visible); B3a/B3b axe-core scans (wcag2a/aa + best-practice) of sign-in AND the authenticated dashboard — zero critical/serious violations; B4 keyboard-only sweeps (submit reachable without a pointer; 12 Tabs across the shell never drop focus to body); B5 RTL sweep (العربية flips `<html dir>` to rtl with NO horizontal overflow, then back to ltr; the switcher's localized aria-label pinned). THE scan found REAL defects, fixed at the token level in the same increment: light status tokens one WCAG step darker (`--success #166534`, `--warning #92400E`, `--danger #B91C1C`, `--danger-orange #9A3412`, `--info #1D4ED8`), NEW `--primary-ink` (`#1D4ED8`/dark `#60A5FA`) for AA text on primary-tinted fills (brand `--primary` untouched; 18 tinted-text usages swapped), 12 `max-h-96 overflow-y-auto` scrollable regions made keyboard-focusable (`tabIndex={0}`) — design-governance.md table + rules synced.
+Tests: suite pinned by `tests/audit/browser-e2e-governance.test.ts` (5 pins: playwright + axe-core declared devDependencies, CI `browser` job + required-checks marker, hermetic skip gating); journeys gated behind `FAYANMS_BROWSER_E2E=1`; suite 600 → 611 (599 pass + 12 skips; 3,365 expects); LIVE evidence 6/6 browser journeys, and 12/12 together with the HTTP journeys in one invocation; CI `browser` job authored (execution runner-blocked — CI-001, recorded honestly per push).
+Acceptance: the rendering layer is under continuous executable governance; axe critical/serious = 0 on both scanned surfaces.
+Depends on: TEST-001-A (landed — shared harness).
 
 ---
 

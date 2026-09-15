@@ -177,9 +177,9 @@ export async function GET(request: Request) {
           padding: 1px 10px; font-size: 11px; font-weight: 600; }
   .pill.SEV1, .pill.CRITICAL { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
   .pill.SEV2, .pill.HIGH { background: #fff7ed; border-color: #f97316; color: #c2410c; }
-  .pill.SEV3, .pill.MEDIUM { background: #fffbeb; border-color: #f59e0b; color: #b45309; }
+  .pill.SEV3, .pill.MEDIUM { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
   .pill.SEV4, .pill.LOW, .pill.INFO { background: #f5f5f5; color: #525252; }
-  .pill.met { background: #f0fdf4; border-color: #22c55e; color: #15803d; }
+  .pill.met { background: #f0fdf4; border-color: #22c55e; color: #166534; }
   .pill.breached { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
   .kind { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .06em;
           border-radius: 4px; padding: 1px 6px; }

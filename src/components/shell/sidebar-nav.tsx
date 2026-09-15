@@ -43,7 +43,7 @@ interface SidebarNavProps {
 const BADGE_TONE: Record<SidebarBadgeKey, string> = {
   alerts: "bg-danger-subtle text-danger",
   approvals: "bg-warning-subtle text-warning",
-  jobs: "bg-primary/10 text-primary",
+  jobs: "bg-primary/10 text-primary-ink",
 };
 
 const BADGE_DOT_TONE: Record<SidebarBadgeKey, string> = {
@@ -210,7 +210,7 @@ function NavItem({
         "relative flex h-(--density-control-h) min-h-9 w-full items-center gap-2.5 rounded-md text-sm transition-colors",
         collapsed ? "justify-center px-0" : "px-2.5",
         active
-          ? "bg-primary/10 font-medium text-primary"
+          ? "bg-primary/10 font-medium text-primary-ink"
           : "text-muted-foreground hover:bg-accent hover:text-foreground"
       )}
     >

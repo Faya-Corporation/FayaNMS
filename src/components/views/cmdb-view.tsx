@@ -331,7 +331,7 @@ export function CmdbView() {
                 />
               </div>
             ) : (
-              <div className="max-h-96 overflow-y-auto">
+              <div tabIndex={0} className="max-h-96 overflow-y-auto">
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-card">
                     <TableRow>

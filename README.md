@@ -732,6 +732,37 @@ journeys on every push (execution recorded honestly as runner-blocked
 until CI-001 resolves). Journeys skip in the unit gate (`FAYANMS_E2E=1`
 opts in locally after `build:gate`).
 
+**LANDED — TASK-BROWSER-E2E (independent audit 2026-09-15): the rendering
+layer is now continuously verified — real headless-Chromium journeys,
+axe-core accessibility scans, keyboard-only and RTL sweeps, and the scan
+immediately caught real WCAG-AA violations that are now FIXED.**
+`tests/browser/` drives the SAME real production topology as the HTTP
+journeys (shared harness) with Playwright + axe-core (both declared
+devDependencies, never a CDN): B1 the full sign-in journey in a real
+browser (wrong credentials → honest generic error; real credentials →
+app shell; sign-out → gate), B2 the authenticated dashboard's primary
+controls actually visible, B3 axe scans (wcag2a/aa + best-practice) of
+the sign-in page AND the dashboard with zero critical/serious
+violations, B4 keyboard-only sweeps (submit reachable without a pointer;
+12 Tabs across the shell never drop focus to `<body>`), B5 the RTL sweep
+(العربية flips `<html dir>` to rtl with NO horizontal overflow and back —
+and the switcher's localized aria-label is itself pinned). **The scan
+found real defects and they were fixed at the token level:** every
+status text on its own subtle badge fill sat at 3.0–4.5:1 (below the
+4.5:1 AA threshold) — the light status tokens are now one WCAG step
+darker (`--success #166534`, `--warning #92400E`, `--danger #B91C1C`,
+`--danger-orange #9A3412`, `--info #1D4ED8`); the brand `--primary`
+stays `#2563EB` and a new `--primary-ink` (`#1D4ED8` light / `#60A5FA`
+dark) carries AA text on primary-tinted fills (dark scheme keeps its
+brightened values); and 12 `max-h-96 overflow-y-auto` scrollable regions
+gained `tabIndex={0}` (axe `scrollable-region-focusable`). Design
+governance table + rules updated in the same commit. CI gains a
+hard-gate `browser` job (`playwright install chromium` + the suite under
+`FAYANMS_BROWSER_E2E=1`); journeys skip in the unit gate and run live
+locally after `build:gate` — 6/6, and 12/12 together with the HTTP
+journeys in one invocation (the shared harness re-boots liveness-aware
+between files).
+
 **LANDED — DEPLOY-001-A (+OPS-002-A) (independent audit 2026-09-15): the
 safe path is the default path — a shipped TLS profile plus container
 runtime hardening.** `compose.tls.yml` + `docs/deploy/Caddyfile.tls`:

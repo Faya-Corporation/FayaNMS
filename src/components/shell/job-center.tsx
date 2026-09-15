@@ -357,7 +357,7 @@ export function JobCenterContent({
               className={cn(
                 "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
                 statusKey === filter.key
-                  ? "border-primary/30 bg-primary/10 text-primary"
+                  ? "border-primary/30 bg-primary/10 text-primary-ink"
                   : "bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
               )}
               key={filter.key}

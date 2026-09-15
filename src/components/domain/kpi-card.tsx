@@ -98,7 +98,7 @@ export function KpiCard({
           {label}
         </p>
         {Icon && (
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary-ink">
             <Icon aria-hidden="true" className="size-4" />
           </span>
         )}

@@ -149,7 +149,7 @@ const NOTE_ACTION_META: Record<
 
 const KIND_META: Record<string, { icon: typeof Bot; className: string; label: string }> = {
   SYSTEM: { icon: Bot, className: "bg-neutral-subtle text-neutral", label: "System" },
-  USER: { icon: User, className: "bg-primary/10 text-primary", label: "User" },
+  USER: { icon: User, className: "bg-primary/10 text-primary-ink", label: "User" },
   INTEGRATION: { icon: Plug, className: "bg-info-subtle text-info", label: "Integration" },
 };
 

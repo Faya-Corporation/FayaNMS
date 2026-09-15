@@ -103,7 +103,7 @@ export function PerfDevicesView() {
             className={cn(
               "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
               metric === chip.value
-                ? "border-primary/30 bg-primary/10 text-primary"
+                ? "border-primary/30 bg-primary/10 text-primary-ink"
                 : "bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
             )}
             key={chip.value}

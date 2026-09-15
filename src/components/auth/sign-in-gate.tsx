@@ -33,7 +33,7 @@ const DEMO_ACCOUNTS: { email: string; name: string; role: string }[] = [
 const DEMO_PASSWORD = "faya123";
 
 const ROLE_TONE: Record<string, string> = {
-  admin: "bg-primary/10 text-primary",
+  admin: "bg-primary/10 text-primary-ink",
   operator: "bg-success/10 text-success",
   engineer: "bg-info/10 text-info",
   manager: "bg-warning/10 text-warning",

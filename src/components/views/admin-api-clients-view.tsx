@@ -239,7 +239,7 @@ export function AdminApiClientsView() {
                       key={scope}
                       className={cn(
                         "flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-xs",
-                        checked ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                        checked ? "bg-primary/10 text-primary-ink" : "hover:bg-muted"
                       )}
                     >
                       <input

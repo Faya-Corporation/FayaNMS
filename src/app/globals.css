@@ -63,6 +63,7 @@
 
   /* --- FayaNMS brand + surface tokens --- */
   --color-primary-hover: var(--primary-hover);
+  --color-primary-ink: var(--primary-ink);
   --color-brand-accent: var(--brand-accent);
   --color-surface: var(--surface);
   --color-surface-subtle: var(--surface-subtle);
@@ -161,23 +162,34 @@
   --primary: #2563eb;
   --primary-foreground: #ffffff;
   --primary-hover: #1d4ed8;
+  /* AA ink for TEXT on primary-tinted fills (bg-primary/10): the brand
+     --primary itself stays #2563EB, but #2563EB on its own 10% tint lands
+     at ~4.3:1 — below the 4.5:1 WCAG AA threshold for normal-size text
+     (axe color-contrast, TASK-BROWSER-E2E). The ink token is one step
+     darker (blue-700) and passes on every tint over light surfaces. */
+  --primary-ink: #1d4ed8;
   --brand-accent: #0891b2;
 
   /* Status families (subtle = translucent fill derived from the base color,
-     so badge backgrounds stay layered over any surface in light and dark) */
-  --success: #15803d;
+     so badge backgrounds stay layered over any surface in light and dark).
+     Light values are one WCAG step darker than the palette's original shades
+     (TASK-BROWSER-E2E axe scan: status text on its own subtle fill sat at
+     3.0–4.5:1 — below the 4.5:1 AA threshold for normal-size text; the
+     darker bases clear it, solid fills keep white foregrounds with IMPROVED
+     contrast, and the dark scheme keeps its own brightened values). */
+  --success: #166534;
   --success-foreground: #ffffff;
   --success-subtle: color-mix(in oklab, var(--success) 12%, transparent);
-  --warning: #b45309;
+  --warning: #92400e;
   --warning-foreground: #ffffff;
   --warning-subtle: color-mix(in oklab, var(--warning) 14%, transparent);
-  --danger: #dc2626;
+  --danger: #b91c1c;
   --danger-foreground: #ffffff;
   --danger-subtle: color-mix(in oklab, var(--danger) 10%, transparent);
-  --danger-orange: #ea580c;
+  --danger-orange: #9a3412;
   --danger-orange-foreground: #ffffff;
   --danger-orange-subtle: color-mix(in oklab, var(--danger-orange) 12%, transparent);
-  --info: #2563eb;
+  --info: #1d4ed8;
   --info-foreground: #ffffff;
   --info-subtle: color-mix(in oklab, var(--info) 10%, transparent);
   --neutral: #525252;
@@ -258,6 +270,9 @@
   --primary: #2563eb;
   --primary-foreground: #ffffff;
   --primary-hover: #3b82f6;
+  /* Dark ink for primary-tinted text: brightened like the other dark status
+     values (dark --primary is #2563EB — illegible as text on dark tints). */
+  --primary-ink: #60a5fa;
   --brand-accent: #22d3ee; /* brightened cyan for dark-surface legibility */
 
   --success: #4ade80;

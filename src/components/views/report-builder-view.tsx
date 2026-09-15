@@ -494,7 +494,7 @@ export function ReportBuilderView() {
               {t("metaFormat")}: {artifact.format}
             </span>
           </div>
-          <div className="max-h-96 overflow-y-auto">
+          <div tabIndex={0} className="max-h-96 overflow-y-auto">
             <div className="overflow-x-auto">
               <Table
                 aria-label={t("previewTableAria")}

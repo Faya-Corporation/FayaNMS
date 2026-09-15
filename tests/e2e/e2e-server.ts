@@ -158,9 +158,26 @@ async function startStack(): Promise<void> {
 
 let booted = false;
 
-/** Idempotent global boot (called from beforeAll in the journey file). */
+async function isAppAlive(): Promise<boolean> {
+  try {
+    const res = await fetch(`${APP_BASE}/api/v1/meta`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Idempotent global boot (called from beforeAll in the journey files).
+ * Liveness-aware: the module-level `booted` flag can go STALE when another
+ * test file in the same process already tore the stack down (bun test runs
+ * files sequentially in one worker — TASK-BROWSER-E2E shares this harness
+ * with the HTTP journeys). In that case the stack is rebooted from scratch
+ * (fresh database), so each journey file always faces a live topology.
+ */
 export async function bootE2E(): Promise<void> {
-  if (booted) return;
+  if (booted && (await isAppAlive())) return;
+  if (booted) await teardownE2E();
   await createAndMigrateDatabase();
   await startStack();
   booted = true;

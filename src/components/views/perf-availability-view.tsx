@@ -258,7 +258,7 @@ function DeviceTable({
           />
         </div>
       ) : (
-        <div className="max-h-96 overflow-y-auto">
+        <div tabIndex={0} className="max-h-96 overflow-y-auto">
           <table
             aria-label="Availability by device — uptime vs the SLA target, worst devices first"
             className="w-full text-sm"

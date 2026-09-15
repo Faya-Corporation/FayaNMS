@@ -318,7 +318,7 @@ export function AppHeader({
                 />
               </div>
             ) : (
-              <div className="max-h-96 overflow-y-auto">
+              <div tabIndex={0} className="max-h-96 overflow-y-auto">
                 {notificationItems.map((notification) => {
                   const severityToken =
                     notification.severity === "CRITICAL" ||

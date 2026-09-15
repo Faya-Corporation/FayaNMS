@@ -705,7 +705,7 @@ export function ChangeWizard({
                         className={cn(
                           "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors",
                           isCurrent
-                            ? "border-primary/30 bg-primary/10 font-medium text-primary"
+                            ? "border-primary/30 bg-primary/10 font-medium text-primary-ink"
                             : isDone
                               ? "border-success/25 bg-success-subtle text-success"
                               : "bg-card text-muted-foreground"

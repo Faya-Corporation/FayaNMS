@@ -397,7 +397,7 @@ export function GuidedTour() {
           <div className="flex items-start gap-2.5">
             <span
               aria-hidden="true"
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+              className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary-ink"
             >
               <CircleHelp className="size-4.5" />
             </span>

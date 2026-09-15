@@ -186,7 +186,7 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
             className={cn(
               "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
               chip === entry.key
-                ? "border-primary/30 bg-primary/10 text-primary"
+                ? "border-primary/30 bg-primary/10 text-primary-ink"
                 : "bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
             )}
             key={entry.key}

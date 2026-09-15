@@ -28,10 +28,10 @@ const FALLBACK: TokenColors = {
   accent: FAYANMS_BRAND.colors.accent,
   border: "#e5e5e5",
   mutedForeground: "#525252",
-  success: "#15803d",
-  warning: "#b45309",
-  danger: "#dc2626",
-  info: FAYANMS_BRAND.colors.primary,
+  success: "#166534",
+  warning: "#92400e",
+  danger: "#b91c1c",
+  info: "#1d4ed8",
   neutral: "#737373",
 };
 

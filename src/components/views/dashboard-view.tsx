@@ -253,7 +253,7 @@ function AskNetworkCard({ onOpen }: { onOpen: () => void }) {
     <section className="flex flex-wrap items-center gap-3 rounded-xl border bg-surface-subtle/60 p-4">
       <span
         aria-hidden="true"
-        className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary-ink"
       >
         <Sparkles className="size-4" />
       </span>
@@ -757,7 +757,7 @@ function RecentActivityCard({
           />
         </div>
       ) : (
-        <div className="max-h-96 overflow-y-auto">
+        <div tabIndex={0} className="max-h-96 overflow-y-auto">
           <table aria-label={t("activity.title")} className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-card">
               <tr className="border-b text-xs text-muted-foreground">

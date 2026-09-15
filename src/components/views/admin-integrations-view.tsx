@@ -382,7 +382,7 @@ export function AdminIntegrationsView() {
                   return (
                     <label
                       key={event}
-                      className={`flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-xs ${checked ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
+                      className={`flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-xs ${checked ? "bg-primary/10 text-primary-ink" : "hover:bg-muted"}`}
                     >
                       <input
                         type="checkbox"

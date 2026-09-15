@@ -268,7 +268,7 @@ export function DeviceConfigTab({
       >
         <ul
           aria-label="Configuration versions"
-          className="max-h-96 overflow-y-auto xl:max-h-[460px]"
+          tabIndex={0} className="max-h-96 overflow-y-auto xl:max-h-[460px]"
         >
           {versions.map((snapshot) => {
             const source = getStatusConfig(SNAPSHOT_SOURCE, snapshot.source);

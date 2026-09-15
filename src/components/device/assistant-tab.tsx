@@ -301,7 +301,7 @@ export function AssistantTab({ deviceId }: { deviceId: string }) {
           </div>
           <div
             aria-live="polite"
-            className="max-h-96 overflow-y-auto rounded-lg border bg-surface-subtle p-4"
+            tabIndex={0} className="max-h-96 overflow-y-auto rounded-lg border bg-surface-subtle p-4"
           >
             <MarkdownishAnswer text={answer.answer} />
           </div>

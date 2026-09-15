@@ -29,7 +29,9 @@ Release to "PRODUCTION READY" requires every ☐ below ticked with evidence. Do 
 ## D. Non-blocking authoring backlog (post-gate)
 
 - [x] TASK-SCALE-001-B — distributed backend for the login guard's lockout state (atomic per-key transaction shape). LANDED R46: `FAYANMS_RATE_STORE=postgres` makes the login plane fleet-wide (`LoginGuardState` + per-key advisory-lock tx); AUTH-001 FIXED end-to-end — `tests/audit/login-guard-distributed.test.ts` (20 pins, two-instance acceptance).
-- [ ] TASK-BROWSER-E2E — Playwright/visual journeys + axe a11y + RTL/keyboard sweeps on the rendering layer.
+- [x] TASK-BROWSER-E2E — Playwright/visual journeys + axe a11y + RTL/keyboard sweeps on the rendering layer. LANDED R47: 6 real-Chromium journeys over the real topology incl. axe scans (zero critical/serious after fixing the found WCAG-AA contrast defects at the token level + 12 keyboard-focusable scroll regions), keyboard + RTL sweeps, CI `browser` job — `tests/browser/` + `tests/audit/browser-e2e-governance.test.ts`.
+
+**The authoring backlog is EMPTY.** Remaining work is exclusively owner-side (GOV-001, CI-001) and lab-side (CERT-HW-001/FUNC-001), each with the executable procedure published.
 
 ## E. Release ritual (every release, after A–C are green)
 
