@@ -1,0 +1,33 @@
+# FayaNMS TLS proxy — DEPLOY-001-A (2026-09-15).
+#
+# Mounted read-only by the `caddy` service in compose.tls.yml.
+#
+# Trust contract (deploy-doc security note 22):
+#   - EXACTLY ONE trusted proxy hop sits in front of the app → keep
+#     FAYANMS_TRUST_PROXY_HOPS=1 (the default). Caddy APPENDS the real
+#     client address to X-Forwarded-For (the app's rightmost-trusted-hop
+#     policy reads it attacker-resistently).
+#   - Automatic HTTP→HTTPS redirect is Caddy's default for any site with
+#     certificates; HSTS is set below (owned HERE, one hop, one owner).
+#   - Certificates: ACME (Let's Encrypt / ZeroSSL) when FAYANMS_TLS_DOMAIN
+#     is a public DNS name; Caddy's internal CA otherwise (lab/LAN —
+#     browsers need the CA imported, or use a real DNS name). Rotation is
+#     automatic (renewal window ~30 days) — no operator action.
+#   - Secure cookies: with an https NEXTAUTH_URL the sessions flip to the
+#     __Secure-* cookie names; never run the TLS profile with an http origin.
+{
+	# email ops@example.corp   # uncomment for explicit ACME account contact
+}
+
+{$FAYANMS_TLS_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy app:3000
+}

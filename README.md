@@ -711,6 +711,23 @@ journeys on every push (execution recorded honestly as runner-blocked
 until CI-001 resolves). Journeys skip in the unit gate (`FAYANMS_E2E=1`
 opts in locally after `build:gate`).
 
+**LANDED — DEPLOY-001-A (+OPS-002-A) (independent audit 2026-09-15): the
+safe path is the default path — a shipped TLS profile plus container
+runtime hardening.** `compose.tls.yml` + `docs/deploy/Caddyfile.tls`:
+a proxy sidecar terminates TLS as the ONLY ingress (automatic ACME or
+internal-CA certificates, HTTP→HTTPS redirect, HSTS owned at the one
+proxy hop), the app's direct host-port publication is removed in the
+profile, and every service gains cap_drop ALL / no-new-privileges /
+PID + memory bounds with read-only app and worker roots (tmpfs /tmp; the
+database keeps a writable data plane as a documented deviation). The TLS
+contract is explicit (deploy-doc note 22): one trusted proxy hop,
+forwarded-header policy compatible with the app's rightmost-trusted-hop
+gate, `__Secure-*` cookie flip on the https origin, automatic cert
+rotation. The plain-80 base profile is explicitly the isolated-LAN-pilot
+path. Pinned by `tests/audit/deploy-hardening.test.ts`; `docker compose
+config` render + live TLS smoke remain NOT VERIFIED here (no Docker) and
+CI execution stays runner-blocked (CI-001) — both recorded honestly.
+
 
 **LANDED — CERT-006 (audit CERT tier): Sophos SFOS joins the live plane over
 a REAL WebAPI transport — the vendor whose SSH CLI has no read-only

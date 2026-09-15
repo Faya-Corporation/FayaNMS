@@ -92,13 +92,12 @@ Depends on: none (owner-side; parallel with GOV-001-A).
 
 ---
 
-TASK-DEPLOY-001-A — HTTPS-by-default reference deployment ✊
+TASK-DEPLOY-001-A — HTTPS-by-default reference deployment ✊ → ✅ LANDED (R40, 2026-09-15, with OPS-002-A runtime hardening)
 
 Goal: Make the safe path the default path.
-Files: NEW `compose.tls.yml`, deploy doc D2, env template origin examples.
-Implementation: TLS-terminating proxy profile (auto certs + HSTS) as the documented default; plain-80 explicitly labeled isolated-LAN-pilot-only; secure cookies verified end-to-end.
-Tests: Config render test for the TLS profile; docs honesty pins.
-Acceptance: Fresh-host runbook yields HTTPS origin; plain HTTP requires deliberate opt-out.
+Landed as: `compose.tls.yml` (override profile) + `docs/deploy/Caddyfile.tls` — a TLS-terminating proxy sidecar is the shipped DEFAULT ingress: automatic certificates (ACME for a public DNS name; internal CA for lab hosts), automatic HTTP→HTTPS redirect, HSTS owned at the single proxy hop, and the app's direct host-port publication REMOVED in the profile (`ports: []` override). The full TLS contract is documented (deploy-doc D2 + security note 22): exactly ONE trusted proxy hop (`FAYANMS_TRUST_PROXY_HOPS=1` stays correct), forwarded-header policy (Caddy APPENDS the client address — the app's rightmost-trusted-hop reading is untouched), `__Secure-*` cookie flip with the https origin, automatic cert rotation, health surface unchanged. Same profile ships the OPS-002-A container hardening: cap_drop ALL (+ explicit NET_BIND_SERVICE on the proxy only), no-new-privileges everywhere, read-only app/worker roots with tmpfs /tmp, PID + memory bounds on every service; the database keeps a writable data plane — documented deviation. Plain-80 base profile explicitly labeled isolated-LAN-pilot-only.
+Tests: `tests/audit/deploy-hardening.test.ts` (11 pins: proxy-only ingress, port removal, Caddyfile contract, runbook honesty, hardening matrix, worker/postgres never publish).
+Acceptance evidence: static config governance is executable here; `docker compose config` render + live TLS smoke remain NOT VERIFIED — infrastructure limitation (no Docker in this environment), recorded in the test header and NEXT-TASKS; CI execution runner-blocked (CI-001).
 Depends on: none.
 
 ---

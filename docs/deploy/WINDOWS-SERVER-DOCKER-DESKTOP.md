@@ -445,11 +445,29 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
   Keep N weekly + 4 daily off-box copies. Restore drill: create a throwaway postgres
   container, `pg_restore` into it, point the app at it once, then delete. Custom format
   (`-Fc`) is compressed and supports selective restore.
-- [ ] **D2. TLS/reverse proxy (recommended before any non-LAN exposure):** Caddy sidecar
-  with a mounted volume for its CA/certs, proxying to `app:3000`; flip compose to publish
-  80/443 only. If a corporate cert exists, mount it instead. `NEXTAUTH_URL` /
-  `NEXT_PUBLIC_SITE_URL` become `https://…` and the images must be **rebuilt** (the URL is
-  a build-time ARG — T1).
+- [ ] **D2. TLS/reverse proxy — SHIPPED PROFILE (DEPLOY-001-A, 2026-09-15): the safe
+  path is the default path.** The repo ships `compose.tls.yml` + `docs/deploy/Caddyfile.tls`:
+  a Caddy sidecar terminates TLS (automatic ACME certificates for a real DNS name, or
+  Caddy's internal CA for a lab host), redirects HTTP→HTTPS, sets HSTS, and becomes the
+  ONLY ingress — the app's direct host-port publication is removed in this profile. All
+  services gain runtime hardening (cap_drop ALL, no-new-privileges, read-only app/worker
+  roots with tmpfs /tmp, PID + memory bounds).
+
+  ```bash
+  # in .env.production add the public DNS name of this host:
+  #   FAYANMS_TLS_DOMAIN=fayanms.<yourcorp>.com
+  docker compose --env-file .env.production -f compose.yml -f compose.tls.yml build
+  docker compose --env-file .env.production -f compose.yml -f compose.tls.yml up -d
+  curl -I https://"$FAYANMS_TLS_DOMAIN"/        # TLS + HSTS; http redirects
+  ```
+
+  Operator contract (security note 22): set `NEXTAUTH_URL` to `https://<domain>` and
+  `NEXT_PUBLIC_SITE_URL` to the same — the latter is a BUILD arg, so REBUILD the app
+  image; sessions flip to the `__Secure-*` cookie names automatically. Keep
+  `FAYANMS_TRUST_PROXY_HOPS=1` (Caddy is the single trusted proxy). Certificate renewal
+  is automatic (~30-day window; no operator action). The plain-80 base profile
+  (`docker compose --env-file .env.production up -d`) is explicitly the **isolated-LAN
+  pilot** path only — do not expose it beyond the LAN.
 - [ ] **D3. Upgrade procedure** (the repo ships a COMMITTED migration history —
   `prisma/migrations` — applied via `prisma migrate deploy`):
 
@@ -765,6 +783,22 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    each zone's material rotates independently — the KEK rotation tooling
    (note 15) runs app-side only, and the vault entries (notes 6/16) never
    leave the worker file.
+22. **TLS contract of the shipped proxy profile (DEPLOY-001-A, 2026-09-15)**:
+   `compose.tls.yml` + `docs/deploy/Caddyfile.tls` implement the documented
+   trust model instead of an external afterthought. EXACTLY ONE trusted
+   proxy hop (Caddy) → `FAYANMS_TRUST_PROXY_HOPS=1` stays correct; Caddy
+   APPENDS the real client address to X-Forwarded-For (the app reads the
+   rightmost trusted entry — leftmost spoofing still dies at the gate);
+   HTTPS redirect + HSTS are owned by the proxy (one hop, one owner);
+   certificates rotate automatically (ACME) or come from the internal CA
+   for lab hosts; secure-cookie posture follows the https origin
+   (`__Secure-*` cookies) end-to-end. The proxy is the ONLY published
+   surface (80/443); app/worker/postgres stay unpublishable. The plain-80
+   base profile is the isolated-LAN pilot path ONLY. Runtime hardening
+   (cap_drop ALL, no-new-privileges, read-only app/worker roots, PID and
+   memory bounds) ships in the same profile; the database keeps a writable
+   data plane — a documented deviation, not an oversight. Pinned by
+   `tests/audit/deploy-hardening.test.ts`.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 

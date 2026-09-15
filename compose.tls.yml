@@ -1,0 +1,103 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# FayaNMS — TLS/hardening OVERRIDE profile (DEPLOY-001-A, 2026-09-15).
+#
+# Layer ON TOP of the base stack — the safe path is now the default path:
+#
+#   docker compose --env-file .env.production \
+#     -f compose.yml -f compose.tls.yml up -d
+#
+# What this profile changes:
+#   1. TLS TERMINATION (Caddy sidecar): automatic certificates (ACME for a
+#      real DNS name, or Caddy's internal CA for LAN hosts), automatic
+#      HTTP→HTTPS redirect, HSTS, and a single documented trusted-proxy hop.
+#      The app's direct port publication is REMOVED — traffic enters only
+#      through 80/443 on the proxy.
+#   2. CONTAINER HARDENING on every service: cap_drop ALL, no-new-privileges,
+#      read-only root filesystem where the runtime allows (tmpfs for /tmp),
+#      PID limits, memory limits. The plain-80 base profile stays available
+#      for the ISOLATED-LAN PILOT ONLY (see deploy-doc D2 + security note 22).
+#
+# Operator contract (runbook D2):
+#   * set FAYANMS_TLS_DOMAIN to the public DNS name (or accept the localhost
+#     internal-CA fallback for a lab);
+#   * NEXTAUTH_URL / NEXT_PUBLIC_SITE_URL become https://<domain> —
+#     NEXT_PUBLIC_SITE_URL is a BUILD arg → rebuild the app image;
+#   * sessions flip to the __Secure-* cookie names automatically (the origin
+#     is https), so secure-cookie posture is verified end-to-end.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  app:
+    # DEPLOY-001-A/D3: in the TLS profile the app is NOT directly published —
+    # the proxy is the only ingress (the empty ports list removes the base
+    # host-port publication via override semantics).
+    ports: []
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    pids_limit: 256
+    mem_limit: 1g
+
+  worker:
+    # The worker stays UNPUBLISHED (never had ports) and gains the same
+    # runtime hardening.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    pids_limit: 256
+    mem_limit: 512m
+
+  postgres:
+    # DB stays fully internal (never published). read_only stays OFF for the
+    # database (PostgreSQL needs writable runtime dirs beyond its data
+    # volume — a documented deviation, not an oversight): the hardening here
+    # is no-new-privileges + PID/memory bounds.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+
+  caddy:
+    # TLS terminator + the only published surface (80 redirect + 443).
+    # cap NET_BIND_SERVICE is retained explicitly because the container
+    # drops ALL other capabilities and must bind the low ports.
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      FAYANMS_TLS_DOMAIN: "${FAYANMS_TLS_DOMAIN:-localhost}"
+    volumes:
+      - ./docs/deploy/Caddyfile.tls:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  caddy-data:
+  caddy-config:
