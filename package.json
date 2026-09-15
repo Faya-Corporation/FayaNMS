@@ -20,7 +20,8 @@
     "brand:validate-icons": "bun scripts/validate-icon-registry.ts",
     "brand:raster": "bun scripts/generate-brand-raster-assets.ts",
     "brand:validate-consumers": "bun scripts/validate-brand-consumers.ts",
-    "brand:audit": "bun run brand:validate && bun run brand:validate-icons && bun run brand:validate-consumers"
+    "brand:audit": "bun run brand:validate && bun run brand:validate-icons && bun run brand:validate-consumers",
+    "demo:fleet": "bun scripts/demo-fleet-probe.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

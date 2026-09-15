@@ -8,6 +8,7 @@ Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-P
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4)
 OWNER-CI-001 — Restore GitHub Actions runner capacity and obtain green gate+scan+e2e+browser runs on the release SHA
 LAB-FUNC-001 / LAB-CERT-HW-001 — Execute the physical-device certification matrix (docs/certification/MATRIX.md §3); unlock the typed LIVE-restore decision
+    ↳ Step 0 (no hardware needed, 2026-09-16): the PUBLIC DEMO DEVICE PLANE (docs/certification/PUBLIC-DEMO-DEVICES.md + `bun run demo:fleet`) — free Cisco DevNet always-on device is SSH-reachable and gives REAL-device auth/read evidence once an operator supplies their free per-user AAA credentials; the T3 rows stay lab-gated
 ```
 
 The authoring backlog is EMPTY: every code/doc task from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R47). AUTH-001 is FIXED end-to-end (R35 guard + R46 fleet-wide store); the rendering layer is continuously verified (R47 browser journeys + axe a11y, with the found WCAG-AA defects fixed at the token level).

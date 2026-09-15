@@ -763,6 +763,27 @@ locally after `build:gate` — 6/6, and 12/12 together with the HTTP
 journeys in one invocation (the shared harness re-boots liveness-aware
 between files).
 
+**LANDED — TASK-DEMO-FLEET-001 (2026-09-16): a real, free, public demo
+device plane — the zero-hardware first step of the CERT-HW-001 lab path.**
+The sandbox empirically REACHES real public vendor demo devices: TCP/22 is
+OPEN to both Cisco DevNet always-on sandboxes (`devnetsandboxiosxe.cisco.com`
+180 ms, `sbx-nxos-mgmt.cisco.com` 173 ms; ICMP is container-blocked and not a
+FayaNMS transport). `scripts/demo-fleet-probe.ts` (`bun run demo:fleet`)
+classifies the fleet: a no-credential TCP preflight, then — only with the
+operator's own free DevNet AAA credentials via `FAYANMS_DEMO_SSH_*` env
+(shared-password era ended 2025-09-16; per-user AAA now; credentials NEVER
+enter the repo, typed pre-network refusal pinned) — an enrollment-capture
+SSH probe plus one read-only `show version` exec, and optionally the
+certified `cisco` LIVE_SSH product adapter taking a REAL `show running-config`
+backup. READ-ONLY discipline is structural and test-pinned (no
+mutation-shaped command literals may ever enter the tool — shared public
+devices are never changed). Honest classification: this yields REAL-device
+auth/read evidence only; the MATRIX T3 rows (drift/change/rollback/
+interruption/restore) stay lab-gated, with free operator-hosted virtual
+appliances documented as the per-vendor path. Pinned by
+`tests/audit/demo-fleet.test.ts`; procedure + trust boundaries + evidence
+log in `docs/certification/PUBLIC-DEMO-DEVICES.md`.
+
 **LANDED — DEPLOY-001-A (+OPS-002-A) (independent audit 2026-09-15): the
 safe path is the default path — a shipped TLS profile plus container
 runtime hardening.** `compose.tls.yml` + `docs/deploy/Caddyfile.tls`:
