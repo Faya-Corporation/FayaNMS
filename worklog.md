@@ -2756,3 +2756,16 @@ Work Log:
 
 Stage Summary:
 - PHASE F landed: every P3 finding now carries an honest terminal classification (FIXED, RESOLVED, or ACCEPTED RESIDUAL RISK) — none silently disappeared. Next: PHASE G — DOC-001-A (documentation/live-truth reconciliation), then PHASES H–K classifications (FUNC-001/GOV-001/CI-001) and the final re-audit + score + FINAL artifacts.
+---
+Task ID: R42-p3-hardening-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 65a8a9c (PHASE F P3 batch) — honest evidence record
+
+Work Log:
+- Pushed 65a8a9c; run completed "failure" with the IDENTICAL infrastructure signature as runs #34-#55: gate failed with ZERO steps executed and an EMPTY runner_name; e2e + scan skipped (no runner ever assigned). GitHub-hosted runner unavailability, not a gate/scanner finding.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 578 across 33 files (572 pass + 6 e2e skips; 3,297 expects) · prisma validate OK · drift guard exit 0 · certify.ts exit 0 · build:gate exit 0.
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for 65a8a9c: locally gate-proven, CI-blocked by infrastructure only.
+- PHASE F final report: COMPLETE. Starting HEAD 0098d2f → ending HEAD 65a8a9c. P3 batch: AUTH-GUARD RESOLVED, LOG FIXED, SESSION FIXED (12 h), SSRF ACCEPTED RESIDUAL RISK (classified), NEW-1 FIXED (read-only governance pin).
