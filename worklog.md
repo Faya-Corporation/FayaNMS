@@ -2697,3 +2697,16 @@ Work Log:
 Stage Summary:
 - TASK-DEPLOY-001-A + OPS-002-A landed as one focused commit: HTTPS is now the shipped default path with the complete trust contract documented and pinned, and the container runtime is hardened across every service; plain-80 requires the deliberate base-profile opt-out and is labeled pilot-only.
 - Session progress: PHASE A (SEC-ENV-001) FIXED · PHASE B (SCALE-001) FIXED (API plane) · PHASE C (TEST-001) LANDED (P1 login regression found+fixed) · PHASE D (DEPLOY-001) LANDED. Next: PHASE E — TASK-SUPPLY-001-A (digest-pinned bases + built-image scanning).
+---
+Task ID: R40-deploy-001-a-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 974b98a (TASK-DEPLOY-001-A) — honest evidence record
+
+Work Log:
+- Pushed 974b98a; run completed "failure" with the IDENTICAL infrastructure signature as runs #34-#53: gate failed with ZERO steps executed and an EMPTY runner_name; scan + e2e skipped (no runner ever assigned). GitHub-hosted runner unavailability, not a gate/scanner finding.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 560 across 31 files (554 pass + 6 e2e skips; 3,247 expects) · prisma validate OK · drift guard exit 0 · certify.ts exit 0 · build:gate exit 0.
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for 974b98a: locally gate-proven, CI-blocked by infrastructure only.
+- TASK-DEPLOY-001-A final report: COMPLETE. Starting HEAD 12ee037 → ending HEAD 974b98a. DEPLOY-001: LANDED (shipped TLS profile + runtime hardening; docker compose config render + live TLS smoke remain NOT VERIFIED — no Docker here).
