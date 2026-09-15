@@ -2635,3 +2635,16 @@ Work Log:
 Stage Summary:
 - TASK-SCALE-001-A landed as one focused commit: the /api/v1 rate gate now supports ONE fleet-wide budget across horizontally scaled instances behind an opt-in shared Postgres store, with the single-host zero-infra default preserved byte-for-byte, atomicity proven, retention bounded, outage policy pinned, and the login-plane remainder tracked truthfully.
 - Session progress: PHASE A (SEC-ENV-001-A) FIXED; PHASE B (SCALE-001-A) FIXED (API plane). Next: PHASE C — TASK-TEST-001-A (E2E/integration certification authoring).
+---
+Task ID: R38-scale-001-a-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit c7be0db (TASK-SCALE-001-A) — honest evidence record
+
+Work Log:
+- Pushed c7be0db; run 34922410390 completed "failure" with the IDENTICAL infrastructure signature as runs #34-#51: job "gate" failed with ZERO steps executed and an EMPTY runner_name (no runner ever assigned), job "scan" skipped — GitHub-hosted runner unavailability, not a gate or scanner finding.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 543/543 (3,207 expects — 19 new rate-store pins) · prisma validate OK · drift guard exit 0 on a fresh fayanms_shadow (migration 20260915023328 verified ≡ schema) · certify.ts exit 0 · build:gate exit 0.
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for c7be0db: locally gate-proven, CI-blocked by infrastructure only. User-side follow-up unchanged (Actions minutes/billing + UI re-run).
+- TASK-SCALE-001-A final report: COMPLETE. Starting HEAD f929383 → ending HEAD c7be0db. SCALE-001: FIXED for the API gate plane; login-plane remainder tracked as TASK-SCALE-001-B; AUTH-001 remains PARTIALLY FIXED.
