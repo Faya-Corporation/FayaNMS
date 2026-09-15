@@ -1,6 +1,18 @@
-# FayaNMS — NEXT TASKS (execution backlog, 2026-09-15)
+# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-15, R43)
 
-Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`. Tasks are independently implementable and landable as separate green commits. Sandbox-actionable tasks are marked ✊; user/infrastructure-side are marked 👤.
+Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R43). ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, all of it outside the sandbox's control:
+
+## ACTIVE (only genuinely remaining work)
+
+```text
+OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4)
+OWNER-CI-001 — Restore GitHub Actions runner capacity and obtain green gate+scan+e2e runs on the release SHA
+LAB-FUNC-001 / LAB-CERT-HW-001 — Execute the physical-device certification matrix (docs/certification/MATRIX.md §3); unlock the typed LIVE-restore decision
+TASK-SCALE-001-B — Distributed backend for the login guard's lockout state (same atomic per-key transaction shape as SCALE-001-A)
+TASK-BROWSER-E2E — Playwright/visual browser journeys + axe-core a11y + RTL/keyboard sweeps (the HTTP-level journey layer is landed; this is the rendering-layer pass)
+```
+
+Everything else from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R43).
 
 ---
 
@@ -141,6 +153,12 @@ Implementation: Vendor × firmware × capability matrix (auth, backup, drift, ch
 Tests: CI pins that README/deploy claims match the matrix exactly.
 Acceptance: Published matrix; claims ≡ evidence.
 Depends on: hardware lab access (non-sandbox).
+
+---
+
+## COMPLETED HISTORY (audit trail — not active work)
+
+Every task marked ✅ LANDED above landed as its own green commit with the full local gate loop (lint 0 · full `bunx tsc --noEmit` 0 · full unit suite · prisma validate · drift guard 0 · worker certify · build:gate) and — where the phase produced runtime behavior — live verification evidence; see worklog.md R34–R43 for the per-task reports and the per-commit honest CI records (runner-blocked infrastructure signature documented on every push since run #34).
 
 ---
 

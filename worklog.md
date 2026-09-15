@@ -2795,3 +2795,18 @@ Work Log:
 Stage Summary:
 - TRUTHFUL CI STATE for a84035e: locally gate-proven, CI-blocked by infrastructure only.
 - PHASE G final report: COMPLETE. Starting HEAD a2da4ce → ending HEAD a84035e. DOC-001: LANDED — no governance claim contradicts the live API.
+---
+Task ID: R44-h-k-classifications
+Agent: Orchestrator (Z.ai Code)
+Task: "Complete Remaining Production Remediation in One Session" — PHASES H–K: classify the findings that CANNOT be fixed from the sandbox (FUNC-001 real-hardware, GOV-001 owner, CI-001 infrastructure, CERT-HW-001 hardware lab) and publish the executable lab procedure — no false fixes.
+
+Work Log:
+- PHASE H (FUNC-001-A): the typed fail-closed LIVE restore refusal stays (LIVE_RESTORE_NOT_CERTIFIED — a capability boundary, never deleted to fake closure). Classified REAL-HARDWARE CERTIFICATION BLOCKED; the vendor-safe restore enablement design (preflight → exact snapshot → integrity verify → vendor-safe staging → apply → reconnect → recapture → exact/normalized verification → rollback) is written into the certification procedure as the gate for any future enablement.
+- PHASE I (CERT-HW-001-A): NEW docs/certification/MATRIX.md — the five evidence tiers (T0 unit / T1 protocol harness / T2 simulator / T3 lab hardware / T4 production certified), the six-vendor × ten-capability matrix at its HONEST current top tier (T1/T2 everywhere; sophos change explicitly NOT IMPLEMENTED — read-only allowlist; LIVE restore REFUSED by design), and the nine-step executable lab procedure (lab setup → preflight → auth+read ×3 with byte-compare → out-of-band drift → controlled change with VERIFY marker → failAt failure path with blast-radius truth → mid-APPLY interruption recovery → credential + host-key rotation with fail-closed verification → the restore-enablement decision gate) with per-row signing requirements.
+- PHASE J (GOV-001): classified OWNER ACTION REQUIRED — exact ruleset settings recorded (PR required, gate+scan+e2e required checks, no force-push/deletion, scoped admin bypass) with the API read-back gate: docs flip to "active" ONLY when the live API says protected:true.
+- PHASE K (CI-001): classified INFRASTRUCTURE BLOCKED — the zero-steps/no-runner signature documented per push since run #34; owner remediation listed (Actions minutes/billing, UI re-run on the release SHA, self-hosted runner fallback); a green OLD SHA is explicitly not release evidence.
+- NEXT-TASKS restructured per prompt §13: the ACTIVE backlog now contains ONLY genuinely remaining work (OWNER-GOV-001, OWNER-CI-001, LAB-FUNC-001/CERT-HW-001, TASK-SCALE-001-B, TASK-BROWSER-E2E); everything landed (R34–R43) moved to a COMPLETED HISTORY section with the evidence trail. No completed task remains in the active list.
+- Gates on the exact final tree: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 580 across 33 files (574 pass + 6 e2e skips; 3,309 expects) · prisma validate OK · drift guard exit 0 · certify.ts exit 0 · build:gate exit 0.
+
+Stage Summary:
+- PHASES H–K landed: every remaining finding now carries a terminal classification from the prompt's set (FIXED / VERIFIED / ACCEPTED RESIDUAL RISK / OWNER ACTION REQUIRED / INFRASTRUCTURE BLOCKED / REAL-HARDWARE CERTIFICATION BLOCKED) — with the executable owner/lab procedures published. The remediation program's CODE-side work is complete; what remains is deliberately and honestly outside the sandbox. Next: the FINAL independent re-audit + score recalculation + the FINAL artifacts (audit + production gate).
