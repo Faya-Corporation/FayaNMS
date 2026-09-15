@@ -229,7 +229,7 @@ services:
       args: { NEXT_PUBLIC_SITE_URL: "${NEXT_PUBLIC_SITE_URL}" }
     image: fayanms-app:latest
     restart: unless-stopped
-    env_file: .env.production
+    env_file: .env.production.app    # SEC-ENV-001: app zone only
     environment:
       NODE_ENV: production
       WORKER_BASE_URL: "${WORKER_BASE_URL:-http://worker:3030}"   # T5: app → worker hop
@@ -245,7 +245,7 @@ services:
     build: { context: ., dockerfile: Dockerfile.worker }
     image: fayanms-worker:latest
     restart: unless-stopped
-    env_file: .env.production
+    env_file: .env.production.worker   # SEC-ENV-001: worker zone only (identity + vault)
     environment:
       NEXT_BASE_URL: "${NEXT_BASE_URL:-http://app:3000}"   # T5: worker → app hop
     depends_on: [app]
@@ -259,6 +259,10 @@ As landed, `compose.yml` additionally ships a **`provision` service** (compose p
 `provision`; builds the Dockerfile `build` target, which carries the full prisma CLI) for
 the T7 one-off schema/seed jobs, and the published port is `${FAYANMS_HTTP_PORT:-80}:3000`.
 All compose commands take `--env-file .env.production` (build-arg interpolation source).
+
+Since SEC-ENV-001 (2026-09-15) the runtime env files are PER SERVICE — `.env.production.app`
+(app zone) and `.env.production.worker` (worker zone); provision receives no env file.
+See T6 + security note 21.
 
 Acceptance criteria:
 - [ ] End-to-end golden path: sign in → Devices → Test Connection (app→worker hop) works;
@@ -310,27 +314,53 @@ normal bridge network. As-landed details:
 - **Bare-metal dev unchanged:** no env var needed anywhere; loopback defaults
   preserve the Task 2-b contracts byte-for-byte.
 
-### T6 — `.env.production` template + secrets — **LANDED 2026-09-12 (R12)**: `docs/deploy/env.production.example`
+### T6 — `.env.production` template + secrets — **LANDED 2026-09-12 (R12)**: `docs/deploy/env.production.example`; **SPLIT PER SERVICE 2026-09-15 (SEC-ENV-001)**
 
-Add `docs/deploy/env.production.example` mirroring `.env.example` with the container
+`docs/deploy/env.production.example` mirrors `.env.example` with the container
 values (canonical URLs; `POSTGRES_PASSWORD` — compose composes `DATABASE_URL` from it,
 Phase 21). Never commit real values (`.env*` is gitignored — gitleaks in CI also watches
 this).
 
+**SEC-ENV-001 (2026-09-15) — per-service secret split.** The single `.env.production`
+used to double as the runtime env_file of app + worker + provision, so every process
+received secret material it never touches (the worker got the session secret and the
+KEK; the app got device vault credentials). Now:
+
+```bash
+cp docs/deploy/env.production.example .env.production             # HOST-SIDE interpolation only
+cp docs/deploy/env.app.production.example .env.production.app     # app zone (session/KEK/identity)
+cp docs/deploy/env.worker.production.example .env.production.worker  # worker zone (identity/vault/CA pin)
+```
+
+- **Host-side file:** `NEXT_PUBLIC_SITE_URL` (build arg) + `POSTGRES_PASSWORD`
+  (composes the DATABASE_URL) + optional port/URL overrides. No runtime secrets.
+- **App zone (`.env.production.app`):** `NEXTAUTH_URL`, `NEXTAUTH_SECRET`,
+  `FAYANMS_CONFIG_ENC_KEY(+_ID)`, the CONTROL service-identity keypair, proxy/login
+  knobs. NO `FAYANMS_VAULT_*` — the app stores vault references only.
+- **Worker zone (`.env.production.worker`):** the WORKER service-identity keypair, the
+  CONTROL public keys, `FAYANMS_VAULT_*` device credentials, `FAYANMS_WEBAPI_CA_PEM`,
+  worker URL hops. NO `NEXTAUTH_SECRET`, NO `FAYANMS_CONFIG_ENC_KEY`, NO
+  `POSTGRES_PASSWORD`/`DATABASE_URL` — the worker never touches PostgreSQL or sessions.
+- **Deprecation path:** both runtimes WARN on out-of-zone variables at boot (by name,
+  never values) — `src/lib/startup/security-policy.ts` + worker `identity-boot.ts`;
+  this becomes a boot refusal after the deprecation window. Boundary is pinned by
+  `tests/audit/env-boundary.test.ts`.
+
 Generation (inside WSL2):
 
 ```bash
-openssl rand -hex 32   # NEXTAUTH_SECRET          (≥32 chars)
-openssl rand -hex 32   # FAYANMS_SERVICE_SECRET   (64 hex)
-openssl rand -hex 32   # FAYANMS_CONFIG_ENC_KEY   (64 hex) — this is the KEK that
-                       # encrypts all config snapshots; LOSING IT = losing backups
-openssl rand -hex 32   # POSTGRES_PASSWORD        (64 hex) — compose composes the
-                       # app's DATABASE_URL from it; changing it later requires
-                       # an ALTER USER + volume plan (see troubleshooting)
+openssl rand -hex 32   # NEXTAUTH_SECRET          (≥32 chars) → .env.production.app
+openssl rand -hex 32   # FAYANMS_CONFIG_ENC_KEY   (64 hex) → .env.production.app — this is
+                       # the KEK that encrypts all config snapshots; LOSING IT = losing
+                       # backups
+openssl rand -hex 32   # POSTGRES_PASSWORD        (64 hex) → .env.production (host-side);
+                       # compose composes the app's DATABASE_URL from it; changing it
+                       # later requires an ALTER USER + volume plan (see troubleshooting)
+# Service identity (SEC-ENV-001 note 17): `bun run keys:service` TWICE — the CONTROL
+# keypair goes into .env.production.app, the WORKER keypair into
+# .env.production.worker. The legacy FAYANMS_SERVICE_SECRET is optional
+# (migration/legacy modes only).
 ```
-
-`FAYANMS_CONFIG_ENC_KEY_ID=k1`. If you ever rotate the KEK, the old key must remain
-available to decrypt historical snapshots — document the rotation before doing one.
 
 ### T7 — Database provisioning strategy — **repo-side LANDED 2026-09-12 (R12)** via the `provision` compose service; **migrate-deploy path since Phase 21 slice 2 (2026-09-13)**; the demo-vs-pristine CHOICE happens at first deploy
 
@@ -362,7 +392,7 @@ is the explicitly named `db:push:force`, which you should have NO reason to run 
   ```
 
   Then start the stack **without** `FAYANMS_DEMO_MODE` (the startup policy forbids it in
-  production — it stays empty in `.env.production`; the demo flag above lives only inside
+  production — it stays unset in every env file; the demo flag above lives only inside
   the one-off `docker compose run` invocation). Sign-in when seeded:
   `admin@faya.local` / `faya123`.
 
@@ -379,7 +409,9 @@ sudo apt install -y git && git clone https://github.com/fayafatehi/FayaNMS.git ~
 cd ~/fayanms
 git config core.autocrlf input          # guard against CRLF if checked out on Windows earlier
 
-cp docs/deploy/env.production.example .env.production   # then edit: 3 secrets + URL
+cp docs/deploy/env.production.example .env.production             # host-side: URL + POSTGRES_PASSWORD
+cp docs/deploy/env.app.production.example .env.production.app     # app zone: fill session/KEK/identity
+cp docs/deploy/env.worker.production.example .env.production.worker  # worker zone: fill identity/vault
 docker compose --env-file .env.production build          # build args need the env-file
 docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
   -e FAYANMS_DEMO_MODE=true provision \
@@ -480,10 +512,15 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
 
 1. **Expose one port** (80/443). 3030 is backend-to-backend by contract and must never be
    published; the service-JWT (`FAYANMS_SERVICE_SECRET`) protects it even inside the host.
-2. The three secrets in `.env.production` are the entire threat surface for config-at-rest
-   (`FAYANMS_CONFIG_ENC_KEY` = KEK) and impersonation (`NEXTAUTH_SECRET`,
-   `FAYANMS_SERVICE_SECRET`). NTFS/ACL-protect the file, back it up **separately from DB
-   backups**, and never commit it (gitleaks runs on every push).
+2. **Secret files are the entire config-at-rest threat surface** — since SEC-ENV-001
+   (2026-09-15) they are SPLIT per service: `.env.production` (host-side:
+   `POSTGRES_PASSWORD`), `.env.production.app` (`NEXTAUTH_SECRET`,
+   `FAYANMS_CONFIG_ENC_KEY` = KEK, the CONTROL identity key), and
+   `.env.production.worker` (the WORKER identity key, `FAYANMS_VAULT_*` device
+   credentials). NTFS/ACL-protect each file, back them up **separately from DB
+   backups**, and never commit them (gitleaks runs on every push). A process holding
+   only its own zone's material cannot pivot into the other plane even if compromised
+   — that compartmentalization is the point of the split.
 3. Demo credentials (`faya123`) are a designed feature of the seeded dataset — acceptable
    on an isolated LAN pilot; rotate/delete seeded users before any broader exposure.
 4. Branch protection, `gate`+`scan` required checks, and the owner direct-push bypass are
@@ -493,11 +530,12 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    — on a shared Windows Server host, protect the deployment key (the PAT/credential
    helper used for `git pull`) accordingly.
 6. **LIVE_SSH secrets (Phase 22) live ONLY on the worker**: the app stores vault
-   references; the worker resolves them from `FAYANMS_VAULT_*` entries in
-   `.env.production` at connect time. The compose `worker` service carries the env_file —
-   protect that file exactly like the other secrets (item 2) and never publish 3030
-   beyond the host (the service JWT + the plan validation / per-flavor command
-   templates are the device-control gates — the app can never send command text).
+   references; the worker resolves them from `FAYANMS_VAULT_*` entries in the worker
+   env file (`.env.production.worker` — SEC-ENV-001) at connect time. The compose
+   `worker` service carries that env_file — protect it exactly like the other secret
+   files (item 2) and never publish 3030 beyond the host (the service JWT + the plan
+   validation / per-flavor command templates are the device-control gates — the app
+   can never send command text).
 7. **SSH host-key pinning (SAFE-001, audit P0-001)** is a device-control gate too:
    every LIVE_SSH connection is refused unless the endpoint's host key was enrolled
    from the device page (probe → out-of-band verification → pin; the `SshHostKey`
@@ -598,9 +636,9 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    copy-paste), or `exec` (`FAYANMS_VAULT_EXEC` → a shell-free argv
    template wrapping any real vault CLI — HashiCorp Vault agent, pass,
    1Password CLI, a KMS helper — with the reference substituted at every
-   `%s`). In this compose shape keep using `env` with entries in
-   `.env.production`, or mount a root-owned `0600` JSON file and switch to
-   `file`; the `exec` provider is the escape hatch to a REAL vault without
+   `%s`). In this compose shape keep using `env` with entries in the worker env file
+   (`.env.production.worker` — SEC-ENV-001), or mount a root-owned `0600` JSON file and
+   switch to `file`; the `exec` provider is the escape hatch to a REAL vault without
    embedding vendor SDKs in the worker. Every provider is fail-closed
    (typed `CREDENTIAL_UNRESOLVED`/`VAULT_PROVIDER_*` errors, never a
    fallback, secret values never logged or returned), and the exec deadline
@@ -666,8 +704,8 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    (P2-1) the Next.js process no longer logs every SQL query in
    production (`src/lib/db-log.ts` — production defaults to
    errors+warnings; development keeps full visibility). For time-boxed
-   incident debugging set `FAYANMS_DB_QUERY_LOG=true` in
-   `.env.production`, restart, and REMEMBER to remove it — query logs can
+   incident debugging set `FAYANMS_DB_QUERY_LOG=true` in the app env file
+   (`.env.production.app`), restart, and REMEMBER to remove it — query logs can
    carry tenant/device payload and belong in aggregate logs only
    deliberately. (P2-3) `bun run db:push` is fail-tight (a diff that
    would destroy tables/columns refuses in non-interactive contexts);
@@ -682,7 +720,7 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    rotation entry (previously only the session secret was blocklist-
    checked). Practical rule unchanged and now enforced: generate real
    secrets with `openssl rand -hex 32`; never copy sample values from
-   committed workflow files into `.env.production`.
+   committed workflow files into any production env file.
 20. **Login abuse control (AUTH-001-A, independent audit 2026-09-15)**:
    credential sign-in (`POST /api/auth/callback/credentials`) is throttled
    BEFORE password verification — the route answers the standard 429
@@ -707,6 +745,22 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    load-balanced deployment the budgets are per-instance until
    SCALE-001-A's shared store lands; single-instance deployments (this
    runbook) are fully covered.
+21. **Per-service secret scopes (SEC-ENV-001, independent audit 2026-09-15)**:
+   one `.env.production` used to serve app + worker + provision as their
+   runtime `env_file`, so the worker received the session secret and the KEK
+   it never touches, and the app received device vault credentials it never
+   resolves. The split (T6 above): the host-side `--env-file` interpolates
+   build args and composes the DATABASE_URL; `.env.production.app` carries
+   app-zone material; `.env.production.worker` carries worker-zone material;
+   provision receives no env file at all. Both runtimes enforce the boundary
+   at boot with a WARN (variable NAMES only — never values) via
+   `findAppSecretScopeWarnings` / `findWorkerSecretScopeWarnings`; after the
+   deprecation window a warning becomes a refusal. The boundary is
+   governance-pinned by `tests/audit/env-boundary.test.ts` (compose mapping,
+   template zones, warning semantics, value-never-echoed). Rotation guidance:
+   each zone's material rotates independently — the KEK rotation tooling
+   (note 15) runs app-side only, and the vault entries (notes 6/16) never
+   leave the worker file.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 
@@ -720,7 +774,8 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
   data plane (`SIMULATOR` default / `LIVE_SSH`) chosen in the Add/Edit device form with a
   linked credential profile (fail-closed API invariants: LIVE ⇒ SSH_PASSWORD profile), the
   worker has a REAL SSH transport (exec-only, per-flavor command allowlist) with
-  worker-side vault resolution (`FAYANMS_VAULT_*` entries in `.env.production`), and FIVE
+  worker-side vault resolution (`FAYANMS_VAULT_*` entries in the worker env file —
+  `.env.production.worker` since SEC-ENV-001), and FIVE
   flavors are protocol-certified in CI against the in-repo SSH harnesses: cisco-ios
   (`show running-config`), fortinet-fortios (`show full-configuration`), hpe-aos-cx
   (`show running-config`), juniper-junos (`show configuration`), palo-panos

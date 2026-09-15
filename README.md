@@ -642,6 +642,30 @@ keypairs, `FAYANMS_SERVICE_SECRET` absent) — policy passed, `GET /` →
 boot exactly per the matrix (eddsa-only without the private key; keys +
 stale malformed secret → dual rules apply).
 
+**LANDED — SEC-ENV-001-A (independent audit 2026-09-15, finding
+SEC-ENV-001): per-service secret scopes — one `.env.production` no longer
+feeds every process.** The audit confirmed all three compose services
+(`app`, `worker`, `provision`) received the identical env file, so the
+worker held the session secret and the config-encryption KEK it never
+touches, and the app held `FAYANMS_VAULT_*` device credentials it never
+resolves. The split: `.env.production` is now the HOST-SIDE
+`--env-file` only (build args, composed `DATABASE_URL`, host port); the
+app maps to `.env.production.app` (session/KEK/CONTROL identity — no
+vault entries); the worker maps to `.env.production.worker` (WORKER
+identity/vault/CA pin — no session secret, no KEK, no PostgreSQL
+material); provision receives NO env file (its DATABASE_URL is composed;
+demo seeding stays an explicit `-e` override of the run command).
+Templates: `docs/deploy/env.{production,app.production,worker.production}.example`.
+Both runtimes enforce the ownership table at boot —
+`findAppSecretScopeWarnings` (vault wildcard + worker-zone vars) and
+`findWorkerSecretScopeWarnings` (session/KEK/DB material) WARN by
+variable name (values are never printed) with a documented deprecation
+window after which out-of-zone material refuses boot. The boundary is
+governance-pinned by `tests/audit/env-boundary.test.ts` (30 tests:
+compose env-file mapping, template zone purity, warning semantics,
+value-never-echoed, boot wiring).
+
+
 **LANDED — CERT-006 (audit CERT tier): Sophos SFOS joins the live plane over
 a REAL WebAPI transport — the vendor whose SSH CLI has no read-only
 full-config dump.**

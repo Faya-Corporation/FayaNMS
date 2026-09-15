@@ -27,13 +27,12 @@ Depends on: none.
 
 ---
 
-TASK-SEC-ENV-001-A — Per-service environment split (secret compartmentalization) ✊
+TASK-SEC-ENV-001-A — Per-service environment split (secret compartmentalization) ✊ → ✅ LANDED (R37, 2026-09-15)
 
 Goal: Stop one `.env.production` from serving app+worker+provision; enforce the secret ownership table.
-Files: `compose.yml`, NEW `docs/deploy/env.worker.production.example`, `docs/deploy/env.production.example`, deploy doc T5–T7, NEW `tests/audit/env-boundary.test.ts`.
-Implementation: Per-service `env_file`s (worker: identity+vault+URLs+CA pin only; app: session/KEK/DB/service identity, no `FAYANMS_VAULT_*`); startup warning path flags out-of-zone secrets (prod-fail after a deprecation window); compose interpolation unchanged via `--env-file`.
-Tests: Parse compose + templates; assert zero cross-zone entries per the ownership table.
-Acceptance: `docker compose config` renders per-service env with zero cross-zone secrets; tests green; runbook updated.
+Landed as: `.env.production` demoted to the HOST-SIDE interpolation file only (`--env-file`; build args, composed `DATABASE_URL`, host port); app runtime env split to `.env.production.app` (session/KEK/CONTROL identity, NO `FAYANMS_VAULT_*`); worker runtime env split to `.env.production.worker` (WORKER identity/vault entries/WebAPI CA pin, NO `NEXTAUTH_SECRET`/KEK/`POSTGRES_PASSWORD`/`DATABASE_URL`); provision receives NO env file (composed `DATABASE_URL`; demo-mode stays a `-e` override). Both runtimes WARN at boot on out-of-zone variables (by name, never values) — `findAppSecretScopeWarnings` (vault wildcard + worker-zone vars) in `security-policy.ts` and `findWorkerSecretScopeWarnings` in worker `identity-boot.ts` — with the documented deprecation window after which they refuse. Templates `docs/deploy/env.app.production.example` + `env.worker.production.example` (new), `env.production.example` rewritten host-side; deploy-doc T6 rewritten + security note 21; README LANDED block.
+Evidence: `tests/audit/env-boundary.test.ts` (30 pins: compose env-file mapping incl. the shared-file abolition, template zone purity both ways, warning semantics, value-never-echoed, required-vars-never-forbidden, boot wiring); suite 494 → 524. `docker compose config` NOT VERIFIED — infrastructure limitation (no Docker in this environment); the static boundary tests are the executable verification here.
+Audit status: **SEC-ENV-001: FIXED** — runtime configuration boundaries match the ownership table (runtime `docker compose config` render remains runner/lab evidence, CI-001).
 Depends on: none.
 
 ---

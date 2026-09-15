@@ -19,7 +19,22 @@
 # boot against a stray SQLite file.
 # ─────────────────────────────────────────────────────────────────────────────
 #
+# SEC-ENV-001 (2026-09-15): production secrets are SPLIT PER SERVICE. The
+# --env-file .env.production is the HOST-SIDE interpolation file only (build
+# args, composed DATABASE_URL, host port) — it is NOT any container's runtime
+# env anymore. Each service maps to its own env file:
+#   app    → .env.production.app     (session/KEK/control identity; NO vault)
+#   worker → .env.production.worker  (worker identity/vault/CA pin; NO session/KEK/DB)
+#   provision needs no env file (DATABASE_URL composed; demo-mode is a -e override)
+# Templates: docs/deploy/env.app.production.example / env.worker.production.example.
+# The startup policies warn on out-of-zone variables at boot (deprecation
+# window; refuses after it) — src/lib/startup/security-policy.ts + worker
+# identity-boot.ts.
+#
 # Build / provision / run (inside WSL2, repo root — demo-seed path, runbook T7):
+#   cp docs/deploy/env.production.example .env.production             # host-side
+#   cp docs/deploy/env.app.production.example .env.production.app     # app zone
+#   cp docs/deploy/env.worker.production.example .env.production.worker  # worker zone
 #   docker compose --env-file .env.production build
 #   docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
 #     -e FAYANMS_DEMO_MODE=true provision \
@@ -62,7 +77,11 @@ services:
         NEXT_PUBLIC_SITE_URL: "${NEXT_PUBLIC_SITE_URL:?Set NEXT_PUBLIC_SITE_URL in the --env-file — the real canonical origin; localhost and *.local are rejected in production}"
     image: fayanms-app:latest
     restart: unless-stopped
-    env_file: .env.production
+    # SEC-ENV-001: app-zone runtime env ONLY (session/KEK/service identity).
+    # Device vault credentials resolve in the WORKER — never put FAYANMS_VAULT_*
+    # here. DATABASE_URL arrives via the composed `environment` below, which
+    # also overrides env_file for an external-DB override set in the --env-file.
+    env_file: .env.production.app
     environment:
       NODE_ENV: production
       # Backend→worker hop (T5). Bridge DNS by default; the ${VAR:-default}
@@ -94,7 +113,11 @@ services:
     # Own container on the compose bridge network (T5) — service DNS name
     # "worker" is how the app reaches it; "app" is how it reaches Next.js.
     # The worker NEVER touches PostgreSQL (all persistence via the app API).
-    env_file: .env.production
+    # SEC-ENV-001: worker-zone runtime env ONLY (worker identity, vault
+    # entries, WebAPI CA pin). NEXTAUTH_SECRET / the KEK / POSTGRES_PASSWORD /
+    # DATABASE_URL must NEVER appear here — both runtimes flag out-of-zone
+    # variables at boot (SEC-ENV-001 deprecation path).
+    env_file: .env.production.worker
     environment:
       # Worker→app persistence hop (T5).
       NEXT_BASE_URL: "${NEXT_BASE_URL:-http://app:3000}"
@@ -120,7 +143,9 @@ services:
     image: fayanms-provision:latest
     profiles: ["provision"]
     restart: "no"
-    env_file: .env.production
+    # SEC-ENV-001: the provision container receives NO env file — its only
+    # secret is the composed DATABASE_URL below (schema/seed jobs need nothing
+    # else; demo seeding is an explicit -e override of the run command, T7).
     environment:
       DATABASE_URL: "${DATABASE_URL:-postgresql://fayanms:${POSTGRES_PASSWORD}@postgres:5432/fayanms}"
     depends_on:

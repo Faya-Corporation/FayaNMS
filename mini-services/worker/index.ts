@@ -646,8 +646,15 @@ if (import.meta.main) {
   // service identity — before the port opens, never at first request.
   // (certify.ts imports only handle() below, so harness runs are unaffected;
   // its legacy shared-secret shape is a valid boot configuration.)
-  const { assertWorkerServiceIdentity } = await import("./identity-boot");
+  const { assertWorkerServiceIdentity, warnWorkerSecretScope } = await import(
+    "./identity-boot"
+  );
   assertWorkerServiceIdentity();
+  // SEC-ENV-001 deprecation path: out-of-zone secret material in the worker
+  // env still boots, but it is flagged by name (values are never printed).
+  // After the documented deprecation window this becomes a boot refusal —
+  // the worker must never receive app-session/KEK/PostgreSQL material.
+  warnWorkerSecretScope();
 
   const server = Bun.serve({ port: PORT, fetch: (req) => handle(req) });
   log(`fayanms-worker v0.1.0 listening on :${server.port}`);

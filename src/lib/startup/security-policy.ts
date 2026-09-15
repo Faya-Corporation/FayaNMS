@@ -308,6 +308,83 @@ export function findProductionPolicyViolations(
   return violations;
 }
 
+/**
+ * SEC-ENV-001 (TASK-SEC-ENV-001-A): per-service secret-scope zones.
+ *
+ * Production secrets are split per service (compose now maps the app to
+ * .env.production.app and the worker to .env.production.worker). These are
+ * the variables that must NEVER reach the app process — they belong to the
+ * worker/DB trust zones:
+ *
+ *   - FAYANMS_WEBAPI_CA_PEM   device TLS trust is resolved worker-side;
+ *   - POSTGRES_PASSWORD       the app needs DATABASE_URL, not the password
+ *                             itself (compose composes the URL host-side);
+ *   - NEXT_BASE_URL/SELF_BASE_URL  worker-plane hops the app never dials.
+ *
+ * Device vault credentials (FAYANMS_VAULT_*) are caught by a wildcard rule
+ * in findAppSecretScopeWarnings: the app stores only vault REFERENCES
+ * (CredentialProfile.secretRef) — the WORKER resolves the actual secrets.
+ * The worker mirrors this check in mini-services/worker/identity-boot.ts
+ * (separate runtime, mirrored list).
+ */
+export const APP_ZONE_FORBIDDEN_VARS: readonly string[] = [
+  "FAYANMS_WEBAPI_CA_PEM",
+  "POSTGRES_PASSWORD",
+  "NEXT_BASE_URL",
+  "SELF_BASE_URL",
+];
+
+/** One out-of-zone variable the app process received. Values are NEVER included. */
+export interface SecretScopeWarning {
+  variable: string;
+  reason: string;
+}
+
+const VAULT_ENV_PREFIX = "FAYANMS_VAULT_";
+
+/**
+ * Pure scope check: every variable present (non-empty) in `env` that the app
+ * process must not receive. Empty/whitespace variables are not received
+ * material. Reasons are static — they name the variable and the owning zone,
+ * never a value.
+ */
+export function findAppSecretScopeWarnings(
+  env: NodeJS.ProcessEnv = process.env
+): SecretScopeWarning[] {
+  const warnings: SecretScopeWarning[] = [];
+  const push = (variable: string, detail: string): void => {
+    warnings.push({
+      variable,
+      reason:
+        `out-of-zone for the app process — ${detail} Remove it from the app ` +
+        "env file (.env.production.app); per-service secret scopes (SEC-ENV-001) " +
+        "become a production boot refusal after the deprecation window.",
+    });
+  };
+  for (const variable of APP_ZONE_FORBIDDEN_VARS) {
+    if ((env[variable] ?? "").toString().trim().length > 0) {
+      push(variable, "worker/DB-zone material the app never reads.");
+    }
+  }
+  for (const key of Object.keys(env)) {
+    if (!key.startsWith(VAULT_ENV_PREFIX)) continue;
+    if ((env[key] ?? "").toString().trim().length === 0) continue;
+    push(
+      key,
+      "device vault credentials resolve in the worker only — the app stores " +
+        "vault references (CredentialProfile.secretRef), never secret material."
+    );
+  }
+  return warnings;
+}
+
+/** Deprecation-path emitter: warn once per out-of-zone variable at boot. */
+export function warnAppSecretScope(env: NodeJS.ProcessEnv = process.env): void {
+  for (const warning of findAppSecretScopeWarnings(env)) {
+    console.warn(`[security-policy] SEC-ENV-001 ${warning.variable}: ${warning.reason}`);
+  }
+}
+
 /** Dev-only soft check: warn (never throw) on session-secret problems. */
 export function warnOnInsecureDevSecrets(env: NodeJS.ProcessEnv = process.env): void {
   const sessionSecret = env.NEXTAUTH_SECRET?.trim() ?? "";
@@ -339,6 +416,11 @@ export function enforceStartupSecurityPolicy(): void {
           "Fix the environment (see .env.example) and retry."
       );
     }
+    // SEC-ENV-001 deprecation path: out-of-zone secret material in the app
+    // env still boots, but it is flagged by name (values are never printed).
+    // After the documented deprecation window this becomes a boot refusal —
+    // operators should move each variable to its owning service's env file.
+    warnAppSecretScope();
     return;
   }
   warnOnInsecureDevSecrets();

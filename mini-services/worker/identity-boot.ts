@@ -134,3 +134,78 @@ export function assertWorkerServiceIdentity(
     );
   }
 }
+
+/**
+ * SEC-ENV-001 (TASK-SEC-ENV-001-A): worker-zone secret scope.
+ *
+ * Production secrets are split per service (compose maps the worker to
+ * .env.production.worker). These variables must NEVER reach the worker
+ * process — they belong to the app/DB trust zones:
+ *
+ *   - NEXTAUTH_SECRET / NEXTAUTH_URL      browser sessions are an app concern;
+ *   - FAYANMS_CONFIG_ENC_KEY(+_ID)        the KEK never leaves the app — the
+ *                                         worker never decrypts snapshots;
+ *   - POSTGRES_PASSWORD / DATABASE_URL    the worker NEVER touches PostgreSQL
+ *                                         (all persistence goes through the
+ *                                         app's service-authenticated API);
+ *   - proxy/login/demo/build knobs        app-plane configuration the worker
+ *                                         never reads.
+ *
+ * The app mirrors this check in src/lib/startup/security-policy.ts
+ * (separate runtime, mirrored list — the app side additionally catches
+ * FAYANMS_VAULT_* by wildcard).
+ */
+export const WORKER_ZONE_FORBIDDEN_VARS: readonly string[] = [
+  "NEXTAUTH_SECRET",
+  "NEXTAUTH_URL",
+  "FAYANMS_CONFIG_ENC_KEY",
+  "FAYANMS_CONFIG_ENC_KEY_ID",
+  "FAYANMS_TRUST_PROXY_HOPS",
+  "FAYANMS_LOGIN_WINDOW_SECONDS",
+  "FAYANMS_LOGIN_MAX_ATTEMPTS_PER_SOURCE",
+  "FAYANMS_LOGIN_MAX_ATTEMPTS_PER_ACCOUNT",
+  "FAYANMS_DB_QUERY_LOG",
+  "FAYANMS_DEMO_MODE",
+  "NEXT_PUBLIC_SITE_URL",
+  "WORKER_BASE_URL",
+  "POSTGRES_PASSWORD",
+  "DATABASE_URL",
+];
+
+/** One out-of-zone variable the worker process received. Values are NEVER included. */
+export interface WorkerSecretScopeWarning {
+  variable: string;
+  reason: string;
+}
+
+/**
+ * Pure scope check: every variable present (non-empty) in `env` that the
+ * worker process must not receive. Empty/whitespace variables are not
+ * received material. Reasons are static — they name the variable and the
+ * owning zone, never a value.
+ */
+export function findWorkerSecretScopeWarnings(
+  env: NodeJS.ProcessEnv = process.env
+): WorkerSecretScopeWarning[] {
+  const warnings: WorkerSecretScopeWarning[] = [];
+  for (const variable of WORKER_ZONE_FORBIDDEN_VARS) {
+    if ((env[variable] ?? "").toString().trim().length === 0) continue;
+    warnings.push({
+      variable,
+      reason:
+        "out-of-zone for the worker process — the worker never touches browser " +
+        "sessions, the config-encryption KEK, or PostgreSQL (all persistence " +
+        "goes through the app API). Remove it from the worker env file " +
+        "(.env.production.worker); per-service secret scopes (SEC-ENV-001) " +
+        "become a boot refusal after the deprecation window.",
+    });
+  }
+  return warnings;
+}
+
+/** Deprecation-path emitter: warn once per out-of-zone variable at boot. */
+export function warnWorkerSecretScope(env: NodeJS.ProcessEnv = process.env): void {
+  for (const warning of findWorkerSecretScopeWarnings(env)) {
+    console.warn(`[worker] SEC-ENV-001 ${warning.variable}: ${warning.reason}`);
+  }
+}
