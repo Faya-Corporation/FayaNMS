@@ -2726,3 +2726,16 @@ Work Log:
 Stage Summary:
 - TASK-SUPPLY-001-A landed as one focused commit: base images are immutable inputs resolved from the real registry, and the supply-chain gate now audits the artifact that actually runs — the built image — with scan + SBOM evidence retained per release.
 - Session progress: PHASES A–E landed (SEC-ENV-001 FIXED, SCALE-001 FIXED on the API plane, TEST-001 LANDED + journey-found P1 fixed, DEPLOY-001 LANDED, SUPPLY-001 LANDED). Next: PHASE F — P3 hardening (AUTH-GUARD verify, log growth, session lifetime, SSRF residual classification).
+---
+Task ID: R41-supply-001-a-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 0098d2f (TASK-SUPPLY-001-A) — honest evidence record
+
+Work Log:
+- Pushed 0098d2f; run completed "failure" with the IDENTICAL infrastructure signature as runs #34-#54: gate failed with ZERO steps executed and an EMPTY runner_name; e2e + scan skipped (no runner ever assigned). GitHub-hosted runner unavailability, not a gate/scanner finding.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 568 across 32 files (562 pass + 6 e2e skips; 3,273 expects) · prisma validate OK · drift guard exit 0 · certify.ts exit 0 · build:gate exit 0.
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for 0098d2f: locally gate-proven, CI-blocked by infrastructure only.
+- TASK-SUPPLY-001-A final report: COMPLETE. Starting HEAD 72e935f → ending HEAD 0098d2f. SUPPLY-001: LANDED (digest-pinned bases from real registry resolutions + CI image build/scan/SBOM; provenance/signing owner-side).
