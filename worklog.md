@@ -2894,3 +2894,16 @@ Work Log:
 
 Stage Summary:
 - TASK-BROWSER-E2E final report: COMPLETE. Starting HEAD 8c0f77e → this commit. The FINAL gate doc's authoring backlog is EMPTY: every code/doc task from the original 11-finding audit (+ 4 new P3s + the journey-found P1) sits at an honest terminal state; the rendering layer is under continuous executable governance. Remaining work is exclusively owner-side (GOV-001, CI-001) and lab-side (CERT-HW-001/FUNC-001) with published procedures.
+---
+Task ID: R47-browser-e2e-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 5b3860d (TASK-BROWSER-E2E) — honest evidence record
+
+Work Log:
+- Pushed 5b3860d; run 35034293944 completed "failure" with the IDENTICAL infrastructure signature as runs #34-#60: gate failed with ZERO steps executed and an EMPTY runner_name; scan + e2e + the NEW browser job skipped (no runner ever assigned). GitHub-hosted runner unavailability, not a gate/scanner finding.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 611 across 36 files (599 pass + 12 skips; 3,365 expects) · drift guard 0 (fresh shadow) · certify.ts 0 (6 vendors) · build:gate 0 · LIVE: 6/6 browser journeys + 6/6 HTTP journeys (12/12 in one invocation).
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for 5b3860d: locally gate-proven, CI-blocked by infrastructure only.
+- REMEDIATION PROGRAM FULLY COMPLETE: the authoring backlog is EMPTY. 79/100 BLOCKED → 85/100 CONTROLLED PILOT (R45) → R46 AUTH-001 FIXED end-to-end + R47 rendering layer under continuous governance with the found WCAG-AA defects fixed. Remaining work is exclusively owner-side (GOV-001, CI-001) and lab-side (CERT-HW-001/FUNC-001), each with the executable procedure published.
