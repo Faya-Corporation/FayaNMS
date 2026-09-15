@@ -2739,3 +2739,20 @@ Work Log:
 Stage Summary:
 - TRUTHFUL CI STATE for 0098d2f: locally gate-proven, CI-blocked by infrastructure only.
 - TASK-SUPPLY-001-A final report: COMPLETE. Starting HEAD 72e935f → ending HEAD 0098d2f. SUPPLY-001: LANDED (digest-pinned bases from real registry resolutions + CI image build/scan/SBOM; provenance/signing owner-side).
+---
+Task ID: R42-p3-hardening
+Agent: Orchestrator (Z.ai Code)
+Task: "Complete Remaining Production Remediation in One Session" — PHASE F: P3 hardening batch (AUTH-GUARD verify, LOG growth, SESSION lifetime, SSRF residual classification, NEW-1 exemption guard) as an independent, reviewable, green commit.
+
+Work Log:
+- TDD: tests/audit/p3-hardening.test.ts FIRST (10 pins) — 4 RED — then implemented to GREEN.
+- P3-AUTH-GUARD (F1): verified already-covered (R35's 37 contract pins + E2E J5) and ADDED the missing source pins for the R39 journey-found context fix (`handler(req, ctx)` present; bare `handler(req);` absent; the TEST-001-A rationale comment pinned).
+- P3-LOG (NEW-2/F2): `package.json start` no longer `| tee server.log` — production log retention is the process manager's contract (compose json-file caps pinned in the same suite; bare-metal → journald/logrotate). Deploy-doc note 24.
+- P3-SESSION (NEW-3/F3): NextAuth session maxAge 30 d → 12 h, rationale documented at the policy (per-request role/deactivation propagation already revalidates the actor; the lifetime bounds anonymous persistence of a valid credential state — the thing that should be shortest on an admin plane). Deploy-doc note 23.
+- P3-SSRF (NEW-4/F4): the DNS-rebinding TOCTOU window is now explicitly classified ACCEPTED RESIDUAL RISK inside ssrf-guard.ts — threat model (authoritative-DNS attacker between delivery re-check and connect; the attacker must already be an authenticated webhook owner), mitigations already in place, and the refusal reason (custom DNS-aware dispatcher = substantial egress-transport rewrite whose failure modes would risk the guard itself for a theoretical P3). Greppable marker pinned by test; revisit when the egress model is next touched.
+- NEW-1: governance pin — every route file under /api/v1/auth/* must stay GET-only; a future mutation fails the suite and forces an explicit governance decision instead of silently inheriting the rate-gate exemption.
+- Docs: deploy-doc notes 23/24; NEXT-TASKS P3 batch classification block; README note (below).
+- Gates on the exact final tree: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 578 across 33 files (572 pass + 6 e2e skips; 3,297 expects) · prisma validate OK · drift guard exit 0 · certify.ts exit 0 · build:gate exit 0.
+
+Stage Summary:
+- PHASE F landed: every P3 finding now carries an honest terminal classification (FIXED, RESOLVED, or ACCEPTED RESIDUAL RISK) — none silently disappeared. Next: PHASE G — DOC-001-A (documentation/live-truth reconciliation), then PHASES H–K classifications (FUNC-001/GOV-001/CI-001) and the final re-audit + score + FINAL artifacts.

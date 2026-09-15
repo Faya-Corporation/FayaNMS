@@ -741,6 +741,21 @@ satisfies the supply-chain gate. Pinned by
 provenance/signing stays owner-side (no registry/OIDC infrastructure),
 and CI execution is honestly runner-blocked (CI-001).
 
+**LANDED — P3 hardening batch (independent audit 2026-09-15): every low-
+severity finding classified, none silently disappeared.** Admin-plane
+sessions are bounded to **12 h** (was 30 days — per-request role/
+deactivation propagation already revalidates; the lifetime bounds
+anonymous persistence of a valid credential state). The production
+`start` script no longer pipes stdout into an unbounded `server.log`
+(retention is the process manager's contract: compose json-file caps,
+journald/logrotate on bare metal). The SSRF DNS-rebinding TOCTOU window
+is explicitly **ACCEPTED RESIDUAL RISK** — threat model and refusal
+rationale documented in `ssrf-guard.ts`, pinned greppable. `/api/v1/auth/*`
+stays read-only by governance pin (a future mutation there fails the
+suite and forces an explicit decision instead of inheriting the rate-gate
+exemption). The sign-in wrapper's context-forwarding fix is pinned at
+source. Pinned by `tests/audit/p3-hardening.test.ts`.
+
 
 **LANDED — CERT-006 (audit CERT tier): Sophos SFOS joins the live plane over
 a REAL WebAPI transport — the vendor whose SSH CLI has no read-only

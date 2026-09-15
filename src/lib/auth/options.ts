@@ -47,7 +47,14 @@ class CredentialsSigninError extends Error {
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days, matches the default cookie max-age
+    // P3-SESSION (independent audit 2026-09-15): an administrative/NOC plane
+    // does not carry 30-day sessions. 12 h absolute lifetime bounds the
+    // stolen-cookie half-life to a NOC-shift scale while remaining
+    // operationally sane; role changes and account deactivation already
+    // propagate per-request (the session revalidates the live user), so the
+    // lifetime bounds ANONYMOUS persistence of a VALID credential state —
+    // exactly what should be shortest here.
+    maxAge: 12 * 60 * 60, // 12 h — bounded admin-plane sessions (was 30 d)
   },
   pages: {
     // The sign-in gate lives INSIDE the single-route app (ADR-02) — no

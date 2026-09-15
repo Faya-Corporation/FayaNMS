@@ -799,6 +799,17 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    memory bounds) ships in the same profile; the database keeps a writable
    data plane — a documented deviation, not an oversight. Pinned by
    `tests/audit/deploy-hardening.test.ts`.
+23. **Bounded admin sessions (P3-SESSION, 2026-09-15)**: NextAuth sessions
+   now expire after **12 hours** (was 30 days). Rationale: role changes and
+   account deactivation already propagate per-request (the session
+   revalidates the live user), so the lifetime bounds anonymous persistence
+   of a valid credential state — exactly what should be shortest on an
+   administrative plane. NOC-shift scale; re-authenticate each shift.
+24. **Log retention is the process manager's contract (P3-LOG, 2026-09-15)**:
+   the production `start` script no longer pipes stdout into an unbounded
+   `server.log`. Compose caps container logs (`json-file` max-size/max-file);
+   bare-metal operators run under journald or logrotate. Never reintroduce
+   `| tee <file>` in front of a long-lived server process.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 

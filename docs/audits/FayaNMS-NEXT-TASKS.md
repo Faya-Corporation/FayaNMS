@@ -142,3 +142,14 @@ Implementation: Vendor × firmware × capability matrix (auth, backup, drift, ch
 Tests: CI pins that README/deploy claims match the matrix exactly.
 Acceptance: Published matrix; claims ≡ evidence.
 Depends on: hardware lab access (non-sandbox).
+
+---
+
+TASK-P3-BATCH — P3 hardening + classifications ✊ → ✅ LANDED (R42, 2026-09-15)
+
+- **P3-AUTH-GUARD (F1): RESOLVED** — R35's contract pins + the R39 source pins (`handler(req, ctx)` forwarding) + E2E J5 live coverage; the journey-found context regression is pinned at source so it cannot regress.
+- **P3-LOG / NEW-2 (F2): FIXED** — `package.json start` no longer pipes stdout into an unbounded `server.log`; retention is the process manager's contract (compose json-file caps pinned; bare-metal → journald/logrotate). Deploy-doc note 24.
+- **P3-SESSION / NEW-3 (F3): FIXED** — NextAuth `maxAge` 30 d → **12 h** with documented rationale (per-request role/deactivation propagation already revalidates; the lifetime bounds anonymous persistence of valid credential state). Deploy-doc note 23.
+- **P3-SSRF / NEW-4 (F4): ACCEPTED RESIDUAL RISK** — classified explicitly in `ssrf-guard.ts` with the threat model (attacker-controlled authoritative DNS between delivery re-check and connect; attacker must already be an authenticated webhook owner) and the refusal reason (a custom DNS-aware dispatcher rewrite risks the guard itself for a theoretical P3). Greppable marker pinned by test; revisit when the egress model is next touched.
+- **NEW-1: FIXED** — governance pin: every route file under `/api/v1/auth/*` must stay read-only (GET); a future mutation there fails the test and forces an explicit governance decision instead of silently inheriting the rate-gate exemption.
+Tests: `tests/audit/p3-hardening.test.ts` (10 pins).

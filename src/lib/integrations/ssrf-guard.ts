@@ -37,11 +37,22 @@ import { lookup } from "node:dns/promises";
  * (discard-only), 2001:db8::/32 (doc), fc00::/7 (ULA), fe80::/10
  * (link-local), ff00::/8 (multicast).
  *
- * Residual risk, documented honestly: the DNS-recheck has a theoretical
- * TOCTOU window (rebinding between lookup and connect). Closing that fully
- * requires pinning the connection to the validated address (custom
- * dispatcher); the two-plane check removes the entire trivial-encoding
- * class and the redirect bypass, which is what the audit required.
+ * Residual risk, CLASSIFIED — ACCEPTED RESIDUAL RISK (P3-SSRF, remediation
+ * prompt F4, 2026-09-15): the DNS-recheck has a theoretical TOCTOU window
+ * (rebinding between lookup and connect). Threat model: an attacker who
+ * controls an AUTHORITATIVE DNS server for a name the webhook target uses
+ * could re-resolve it from a public address to a private one BETWEEN the
+ * delivery-time re-check and the socket connect. Mitigations already in
+ * place make exploitation narrow (the target must pass admission against
+ * the attacker's own nameserver, so the attacker is the webhook owner —
+ * an authenticated, permissioned actor — and private targets gained
+ * nothing they could not reach more directly). Fix REFUSED for now:
+ * pinning the connection to the validated address requires replacing the
+ * fetch transport with a custom DNS-aware dispatcher — a substantial
+ * egress-transport rewrite whose failure modes would risk the SSRF guard
+ * itself, for a theoretical P3. Revisit when the egress model is next
+ * touched; the two-plane check removes the entire trivial-encoding class
+ * and the redirect bypass, which is what the audit required.
  */
 
 /** Greppable prefix carried by every refusal (route 400s + delivery errors). */
