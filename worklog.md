@@ -2541,3 +2541,16 @@ Stage Summary:
 - TASK-AUTH-001-A landed as one focused commit on main: /api/auth/* credential sign-in is now throttled BEFORE password verification on BOTH the route and the verification path, keyed by spoof-resistant source + non-reversible keyed account hash, with temporary (never permanent) exponential lockout, full decay, success reset, bounded state, bounded typed telemetry, and enumeration-safe responses. Externally observable failure behavior is preserved (generic null / standard 429 envelope; "Account disabled" unchanged).
 - Honest limitation recorded everywhere it matters: the guard store is in-process memory (per-instance budgets behind a load balancer); fleet-wide/distributed rate limiting is TASK-SCALE-001-A on the same store interface — the parent AUTH-001 finding is PARTIALLY FIXED (in-process) until that lands.
 - All local gates green on the exact tree (456/456, drift 0, build PASS). CI state to be recorded in the follow-up addendum per the standing loop.
+---
+Task ID: R35-auth-001-a-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 930252a (TASK-AUTH-001-A) — honest evidence record
+
+Work Log:
+- Pushed 930252a; run 34916572322 completed "failure" with the IDENTICAL infrastructure signature as runs #34-#48: job "gate" failed with ZERO steps executed and an EMPTY runner_name (no runner was ever assigned), job "scan" skipped — GitHub-hosted runner unavailability for this private repo (capacity/minutes), not a gate or scanner finding. The workflow file is unchanged since runs #28-#33 were green.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL (unfiltered) 0 · bun test tests/ 456/456 (2,972 expects — 37 new AUTH-001-A contract tests) · bunx prisma validate OK · drift guard exit 0 on a fresh fayanms_shadow ("No difference detected") · build:gate exit 0. Worker untouched → certify.ts not applicable (prompt-conditional).
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for 930252a: locally gate-proven, CI-blocked by infrastructure only. User-side follow-up (cannot be done from the sandbox): verify GitHub Actions minutes/billing for the account, then re-run the affected runs from the Actions UI; no code action is required.
+- TASK-AUTH-001-A final report per the Phase-1 prompt §12: COMPLETE. Starting HEAD 7f44f7f → ending HEAD 930252a. Audit status: AUTH-001 PARTIALLY FIXED — login abuse control implemented (single-process, bounded, typed telemetry); distributed production rate limiting remains TASK-SCALE-001-A (same store interface). Next recommended task per the prompt: SVC-001-A — Complete Ed25519-only production identity.
