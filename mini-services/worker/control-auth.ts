@@ -58,9 +58,10 @@ export interface ControlVerifyResult {
 
 /**
  * Read an env value from process.env first, then the repo-root .env, with
- * dotenv-style quote tolerance and escaped-\n PEM support.
+ * dotenv-style quote tolerance and escaped-\n PEM support. Exported for
+ * identity-boot.ts (TASK-SVC-001-A worker startup validation).
  */
-function readRootEnvValue(key: string): string | null {
+export function readRootEnvValue(key: string): string | null {
   const fromProcess = process.env[key];
   if (typeof fromProcess === "string" && fromProcess.trim()) {
     return fromProcess.trim();
@@ -91,8 +92,9 @@ function readRootEnvValue(key: string): string | null {
  * The configured Ed25519 public keys for verifying CONTROL-plane tokens.
  * Throws on malformed material — callers map that to
  * WORKER_KEYS_MISCONFIGURED (fail-tight, never silently dropped).
+ * Exported for identity-boot.ts (TASK-SVC-001-A worker startup validation).
  */
-function configuredPublicKeys(): KeyObject[] {
+export function configuredPublicKeys(): KeyObject[] {
   const raw = readRootEnvValue("FAYANMS_SERVICE_PUBLIC_KEYS");
   if (!raw) return [];
   const keys: KeyObject[] = [];

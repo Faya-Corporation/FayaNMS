@@ -29,7 +29,7 @@ execute and tick.
 | Worker → app calls go through `NEXT_BASE_URL` (env-configurable, T5; default preserves `http://localhost:3000`) | mini-services/worker/next-client.ts | Same — compose sets `NEXT_BASE_URL=http://app:3000`; the worker's loopback self-calls stay container-local (`SELF_BASE_URL`) |
 | Worker port **hardcoded 3030**, "do not read PORT env" (Task 2-b contract) | mini-services/worker/index.ts | The stack exposes exactly **one** port (3000); 3030 stays internal — same model as the sandbox gateway |
 | `siteUrl()` **throws** in production without `NEXT_PUBLIC_SITE_URL`, and **rejects `localhost` / `127.0.0.1` / `0.0.0.0` / `*.local` hostnames** in production | src/lib/brand/identity.ts (B3-029) | You need a real DNS name (or a raw LAN IP — IPs pass the guard) baked at **build time** |
-| Startup security policy (production) **aborts** unless: `NEXTAUTH_SECRET` ≥ 32 chars, `FAYANMS_SERVICE_SECRET` 64-hex, `FAYANMS_CONFIG_ENC_KEY` 64-hex, and `FAYANMS_DEMO_MODE ≠ true` | src/lib/startup/security-policy.ts, .env.example | Secrets must be generated per environment; demo seeding is a separate, non-production step |
+| Startup security policy (production) **aborts** unless: `NEXTAUTH_SECRET` ≥ 32 chars, `FAYANMS_CONFIG_ENC_KEY` 64-hex, `FAYANMS_DEMO_MODE ≠ true`, and the SERVICE IDENTITY configuration is valid — RECOMMENDED: Ed25519 keys (app private key + worker public key, **no shared secret at all**); the 64-hex `FAYANMS_SERVICE_SECRET` is required ONLY while the legacy HS256 plane is in use (migration/legacy modes, SVC-001-A) | src/lib/startup/security-policy.ts, .env.example | Secrets must be generated per environment; demo seeding is a separate, non-production step |
 | Demo seed gate: requires `FAYANMS_DEMO_MODE=true` **and** refuses under production NODE_ENV | prisma/seed.ts:2443 | Seed in a one-off container without `NODE_ENV=production`, then run the app clean |
 | CI `scan` job's trivy step **is ACTIVE since 2026-09-12** (fs scan, HIGH/CRITICAL, exit-code 1; first verified scans: 0 vulns / 0 misconfigs / 0 secrets — the planned `.trivyignore` mirror never had to land, see T4) | .github/workflows/ci.yml step 12 | Any new HIGH/CRITICAL advisory or Dockerfile misconfig turns CI red — fix forward; the `osv-scanner.toml` accepted-risk ledger is EMPTY today, keep it that way unless a finding genuinely requires a major migration |
 | CI is active (`gate` + `scan` on every push to `main`) — branch protection currently OFF, restore tracked as OPS-001 | README honest-status block | All repo-side tasks land via normal pushes; every push must stay green |
@@ -608,28 +608,41 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    vault CLI (SIGTERM, then SIGKILL) before the SSH session can stall the
    worker. References never encode a provider — switching backends never
    silently re-interprets an existing reference.
-17. **Asymmetric service identity (P1-007, audit §6)**: the internal
-   service-JWT plane is no longer HS256-shared-secret trust (where the
-   holder of the secret could mint ANY identity). Tokens may be Ed25519
-   (`alg: "EdDSA"`) verified against a public-key set — verifiers can
-   authenticate but never mint. Run the two-phase, flag-free rotation:
-   **Phase 1** — generate keypairs with `bun run keys:service` (once per
-   side; the recommended topology is one CONTROL keypair on the Next.js
-   app and one WORKER keypair on the worker, each side holding only the
-   other's public key); set `FAYANMS_SERVICE_PRIVATE_KEY` on each minter
-   and `FAYANMS_SERVICE_PUBLIC_KEYS` on each verifier (comma-separated,
-   so old and new keys can overlap during rotation). Both algorithms are
-   accepted and minters emit EdDSA immediately. **Phase 2** — remove
-   `FAYANMS_SERVICE_SECRET(S)` from every process (`.env.production`,
-   compose env, CI): symmetric tokens are then refused outright
-   (`SERVICE_ALG_REJECTED`/`WORKER_ALG_REJECTED`) and a leaked shared
-   secret no longer mints anything. Protect the private keys like every
-   other crown jewel in item 2 — they are the ONLY minting capability
-   once Phase 2 completes. `FAYANMS_SERVICE_ISSUERS` must include each
-   issuer the verifier expects (`fayanms:control,fayanms:worker` covers
-   the two-plane topology). If a key rotates without a process restart,
-   clear the worker's token cache via a restart (or call
-   `resetServiceTokenCache()` programmatically).
+17. **Asymmetric service identity (P1-007, audit §6; SVC-001-A completes it)**:
+   the internal service-JWT plane is no longer HS256-shared-secret trust
+   (where the holder of the secret could mint ANY identity), and since
+   SVC-001-A production can run FULLY Ed25519-only — the shared secret is
+   no longer required at startup. Tokens may be Ed25519 (`alg: "EdDSA"`)
+   verified against a public-key set — verifiers can authenticate but
+   never mint. THREE configuration states (the configuration itself defines
+   the mode; there is no mode switch):
+   • **EdDSA-only (RECOMMENDED end state)** — set `FAYANMS_SERVICE_PRIVATE_KEY`
+     and `FAYANMS_SERVICE_PUBLIC_KEYS` on BOTH the app and the worker (two
+     keypairs via `bun run keys:service`; each side holds only its own
+     private key and the other's public key) and leave
+     `FAYANMS_SERVICE_SECRET(S)` EMPTY everywhere. HS256 is then
+     structurally impossible (`SERVICE_ALG_REJECTED`/`WORKER_ALG_REJECTED`),
+     a leaked shared secret can never mint again, and production boots with
+     zero symmetric material. The app REQUIRES its private key in this mode
+     (it mints control-plane tokens); the worker likewise requires its own
+     (its boot check refuses to start without it).
+   • **Dual (time-boxed MIGRATION)** — keys AND the 64-hex shared secret
+     configured. Both algorithms verify; minters emit EdDSA immediately;
+     symmetric strength rules (64-hex, known-bad blocklist, rotation
+     entries) apply in full. Use only while rolling the keys out.
+   • **hs256-legacy (DEPRECATED)** — shared secret only, as before. A
+     private key WITHOUT public keys is refused at startup (minted EdDSA
+     tokens could never verify).
+   Rotation overlap: `FAYANMS_SERVICE_PUBLIC_KEYS` is comma-separated, so
+   old and new keys can coexist while you roll; removed keys stop verifying
+   immediately. Protect the private keys like every other crown jewel in
+   item 2 — they are the ONLY minting capability in the EdDSA-only state.
+   Malformed or non-Ed25519 (e.g. RSA) key material fails at BOOT with a
+   static reason (never echoing the material). `FAYANMS_SERVICE_ISSUERS`
+   must include each issuer the verifier expects
+   (`fayanms:control,fayanms:worker` covers the two-plane topology). If a
+   key rotates without a process restart, clear the worker's token cache
+   via a restart (or call `resetServiceTokenCache()` programmatically).
 18. **SFOS WebAPI transport + TLS trust (CERT-006, audit §6)**: sophos
    devices drive the live plane over the device WebAPI (TLS, JSON
    envelope: GetAuthStatus probe + GetConfig collection — a hardcoded

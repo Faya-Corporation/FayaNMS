@@ -642,6 +642,13 @@ export async function handle(req: Request): Promise<Response> {
 }
 
 if (import.meta.main) {
+  // TASK-SVC-001-A §12: fail FAST on missing/malformed/self-contradictory
+  // service identity — before the port opens, never at first request.
+  // (certify.ts imports only handle() below, so harness runs are unaffected;
+  // its legacy shared-secret shape is a valid boot configuration.)
+  const { assertWorkerServiceIdentity } = await import("./identity-boot");
+  assertWorkerServiceIdentity();
+
   const server = Bun.serve({ port: PORT, fetch: (req) => handle(req) });
   log(`fayanms-worker v0.1.0 listening on :${server.port}`);
   startRunner();

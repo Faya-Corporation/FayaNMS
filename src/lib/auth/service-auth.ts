@@ -108,14 +108,20 @@ export async function currentRequestIsServiceAuth(): Promise<boolean> {
 }
 
 /**
- * Mint a short-lived service JWT (Phase 19-C; P1-007 asymmetric identity).
+ * Mint a short-lived service JWT (Phase 19-C; P1-007 asymmetric identity;
+ * TASK-SVC-001-A signing policy).
  *
  * Trust PREFERENCE: when FAYANMS_SERVICE_PRIVATE_KEY is configured the
  * token is Ed25519 (alg "EdDSA") — verifiers holding only the matching
  * FAYANMS_SERVICE_PUBLIC_KEYS can authenticate it but can NEVER mint one.
  * Without a private key the legacy HS256 shared-secret path is used
  * (Phase 1 of the rotation; removing FAYANMS_SERVICE_SECRET everywhere
- * completes Phase 2 and structurally kills symmetric tokens). SERVER-ONLY:
+ * completes Phase 2 and structurally kills symmetric tokens). The fallback
+ * is based on key PRESENCE only — never on an EdDSA failure (§8: a failed
+ * Ed25519 sign aborts token generation, it never downgrades). In an
+ * EdDSA-only deployment there is no shared secret to fall back to, so the
+ * fallback path is structurally unreachable there; when it does run
+ * (migration Phase 1) it is made VISIBLE with a warning. SERVER-ONLY:
  * reads the key material from the process environment.
  */
 export function mintServiceToken(options: {
@@ -155,6 +161,13 @@ export function mintServiceToken(options: {
       "Neither FAYANMS_SERVICE_PRIVATE_KEY nor FAYANMS_SERVICE_SECRET is configured — cannot mint a service token."
     );
   }
+  // Legacy minting is deliberate (rotation Phase 1) but never silent:
+  // operators completing Phase 2 should see exactly which processes still
+  // emit symmetric tokens.
+  console.warn(
+    "[service-auth] minting a legacy HS256 service token — FAYANMS_SERVICE_PRIVATE_KEY is not configured " +
+      "(EdDSA is the production identity; complete the rotation by configuring the private key and removing FAYANMS_SERVICE_SECRET)."
+  );
   const signature = createHmac("sha256", secret)
     .update(`${header("HS256")}.${payload}`)
     .digest("base64url");

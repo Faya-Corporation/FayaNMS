@@ -40,8 +40,8 @@ A full-stack network management system (NMS) demo platform: device inventory, co
 - **Deterministic simulations**: seeded PRNG + fixed-point arithmetic so dashboards, forecasts and simulations don't flicker under polling.
 - **Secrets hygiene (P19)**: config snapshots encrypted at rest — per-snapshot random DEK, AES-256-GCM text + DEK wrap under an env-configured master key (keystore path is a Phase 21 upgrade), sha256-of-plaintext integrity column, zero plaintext rows (migration enforced); masked viewer; raw downloads are permission-gated (`config.download`), audited with the real session actor, `no-store`.
 - **Server-authoritative identity (P19)**: the client never chooses the actor. `actAsUserId` was removed from every request DTO; approvals, executions and all mutations are attributed to the authenticated session principal (separation of duties enforced server-side); restore flows can no longer auto-approve via seeded identities.
-- **Machine-principal service boundary (P19)**: the worker authenticates to the job-engine routes with short-lived HS256 service JWTs (audience-pinned, rotation-window supported); anonymous internal mutation is rejected with precise 401 codes.
-- **Fail-closed startup policy (P19)**: production boot refuses missing/weak/known-bad secrets and demo-mode; the seed refuses to install shared-credential demo users into production.
+- **Machine-principal service boundary (P19, P1-007, SVC-001-A)**: the worker authenticates to the job-engine routes with short-lived Ed25519 (EdDSA) service JWTs — verifiers hold only public material and can never mint; legacy HS256 remains available only as the documented migration/legacy mode. Audience-pinned, issuer-allowlisted, rotation-window supported; anonymous internal mutation is rejected with precise 401 codes.
+- **Fail-closed startup policy (P19, SVC-001-A)**: production boot refuses missing/weak/known-bad secrets, demo-mode, and any invalid SERVICE IDENTITY configuration — which now boots clean as pure Ed25519 (public keys + the app's signing key, NO shared secret); symmetric material is only required while the legacy HS256 plane is actually in use.
 
 ## Feature map
 
@@ -70,8 +70,14 @@ bun install
 cp .env.example .env
 # then set in .env:
 #   NEXTAUTH_SECRET=$(openssl rand -hex 32)
-#   FAYANMS_SERVICE_SECRET=$(openssl rand -hex 32)   # worker <-> app service JWTs
 #   FAYANMS_CONFIG_ENC_KEY=$(openssl rand -hex 32)   # snapshot encryption KEK
+#   bun run keys:service   # Ed25519 service identity (recommended): app holds
+#                          # its PRIVATE key + the WORKER public key; the
+#                          # worker holds its PRIVATE key + the app public key.
+#   FAYANMS_SERVICE_SECRET=$(openssl rand -hex 32)   # legacy HS256 only —
+#                          # required ONLY while migrating (or if you skip the
+#                          # Ed25519 keys entirely); with keys configured and no
+#                          # secret anywhere, production runs EdDSA-only.
 
 # Database — PostgreSQL (Phase 21 slice 1). Point DATABASE_URL at any reachable
 # instance; the sandbox uses an embedded PG 16 on :5433, Docker users:
@@ -85,7 +91,8 @@ bun scripts/migrate-encrypt-snapshots.ts   # encrypt the seeded snapshots at res
 # App (port 3000)
 bun run dev
 
-# Worker (port 3030) — in a second terminal; reads FAYANMS_SERVICE_SECRET
+# Worker (port 3030) — in a second terminal; reads its service identity
+# (Ed25519 private key + the app's public key, or the legacy shared secret)
 # from the repo-root .env to authenticate its job-engine calls
 cd mini-services/worker && bun run dev
 ```
@@ -596,6 +603,44 @@ key), and the real UI flow `POST /api/v1/devices/test-connection` returns
 `reachable: true, latency 877 ms` (Next EdDSA minted via `mintServiceToken`
 and verified by the worker holding only the control public key). The
 sandbox was then restored to its documented default (shared-secret config).
+
+**LANDED — SVC-001-A (independent audit 2026-09-15, finding SVC-001):
+complete Ed25519-only production service identity — Phase 2 is now
+REACHABLE and the recommended production configuration boots with ZERO
+symmetric material.**
+The audit pinned the remaining gap precisely: production startup still
+UNCONDITIONALLY required `FAYANMS_SERVICE_SECRET`, so an EdDSA-only
+deployment could not boot. The startup policy is now MODE-AWARE — the
+identity mode is derived exclusively from configured server material
+(never from token metadata), with four deterministic states:
+**eddsa-only** (public keys configured, NO symmetric material anywhere —
+the recommended production end state; HS256 is structurally impossible at
+runtime, `SERVICE_ALG_REJECTED`; REQUIRES the app's own Ed25519 private
+key, because this process mints control-plane tokens and no symmetric
+fallback exists), **dual** (keys + secret — the documented, time-boxed
+P1-007 rotation Phase 1; both algorithms verify, minters prefer EdDSA,
+symmetric strength rules apply in full), **hs256-legacy** (secret only,
+deprecated; a private key WITHOUT public keys is a deterministic
+conflict refusal), and **unconfigured** (production refuses to start).
+Malformed or wrong-type key material (RSA in the Ed25519 list, truncated
+PEM) now fails at BOOT with static reasons that never echo key material
+(§14); duplicate public-key entries are deduplicated; `kid` is pinned as
+inert metadata (trust = a signature under a CONFIGURED key — a token can
+never name itself into trust, §7); HS256 minting fallback is based on key
+PRESENCE only (never on an EdDSA failure) and emits an explicit warning
+so a migration cannot silently keep minting symmetric tokens (§8). The
+worker mirrors the policy at ITS boot (`identity-boot.ts`, §12: a process
+requires only its own identity material; the one-off provision container
+needs none), failing fast before the port opens. Suite 456 → 494
+(`tests/auth/service-identity-modes.test.ts`, 38 pins: the full §11
+startup matrix, adversarial confusion incl. the Ed25519 public key used
+as HMAC material, wrong-type keys, kid inertness, dedupe, configuration
+isolation both ways, and the EdDSA-only end-to-end contract). LIVE E2E
+proof: a production build booted with an EdDSA-only environment (fresh
+keypairs, `FAYANMS_SERVICE_SECRET` absent) — policy passed, `GET /` →
+200, unauthenticated internal route → 401; negative controls refuse at
+boot exactly per the matrix (eddsa-only without the private key; keys +
+stale malformed secret → dual rules apply).
 
 **LANDED — CERT-006 (audit CERT tier): Sophos SFOS joins the live plane over
 a REAL WebAPI transport — the vendor whose SSH CLI has no read-only

@@ -27,6 +27,27 @@
  *     process. HS256 becomes structurally impossible (SERVICE_ALG_REJECTED)
  *     and the shared-secret holder's minting power is gone.
  *
+ * Identity modes (TASK-SVC-001-A — explicit, deterministic, derived ONLY
+ * from configured server material, never from token-supplied metadata;
+ * see src/lib/startup/security-policy.ts for the startup half):
+ *
+ *   eddsa-only    FAYANMS_SERVICE_PUBLIC_KEYS configured, NO symmetric
+ *                 material anywhere. The RECOMMENDED production end state:
+ *                 HS256 is structurally impossible (SERVICE_ALG_REJECTED),
+ *                 so a leaked shared secret can never mint again.
+ *   dual          Public keys AND shared secret configured — the documented
+ *                 P1-007 rotation Phase 1 (time-boxed migration). Both
+ *                 algorithms verify; minters prefer EdDSA.
+ *   hs256-legacy  Shared secret only. Deprecated; symmetric strength is
+ *                 enforced by the startup policy in this mode.
+ *
+ * The JWT header can never broaden the server's configured trust policy:
+ * an algorithm whose plane is not configured is rejected before any key
+ * resolution, "kid" is inert metadata (trust = a signature under a
+ * CONFIGURED key, not a token-named identifier), and only Ed25519 key
+ * material is accepted on the asymmetric plane (wrong-type keys fail
+ * tight as SERVICE_KEYS_MISCONFIGURED, never silently skipped).
+ *
  * Verification enforces, in order:
  *   1. well-formed compact JWT with alg "HS256" or "EdDSA" (typ "JWT");
  *   2. the presented alg's trust plane is CONFIGURED (EdDSA needs
@@ -80,12 +101,16 @@ export function getServiceIssuers(): string[] {
   return configured.length > 0 ? configured : ["fayanms:worker"];
 }
 
-/** All accepted secrets: the current one plus any rotation-window values. */
-export function getServiceSecrets(): string[] {
+/**
+ * All accepted secrets: the current one plus any rotation-window values.
+ * Env-parametrized so the startup policy (TASK-SVC-001-A) derives modes
+ * from the EXACT same semantics the runtime verifier uses.
+ */
+export function getServiceSecrets(env: NodeJS.ProcessEnv = process.env): string[] {
   const secrets: string[] = [];
-  const current = process.env.FAYANMS_SERVICE_SECRET?.trim();
+  const current = env.FAYANMS_SERVICE_SECRET?.trim();
   if (current) secrets.push(current);
-  for (const raw of (process.env.FAYANMS_SERVICE_SECRETS ?? "").split(",")) {
+  for (const raw of (env.FAYANMS_SERVICE_SECRETS ?? "").split(",")) {
     const value = raw.trim();
     if (value && !secrets.includes(value)) secrets.push(value);
   }
@@ -101,17 +126,33 @@ function unescapePem(value: string): string {
  * The configured Ed25519 PUBLIC keys (rotation list). Parsed once per raw
  * configuration value; a malformed entry throws — callers map that to
  * SERVICE_KEYS_MISCONFIGURED (fail-tight, never silently dropped).
+ *
+ * TASK-SVC-001-A hardening (§7/§14): ONLY Ed25519 keys are accepted — a
+ * wrong-type key (e.g. RSA) fails tight instead of poisoning the rotation
+ * list — and duplicate entries are deduplicated by SPKI DER bytes so an
+ * ambiguous list cannot exist.
  */
 export function parseServicePublicKeys(raw: string): KeyObject[] {
   const keys: KeyObject[] = [];
+  const seen = new Set<string>();
+  const push = (key: KeyObject): void => {
+    if (key.asymmetricKeyType !== "ed25519") {
+      throw new TypeError("service public key is not an Ed25519 key");
+    }
+    const der = key.export({ format: "der", type: "spki" }).toString("base64");
+    if (!seen.has(der)) {
+      seen.add(der);
+      keys.push(key);
+    }
+  };
   for (const entryRaw of raw.split(",")) {
     const entry = entryRaw.trim();
     if (!entry) continue;
     if (entry.startsWith("-----BEGIN")) {
-      keys.push(createPublicKey(unescapePem(entry)));
+      push(createPublicKey(unescapePem(entry)));
       continue;
     }
-    keys.push(
+    push(
       createPublicKey({
         key: Buffer.from(entry, "base64"),
         format: "der",
@@ -143,6 +184,21 @@ export function getServicePublicKeys(): KeyObject[] {
 let signingKeyCache: { raw: string; key: KeyObject } | null = null;
 
 /**
+ * Parse the Ed25519 PRIVATE signing key from raw env material (PKCS8 PEM,
+ * escaped \n tolerated). Throws on malformed material AND on wrong key
+ * types (TASK-SVC-001-A §14: only Ed25519 mints on the asymmetric plane).
+ * Exported for the startup policy — misconfiguration must fail at BOOT,
+ * not at first token mint.
+ */
+export function parseServicePrivateKey(raw: string): KeyObject {
+  const key = createPrivateKey(unescapePem(raw));
+  if (key.asymmetricKeyType !== "ed25519") {
+    throw new TypeError("service private key is not an Ed25519 key");
+  }
+  return key;
+}
+
+/**
  * The configured Ed25519 PRIVATE key for MINTING machine tokens (the
  * control plane's own identity). Null when absent — minting then falls
  * back to HS256 (Phase 1 of the rotation), never silently when EdDSA is
@@ -155,7 +211,7 @@ export function getServiceSigningKey(): KeyObject | null {
     return null;
   }
   if (signingKeyCache?.raw === raw) return signingKeyCache.key;
-  const key = createPrivateKey(unescapePem(raw));
+  const key = parseServicePrivateKey(raw);
   signingKeyCache = { raw, key };
   return key;
 }

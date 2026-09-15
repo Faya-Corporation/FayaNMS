@@ -16,13 +16,13 @@ Landed (R35): guard module + `authorize()` enforcement BEFORE the DB lookup/scry
 
 ---
 
-TASK-SVC-001-A — EdDSA-only production startup (Phase 2 made reachable) ✊
+TASK-SVC-001-A — EdDSA-only production startup (Phase 2 made reachable) — **LANDED (R36)** ✅
 
 Goal: Let production boot with symmetric service secrets fully retired, per the documented rotation end state.
-Files: `src/lib/startup/security-policy.ts`, `docs/deploy/env.production.example`, deploy doc note 17, startup-policy tests.
-Implementation: Production requires ≥1 valid plane per role: legacy hex-64 shared secret (known-bad-checked) OR valid Ed25519 material (minter private key / verifier public keys / issuer list); startup self-test signs+verifies; typed `SERVICE_PLANE_INVALID` refusals; template gains the two-plane shape.
-Tests: EdDSA-only boots clean; empty planes refuse; malformed key material refuses; rotation overlap OK; known-bad symmetric still refused.
-Acceptance: Sandbox E2E: both processes boot with `FAYANMS_SERVICE_SECRET` unset; HS256 retirement runbook executes verbatim.
+Landed as: mode-aware startup policy (eddsa-only / dual / hs256-legacy / unconfigured, derived from configuration — no mode switch); Ed25519-only production config boots clean with NO `FAYANMS_SERVICE_SECRET`; app requires its own private key in eddsa-only mode (it mints control tokens); malformed/wrong-type key material fails at BOOT (static reasons, no material echoed); duplicate public keys deduplicated; `kid` pinned inert; worker boot check (`identity-boot.ts`) mirrors the policy worker-side; legacy HS256 minting made visible (explicit warning); env templates + README + deploy-doc note 17 rewritten around the three states and the two-plane ownership table.
+Evidence: `tests/auth/service-identity-modes.test.ts` (38 pins incl. the full startup matrix and the Ed25519-public-key-as-HMAC confusion attempt); suite 456 → 494; LIVE production-boot proof with EdDSA-only env (`GET /` → 200, internal route → 401) plus boot-refusal negative controls; certify.ts exit 0.
+Audit status: **SVC-001: FIXED** — Ed25519-only production identity is bootable and verified end-to-end.
+Parent context: secret SCOPE separation (which process may hold which material) remains TASK-SEC-ENV-001-A.
 Depends on: none.
 
 ---
