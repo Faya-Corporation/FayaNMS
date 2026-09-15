@@ -2866,3 +2866,16 @@ Work Log:
 
 Stage Summary:
 - TASK-SCALE-001-B final report: COMPLETE. Starting HEAD 201167c → this commit. AUTH-001: FIXED end-to-end (R35 guard + R46 fleet-wide store). The FINAL gate doc's authoring backlog now holds ONLY TASK-BROWSER-E2E; everything else is owner-side (GOV-001, CI-001) or lab-side (CERT-HW-001/FUNC-001) with published procedures.
+---
+Task ID: R46-scale-001-b-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 8b77593 (TASK-SCALE-001-B) — honest evidence record
+
+Work Log:
+- Pushed 8b77593; run 35031903967 completed "failure" with the IDENTICAL infrastructure signature as runs #34-#59: gate failed with ZERO steps executed and an EMPTY runner_name; scan + e2e skipped (no runner ever assigned). GitHub-hosted runner unavailability, not a gate/scanner finding.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 600 across 34 files (594 pass + 6 e2e skips; 3,354 expects) · drift guard 0 (fresh shadow) · certify.ts 0 (6 vendors) · build:gate 0 · E2E journeys 6/6 live (52.5 s).
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for 8b77593: locally gate-proven, CI-blocked by infrastructure only.
+- TASK-SCALE-001-B final report: COMPLETE. Starting HEAD 201167c → ending HEAD 8b77593. AUTH-001: FIXED end-to-end. The FINAL gate doc's authoring backlog now holds ONLY TASK-BROWSER-E2E; everything else is owner-side (GOV-001, CI-001) or lab-side (CERT-HW-001/FUNC-001) with published procedures.
