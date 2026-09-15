@@ -245,6 +245,29 @@ stable hashed key, and the response builders (`ok/fail/failWithDetail`) are now 
 envelope builders (synchronous; no second, post-commit budget). Proven live: 120×401 →
 429 (`Retry-After`) on the 121st, rotating-spoof attacks die at the same #121, and a
 verified worker JWT passes from an exhausted bucket while a tampered one does not.
+**LANDED — AUTH-001-A (independent audit 2026-09-15, finding AUTH-001): credential-login
+abuse control.** `/api/auth/*` sits outside the `/api/v1` gate BY DESIGN, and the
+credentials `authorize()` used to run scrypt verification with zero attempt control —
+online password guessing was bounded only by network-level controls. A dedicated login
+guard (`src/lib/auth/login-guard.ts`) now protects the ACTUAL verification path:
+`authorize()` consults it BEFORE the DB lookup and password verification, and the NextAuth
+route pre-checks ONLY the credentials sign-in submission (`POST
+/api/auth/callback/credentials` — session reads, CSRF, signout and provider metadata are
+not password-attempt traffic), answering the standard 429 envelope with `Retry-After`
+before NextAuth parses anything. Keying is spoof-resistant on both dimensions: the
+trusted-proxy rightmost-hop source (the same `FAYANMS_TRUST_PROXY_HOPS` policy as the API
+gate) and an HMAC-keyed, non-reversible account hash — no raw identifiers are persisted,
+logged or emitted, unknown and known accounts are keyed identically, and throttle
+responses never disclose account existence. Policy (three documented, range-clamped env
+knobs): 300 s sliding window, 10 failures/source, 30 failures/account — deliberately
+above the source budget so a single client cannot lock an account alone (distributed
+abuse required) — with an exponential TEMPORARY lockout (30 s·2^n, capped at 4 min) that
+always decays, plus success-triggered reset. State is bounded (5,000-key cap with
+stale-first sweep, 64 stamps/key) behind a `LoginGuardStore` interface, and telemetry is
+bounded typed audit events (`SIGNIN_THROTTLED`/`SIGNIN_LOCKOUT`, ≤1 row/key/window,
+actorId NULL pre-auth, keyed hash in the resource label). Honest scope: this is
+single-process abuse control — fleet-wide/distributed rate limiting remains SCALE-001-A
+(whose shared store slots into this guard's interface).
 **LANDED — SAFE-003/004/005 (audit P0-003): execution single-flight, atomic step claim,
 per-device write lock.** Three concurrency defects, three DB-enforced guards (enforcement
 lives in PostgreSQL, not in process memory, so it holds across app instances):

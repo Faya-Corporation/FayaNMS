@@ -3,6 +3,12 @@ import CredentialsProvider from "next-auth/providers/credentials";
 
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
+import {
+  checkLoginAllowed,
+  recordLoginFailure,
+  recordLoginSuccess,
+  resolveLoginIdentity,
+} from "@/lib/auth/login-guard";
 import type { UserRole } from "@/lib/auth/roles";
 
 /**
@@ -15,6 +21,14 @@ import type { UserRole } from "@/lib/auth/roles";
  * role change (or deactivation) propagates without waiting for a new
  * sign-in. If the account disappears or is disabled mid-session the claims
  * are stripped, which makes every guarded request answer 401.
+ *
+ * AUTH-001-A: the credentials verification path is guarded by the dedicated
+ * login abuse-control module (src/lib/auth/login-guard.ts) — throttling,
+ * exponential temporary lockout and typed sign-in telemetry run BEFORE the
+ * password verification, keyed by the trusted-proxy source and a keyed
+ * account hash. The route-level pre-check (route.ts) is the outer layer;
+ * this in-authorize check is the authoritative one on the verification path
+ * itself. Session/CSRF/signout flows never touch the guard.
  */
 
 /**
@@ -49,19 +63,41 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         const email = credentials?.email?.trim().toLowerCase();
         const password = credentials?.password;
         if (!email || !password) return null;
 
+        // AUTH-001-A (external audit 2026-09-15): the abuse guard runs BEFORE
+        // the DB lookup and BEFORE the expensive scrypt verification. A
+        // throttled caller receives the exact same public failure as a wrong
+        // password — no throttled-state disclosure, no enumeration channel.
+        // The request headers carry the spoof-resistant source identity via
+        // the repository's rightmost-trusted-hop policy (rate-gate).
+        const loginIdentity = resolveLoginIdentity(
+          new Headers((req?.headers ?? {}) as Record<string, string>),
+          email
+        );
+        const loginVerdict = await checkLoginAllowed(loginIdentity);
+        if (!loginVerdict.allowed) return null;
+
         const user = await db.user.findUnique({ where: { email } });
         // Uniform failure: unknown account, null hash (login disabled) and
         // wrong password all answer the generic credentials error.
-        if (!user || !user.passwordHash) return null;
+        if (!user || !user.passwordHash) {
+          await recordLoginFailure(loginIdentity);
+          return null;
+        }
         if (!user.isActive) throw new CredentialsSigninError("Account disabled");
 
         const valid = await verifyPassword(password, user.passwordHash);
-        if (!valid) return null;
+        if (!valid) {
+          await recordLoginFailure(loginIdentity);
+          return null;
+        }
+
+        // Successful sign-in resets the (source, account) failure state.
+        await recordLoginSuccess(loginIdentity);
 
         // Successful sign-in → audit trail entry (schema documents the
         // USER_LOGIN action alongside LOGIN_FAILED).

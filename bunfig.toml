@@ -1,0 +1,6 @@
+# Bun configuration. The test preload aligns the environment ONCE per test
+# process before any test module loads (see tests/_setup.ts) — it fixes the
+# sandbox shell's stale SQLite-era DATABASE_URL without ever overriding a
+# real postgres:// URL (CI's value is respected as-is).
+[test]
+preload = ["./tests/_setup.ts"]

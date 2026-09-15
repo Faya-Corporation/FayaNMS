@@ -670,6 +670,30 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    checked). Practical rule unchanged and now enforced: generate real
    secrets with `openssl rand -hex 32`; never copy sample values from
    committed workflow files into `.env.production`.
+20. **Login abuse control (AUTH-001-A, independent audit 2026-09-15)**:
+   credential sign-in (`POST /api/auth/callback/credentials`) is throttled
+   BEFORE password verification — the route answers the standard 429
+   envelope with `Retry-After` before NextAuth parses anything, and
+   `authorize()` re-checks the guard before the DB lookup + scrypt even if
+   a request reaches it another way. Budgets: 10 failed sign-ins per
+   source and 30 per targeted account inside a 300 s sliding window (all
+   env-tunable with clamped ranges: `FAYANMS_LOGIN_WINDOW_SECONDS` 30–3600,
+   `FAYANMS_LOGIN_MAX_ATTEMPTS_PER_SOURCE` 3–100,
+   `FAYANMS_LOGIN_MAX_ATTEMPTS_PER_ACCOUNT` 5–200). A locked account backs
+   off exponentially (30 s·2^n, capped at 4 min) and ALWAYS recovers —
+   lockouts are never permanent, unauthenticated traffic cannot cause an
+   irrecoverable denial, and a successful sign-in resets the (source,
+   account) state. Failures are keyed by the trusted-proxy source (the same
+   `FAYANMS_TRUST_PROXY_HOPS` policy as the /api/v1 gate — keep it set to
+   your real proxy depth, item above) and an HMAC-keyed hash of the
+   submitted identifier, so nothing enumeration-relevant is stored, logged
+   or emitted; typed audit events (`SIGNIN_THROTTLED` / `SIGNIN_LOCKOUT`,
+   at most one row per key per window) land in the audit trail with a NULL
+   actor (pre-auth — no fabricated actor FK). The guard store is bounded
+   in-process memory (5,000-key cap, stale-first sweep) — behind a
+   load-balanced deployment the budgets are per-instance until
+   SCALE-001-A's shared store lands; single-instance deployments (this
+   runbook) are fully covered.
 
 ## Explicitly NOT covered here (tracked elsewhere)
 

@@ -4,7 +4,7 @@ Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-P
 
 ---
 
-TASK-AUTH-001-A — Login throttling, backoff, lockout, sign-in telemetry ✊
+TASK-AUTH-001-A — Login throttling, backoff, lockout, sign-in telemetry ✊ → ✅ LANDED (R35, 2026-09-15)
 
 Goal: Bound online password guessing on `/api/auth/*` (outside the `/api/v1` gate; `authorize()` has no attempt control).
 Files: `src/lib/auth/options.ts`, NEW `src/lib/auth/login-guard.ts`, `tests/audit/login-guard.test.ts`, deploy doc security note, README security paragraph.
@@ -12,6 +12,7 @@ Implementation: Pre-auth sliding-window guard keyed by (trusted-proxy IP, normal
 Tests: budget/backoff/lockout/reset pins; trusted-hop keying; audit emission; enumeration-safety.
 Acceptance: 50 simulated attempts → throttled with `Retry-After`; lockout recorded in audit trail; all existing suites still green.
 Depends on: none.
+Landed (R35): guard module + `authorize()` enforcement BEFORE the DB lookup/scrypt + route pre-check on the credentials callback only (429 + `Retry-After` envelope); HMAC-keyed non-reversible account identity (no raw identifiers stored/logged/emitted); 30 s·2^n lockout capped at 4 min (never permanent, decays fully, success resets); bounded store (5,000-key cap, 64 stamps/key) behind `LoginGuardStore`; 37 contract tests; env knobs documented in `.env.example` + `docs/deploy/env.production.example` + deploy-doc security note 20. **Honest scope: login abuse control implemented — this is the single-process store; distributed production rate limiting (fleet-wide budgets) remains TASK-SCALE-001-A, which reuses this guard's store interface. The parent AUTH-001 finding is PARTIALLY FIXED (in-process) until that lands.**
 
 ---
 

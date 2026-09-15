@@ -792,7 +792,10 @@ model AuditEvent {
   // action: open set of verbs, e.g. DEVICE_CREATED | DEVICE_UPDATED | CONFIG_BACKUP |
   //         CONFIG_DOWNLOAD | CHANGE_CREATED | CHANGE_APPROVED | CHANGE_EXECUTED |
   //         BASELINE_APPROVED | DRIFT_DETECTED | INCIDENT_CREATED | ALERT_ACKNOWLEDGED |
-  //         USER_LOGIN | LOGIN_FAILED | SETTINGS_UPDATED
+  //         USER_LOGIN | LOGIN_FAILED | SETTINGS_UPDATED |
+  //         SIGNIN_THROTTLED | SIGNIN_LOCKOUT (AUTH-001-A pre-auth login
+  //         abuse telemetry — actorId NULL by design, keyed account hash in
+  //         resourceLabel, never a raw identifier or password)
   action        String
   resourceType  String
   resourceId    String?
