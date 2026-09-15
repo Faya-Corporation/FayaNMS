@@ -23,7 +23,12 @@
 #     incompatible with musl. Keep libc/openssl consistent across stages.
 # ─────────────────────────────────────────────────────────────────────────────
 
-FROM oven/bun:1.3.14 AS deps
+# SUPPLY-001-A: base images are digest-pinned (immutable inputs). The tag
+# stays for readability; the digest is authoritative. Bump procedure:
+# resolve the new tag's digest from the registry (docker buildx imagetools
+# inspect oven/bun:NEW_TAG | grep Digest), update here, commit, and let CI
+# build + scan the new image.
+FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY prisma ./prisma
@@ -40,7 +45,7 @@ COPY . .
 RUN bunx prisma generate \
  && bun run build
 
-FROM oven/bun:1.3.14-slim AS runtime
+FROM oven/bun:1.3.14-slim@sha256:d56a2534ffd262e92c12fd3249d3924d296d97086da773f821d7d0477435ea04 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \

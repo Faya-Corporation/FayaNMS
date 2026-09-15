@@ -351,3 +351,44 @@ jobs:
       - name: Container scan skipped (guard — no Dockerfile in checkout)
         if: ${{ hashFiles('Dockerfile') == '' }}
         run: echo "Guard branch — no Dockerfile present in this checkout, so the trivy gate is skipped by definition (the Dockerfile landed 2026-09-12; this branch only fires for exotic or partial checkouts)."
+
+      # ── 13. SUPPLY-001-A — runtime IMAGE build + image-level scan + SBOM ──
+      # Filesystem scanning (above) is necessary but not sufficient: the
+      # audited artifact is the image a host actually runs. Both runtime
+      # images are BUILT here from the digest-pinned bases and scanned AS
+      # IMAGES (OS packages inside the bases included), with per-image SBOMs
+      # retained as artifacts. Base images are digest-pinned in the
+      # Dockerfiles/compose files (immutable inputs; bump procedure inline).
+      - name: Build runtime images (app + worker)
+        run: |
+          docker build -t fayanms-app:ci .
+          docker build -f Dockerfile.worker -t fayanms-worker:ci .
+
+      - name: Image scan — app (trivy, HIGH/CRITICAL fail)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA-pinned 2026-09-11)
+        with:
+          scan-type: image
+          image-ref: fayanms-app:ci
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+      - name: Image scan — worker (trivy, HIGH/CRITICAL fail)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA-pinned 2026-09-11)
+        with:
+          scan-type: image
+          image-ref: fayanms-worker:ci
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+      - name: Image SBOMs (syft → CycloneDX, per image)
+        run: |
+          syft fayanms-app:ci -o cyclonedx-json > sbom-app-image.cdx.json
+          syft fayanms-worker:ci -o cyclonedx-json > sbom-worker-image.cdx.json
+
+      - name: Upload image SBOM artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 (SHA-pinned 2026-09-11)
+        with:
+          name: sbom-runtime-images
+          path: |
+            sbom-app-image.cdx.json
+            sbom-worker-image.cdx.json

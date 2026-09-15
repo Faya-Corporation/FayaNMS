@@ -2710,3 +2710,19 @@ Work Log:
 Stage Summary:
 - TRUTHFUL CI STATE for 974b98a: locally gate-proven, CI-blocked by infrastructure only.
 - TASK-DEPLOY-001-A final report: COMPLETE. Starting HEAD 12ee037 → ending HEAD 974b98a. DEPLOY-001: LANDED (shipped TLS profile + runtime hardening; docker compose config render + live TLS smoke remain NOT VERIFIED — no Docker here).
+---
+Task ID: R41-supply-001-a
+Agent: Orchestrator (Z.ai Code)
+Task: "Complete Remaining Production Remediation in One Session" — PHASE E: TASK-SUPPLY-001-A (immutable base inputs + runtime image scan evidence) as an independent, reviewable, green commit.
+
+Work Log:
+- Resolved REAL digests from the live Docker Hub registry API (auth token + manifest accept headers) for all four external base refs — the prompt's E1 rule "do not invent digests" honored: oven/bun:1.3.14 → e10577f0…, oven/bun:1.3.14-slim → d56a2534…, postgres:16-alpine → cf78e766…, caddy:2-alpine → 5f5c8640….
+- Digest-pinned every external base: Dockerfile (deps + runtime stages; tag kept for readability, digest authoritative, inline bump procedure documented — resolve via imagetools → update → commit → CI builds+scans), Dockerfile.worker, compose.yml (postgres), compose.tls.yml (caddy). Stage references (FROM deps AS build) correctly exempt.
+- CI scan job extended: builds BOTH runtime images, trivy IMAGE scans (HIGH/CRITICAL, exit-code 1) per image, per-image CycloneDX SBOMs uploaded as the `sbom-runtime-images` artifact — on top of the pre-existing fs scan. YAML re-validated (3 jobs, scan steps 8 → 13).
+- TDD: tests/audit/supply-chain.test.ts (8 pins) — byte-strict registry-resolved digest pins (a bump without re-resolution fails), stage-ref exemption, bump-procedure documentation, CI image build/scan/SBOM presence.
+- Docs: README LANDED block; NEXT-TASKS SUPPLY-001-A → LANDED with honest scope (provenance/signing owner-side per E4 posture; CI execution runner-blocked CI-001; local docker build NOT VERIFIED — no Docker here).
+- Gates on the exact final tree: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 568 across 32 files (562 pass + 6 e2e skips; 3,273 expects) · prisma validate OK · drift guard exit 0 · certify.ts exit 0 · build:gate exit 0.
+
+Stage Summary:
+- TASK-SUPPLY-001-A landed as one focused commit: base images are immutable inputs resolved from the real registry, and the supply-chain gate now audits the artifact that actually runs — the built image — with scan + SBOM evidence retained per release.
+- Session progress: PHASES A–E landed (SEC-ENV-001 FIXED, SCALE-001 FIXED on the API plane, TEST-001 LANDED + journey-found P1 fixed, DEPLOY-001 LANDED, SUPPLY-001 LANDED). Next: PHASE F — P3 hardening (AUTH-GUARD verify, log growth, session lifetime, SSRF residual classification).

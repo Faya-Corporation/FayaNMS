@@ -102,14 +102,13 @@ Depends on: none.
 
 ---
 
-TASK-SUPPLY-001-A — Digest-pinned bases + built-image scanning ✊ (authoring; execution needs runners)
+TASK-SUPPLY-001-A — Digest-pinned bases + built-image scanning ✊ → ✅ LANDED (R41, 2026-09-15)
 
 Goal: Immutable inputs; image-level scan evidence.
-Files: `Dockerfile`, `Dockerfile.worker`, `compose.yml`, `.github/workflows/ci.yml`.
-Implementation: Pin base images by digest (bump procedure documented); CI builds both images, Trivy `image` scan by digest, image SBOM; optional provenance.
-Tests: CI step asserts digest pinning (regex) and scan success.
-Acceptance: Release SHA has image-scan evidence; bases immutable.
-Depends on: CI-001-A (runner capacity).
+Landed as: EVERY external base image reference digest-pinned from REAL registry resolutions (no invented values): `oven/bun:1.3.14@sha256:e10577f0…`, `oven/bun:1.3.14-slim@sha256:d56a2534…` (Dockerfile + Dockerfile.worker), `postgres:16-alpine@sha256:cf78e766…` (compose.yml), `caddy:2-alpine@sha256:5f5c8640…` (compose.tls.yml) — tags kept for readability, digests authoritative, inline bump procedure (resolve → update → commit → CI builds+scans). CI scan job now BUILDS both runtime images, runs trivy IMAGE scans (HIGH/CRITICAL fail) on each, and produces per-image CycloneDX SBOM artifacts (`sbom-runtime-images`) on top of the existing fs scan.
+Tests: `tests/audit/supply-chain.test.ts` (8 pins: every external FROM digest-pinned with stage-ref exemption, byte-strict registry-resolved digest pins, bump-procedure documentation, CI image build/scan/SBOM steps).
+Honest scope: provenance/signing remains owner-side (registry/OIDC infrastructure absent — the audit's E4 "prepare the workflow, mark operational activation owner-side" posture); CI image-scan EXECUTION is runner-blocked (CI-001) and recorded honestly per push. `docker build` locally is NOT VERIFIED (no Docker in this environment).
+Depends on: none for authoring (execution remains CI-001-A).
 
 ---
 

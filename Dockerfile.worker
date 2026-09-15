@@ -15,7 +15,8 @@
 # app's API (NEXT_BASE_URL).
 # ─────────────────────────────────────────────────────────────────────────────
 
-FROM oven/bun:1.3.14-slim
+# SUPPLY-001-A: digest-pinned base (see Dockerfile for the bump procedure).
+FROM oven/bun:1.3.14-slim@sha256:d56a2534ffd262e92c12fd3249d3924d296d97086da773f821d7d0477435ea04
 WORKDIR /worker
 COPY mini-services/worker/package.json mini-services/worker/bun.lock ./
 # --omit dev: @types/ssh2 is compile-time only. --omit optional: skips ssh2's

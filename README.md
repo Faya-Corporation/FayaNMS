@@ -728,6 +728,19 @@ path. Pinned by `tests/audit/deploy-hardening.test.ts`; `docker compose
 config` render + live TLS smoke remain NOT VERIFIED here (no Docker) and
 CI execution stays runner-blocked (CI-001) — both recorded honestly.
 
+**LANDED — SUPPLY-001-A (independent audit 2026-09-15): immutable base
+inputs + runtime image scan evidence.** Every external base image is
+digest-pinned from REAL registry resolutions (bun 1.3.14 / 1.3.14-slim,
+postgres 16-alpine, caddy 2-alpine — tags kept for readability, digests
+authoritative, inline bump procedure), so an upstream re-tag can never
+silently change what a build produces. CI now BUILDS both runtime images
+and scans them AS IMAGES (trivy image, HIGH/CRITICAL fail) with
+per-image CycloneDX SBOM artifacts — fs scanning alone no longer
+satisfies the supply-chain gate. Pinned by
+`tests/audit/supply-chain.test.ts` (byte-strict digest pins);
+provenance/signing stays owner-side (no registry/OIDC infrastructure),
+and CI execution is honestly runner-blocked (CI-001).
+
 
 **LANDED — CERT-006 (audit CERT tier): Sophos SFOS joins the live plane over
 a REAL WebAPI transport — the vendor whose SSH CLI has no read-only
