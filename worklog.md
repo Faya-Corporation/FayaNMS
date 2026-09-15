@@ -2769,3 +2769,16 @@ Work Log:
 Stage Summary:
 - TRUTHFUL CI STATE for 65a8a9c: locally gate-proven, CI-blocked by infrastructure only.
 - PHASE F final report: COMPLETE. Starting HEAD 0098d2f → ending HEAD 65a8a9c. P3 batch: AUTH-GUARD RESOLVED, LOG FIXED, SESSION FIXED (12 h), SSRF ACCEPTED RESIDUAL RISK (classified), NEW-1 FIXED (read-only governance pin).
+---
+Task ID: R43-doc-001-a
+Agent: Orchestrator (Z.ai Code)
+Task: "Complete Remaining Production Remediation in One Session" — PHASE G: TASK-DOC-001-A (documentation and runtime truth reconciliation) as an independent, reviewable, green commit.
+
+Work Log:
+- Drift sweep across all governance surfaces named by the prompt (branch protection, CI status, service identity, shared secret, secret scope, rate limiting, restore support, TLS, Docker, real-device certification, production-ready): the A–F phase commits had already reconciled secret scope/service identity/rate limiting/TLS/log retention/sessions in the same commits that changed reality; the REMAINING drift was GOV-001-shaped: `.github/workflows/ci.yml` L1–14 still claimed "Branch protection: active — PRs require 1 approval…" and deploy-doc note 4 claimed protection "already live at the GitHub side" — both contradicting the live API (main.protected=false, required checks off, verified by API read-back in R34 and re-verified every push since).
+- Reconciled: ci.yml header rewritten around the LIVE state (protection NOT ACTIVE, the earlier claim named as governance drift, the exact ruleset requirements documented as the GOV-001 owner action, the per-commit honest CI posture + CI-001 infra blockage referenced); deploy-doc notes 4/5 rewritten (protection NOT active today + owner procedure + the unprotected-main credential warning). README's protection section was already truthful (verified).
+- Truth pins: tests/audit/p3-hardening.test.ts DOC-001-A block — the workflow header must NOT claim "Branch protection: active", MUST carry "NOT ACTIVE" + the live read-back + the DOC-001-A stamp; the runbook must state "Branch protection is NOT active today" and must not contain the old "already live" claim. The flip to "active" now requires the live API to say so (GOV-001).
+- Gates on the exact final tree: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 580 across 33 files (574 pass + 6 e2e skips; 3,309 expects) · prisma validate OK · drift guard exit 0 · certify.ts exit 0 · build:gate exit 0.
+
+Stage Summary:
+- PHASE G landed: no doc claim contradicts the live GitHub API or the shipped policy; the implemented / locally-verified / CI-verified / protocol-certified / real-hardware-certified distinction is now carried consistently by the honesty pins and per-task acceptance evidence recorded through phases A–F. Next: PHASES H–K classifications (FUNC-001 real-hardware-blocked, GOV-001/CI-001 owner/infra-blocked) and the FINAL re-audit + score + FINAL artifacts.

@@ -59,14 +59,13 @@ Depends on: SCALE-001-A (landed — same atomic pattern).
 
 ---
 
-TASK-DOC-001-A — Governance-truth drift fixes ✊ (rides with any commit)
+TASK-DOC-001-A — Governance-truth drift fixes ✊ → ✅ LANDED (R43, 2026-09-15)
 
-Goal: `ci.yml` header + env template must match live reality.
-Files: `.github/workflows/ci.yml` L1–14, `docs/deploy/env.production.example` L16–23.
-Implementation: Header states protection truth with a "verified <date>" stamp (flips to "active" only when the live API confirms); template marks `FAYANMS_SERVICE_SECRET` as the legacy/optional plane once SVC-001-A lands.
-Tests: Brand/doc honesty pins extended to the workflow header claims.
-Acceptance: No doc claims contradict live API or shipped policy.
-Depends on: GOV-001-A for the flip to "active"; corrective wording can land now.
+Goal: Every governance claim in the docs must match live reality, and the docs must differentiate implemented / locally verified / CI verified / protocol certified / real-hardware certified / production deployed.
+Landed as: `.github/workflows/ci.yml` header REWRITTEN around the live state ("Branch protection: NOT ACTIVE — live API read-back 2026-09-15: main.protected=false, required checks off"; the earlier "protection active" claim explicitly named as governance drift; the ruleset requirements documented as the GOV-001 owner action; the per-commit honest CI posture referenced). Deploy-doc notes 4/5 reconciled the same way ("Branch protection is NOT active today" + owner procedure + the unprotected-main credential warning). Across PHASES A–F the other drifted surfaces were reconciled in the same commits that changed reality: secret scope (note 21 + T6 + templates), service identity (note 17, SVC-001-A), rate limiting (note 8, SCALE-001-A), TLS (D2 + note 22), log retention (note 24), sessions (note 23).
+Tests: `tests/audit/p3-hardening.test.ts` DOC-001-A block pins the workflow header + runbook truth claims (the flip to "active" requires the live API read-back saying so — GOV-001).
+Acceptance: No doc claim contradicts the live API or the shipped policy.
+Depends on: GOV-001-A for the flip to "active"; the corrective wording has landed.
 
 ---
 

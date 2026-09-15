@@ -541,12 +541,18 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    — that compartmentalization is the point of the split.
 3. Demo credentials (`faya123`) are a designed feature of the seeded dataset — acceptable
    on an isolated LAN pilot; rotate/delete seeded users before any broader exposure.
-4. Branch protection, `gate`+`scan` required checks, and the owner direct-push bypass are
-   already live at the GitHub side (SOCIAL-REPOSITORY §6); keep landing server-side
-   changes through pushes so CI keeps proving the image inputs.
-5. `enforce_admins=false` means **whoever controls the owner credential controls `main`**
-   — on a shared Windows Server host, protect the deployment key (the PAT/credential
-   helper used for `git pull`) accordingly.
+4. **Branch protection is NOT active today** (live API read-back 2026-09-15:
+   `main.protected=false`, required checks off — GOV-001, DOC-001-A reconciled). The
+   `gate`+`scan`+`e2e` jobs run on every push and are DESIGNED as the required checks;
+   enabling the ruleset is an OWNER action (GitHub settings: PRs required, gate+scan+e2e
+   required, no force-push/deletion, admin bypass scoped and recorded in
+   SOCIAL-REPOSITORY §6). Until then, pushes land with gates executed locally and CI
+   state recorded honestly per commit in worklog.md (current CI runs are
+   infrastructure-blocked — no runner assigned; CI-001).
+5. Because `main` is UNPROTECTED, **whoever controls the owner credential controls
+   `main`** — on a shared Windows Server host, protect the deployment key (the
+   PAT/credential helper used for `git pull`) accordingly; GOV-001's ruleset is the
+   durable fix.
 6. **LIVE_SSH secrets (Phase 22) live ONLY on the worker**: the app stores vault
    references; the worker resolves them from `FAYANMS_VAULT_*` entries in the worker
    env file (`.env.production.worker` — SEC-ENV-001) at connect time. The compose

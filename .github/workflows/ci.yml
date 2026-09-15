@@ -1,18 +1,22 @@
 # FayaNMS — ACTIVE CI gate (.github/workflows/ci.yml · task R2-c · re-audit finding B0-002).
 #
-# ── ACTIVATION STATUS: ACTIVE ───────────────────────────────────────────────────────
-# Activated:         2026-09-10 (R8: workflow push; R9: settings-side activation)
-# Required checks:   gate + scan — required status checks on the protected main branch
-# Branch protection: active — PRs require 1 approval incl. CODEOWNERS review,
-#                    conversation resolution required, no force pushes / no deletions
-# Admin enforcement: intentionally disabled (enforce_admins=false) — the owner retains
-#                    an explicit direct-push bypass, documented as a development
-#                    break-glass exception in docs/brand/SOCIAL-REPOSITORY.md §6.
-#                    Do NOT describe this gate as "universally non-bypassable"; the
-#                    accurate claim is: "CI-enforced and PR-protected for normal
-#                    contributors, with an explicit owner/admin bypass retained."
+# ── GOVERNANCE STATUS (reconciled with LIVE GitHub state, DOC-001-A 2026-09-15) ──
+# Workflow:          ACTIVE — this workflow runs gate + scan (+ e2e) on every push.
+# Branch protection: NOT ACTIVE. Live API read-back 2026-09-15:
+#                    branches/main → protected:false, protection.enabled:false,
+#                    required status checks enforcement_level:off, zero contexts.
+#                    (The earlier "protection active" claim here was governance
+#                    drift — the earlier settings-side activation did not hold.)
+# Required checks:   gate + scan + e2e are DESIGNED as required checks — the
+#                    ruleset must be (re-)enabled by the OWNER (GOV-001,
+#                    docs/audits/FayaNMS-NEXT-TASKS.md): PRs required, gate+scan+e2e
+#                    as required status checks, no force-push/deletion, admin bypass
+#                    scoped and recorded (SOCIAL-REPOSITORY §6). Until then, direct
+#                    pushes to main run these gates from the sandbox with the results
+#                    recorded honestly per commit in worklog.md (CI-001: current
+#                    runs are infrastructure-blocked — no runner assigned).
 # History:           the activation path (PAT workflow-scope blocker, the corrupted
-#                    `branches: ain]` trigger, the docs/ci/ci-gate.yml pointer era,
+#                    `branches:` trigger, the docs/ci/ci-gate.yml pointer era,
 #                    runs #1–#5 shakedown failures, first green run #6) is recorded
 #                    in worklog.md and docs/brand/SOCIAL-REPOSITORY.md §6.
 #

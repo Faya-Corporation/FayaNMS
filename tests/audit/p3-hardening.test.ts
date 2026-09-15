@@ -127,3 +127,21 @@ describe("NEW-1: /api/v1/auth/* rate-gate exemption stays read-only", () => {
     }
   });
 });
+
+describe("DOC-001-A: governance docs match the LIVE GitHub state", () => {
+  const ci = readRepoFile(".github/workflows/ci.yml");
+  const deployDoc = readRepoFile("docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md");
+
+  test("the workflow header no longer claims branch protection is active", () => {
+    expect(ci).not.toContain("Branch protection: active");
+    expect(ci).toContain("Branch protection: NOT ACTIVE");
+    expect(ci).toContain("protected:false");
+    expect(ci).toContain("DOC-001-A");
+  });
+
+  test("the deployment runbook states the same live truth", () => {
+    expect(deployDoc).toContain("Branch protection is NOT active today");
+    expect(deployDoc).toContain("GOV-001");
+    expect(deployDoc).not.toContain("already live at the GitHub side");
+  });
+});
