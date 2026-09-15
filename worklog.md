@@ -2605,3 +2605,16 @@ Work Log:
 Stage Summary:
 - TASK-SEC-ENV-001-A landed as one focused commit: the app, worker, and provision processes now receive ONLY their own trust zone's secret material; both runtimes flag violations at boot by name (deprecation window documented, then refusal); the boundary is governance-pinned against regression. Audit status: SEC-ENV-001: FIXED (runtime compose render remains CI/lab evidence under CI-001).
 - Session progress per the remediation prompt: PHASE A complete. Next: PHASE B — TASK-SCALE-001-A (shared distributed rate-limit store on the AUTH-001-A store interface).
+---
+Task ID: R37-sec-env-001-a-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit e63bc75 (TASK-SEC-ENV-001-A) — honest evidence record
+
+Work Log:
+- Pushed e63bc75; run 34920942982 completed "failure" with the IDENTICAL infrastructure signature as runs #34-#50: job "gate" failed with ZERO steps executed and an EMPTY runner_name (no runner was ever assigned), job "scan" skipped — GitHub-hosted runner unavailability for this private repo (capacity/minutes), not a gate or scanner finding. The workflow file is unchanged since runs #28-#33 were green.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 524/524 (3,132 expects — 30 new env-boundary pins) · bunx prisma validate OK · drift guard exit 0 on a fresh fayanms_shadow ("No difference detected") · bun mini-services/worker/certify.ts exit 0 (worker boot path touched → certified) · build:gate exit 0. docker compose config NOT VERIFIED — no Docker in this environment (honestly recorded in NEXT-TASKS + deploy note 21).
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for e63bc75: locally gate-proven, CI-blocked by infrastructure only. User-side follow-up (cannot be done from the sandbox): verify GitHub Actions minutes/billing for the account, then re-run the affected runs from the Actions UI; no code action is required.
+- TASK-SEC-ENV-001-A final report per the remediation prompt PHASE A: COMPLETE. Starting HEAD a833010 → ending HEAD e63bc75. Audit status: SEC-ENV-001: FIXED. Next phase per the prompt: PHASE B — TASK-SCALE-001-A (shared distributed rate limiting).
