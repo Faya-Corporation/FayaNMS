@@ -2782,3 +2782,16 @@ Work Log:
 
 Stage Summary:
 - PHASE G landed: no doc claim contradicts the live GitHub API or the shipped policy; the implemented / locally-verified / CI-verified / protocol-certified / real-hardware-certified distinction is now carried consistently by the honesty pins and per-task acceptance evidence recorded through phases A–F. Next: PHASES H–K classifications (FUNC-001 real-hardware-blocked, GOV-001/CI-001 owner/infra-blocked) and the FINAL re-audit + score + FINAL artifacts.
+---
+Task ID: R43-doc-001-a-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit a84035e (TASK-DOC-001-A) — honest evidence record
+
+Work Log:
+- Pushed a84035e; run completed "failure" with the IDENTICAL infrastructure signature as runs #34-#56: gate failed with ZERO steps executed and an EMPTY runner_name; e2e + scan skipped (no runner ever assigned). GitHub-hosted runner unavailability, not a gate/scanner finding.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 580 across 33 files (574 pass + 6 e2e skips; 3,304 expects) · prisma validate OK · drift guard exit 0 · certify.ts exit 0 · build:gate exit 0.
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for a84035e: locally gate-proven, CI-blocked by infrastructure only.
+- PHASE G final report: COMPLETE. Starting HEAD a2da4ce → ending HEAD a84035e. DOC-001: LANDED — no governance claim contradicts the live API.
