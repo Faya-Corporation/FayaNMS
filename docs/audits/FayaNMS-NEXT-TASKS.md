@@ -1,17 +1,25 @@
-# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-15, R47)
+# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-16, R51/z_ai_v2)
 
-Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R47). ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, ALL of it outside the sandbox's control:
+Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R47), then the R50 program on branch `z_ai_v2`. ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, ALL of it outside the sandbox's control (except the R50.1+ phases, which are authorable code work):
 
 ## ACTIVE (only genuinely remaining work)
 
 ```text
+R50 Phase R50.1 — Vendor-first orchestration + trust-identity ADR (R50-T010..T013; fixes open P1s R50-002/003) — authorable, NEXT
+R50 Phase R50.2 — Authorization & abuse controls (R50-T020..T025: device.detect permission, credential-profile authorization, target policy, special-address protection, detection rate limits, budgets)
+R50 Phase R50.3+ — IPv4/IPv6 decision, typed detection API contract, fingerprint registry, UI two-stage flow, audit/telemetry, test matrix (R50-T030..T072)
+R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (needs operator-side hardware or free DevNet AAA credentials; Step 0: PUBLIC DEMO DEVICE PLANE — docs/certification/PUBLIC-DEMO-DEVICES.md + `bun run demo:fleet`)
+R50-T100..T103 / OWNER-CI-001 — restore GitHub Actions runner capacity (infrastructure signature since run #34) and run the full gate on the release SHA
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4)
-OWNER-CI-001 — Restore GitHub Actions runner capacity and obtain green gate+scan+e2e+browser runs on the release SHA
-LAB-FUNC-001 / LAB-CERT-HW-001 — Execute the physical-device certification matrix (docs/certification/MATRIX.md §3); unlock the typed LIVE-restore decision
-    ↳ Step 0 (no hardware needed, 2026-09-16): the PUBLIC DEMO DEVICE PLANE (docs/certification/PUBLIC-DEMO-DEVICES.md + `bun run demo:fleet`) — free Cisco DevNet always-on device is SSH-reachable and gives REAL-device auth/read evidence once an operator supplies their free per-user AAA credentials; the T3 rows stay lab-gated
 ```
 
-The authoring backlog is EMPTY: every code/doc task from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R47). AUTH-001 is FIXED end-to-end (R35 guard + R46 fleet-wide store); the rendering layer is continuously verified (R47 browser journeys + axe a11y, with the found WCAG-AA defects fixed at the token level).
+The remediation authoring backlog for the R34–R47 program is EMPTY: every code/doc task from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R47). AUTH-001 is FIXED end-to-end (R35 guard + R46 fleet-wide store); the rendering layer is continuously verified (R47 browser journeys + axe a11y). The R50 P0 (R50-001) is FIXED on `z_ai_v2` (Phase R50.0 below).
+
+---
+
+TASK-R50-PHASE-0 — R50-T001/T002/T003 fail-closed trust gate ✊ → ✅ LANDED (2026-09-16, branch `z_ai_v2`)
+
+The R50-001 P0 (verdict CONFIRMED, "broader than stated" — the defect was test-pinned as contract) is FIXED: `HostKeyTrustState` (enrolled / PROVEN-unenrolled / lookup-failed) replaces nullable trust semantics; `resolveHostKeyTrustState` is a total, injectable, fail-closed resolver; the auto-detect route aborts BEFORE the worker SSH connection on lookup failure with typed `HOST_KEY_ENROLLMENT_LOOKUP_FAILED` (503) + the `HOST_KEY_TRUST_LOOKUP_FAILED` audit event; capture mode is opted into ONLY on a proven-unenrolled state; the old fail-open literals are pinned dead and the worker-plane refusal is re-pinned as defense in depth. Evidence: `tests/audit/r50-trust-failclosed.test.ts` (17 pins — the roadmap's behavioral matrix + wiring + dead-literal pins), suite 640 → 657 (657 pass / 12 skip / 0 fail, 3,566 expects), lint 0, tsc 0; LIVE evidence in `FayaNMS-R50-T001-T003-Trust-FailClosed-2026-09-16.md` (E2E smoke through the real worker + REAL PostgreSQL-outage resolver proof returning lookup-failed, plus the app→worker control-plane key-set gap found and fixed in the sandbox runtime during that run).
 
 ---
 

@@ -310,10 +310,13 @@ describe("R50 — /api/v1/devices/auto-detect route contract", () => {
     expect(ROUTE).toContain("/live/detect-vendor");
     expect(ROUTE).toContain("resolveHostToIp(");
     expect(ROUTE).toContain("DEVICE_VENDOR_AUTODETECTED");
-    // SAFE-001 on the app side: the enrolled pin rides along; a first
-    // contact is explicitly flagged as the audited capture path.
-    expect(ROUTE).toContain("getHostKeyPin(");
-    expect(ROUTE).toContain("enrollHostKey: !pin");
+    // SAFE-001 / R50-T001: the trust state is resolved EXPLICITLY via the
+    // trust-state resolver, and capture mode is opted into ONLY for a
+    // PROVEN-unenrolled endpoint. (The original R50 pin asserted
+    // `enrollHostKey: !pin` — the P0 fail-open literal itself; the
+    // dedicated fail-closed matrix lives in r50-trust-failclosed.test.ts.)
+    expect(ROUTE).toContain("resolveHostKeyTrustState(");
+    expect(ROUTE).toContain('enrollHostKey: trust.state === "unenrolled"');
   });
 
   test("the route NEVER mutates the device inventory (form helper)", () => {

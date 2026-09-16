@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok, requestContext } from "../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
-import { getHostKeyPin } from "@/lib/ssh/host-keys";
+import { resolveHostKeyTrustState } from "@/lib/ssh/host-keys";
 import { resolveHostToIp } from "@/lib/dns/resolve-host";
 import { workerControlHeaders } from "@/lib/worker/control-client";
 import { WORKER_BASE_URL } from "@/lib/worker/worker-url";
@@ -23,10 +23,14 @@ export const dynamic = "force-dynamic";
  *      execs ONLY the read-only DETECT_COMMANDS ("show version", "show
  *      system info", "get system status") over the real SSH transport and
  *      attributes the output to a certified vendor family
- *      (mini-services/worker/vendor-fingerprint.ts). SAFE-001: the enrolled
- *      host-key pin rides along when present; a first-contact target
- *      (unpinned) runs in audited capture mode and the presented host key is
- *      returned for out-of-band verification + enrollment.
+ *      (mini-services/worker/vendor-fingerprint.ts). SAFE-001 (R50-T001):
+ *      the trust state is resolved EXPLICITLY via resolveHostKeyTrustState —
+ *      the enrolled pin rides along; a PROVEN-unenrolled target runs in
+ *      audited capture mode (presented key returned for out-of-band
+ *      verification + enrollment); a trust-store LOOKUP FAILURE aborts the
+ *      probe BEFORE any connection with the typed
+ *      HOST_KEY_ENROLLMENT_LOOKUP_FAILED error + a dedicated audit event —
+ *      unknown trust state is never first contact (fail-closed).
  *
  * The endpoint NEVER mutates the device inventory — it is a form helper;
  * applying the result is the operator's submit action. Every invocation is
@@ -142,18 +146,53 @@ export async function POST(request: Request) {
 
   if (profile) {
     vendorStage = "executed";
-    // SAFE-001: the enrolled pin (host+port known_hosts model) rides on the
-    // probe when the endpoint was already enrolled; a first-contact target
-    // runs in audited capture mode (enrollHostKey=true) — the worker answers
-    // with the presented key for out-of-band verification.
+    // SAFE-001 / R50-T001: the trust state is resolved EXPLICITLY —
+    // enrolled, PROVEN-unenrolled, or lookup-failed. The R50-001 P0
+    // fail-open (a persistence error swallowed into a null pin, which the
+    // capture decision then read as first contact) is structurally
+    // impossible here: a lookup failure returns the typed
+    // HOST_KEY_ENROLLMENT_LOOKUP_FAILED error BEFORE the worker SSH
+    // connection is attempted, with a dedicated audit event.
     const probeTarget = resolution.mgmtIp ?? host;
-    let pin: string | null = null;
-    try {
-      const hostKeyPin = await getHostKeyPin(probeTarget, profile.port);
-      pin = hostKeyPin?.fingerprint ?? null;
-    } catch {
-      pin = null; // enrollment store hiccup → first-contact capture path
+    const trust = await resolveHostKeyTrustState(probeTarget, profile.port);
+    if (trust.state === "lookup-failed") {
+      try {
+        await db.auditEvent.create({
+          data: {
+            actorId: actor.id,
+            actorName: actor.name ?? "Unknown user",
+            action: "HOST_KEY_TRUST_LOOKUP_FAILED",
+            resourceType: "Device",
+            resourceId: null,
+            resourceLabel: host,
+            result: "FAILURE",
+            correlationId,
+            afterJson: JSON.stringify({
+              host,
+              probeTarget,
+              port: profile.port,
+              reason: trust.reason,
+            }),
+          },
+        });
+      } catch (auditError) {
+        // The trust store is already unusable; the audit plane may share its
+        // fate. The typed refusal below is the operator-facing contract —
+        // this emission is best-effort and its failure is logged, never
+        // converted into a success path.
+        console.error("[auto-detect] trust-lookup audit emission failed", auditError);
+      }
+      return fail(
+        "HOST_KEY_ENROLLMENT_LOOKUP_FAILED",
+        "Host-key enrollment lookup failed — probe aborted before any connection (trust state unknown; fail-closed)",
+        503,
+        requestContext(request),
+      );
     }
+    // enrolled → the pin rides on the probe (verified pre-auth by the
+    // worker); PROVEN-unenrolled → the audited first-contact capture, with
+    // the presented key returned for out-of-band verification.
+    const pin = trust.state === "enrolled" ? trust.fingerprint : null;
 
     try {
       const response = await fetch(WORKER_URL, {
@@ -167,7 +206,9 @@ export async function POST(request: Request) {
             secretRef: profile.secretRef,
           },
           sshHostKeyPin: pin ?? undefined,
-          enrollHostKey: !pin,
+          // R50-T001: capture mode ONLY for a PROVEN-unenrolled endpoint —
+          // never for an unknown trust state (the resolver aborts above).
+          enrollHostKey: trust.state === "unenrolled",
         }),
         // Up to three read-only probes, each a full SSH handshake.
         signal: AbortSignal.timeout(30000),
