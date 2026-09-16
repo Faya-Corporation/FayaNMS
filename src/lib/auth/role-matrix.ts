@@ -19,6 +19,9 @@
  *   - approval levels: manager = technical+manager+cab, security = admin
  *     wildcard only until a security-officer role exists;
  *   - change.cancel / change.close → operator + engineer + manager;
+ *   - device.detect (R50-T020) → operator + engineer — the DEDICATED
+ *     active-probe permission (vendor auto-detection); never the broad
+ *     config.backup data-plane class;
  *   - cmdb.write → engineer; firmware.execute / ztp.provision → engineer;
  *   - report.create → operator+engineer+manager; report.schedule and
  *     report.export → manager;
@@ -48,6 +51,7 @@ export const ROLE_MATRIX: RoleMatrixEntry[] = [
     description: "NOC operator — run operational actions, ack alerts, request restores",
     permissions: [
       "device.read",
+      "device.detect",
       "config.read",
       "config.backup",
       "config.download",
@@ -79,6 +83,7 @@ export const ROLE_MATRIX: RoleMatrixEntry[] = [
     permissions: [
       "device.read",
       "device.write",
+      "device.detect",
       "config.read",
       "config.write",
       "config.backup",

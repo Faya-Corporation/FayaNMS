@@ -3,6 +3,8 @@ import { fail, firstIssueMessage, newJobCorrelationId, ok, requestContext } from
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { resolveHostKeyTrustState } from "@/lib/ssh/host-keys";
 import { resolveHostToIp } from "@/lib/dns/resolve-host";
+import { evaluateTargetPolicy } from "@/lib/net/target-policy";
+import { getRateStore } from "@/lib/api/rate-store";
 import { workerControlHeaders } from "@/lib/worker/control-client";
 import { WORKER_BASE_URL } from "@/lib/worker/worker-url";
 import { z } from "zod";
@@ -18,15 +20,23 @@ export const dynamic = "force-dynamic";
  * reachable + credential available), THEN map the hostname to its
  * management address:
  *
- *   1. Authorization — requirePermission("config.backup"); the dedicated
- *      `device.detect` permission arrives with roadmap R50-T020.
- *   2. Target policy — today the request-schema validation (charset,
- *      length); the CIDR/special-address policy is R50-T022/T023 and will
- *      land as an explicit stage at this position.
- *   3. Credential authorization — the referenced profile must exist and be
+ *   1. Authorization — requirePermission("device.detect") (R50-T020: the
+ *      DEDICATED active-probe permission — operator + engineer + admin
+ *      wildcard; no longer the broad config.backup class).
+ *   2. Target policy — R50-T022/T023: the literal target is classified
+ *      (loopback, cloud-metadata link-local, multicast, reserved → typed
+ *      TARGET_NOT_ALLOWED refusal BEFORE any credential/trust/network
+ *      work; FAYANMS_PROBE_ALLOW_SPECIAL=true is the documented lab
+ *      escape hatch). Hostname targets resolve worker-side; the
+ *      resolved-address policy check is a worker-plane follow-up.
+ *   3. Abuse control — R50-T024: detection-specific budgets over the
+ *      SHARED rate store (fleet-wide when FAYANMS_RATE_STORE=postgres),
+ *      keyed per actor and per target; exhausted → typed
+ *      DEVICE_PROBE_RATE_LIMITED 429 + Retry-After.
+ *   4. Credential authorization — the referenced profile must exist and be
  *      SSH_PASSWORD (actor→profile→scope enrichment is R50-T021). Resolved
  *      BEFORE any network activity.
- *   4. Host-key policy — SAFE-001 (R50-T001): resolveHostKeyTrustState runs
+ *   5. Host-key policy — SAFE-001 (R50-T001): resolveHostKeyTrustState runs
  *      against the REQUESTED ENDPOINT (R50-T012 ADR: a detection probe's
  *      trust identity is the operator-typed host + credential port — never
  *      a DNS-derived address, so DNS health cannot flip trust semantics,
@@ -35,19 +45,19 @@ export const dynamic = "force-dynamic";
  *      BEFORE any connection with the typed HOST_KEY_ENROLLMENT_LOOKUP_FAILED
  *      error + a dedicated audit event — unknown trust state is never first
  *      contact (fail-closed).
- *   5. Vendor detection — the worker dials connectionAddress (== the
+ *   6. Vendor detection — the worker dials connectionAddress (== the
  *      requested endpoint exactly as typed; NO DNS indirection, R50-T013)
  *      and execs ONLY the read-only DETECT_COMMANDS ("show version", "show
  *      system info", "get system status") over the real SSH transport,
  *      attributing the output to a certified vendor family
  *      (mini-services/worker/vendor-fingerprint.ts).
- *   6. Hostname resolution — resolveHostToIp(requestedHost) runs ONCE,
+ *   7. Hostname resolution — resolveHostToIp(requestedHost) runs ONCE,
  *      AFTER detection, and is purely informational for the form
  *      (resolvedManagementIp). It NEVER retargets the probe (R50-T013:
  *      resolve once, bind the connection before any DNS is consulted —
  *      silent re-resolution is structurally impossible here because the
  *      connection does not use DNS at all).
- *   7. Preview response — requestedHost / connectionAddress /
+ *   8. Preview response — requestedHost / connectionAddress /
  *      resolvedManagementIp named explicitly (R50-T011), plus the original
  *      fields (UI compatibility).
  *
@@ -61,6 +71,11 @@ export const dynamic = "force-dynamic";
  */
 
 const WORKER_URL = `${WORKER_BASE_URL}/live/detect-vendor`;
+
+/** R50-T024 — detection-specific budgets (per actor and per target / min). */
+const DETECT_RATE_WINDOW_MS = 60_000;
+const DETECT_RATE_PER_ACTOR = Number(process.env.FAYANMS_DETECT_RATE_LIMIT ?? 20);
+const DETECT_RATE_PER_TARGET = Number(process.env.FAYANMS_DETECT_TARGET_RATE_LIMIT ?? 10);
 
 const bodySchema = z.object({
   /** Hostname or management address of the target (no scheme, no path). */
@@ -106,12 +121,10 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, requestContext(request));
   }
 
-  /* ── Stage 1: authorization ─────────────────────────────────────────── */
-  // Data-plane probe: same permission class as test-connection (operator +
-  // engineer seeded), attributed to the session principal.
+  /* ── Stage 1: authorization (R50-T020 dedicated probe permission) ───── */
   let actor: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    actor = await requirePermission(request, "config.backup");
+    actor = await requirePermission(request, "device.detect");
   } catch (error) {
     const authFail = authErrorToFail(error);
     if (!authFail) throw error;
@@ -121,15 +134,56 @@ export async function POST(request: Request) {
   const correlationId = newJobCorrelationId();
   // R50-T011: the three endpoint identities are kept apart. requestedHost is
   // the operator-typed string; connectionAddress is what the worker actually
-  // dials; resolvedManagementIp is the informational DNS mapping (stage 6).
+  // dials; resolvedManagementIp is the informational DNS mapping (stage 7).
   const requestedHost = parsed.data.host;
   const { credentialProfileId } = parsed.data;
 
-  /* ── Stage 2: target policy ─────────────────────────────────────────── */
-  // Today: the request schema (charset/length) IS the target policy. The
-  // CIDR/special-address policy is R50-T022/T023 and lands at this position.
+  /* ── Stage 2: target policy (R50-T022/T023 — refuse special classes) ── */
+  const targetPolicy = evaluateTargetPolicy(requestedHost);
+  if (!targetPolicy.allowed) {
+    await db.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
+        action: "DEVICE_PROBE_TARGET_REFUSED",
+        resourceType: "Device",
+        resourceId: null,
+        resourceLabel: requestedHost,
+        result: "FAILURE",
+        correlationId,
+        afterJson: JSON.stringify({
+          requestedHost,
+          addressClass: targetPolicy.addressClass,
+        }),
+      },
+    });
+    return fail(
+      "TARGET_NOT_ALLOWED",
+      `Probe target refused by the target network policy (${targetPolicy.addressClass})`,
+      403,
+      requestContext(request),
+    );
+  }
 
-  /* ── Stage 3: credential authorization ──────────────────────────────── */
+  /* ── Stage 3: abuse control (R50-T024 — shared-store detection budgets) */
+  for (const [dimension, key, limit] of [
+    ["actor", `device-detect:actor:${actor.id}`, DETECT_RATE_PER_ACTOR],
+    ["target", `device-detect:target:${requestedHost}`, DETECT_RATE_PER_TARGET],
+  ] as const) {
+    const slot = await getRateStore().hit(key, limit, DETECT_RATE_WINDOW_MS);
+    if (!slot.allowed) {
+      const refusal = fail(
+        "DEVICE_PROBE_RATE_LIMITED",
+        `Vendor detection ${dimension} budget exhausted — retry in ${slot.retryAfterSec}s`,
+        429,
+        requestContext(request),
+      );
+      refusal.headers.set("Retry-After", String(slot.retryAfterSec));
+      return refusal;
+    }
+  }
+
+  /* ── Stage 4: credential authorization ──────────────────────────────── */
   let profile: {
     id: string;
     type: string;
@@ -163,7 +217,7 @@ export async function POST(request: Request) {
     }
   }
 
-  /* ── Stages 4+5: host-key policy, then vendor detection ─────────────── */
+  /* ── Stages 5+6: host-key policy, then vendor detection ─────────────── */
   let detection: WorkerDetection["detection"] | null = null;
   let detectionError: string | null = null;
   let command: string | null = null;

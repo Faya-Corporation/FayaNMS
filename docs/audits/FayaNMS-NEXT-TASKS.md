@@ -5,14 +5,22 @@ Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-P
 ## ACTIVE (only genuinely remaining work)
 
 ```text
-R50 Phase R50.2 — Authorization & abuse controls (R50-T020..T025: device.detect permission, credential-profile authorization, target policy, special-address protection, detection rate limits, budgets) — authorable, NEXT
-R50 Phase R50.3+ — IPv4/IPv6 decision, typed detection API contract, fingerprint registry, UI two-stage flow, audit/telemetry, test matrix (R50-T030..T072)
+R50 Phase R50.3 — IPv4/IPv6 management-address contract decision (R50-T030..T033; fixes open P1 R50-004: AAAA fallback vs IPv4-only form) — authorable, NEXT
+R50 Phase R50.4 — typed detection API contract (R50-T040..T042: stable per-stage error codes, stage status enums, contract versioning)
+R50 Phase R50.5+ — fingerprint registry, UI two-stage flow, audit/telemetry, test matrix (R50-T050..T072)
+R50-T021/T022-follow-up/T025 — actor→credential-profile→scope authorization enrichment; worker-side resolved-address policy; explicit DNS-timeout budget
 R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (needs operator-side hardware or free DevNet AAA credentials; Step 0: PUBLIC DEMO DEVICE PLANE — docs/certification/PUBLIC-DEMO-DEVICES.md + `bun run demo:fleet`)
 R50-T100..T103 / OWNER-CI-001 — restore GitHub Actions runner capacity (infrastructure signature since run #34) and run the full gate on the release SHA
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4)
 ```
 
-The remediation authoring backlog for the R34–R47 program is EMPTY: every code/doc task from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R47). AUTH-001 is FIXED end-to-end (R35 guard + R46 fleet-wide store); the rendering layer is continuously verified (R47 browser journeys + axe a11y). The R50 P0 (R50-001) and P1s R50-002/003 are FIXED on `z_ai_v2` (Phases R50.0/R50.1 below).
+The remediation authoring backlog for the R34–R47 program is EMPTY: every code/doc task from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R47). AUTH-001 is FIXED end-to-end (R35 guard + R46 fleet-wide store); the rendering layer is continuously verified (R47 browser journeys + axe a11y). The R50 P0 (R50-001) and P1s R50-002/003/005/006 are FIXED on `z_ai_v2` (Phases R50.0/R50.1/R50.2 below).
+
+---
+
+TASK-R50-PHASE-2 — R50-T020/T022/T023/T024 authorization & abuse controls ✊ → ✅ LANDED (2026-09-16, branch `z_ai_v2`)
+
+R50-005 and R50-006 are FIXED at the literal-policy + budget scope: the detection route requires the DEDICATED `device.detect` permission (operator + engineer; manager explicitly without — R50-T020); the NEW `src/lib/net/target-policy.ts` refuses loopback / cloud-metadata link-local / multicast / reserved / this-network literals BEFORE any credential, trust-store, or network work, with the dedicated `DEVICE_PROBE_TARGET_REFUSED` audit event + typed `TARGET_NOT_ALLOWED` 403 and the documented `FAYANMS_PROBE_ALLOW_SPECIAL=true` lab hatch (R50-T022/T023); detection budgets run per actor AND per target over the SHARED SCALE-001 rate store → typed `DEVICE_PROBE_RATE_LIMITED` 429 + Retry-After (R50-T024). Live evidence: the verdict's own demo case (localhost) now 403s alongside 169.254.169.254 / 224.0.0.1 / ::1; hostnames pass; the target budget 429s after 10 calls with Retry-After 60. Tests: `tests/audit/r50-target-policy.test.ts` (12 pins), suite 669 → 681 (681 pass / 12 skip / 0 fail, 3,697 expects), lint 0, tsc 0; live roles synced via sync-role-permissions.ts. Evidence: `FayaNMS-R50-T020-T024-Abuse-Controls-2026-09-16.md`. Remaining honest scope: R50-T021 enrichment, worker-side resolved-address policy, DNS-timeout budget (tracked ACTIVE).
 
 ---
 

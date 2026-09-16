@@ -91,6 +91,7 @@ validity re-verified at execute time (`APPROVAL_FINGERPRINT_MISMATCH`,
 | `/devices/bulk` | POST | `device.write` |
 | `/devices/csv-import` | POST | `device.write` |
 | `/devices/test-connection` | POST | `config.backup` (data-plane probe; session-attributed audit) |
+| `/devices/auto-detect` | POST | `device.detect` (R50-T020: DEDICATED active-probe permission — operator + engineer; admin via wildcard; target network policy + detection rate budgets enforced in-route) |
 | `/devices/[id]/snapshots/[snapshotId]/restore` | POST | `config.restore` |
 | `/devices/[id]/snapshots/[snapshotId]/download` | GET | `config.download` (P19 SEC-005) |
 | `/baselines` | POST | `config.baseline` |

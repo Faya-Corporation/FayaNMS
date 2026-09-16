@@ -306,7 +306,9 @@ describe("R50 — resolveHostToIp (injectable, total)", () => {
 
 describe("R50 — /api/v1/devices/auto-detect route contract", () => {
   test("data-plane permission + audited + worker-proxied", () => {
-    expect(ROUTE).toContain('requirePermission(request, "config.backup")');
+    // R50-T020: the DEDICATED active-probe permission (no longer the broad
+    // config.backup data-plane class).
+    expect(ROUTE).toContain('requirePermission(request, "device.detect")');
     expect(ROUTE).toContain("/live/detect-vendor");
     expect(ROUTE).toContain("resolveHostToIp(");
     expect(ROUTE).toContain("DEVICE_VENDOR_AUTODETECTED");
@@ -322,7 +324,7 @@ describe("R50 — /api/v1/devices/auto-detect route contract", () => {
   test("R50-T010 — vendor-FIRST orchestration: credential → trust → detection → DNS", () => {
     // The user-facing promise (README, form copy, verdict R50-002) is
     // vendor-first; the stage ORDER is executable contract now.
-    const authIdx = ROUTE.indexOf('requirePermission(request, "config.backup")');
+    const authIdx = ROUTE.indexOf('requirePermission(request, "device.detect")');
     const credIdx = ROUTE.indexOf("db.credentialProfile.findUnique");
     const trustIdx = ROUTE.indexOf("await resolveHostKeyTrustState(");
     const fetchIdx = ROUTE.indexOf("await fetch(WORKER_URL");
