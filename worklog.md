@@ -2989,3 +2989,16 @@ Work Log:
 
 Stage Summary:
 - R50 COMPLETE: "vendor first (if available), then hostname → management IP" is landed and governed — one click in the Add/Edit device sheet detects the vendor family over read-only SSH (SAFE-001 pinned-or-captured), maps the hostname to its management address, and pre-fills vendor/model/mgmtIp for the operator's submit; every surface is read-only, audited, typed, and browser-verified end-to-end.
+---
+Task ID: R50-device-autodetect-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 5e99abd (R50 device auto-detection) — honest evidence record
+
+Work Log:
+- Pushed 5e99abd; run 35042579421 completed "failure" with the IDENTICAL infrastructure signature as runs #34–#63: gate failed with ZERO steps executed and an EMPTY runner_name; scan + e2e + browser skipped (no runner ever assigned). GitHub-hosted runner unavailability, not a gate/scanner finding.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 640 pass + 12 skips (652 across 38 files; 3,506 expects) · drift guard 0 (fresh fayanms_shadow) · certify.ts PASSED · build:gate 0 · live end-to-end browser verification (DNS auto-fill in the Add-device sheet + the typed worker error surfaced in the operator toast).
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for 5e99abd: locally gate-proven, CI-blocked by infrastructure only (same documented no-runner blockage since run #34).
+- R50: COMPLETE — vendor auto-detection (read-only SSH fingerprint, SAFE-001 pinned-or-captured) + hostname→management-IP mapping landed, governed and browser-verified.
