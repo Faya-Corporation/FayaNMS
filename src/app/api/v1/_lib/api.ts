@@ -88,6 +88,30 @@ export function fail(
 }
 
 /**
+ * fail() variant with extra `meta` fields — e.g. the R50.4 detection
+ * contract stamp (meta.contractVersion) so the ERROR envelope of the
+ * auto-detect route is as version-discoverable as the success envelope.
+ */
+export function failWithMeta(
+  code: string,
+  message: string,
+  status = 400,
+  extraMeta?: object,
+  /** @deprecated ignored since SAFE-002 (proxy-plane rate gate). */
+  _ctx?: RequestContext
+): NextResponse {
+  const requestId = randomUUID();
+  return NextResponse.json(
+    {
+      success: false as const,
+      error: { code, message },
+      meta: { requestId, ...(extraMeta ?? {}) },
+    },
+    { status, headers: { "X-Request-Id": requestId } }
+  );
+}
+
+/**
  * fail() variant with an extra `detail` field inside error{} (Phase 12-a).
  * Used by the AI endpoints to surface diagnostics such as the raw
  * unparseable LLM output alongside the AI_BAD_RESPONSE code. Callers that

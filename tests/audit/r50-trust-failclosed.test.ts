@@ -177,8 +177,9 @@ describe("R50-T003 — auto-detect route: unknown trust state can never become f
     expect(abortIdx).toBeLessThan(fetchIdx);
     // The abort is a full early return, not a detectionError degradation:
     // degraded detection answers 200 with a result — trust-state unknown
-    // must answer the typed refusal instead.
-    expect(ROUTE.slice(guardIdx, fetchIdx)).toContain("return fail(");
+    // must answer the typed refusal instead. (R50.4: the refusal is now
+    // built by failWithMeta — the contract-stamped fail() variant.)
+    expect(ROUTE.slice(guardIdx, fetchIdx)).toMatch(/return fail(WithMeta)?\(/);
   });
 
   test("trust-store failure emits a dedicated audit event (HOST_KEY_TRUST_LOOKUP_FAILED)", () => {

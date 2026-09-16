@@ -218,6 +218,8 @@ export interface AutoDetectPayload {
 }
 
 export interface AutoDetectResult {
+  // R50.4 (R50-T042) — contract stamp; older servers omit it.
+  contractVersion?: number;
   host: string;
   // R50-T011 explicit endpoint identities (the route returns them; optional
   // here so older servers remain assignable).
@@ -251,7 +253,70 @@ export interface AutoDetectResult {
   latencyMs: number | null;
   hostKeyCaptured: { keyType: string; fingerprint: string } | null;
   error: string | null;
+  // ── R50.4 typed contract (all optional so older servers stay assignable)
+  // R50-T041: stable registry code for the overall outcome (vendor stage
+  // wins, resolution stage fallback); null when there is nothing to report.
+  errorCode?: string | null;
+  // R50-T040: the two independent stage blocks — partial results are
+  // reported per stage, never collapsed into one boolean.
+  vendorDetection?: {
+    status: "skipped-no-credential" | "executed";
+    outcome: "matched" | "generic" | "failed" | "not-attempted";
+    code: string | null;
+    message: string | null;
+    detection: AutoDetectResult["detection"];
+    probeCommand: string | null;
+    latencyMs: number | null;
+    hostKeyState?: "not-probed" | "pinned" | "capture-requested";
+    hostKeyCaptured: AutoDetectResult["hostKeyCaptured"];
+  };
+  addressResolution?: {
+    status: "resolved" | "refused" | "failed";
+    code: string | null;
+    message: string | null;
+    mgmtIp: string | null;
+    mode: AutoDetectResult["mgmtIpResolution"]["mode"];
+  };
 }
+
+/**
+ * R50-T041 — operator copy keyed on the STABLE codes (never on transport
+ * strings). Used for the destructive toast and the resolution line; when a
+ * code has no hint the raw message is shown unchanged.
+ */
+const DETECTION_CODE_OPERATOR_HINTS: Record<string, string> = {
+  HOST_KEY_MISMATCH:
+    "The SSH host key presented by the target does not match the enrolled key — verify it out-of-band before trusting this endpoint",
+  HOST_KEY_UNENROLLED:
+    "No SSH host key is enrolled for this endpoint — enroll it first from the device page",
+  SSH_AUTH_FAILED:
+    "SSH authentication failed — check the credential profile's username and password",
+  SSH_CONNECT_TIMEOUT:
+    "The endpoint did not answer the SSH connection in time — check reachability and firewall rules",
+  SSH_UNREACHABLE: "The endpoint is unreachable over the network",
+  SSH_COMMAND_REJECTED: "The device rejected the read-only detection command",
+  SSH_SESSION_FAILED: "Could not establish an SSH session with the endpoint",
+  CREDENTIAL_UNRESOLVED:
+    "The credential profile could not be resolved — check that it still exists",
+  CREDENTIAL_NOT_AUTHORIZED:
+    "This credential profile cannot drive vendor detection — an SSH_PASSWORD profile is required",
+  WORKER_UNAVAILABLE: "The detection worker service is not responding",
+  WORKER_REJECTED: "The detection worker rejected the request",
+  VENDOR_UNKNOWN: "No certified vendor signature matched (generic)",
+  PROBE_NOT_AUTHORIZED:
+    "Your role does not include the device-detect permission — ask an administrator",
+  DEVICE_PROBE_RATE_LIMITED: "Vendor detection rate limit reached — wait a moment and retry",
+  TARGET_NOT_ALLOWED:
+    "The target address is refused by the network probe policy (loopback / metadata / reserved)",
+};
+
+const RESOLUTION_CODE_OPERATOR_HINTS: Record<string, string> = {
+  IPV6_UNSUPPORTED:
+    "Management IP not mapped: the target advertises IPv6 only — the device inventory requires an IPv4 (A record / IPv4 literal) management address",
+  DNS_NOT_FOUND: "Hostname could not be resolved: the name does not exist in DNS",
+  DNS_TIMEOUT: "Hostname could not be resolved: the DNS resolver timed out — try again",
+  DNS_LOOKUP_FAILED: "Hostname could not be resolved (DNS failure)",
+};
 
 export function useAutoDetectDevice() {
   const { toast } = useToast();
@@ -264,9 +329,14 @@ export function useAutoDetectDevice() {
       }),
     onSuccess: (result) => {
       if (result.error) {
+        // R50-T041: prefer the operator copy keyed on the STABLE code; the
+        // raw transport message stays the fallback for unmapped codes.
+        const hint = result.errorCode
+          ? DETECTION_CODE_OPERATOR_HINTS[result.errorCode]
+          : undefined;
         toast({
           title: "Auto-detect failed",
-          description: result.error,
+          description: hint ? `${hint} (${result.error})` : result.error,
           variant: "destructive",
         });
         return;
@@ -284,6 +354,16 @@ export function useAutoDetectDevice() {
           `Management IP: ${result.mgmtIpResolution.mgmtIp} (${
             result.mgmtIpResolution.mode === "ip-literal" ? "as entered" : "DNS"
           })`,
+        );
+      } else if (result.addressResolution?.code) {
+        // R50-T040/T041: the typed resolution block decides the copy when
+        // present; the literal-based branches below are the legacy fallback.
+        const hint = RESOLUTION_CODE_OPERATOR_HINTS[result.addressResolution.code];
+        parts.push(
+          hint ??
+            `Hostname could not be resolved (${
+              result.addressResolution.message ?? result.addressResolution.code
+            })`,
         );
       } else if (
         result.mgmtIpResolution.error === "IPV6_MANAGEMENT_ADDRESS_UNSUPPORTED"

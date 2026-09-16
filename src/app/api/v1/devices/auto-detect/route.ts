@@ -1,8 +1,21 @@
 import { db } from "@/lib/db";
-import { fail, firstIssueMessage, newJobCorrelationId, ok, requestContext } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  fail,
+  failWithMeta,
+  firstIssueMessage,
+  newJobCorrelationId,
+  ok,
+  requestContext,
+} from "../../_lib/api";
+import { AuthError, requirePermission } from "@/lib/auth/session";
 import { resolveHostKeyTrustState } from "@/lib/ssh/host-keys";
 import { resolveHostToIp } from "@/lib/dns/resolve-host";
+import {
+  DETECTION_CONTRACT_VERSION,
+  mapResolutionToContractCode,
+  mapWorkerErrorToDetectionCode,
+  type DetectionErrorCode,
+} from "@/lib/net/detection-contract";
 import { evaluateTargetPolicy } from "@/lib/net/target-policy";
 import { getRateStore } from "@/lib/api/rate-store";
 import { workerControlHeaders } from "@/lib/worker/control-client";
@@ -71,6 +84,25 @@ export const dynamic = "force-dynamic";
  * audited (DEVICE_VENDOR_AUTODETECTED, with the credential profile id and
  * the host-key state).
  *
+ * R50.4 — Detection API contract (R50-T040/T041/T042):
+ *   - PARTIAL RESULTS: the success envelope carries TWO independent stage
+ *     blocks — `vendorDetection` and `addressResolution` — each with its
+ *     own status + typed code, so "detection succeeded, DNS failed" (or
+ *     the inverse) is reported as what it is. All pre-R50.4 flat fields
+ *     stay (UI compatibility; the flat `error` keeps its vendor-stage
+ *     semantics).
+ *   - STABLE CODES: every failure surface answers a registry code from
+ *     src/lib/net/detection-contract.ts (DETECTION_ERROR_CODES) — in the
+ *     error envelope (`error.code`) or in the stage blocks / top-level
+ *     `errorCode` on a partial-success envelope. Transport strings from
+ *     the worker are mapped through mapWorkerErrorToDetectionCode; DNS
+ *     errnos through mapResolutionToContractCode. The recommended-15
+ *     registry literals (PROBE_NOT_AUTHORIZED … DEVICE_PROBE_RATE_LIMITED)
+ *     are answered verbatim.
+ *   - VERSIONING: every response stamps `contractVersion` (= 1) in data
+ *     AND meta; a breaking shape/code change MUST bump
+ *     DETECTION_CONTRACT_VERSION, never rename a code in place.
+ *
  * Graceful degradation (mirrors test-connection): a missing worker answers
  * 200 with detection=null + a human-readable error, never a 500.
  */
@@ -118,12 +150,16 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
+    return failWithMeta("INVALID_BODY", "Request body must be valid JSON", 400, {
+      contractVersion: DETECTION_CONTRACT_VERSION,
+    });
   }
 
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, requestContext(request));
+    return failWithMeta("INVALID_BODY", firstIssueMessage(parsed.error), 400, {
+      contractVersion: DETECTION_CONTRACT_VERSION,
+    }, requestContext(request));
   }
 
   /* ── Stage 1: authorization (R50-T020 dedicated probe permission) ───── */
@@ -131,9 +167,18 @@ export async function POST(request: Request) {
   try {
     actor = await requirePermission(request, "device.detect");
   } catch (error) {
-    const authFail = authErrorToFail(error);
-    if (!authFail) throw error;
-    return authFail;
+    // R50-T041: the probe-permission refusal carries the stable
+    // PROBE_NOT_AUTHORIZED code (status preserved from the AuthError).
+    if (error instanceof AuthError) {
+      return failWithMeta(
+        "PROBE_NOT_AUTHORIZED",
+        error.message,
+        error.status,
+        { contractVersion: DETECTION_CONTRACT_VERSION },
+        requestContext(request),
+      );
+    }
+    throw error;
   }
 
   const correlationId = newJobCorrelationId();
@@ -162,10 +207,11 @@ export async function POST(request: Request) {
         }),
       },
     });
-    return fail(
+    return failWithMeta(
       "TARGET_NOT_ALLOWED",
       `Probe target refused by the target network policy (${targetPolicy.addressClass})`,
       403,
+      { contractVersion: DETECTION_CONTRACT_VERSION },
       requestContext(request),
     );
   }
@@ -177,10 +223,11 @@ export async function POST(request: Request) {
   ] as const) {
     const slot = await getRateStore().hit(key, limit, DETECT_RATE_WINDOW_MS);
     if (!slot.allowed) {
-      const refusal = fail(
+      const refusal = failWithMeta(
         "DEVICE_PROBE_RATE_LIMITED",
         `Vendor detection ${dimension} budget exhausted — retry in ${slot.retryAfterSec}s`,
         429,
+        { contractVersion: DETECTION_CONTRACT_VERSION },
         requestContext(request),
       );
       refusal.headers.set("Retry-After", String(slot.retryAfterSec));
@@ -203,20 +250,24 @@ export async function POST(request: Request) {
       select: { id: true, type: true, username: true, port: true, secretRef: true },
     });
     if (!profile) {
-      return fail(
-        "CREDENTIAL_PROFILE_NOT_FOUND",
+      // R50-T041: stable registry code (was CREDENTIAL_PROFILE_NOT_FOUND).
+      return failWithMeta(
+        "CREDENTIAL_UNRESOLVED",
         "The selected credential profile does not exist",
         404,
+        { contractVersion: DETECTION_CONTRACT_VERSION },
         requestContext(request),
       );
     }
     if (profile.type !== "SSH_PASSWORD") {
       // Detection rides the SSH exec transport — API_TOKEN/SNMPV3/HTTPS
       // profiles cannot answer the read-only CLI probes.
-      return fail(
-        "DETECT_CREDENTIAL_TYPE_UNSUPPORTED",
+      // R50-T041: stable registry code (was DETECT_CREDENTIAL_TYPE_UNSUPPORTED).
+      return failWithMeta(
+        "CREDENTIAL_NOT_AUTHORIZED",
         `Vendor detection over SSH requires an SSH_PASSWORD credential profile (got ${profile.type})`,
-        400,
+        403,
+        { contractVersion: DETECTION_CONTRACT_VERSION },
         requestContext(request),
       );
     }
@@ -225,6 +276,10 @@ export async function POST(request: Request) {
   /* ── Stages 5+6: host-key policy, then vendor detection ─────────────── */
   let detection: WorkerDetection["detection"] | null = null;
   let detectionError: string | null = null;
+  // R50-T041: the vendor stage's stable code — mapped from the worker's
+  // transport error string, the route's own fallbacks, or VENDOR_UNKNOWN
+  // when detection completed but no certified family matched (generic).
+  let detectionErrorCode: DetectionErrorCode | null = null;
   let command: string | null = null;
   let latencyMs: number | null = null;
   let capturedHostKey: { keyType: string; fingerprint: string } | null = null;
@@ -276,10 +331,11 @@ export async function POST(request: Request) {
         // converted into a success path.
         console.error("[auto-detect] trust-lookup audit emission failed", auditError);
       }
-      return fail(
+      return failWithMeta(
         "HOST_KEY_ENROLLMENT_LOOKUP_FAILED",
         "Host-key enrollment lookup failed — probe aborted before any connection (trust state unknown; fail-closed)",
         503,
+        { contractVersion: DETECTION_CONTRACT_VERSION },
         requestContext(request),
       );
     }
@@ -322,6 +378,7 @@ export async function POST(request: Request) {
           /* keep the generic status message */
         }
         detectionError = rejectionMessage;
+        detectionErrorCode = mapWorkerErrorToDetectionCode(rejectionMessage);
       } else {
         let payload: WorkerDetection | null = null;
         try {
@@ -334,6 +391,7 @@ export async function POST(request: Request) {
             payload && typeof payload === "object" && typeof payload.error === "string"
               ? payload.error
               : "Worker answered without a detection result";
+          detectionErrorCode = mapWorkerErrorToDetectionCode(detectionError);
         } else {
           detection = payload.detection ?? null;
           command = payload.command ?? null;
@@ -341,12 +399,18 @@ export async function POST(request: Request) {
           capturedHostKey = payload.hostKey ?? null;
           if (!detection) {
             detectionError = "Worker answered without a detection payload";
+            detectionErrorCode = mapWorkerErrorToDetectionCode(detectionError);
+          } else if (detection.vendorKey === "generic") {
+            // R50-T041: a completed detection that matched no certified
+            // family is a stable, non-failure situation — VENDOR_UNKNOWN.
+            detectionErrorCode = "VENDOR_UNKNOWN";
           }
         }
       }
     } catch {
       // Worker down / timeout — graceful degradation, never a 500.
       detectionError = "Worker service unreachable";
+      detectionErrorCode = mapWorkerErrorToDetectionCode(detectionError);
     }
   }
 
@@ -355,6 +419,12 @@ export async function POST(request: Request) {
   // retargets the probe (the connection was already bound in stage 5).
   const resolution = await resolveHostToIp(requestedHost);
   const resolvedManagementIp = resolution.mgmtIp;
+  // R50-T041: the resolution stage's stable code (IPV6_UNSUPPORTED for the
+  // IPv4-only policy refusals, DNS_NOT_FOUND / DNS_TIMEOUT / … otherwise).
+  const resolutionErrorCode = mapResolutionToContractCode(
+    resolution.mode,
+    resolution.resolutionError ?? null,
+  );
 
   /* ── Stage 7: preview response ──────────────────────────────────────── */
   // Audit every invocation (SUCCESS = the vendor stage produced a result,
@@ -384,13 +454,63 @@ export async function POST(request: Request) {
         probeCommand: command,
         credentialProfileId: profile?.id ?? null,
         hostKeyState,
+        // R50-T041/T042: the typed stage codes + the contract version ride
+        // in the audit trail next to the human-readable error.
+        detectionErrorCode,
+        resolutionErrorCode,
+        contractVersion: DETECTION_CONTRACT_VERSION,
         error: detectionError,
       }),
     },
   });
 
+  // R50-T040: the two stages are reported INDEPENDENTLY — each block owns
+  // its status + typed code, so a partial outcome (vendor matched, DNS
+  // failed; or detection failed, IP resolved) is never collapsed into one
+  // boolean. Both blocks are additive; the flat legacy fields below stay.
+  const vendorDetectionBlock = {
+    status: vendorStage,
+    outcome:
+      detection !== null && detection.vendorKey !== "generic"
+        ? ("matched" as const)
+        : detection !== null
+          ? ("generic" as const)
+          : vendorStage === "executed"
+            ? ("failed" as const)
+            : ("not-attempted" as const),
+    code: detectionErrorCode,
+    message: detectionError,
+    detection,
+    probeCommand: command,
+    latencyMs,
+    hostKeyState,
+    hostKeyCaptured: capturedHostKey,
+  };
+  const addressResolutionBlock = {
+    status: resolvedManagementIp
+      ? ("resolved" as const)
+      : resolution.mode === "refused-ipv6-literal" || resolution.mode === "refused-aaaa-only"
+        ? ("refused" as const)
+        : ("failed" as const),
+    code: resolutionErrorCode,
+    // Raw plane detail (DNS errno / the resolver's typed refusal) — the
+    // contract code above is the stable surface, this is the diagnostic.
+    message: resolution.resolutionError ?? null,
+    mgmtIp: resolvedManagementIp,
+    mode: resolution.mode,
+  };
+  // Top-level typed outcome: the vendor stage is the primary action; its
+  // code wins, the resolution stage's code is the fallback.
+  const errorCode: DetectionErrorCode | null = detectionErrorCode ?? resolutionErrorCode;
+
   return ok(
     {
+      // R50.4 contract stamp (R50-T042) + the two independent stage blocks
+      // (R50-T040) + the stable top-level code (R50-T041).
+      contractVersion: DETECTION_CONTRACT_VERSION,
+      vendorDetection: vendorDetectionBlock,
+      addressResolution: addressResolutionBlock,
+      errorCode,
       // R50-T011 naming + the original fields (UI compatibility).
       host: requestedHost,
       requestedHost,
@@ -410,6 +530,6 @@ export async function POST(request: Request) {
       hostKeyCaptured: capturedHostKey,
       error: detectionError,
     },
-    { correlationId },
+    { correlationId, contractVersion: DETECTION_CONTRACT_VERSION },
   );
 }

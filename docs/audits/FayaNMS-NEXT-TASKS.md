@@ -5,8 +5,8 @@ Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-P
 ## ACTIVE (only genuinely remaining work)
 
 ```text
-R50 Phase R50.4 — typed detection API contract (R50-T040..T042: stable per-stage error codes, stage status enums, contract versioning) — authorable, NEXT
-R50 Phase R50.5+ — fingerprint registry, UI two-stage flow, audit/telemetry, test matrix (R50-T050..T072)
+R50 Phase R50.5 — vendor fingerprinting hardening (R50-T050..T054: probe-handler registry, bounded/sanitized evidence, match reasons, realistic + negative fixtures) — authorable, NEXT
+R50 Phase R50.6 — UI/UX hardening (R50-T060..T072: explicit two-stage detection UI, fingerprint registry surface, telemetry; the R50.4 typed contract + stage blocks are the data layer it consumes)
 R50-T021/T022-follow-up/T025 — actor→credential-profile→scope authorization enrichment; worker-side resolved-address policy; explicit DNS-timeout budget
 R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (needs operator-side hardware or free DevNet AAA credentials; Step 0: PUBLIC DEMO DEVICE PLANE — docs/certification/PUBLIC-DEMO-DEVICES.md + `bun run demo:fleet`)
 R50-T100..T103 / OWNER-CI-001 — restore GitHub Actions runner capacity (infrastructure signature since run #34) and run the full gate on the release SHA
@@ -14,6 +14,12 @@ OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact 
 ```
 
 The remediation authoring backlog for the R34–R47 program is EMPTY: every code/doc task from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R47). AUTH-001 is FIXED end-to-end (R35 guard + R46 fleet-wide store); the rendering layer is continuously verified (R47 browser journeys + axe a11y). The R50 P0 (R50-001) and P1s R50-002/003/004/005/006 are FIXED on `z_ai_v2` (Phases R50.0/R50.1/R50.2/R50.3 below).
+
+---
+
+TASK-R50-PHASE-4 — R50-T040..T042 typed detection API contract ✊ → ✅ LANDED (2026-09-16, branch `z_ai_v2`)
+
+The detection API is now a VERSIONED CONTRACT: `src/lib/net/detection-contract.ts` (NEW) holds the closed registry `DETECTION_ERROR_CODES` — the roadmap's recommended 15 verbatim (`PROBE_NOT_AUTHORIZED` … `DEVICE_PROBE_RATE_LIMITED`) plus six documented additions (`SSH_UNREACHABLE`, `SSH_SESSION_FAILED`, `DNS_LOOKUP_FAILED`, `WORKER_UNAVAILABLE`, `WORKER_REJECTED`, `INVALID_BODY`) — with pure mappers so transport strings (`SSH_TIMEOUT`, `DETECT_NO_OUTPUT`, vault codes, …) and DNS errnos (`ENOTFOUND`, `EAI_AGAIN`, the resolver's IPv4-only refusals) NEVER leak as codes. R50-T040: every success envelope carries TWO INDEPENDENT stage blocks — `vendorDetection` (status/outcome/code/message/detection/hostKey) and `addressResolution` (resolved/refused/failed + code) — so a matched vendor with a failed DNS (or the inverse) is reported as what it is; all pre-R50.4 flat fields retained. R50-T042: `DETECTION_CONTRACT_VERSION=1` stamped in data AND meta on success AND on every refusal (new shared `failWithMeta`); route refusals renamed to registry codes (`CREDENTIAL_UNRESOLVED` 404, `CREDENTIAL_NOT_AUTHORIZED` 403, `PROBE_NOT_AUTHORIZED`); the audit trail records `detectionErrorCode`/`resolutionErrorCode`/`contractVersion` (R50-070 groundwork); the client `AutoDetectResult` carries the typed blocks (optional — older servers stay assignable) and operator toasts are keyed on the STABLE codes. LIVE E2E (real app + real worker + the in-repo IOS SSH harness persona via a TCP forwarder onto a non-loopback address): 9-case matrix — matched detection (`cisco`/high, real `show version` evidence) with capture-mode host key, TARGET_NOT_ALLOWED/CREDENTIAL_UNRESOLVED/CREDENTIAL_NOT_AUTHORIZED stamped refusals, SSH_CONNECT_TIMEOUT-with-resolved-IP (partial), SSH_UNREACHABLE+DNS_NOT_FOUND (two independent codes in one response), IPV6_UNSUPPORTED refusal, skipped-vendor resolution-only. Browser journey: Add-Device sheet auto-fills Vendor=Cisco Systems + Model=WS-C2960X-24TS-L from the typed blocks; the IPv6 refusal toast names the policy; 0 console errors. Tests: `tests/audit/r50-detection-contract.test.ts` (27 pins: registry closed set + roadmap-doc↔code bidirectional literals, full mapper matrices, partial-results structure, version stamping incl. error envelopes, legacy-field retention, client typed-code copy); suite 696 → 723 (723 pass / 12 skip / 0 fail, 3,883 expects), lint 0, tsc 0. Evidence: `FayaNMS-R50-T040-T042-Detection-Contract-2026-09-16.md`.
 
 ---
 
