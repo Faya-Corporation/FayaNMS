@@ -3063,3 +3063,15 @@ Work Log:
 
 Stage Summary:
 - R50.3 COMPLETE: the open P1 R50-004 is FIXED at the contract level — the management-address policy is an explicit, ADR-recorded, IPv4-only contract with typed IPV6_MANAGEMENT_ADDRESS_UNSUPPORTED refusals and deterministic A-RRset selection; the detect feature can no longer autofill a submit-doomed value; detection, trust, and target-policy surfaces are unchanged and re-verified live. R50 verdict scorecard: P0 R50-001 FIXED; P1 R50-002/003/004/005/006 FIXED. Remaining work is exclusively authorable R50.4+ phases and owner-side/lab-side items (CI-001, GOV-001, real-device certification) tracked in NEXT-TASKS.md.
+---
+Task ID: R50-phase-3-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 81e56f7 (R50.3 address policy) — honest evidence record
+
+Work Log:
+- Pushed 81e56f7; GitHub Actions API shows NO run created for the SHA (re-polled over ~4 min, head_sha 81e56f7 + full SHA → total_count 0). The repo's runs list ends at 35045950129 (27e0eea, 2026-09-16T01:55Z, completed failure, the documented no-runner signature): since 27e0eea, Actions has stopped CREATING runs entirely — the CI-001 infrastructure blockage has escalated from runs-without-runners to no runs at all (likely Actions capacity/billing; owner-side).
+- Every locally runnable gate was executed green on the exact final tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 696 pass + 12 skips (708 across 42 files; 3,741 expects) · drift guard "No difference detected." (fresh shadow on the live embedded PG) · certify.ts PASSED (5 flavors, CI env shape) · live browser verification (detect golden path, typed API contract, target-policy refusal, zero console errors). build:gate NOT RUN (sandbox prohibition; documented).
+
+Stage Summary:
+- TRUTHFUL CI STATE for 81e56f7: locally gate-proven; CI evidence BLOCKED at the platform level (no run created since 27e0eea — OWNER-CI-001 scope; the release gate remains the local loop until the owner restores Actions capacity).
+- R50.3: COMPLETE — the IPv4-only management-address policy (ADR), typed IPV6_MANAGEMENT_ADDRESS_UNSUPPORTED refusals, and deterministic A-RRset selection are landed, pinned, and live-verified; R50-004 joins R50-001/002/003/005/006 in the FIXED column.
