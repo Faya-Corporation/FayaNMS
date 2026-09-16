@@ -207,6 +207,96 @@ export function useCsvImportDevices() {
 }
 
 /**
+ * R50 — auto-detect a device's vendor (read-only SSH fingerprint via the
+ * worker) and map its hostname to a management address (DNS), for the
+ * Add/Edit device sheet. Returns the raw detection result; the form applies
+ * it (vendor select, mgmt IP, model) and toasts here.
+ */
+export interface AutoDetectPayload {
+  host: string;
+  credentialProfileId?: string;
+}
+
+export interface AutoDetectResult {
+  host: string;
+  mgmtIpResolution: {
+    mgmtIp: string | null;
+    mode: "ip-literal" | "dns-a" | "dns-aaaa" | "failed";
+    error: string | null;
+  };
+  vendorStage: "skipped-no-credential" | "executed";
+  detection: {
+    vendorKey: string;
+    confidence: "high" | "low";
+    model: string | null;
+    osVersion: string | null;
+    evidence: string[];
+  } | null;
+  detected: boolean;
+  probeCommand: string | null;
+  latencyMs: number | null;
+  hostKeyCaptured: { keyType: string; fingerprint: string } | null;
+  error: string | null;
+}
+
+export function useAutoDetectDevice() {
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: (payload: AutoDetectPayload) =>
+      apiFetch<AutoDetectResult>("/api/v1/devices/auto-detect", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (result) => {
+      if (result.error) {
+        toast({
+          title: "Auto-detect failed",
+          description: result.error,
+          variant: "destructive",
+        });
+        return;
+      }
+      const parts: string[] = [];
+      if (result.detected && result.detection) {
+        parts.push(`Vendor signature: ${result.detection.vendorKey}`);
+        if (result.detection.model) parts.push(`Model: ${result.detection.model}`);
+        if (result.detection.osVersion) parts.push(`OS: ${result.detection.osVersion}`);
+      } else if (result.vendorStage === "executed") {
+        parts.push("No vendor signature matched (generic)");
+      }
+      if (result.mgmtIpResolution.mgmtIp) {
+        parts.push(
+          `Management IP: ${result.mgmtIpResolution.mgmtIp} (${
+            result.mgmtIpResolution.mode === "ip-literal" ? "as entered" : "DNS"
+          })`,
+        );
+      } else {
+        parts.push(
+          `Hostname could not be resolved (${result.mgmtIpResolution.error ?? "DNS failure"})`,
+        );
+      }
+      if (result.hostKeyCaptured) {
+        parts.push(
+          "New SSH host key captured — verify it out-of-band and enroll it from the device page",
+        );
+      }
+      toast({
+        title: result.vendorStage === "executed" ? "Auto-detect complete" : "Hostname resolved",
+        description: parts.join(" · "),
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Auto-detect failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+/**
  * Probe a device through the simulation worker (mini-service, roadmap 2-b).
  * Resolves with reachable:false + "Worker service unreachable" when the
  * worker is not running — surfaced as a warning toast here; callers may

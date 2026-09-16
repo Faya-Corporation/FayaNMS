@@ -50,6 +50,18 @@
  *                              does not match the enrollment dies in the
  *                              handshake (SSH_HOSTKEY_MISMATCH), before the
  *                              first command is built.
+ *   POST /live/detect-vendor  → R50 vendor auto-detection for first contact
+ *                              and inventory hygiene: execs ONLY the
+ *                              read-only DETECT_COMMANDS (vendor-fingerprint.ts)
+ *                              over the real SSH transport and attributes the
+ *                              output to a certified vendor family (parse-
+ *                              VendorFingerprint). SAFE-001: pinned → fail-
+ *                              closed (mismatch dies pre-auth); unpinned is
+ *                              refused (SSH_HOSTKEY_UNENROLLED) UNLESS
+ *                              enrollHostKey=true — the audited first-contact
+ *                              capture that answers with the presented
+ *                              hostKey { keyType, fingerprint } for
+ *                              enrollment after out-of-band verification.
  *
  * Background loops (Task 10-a: both self-schedule with exponential backoff
  * and auto-recover while the backend is down):
@@ -83,7 +95,11 @@ import {
   LiveChangeError,
   parseChangePlan,
 } from "./live-change";
-import { SshError } from "./ssh-transport";
+import { SshError, sshExecText, type SshCredentials } from "./ssh-transport";
+import {
+  DETECT_COMMANDS,
+  parseVendorFingerprint,
+} from "./vendor-fingerprint";
 import { resolveVaultSecret, VaultError } from "./vault";
 import { startRunner, getCounters } from "./runner";
 import { startScheduler, getSchedulerState } from "./scheduler";
@@ -520,6 +536,150 @@ export async function handle(req: Request): Promise<Response> {
             vendor,
             host,
             adapter: LIVE_SSH_FLAVORS[vendor.trim().toLowerCase()]?.adapter,
+            error: `${e.code}: ${e.message}`,
+          });
+        }
+        throw e;
+      }
+    }
+
+    if (req.method === "POST" && url.pathname === "/live/detect-vendor") {
+      // R50 — vendor auto-detection. ONE read-only probe per candidate
+      // (DETECT_COMMANDS, vendor-fingerprint.ts — the complete allowlist);
+      // the first informative output is attributed to a certified vendor
+      // family. Credential block carries the vault REFERENCE only.
+      let body: Record<string, unknown> | undefined;
+      try {
+        body = (await req.json()) as Record<string, unknown>;
+      } catch {
+        return Response.json(
+          { ok: false, error: "Request body must be valid JSON" },
+          { status: 400 }
+        );
+      }
+      const host = typeof body?.host === "string" ? body.host.trim() : "";
+      if (!host) {
+        return Response.json(
+          { ok: false, error: "Body must be { host: string, credential: { username, port, secretRef }, sshHostKeyPin?: string, enrollHostKey?: boolean }" },
+          { status: 400 }
+        );
+      }
+      let credential: TargetCredential;
+      let hostKeyPin: string | null = null;
+      let enrollmentMode = false;
+      try {
+        const parsed = parseTargetCredential(body?.credential ?? null);
+        if (!parsed) {
+          throw new VaultError(
+            "CREDENTIAL_REF_INVALID",
+            "credential block { username, port, secretRef } is required",
+          );
+        }
+        credential = parsed;
+        // SAFE-001 — same host-key policy class as every other /live/*
+        // surface: pinned = verified pre-auth (mismatch dies in the
+        // handshake); unpinned = refused UNLESS the caller explicitly opts
+        // into the first-contact capture (enrollHostKey=true) — the ONLY
+        // unpinned mode on this endpoint, mirroring /simulate/connect.
+        hostKeyPin = parseHostKeyPin(body?.sshHostKeyPin ?? null);
+        enrollmentMode = body?.enrollHostKey === true;
+        if (!hostKeyPin && !enrollmentMode) {
+          throw new HostKeyPolicyError(
+            "SSH_HOSTKEY_UNENROLLED",
+            `no pinned SSH host key for ${host}:${credential.port} — vendor detection is refused (fail-closed). Enroll the host key first, or pass enrollHostKey=true for the audited first-contact capture.`,
+          );
+        }
+      } catch (e) {
+        if (e instanceof VaultError || e instanceof HostKeyPolicyError) {
+          return Response.json(
+            { ok: false, host, error: `${e.code}: ${e.message}` },
+            { status: 400 }
+          );
+        }
+        throw e;
+      }
+      try {
+        const password = await resolveVaultSecret(credential.secretRef);
+        let capturedHostKey: { keyType: string; fingerprint: string } | null = null;
+        const creds: SshCredentials = {
+          host,
+          port: credential.port,
+          username: credential.username,
+          password,
+          expectedFingerprint: hostKeyPin,
+          // Capture only when explicitly requested (and pin-less) — the
+          // presented key travels back for OUT-OF-BAND verification and
+          // enrollment; it is never stored worker-side.
+          onHostKey:
+            enrollmentMode && !hostKeyPin
+              ? (meta): void => {
+                  capturedHostKey = meta;
+                }
+              : undefined,
+        };
+        const startedAt = Date.now();
+        let output: string | null = null;
+        let usedCommand: string | null = null;
+        let lastError: string | null = null;
+        for (const command of DETECT_COMMANDS) {
+          try {
+            const out = await sshExecText(creds, command, 15000);
+            if (out.trim()) {
+              output = out;
+              usedCommand = command;
+              break;
+            }
+            // Empty stdout: this CLI does not speak the command — try the
+            // next read-only candidate (same connection would be nicer, but
+            // the exec-channel transport is one-command-per-connection by
+            // design; at most DETECT_COMMANDS.length handshakes).
+          } catch (e) {
+            if (e instanceof SshError) {
+              lastError = `${e.code}: ${e.message}`;
+              // Command-level rejection (EXEC_FAILED) → the CLI exists but
+              // does not know this command — try the next candidate.
+              // Connect/auth/policy-level failures (AUTH/UNREACHABLE/
+              // TIMEOUT/HOSTKEY_MISMATCH/SESSION) abort immediately: the
+              // target is not speaking SSH to us at all.
+              if (e.code !== "SSH_EXEC_FAILED") break;
+              continue;
+            }
+            throw e;
+          }
+        }
+        if (output === null) {
+          return Response.json({
+            ok: false,
+            host,
+            error:
+              lastError ??
+              "DETECT_NO_OUTPUT: no read-only probe produced output (does the CLI answer any of: " +
+                DETECT_COMMANDS.join(", ") +
+                "?)",
+          });
+        }
+        const detection = parseVendorFingerprint(output);
+        return Response.json({
+          ok: true,
+          host,
+          command: usedCommand,
+          latencyMs: Date.now() - startedAt,
+          detection,
+          ...(capturedHostKey ? { hostKey: capturedHostKey } : {}),
+        });
+      } catch (e) {
+        // Same failure contract as /live/fetch-config: VaultError = request
+        // problem (no connection attempted) → 400; SshError → 200 ok:false.
+        if (e instanceof VaultError) {
+          return Response.json(
+            { ok: false, host, error: `${e.code}: ${e.message}` },
+            { status: 400 }
+          );
+        }
+        if (e instanceof SshError) {
+          return Response.json({
+            ok: false,
+            host,
             error: `${e.code}: ${e.message}`,
           });
         }

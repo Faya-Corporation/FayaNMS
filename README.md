@@ -922,6 +922,37 @@ sign-in → dashboard golden path (`admin@faya.local`): Prisma queries
 flowing against PostgreSQL, authenticated AppShell rendered, zero
 console/page errors.
 
+**LANDED — R50 device auto-detection (user request): vendor fingerprint
+first (when reachable), then hostname → management-IP mapping.**
+Adding a device no longer requires knowing the vendor up front. The
+Add/Edit device sheet carries a "Detect vendor & IP" action backed by a
+new `POST /api/v1/devices/auto-detect` route and a new worker surface
+`POST /live/detect-vendor`:
+(1) VENDOR FINGERPRINT — the worker execs ONLY the pinned read-only
+probe list (`show version` → `show system info` → `get system status`,
+`mini-services/worker/vendor-fingerprint.ts` DETECT_COMMANDS) over the
+real SSH transport and attributes the output to a certified vendor
+family (cisco / fortinet / hpe / juniper / palo / sophos / generic) with
+best-effort model + OS extraction and bounded evidence; the candidate
+loop retries the next probe on command-level rejection (SSH_EXEC_FAILED)
+and aborts on connect/auth/policy failures. Governance tests pin the
+allowlist, scan the whole surface for mutation-shaped literals (the
+shared/lab devices are never touched by anything but reads), and hold
+the endpoint to the SAME SAFE-001 host-key policy class: pinned →
+verified pre-auth; unpinned → refused (SSH_HOSTKEY_UNENROLLED) unless
+the caller opts into the audited first-contact capture (enrollHostKey)
+that answers with the presented host key for out-of-band enrollment.
+(2) HOSTNAME MAPPING — `src/lib/dns/resolve-host.ts` maps the hostname to
+its management address (IP literals pass through; DNS A with AAAA
+fallback) as a typed, never-throwing result. The API route is a pure
+form helper — it NEVER mutates the inventory (test-pinned) — applies the
+result on submit, degrades gracefully when the worker is down, and
+audits every invocation (DEVICE_VENDOR_AUTODETECTED). Coverage honesty:
+Sophos SFOS has no read-only SSH status command BY DESIGN (WebAPI
+vendor, CERT-006) — SSH detection answers "generic" for it. Browser
+verified end-to-end: localhost → 127.0.0.1 auto-fill in the sheet, and
+the typed worker error surfaced verbatim in the operator toast.
+
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
 not); the demo dataset is never committed (rebuild via the seed above — it runs

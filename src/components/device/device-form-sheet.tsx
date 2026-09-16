@@ -8,7 +8,7 @@ import { LoaderCircle } from "lucide-react";
 import { isLiveWebApiVendor } from "@/lib/devices/live-transport";
 
 import { useMeta } from "@/hooks/api/use-meta";
-import { useCreateDevice, useUpdateDevice } from "@/hooks/api/use-devices";
+import { useCreateDevice, useUpdateDevice, useAutoDetectDevice } from "@/hooks/api/use-devices";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -98,6 +98,7 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
   const meta = useMeta();
   const createDevice = useCreateDevice();
   const updateDevice = useUpdateDevice();
+  const autoDetect = useAutoDetectDevice();
   const setActiveView = useNavigationStore((state) => state.setActiveView);
 
   const editing = Boolean(device);
@@ -141,6 +142,9 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
     name: "credentialProfileId",
   });
   const isLive = dataSource === "LIVE_SSH";
+  // R50 — compiler-safe field subscriptions for the auto-detect row
+  // (form.watch() in render is the incompatible-library pattern).
+  const hostnameValue = useWatch({ control: form.control, name: "hostname" });
 
   // Reset the form whenever the sheet opens (or the edited device changes).
   useEffect(() => {
@@ -150,6 +154,41 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
   }, [open, defaultValues, form]);
 
   const pending = createDevice.isPending || updateDevice.isPending;
+
+  /**
+   * R50 — auto-detect: FIRST fingerprint the vendor over read-only SSH
+   * (when a credential profile is selected), THEN map the hostname to its
+   * management address. Fills vendor (create mode — vendor is locked on
+   * edit), management IP and model; the operator reviews before submit.
+   */
+  const onAutoDetect = () => {
+    const host = (form.getValues("hostname") ?? "").trim();
+    if (!host) return;
+    const credentialProfileId = form.getValues("credentialProfileId") || undefined;
+    autoDetect.mutate(
+      { host, credentialProfileId },
+      {
+        onSuccess: (result) => {
+          if (result.mgmtIpResolution.mgmtIp) {
+            form.setValue("mgmtIp", result.mgmtIpResolution.mgmtIp, { shouldValidate: true });
+          }
+          if (result.detected && result.detection) {
+            if (result.detection.model) {
+              form.setValue("model", result.detection.model);
+            }
+            if (!editing) {
+              const vendor = (meta.data?.vendors ?? []).find(
+                (entry) => entry.key === result.detection?.vendorKey,
+              );
+              if (vendor) {
+                form.setValue("vendorId", vendor.id, { shouldValidate: true });
+              }
+            }
+          }
+        },
+      },
+    );
+  };
 
   const onSubmit = (values: FormValues) => {
     if (editing && device) {
@@ -285,6 +324,28 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
             {form.formState.errors.mgmtIp && (
               <p className="text-xs text-danger">{form.formState.errors.mgmtIp.message}</p>
             )}
+            <div className="flex items-center gap-2">
+              <Button
+                aria-label="Detect vendor and management IP"
+                disabled={autoDetect.isPending || !hostnameValue.trim()}
+                onClick={onAutoDetect}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {autoDetect.isPending && (
+                  <LoaderCircle aria-hidden="true" className="animate-spin" />
+                )}
+                Detect vendor &amp; IP
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Read-only SSH fingerprint via the worker{": "}
+                {credentialProfileId
+                  ? "uses the selected credential profile"
+                  : "select a credential profile to fingerprint the vendor"}
+                , then maps the hostname to its management address (DNS).
+              </p>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
