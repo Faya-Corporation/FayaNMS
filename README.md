@@ -105,7 +105,7 @@ and the seed refuses to wipe a production database).
 
 | Command | Purpose |
 |---|---|
-| `bun run dev` | Next dev server on port 3000 (logs to `dev.log`) |
+| `bun run dev` | Next dev server on port 3000 (logs to `dev.log`). Self-aligns `DATABASE_URL` before boot: a missing or SQLite-era `file:` value is replaced with the documented embedded-PG URL; a real `postgres://`/`postgresql://` value (CI, operator-provided) is always respected — mirrors the `tests/_setup.ts` preload semantics |
 | `bun run lint` | ESLint |
 | `bunx tsc --noEmit` | Type check |
 | `bun run db:deploy` | Apply the committed migration history (`prisma/migrations`, `prisma migrate deploy`) — the production provisioning path |
@@ -897,6 +897,30 @@ itself is blocklisted; a governance test parses `ci.yml` and asserts EVERY
 committed secret value is REFUSED by production validation, so a future
 cannot silently reintroduce the footgun (a freshly generated secret still
 passes — validation is not over-tightened).
+
+**LANDED — R49 dev-runtime hardening (user report "preview view not
+working"): DATABASE_URL self-alignment in the dev script + edge-safe
+instrumentation.**
+Root cause of the broken preview: shells in this environment export a
+stale SQLite-era `DATABASE_URL=file:…` (the sandbox boot script itself
+writes such a value into `.env` on every boot). `next dev` never
+overrides an already-present variable from `.env`, so the stale `file:`
+URL reached the Prisma client and EVERY datasource operation failed
+validation ("the URL must start with the protocol `postgresql://`") —
+sign-in 401'd on a healthy database. (1) The `dev` script now aligns the
+variable before boot: missing or `file:`-shaped values are replaced with
+the documented embedded-PG URL, real `postgres(ql)://` values (CI,
+operators) are always respected — the exact `tests/_setup.ts` preload
+semantics, extended from the test process to the dev server. (2) A
+second defect surfaced during the diagnosis: the edge bundle of
+`src/instrumentation.ts` statically pulled `security-policy →
+service-jwt → node:crypto` into the edge sandbox (Turbopack
+"Ecmascript file had an error" on every dev boot); `register()` now
+gates the dynamic import on `NEXT_RUNTIME === "nodejs"` (statically
+eliminated in the edge build). Verified end-to-end with the real
+sign-in → dashboard golden path (`admin@faya.local`): Prisma queries
+flowing against PostgreSQL, authenticated AppShell rendered, zero
+console/page errors.
 
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
