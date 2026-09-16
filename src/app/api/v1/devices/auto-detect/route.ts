@@ -9,11 +9,12 @@ import {
 } from "../../_lib/api";
 import { AuthError, requirePermission } from "@/lib/auth/session";
 import { resolveHostKeyTrustState } from "@/lib/ssh/host-keys";
-import { resolveHostToIp } from "@/lib/dns/resolve-host";
+import { resolveHostToIp, type HostResolutionMode } from "@/lib/dns/resolve-host";
 import {
   DETECTION_CONTRACT_VERSION,
   mapResolutionToContractCode,
   mapWorkerErrorToDetectionCode,
+  resolveRequestedStages,
   type DetectionErrorCode,
 } from "@/lib/net/detection-contract";
 import { evaluateTargetPolicy } from "@/lib/net/target-policy";
@@ -127,7 +128,25 @@ const bodySchema = z.object({
     ),
   /** Optional SSH credential profile (SSH_PASSWORD) for the live probe. */
   credentialProfileId: z.string().trim().max(64).optional(),
+  /**
+   * R50-T064 — stage-specific retry: name the stages to execute. Omitted
+   * = both (the historical full run). A stage NOT named is reported as
+   * `skipped-not-requested` (never a failure) and performs NO work — an
+   * address-only retry must not re-probe the device over SSH.
+   */
+  stages: z
+    .array(z.enum(["vendor", "address"]))
+    .min(1, "stages must name at least one stage")
+    .max(2)
+    .optional(),
 });
+
+/** The resolver result widened with the R50-T064 not-requested marker. */
+interface RouteResolution {
+  mgmtIp: string | null;
+  mode: HostResolutionMode | "skipped-not-requested";
+  resolutionError?: string;
+}
 
 interface WorkerDetection {
   ok: boolean;
@@ -191,6 +210,8 @@ export async function POST(request: Request) {
   // dials; resolvedManagementIp is the informational DNS mapping (stage 7).
   const requestedHost = parsed.data.host;
   const { credentialProfileId } = parsed.data;
+  // R50-T064: which of the two stages this invocation actually executes.
+  const runStages = resolveRequestedStages(parsed.data.stages);
 
   /* ── Stage 2: target policy (R50-T022/T023 — refuse special classes) ── */
   const targetPolicy = evaluateTargetPolicy(requestedHost);
@@ -248,7 +269,9 @@ export async function POST(request: Request) {
     secretRef: string;
   } | null = null;
 
-  if (credentialProfileId) {
+  if (credentialProfileId && runStages.vendor) {
+    // (R50-T064: the credential plane exists ONLY for the vendor probe —
+    // an address-only retry is not asked to validate it.)
     profile = await db.credentialProfile.findUnique({
       where: { id: credentialProfileId },
       select: { id: true, type: true, username: true, port: true, secretRef: true },
@@ -287,7 +310,8 @@ export async function POST(request: Request) {
   let command: string | null = null;
   let latencyMs: number | null = null;
   let capturedHostKey: { keyType: string; fingerprint: string } | null = null;
-  let vendorStage: "skipped-no-credential" | "executed" = "skipped-no-credential";
+  let vendorStage: "skipped-no-credential" | "executed" | "skipped-not-requested" =
+    runStages.vendor ? "skipped-no-credential" : "skipped-not-requested";
   // R50-T070 groundwork: the audit records which trust path the probe took.
   let hostKeyState: "not-probed" | "pinned" | "capture-requested" = "not-probed";
 
@@ -421,14 +445,25 @@ export async function POST(request: Request) {
   /* ── Stage 6: hostname → management address (ONCE, informational) ───── */
   // R50-T013: resolved exactly once, AFTER detection; the result never
   // retargets the probe (the connection was already bound in stage 5).
-  const resolution = await resolveHostToIp(requestedHost);
+  // R50-T064: an address-only selection skips the probe above; a
+  // vendor-only selection skips THIS — the stub is reported as
+  // skipped-not-requested, never as a DNS failure.
+  let resolution: RouteResolution;
+  let resolutionErrorCode: DetectionErrorCode | null;
+  if (runStages.address) {
+    const resolved = await resolveHostToIp(requestedHost);
+    resolution = resolved;
+    // R50-T041: the resolution stage's stable code (IPV6_UNSUPPORTED for
+    // the IPv4-only policy refusals, DNS_NOT_FOUND / DNS_TIMEOUT / …).
+    resolutionErrorCode = mapResolutionToContractCode(
+      resolved.mode,
+      resolved.resolutionError ?? null,
+    );
+  } else {
+    resolution = { mgmtIp: null, mode: "skipped-not-requested" };
+    resolutionErrorCode = null;
+  }
   const resolvedManagementIp = resolution.mgmtIp;
-  // R50-T041: the resolution stage's stable code (IPV6_UNSUPPORTED for the
-  // IPv4-only policy refusals, DNS_NOT_FOUND / DNS_TIMEOUT / … otherwise).
-  const resolutionErrorCode = mapResolutionToContractCode(
-    resolution.mode,
-    resolution.resolutionError ?? null,
-  );
 
   /* ── Stage 7: preview response ──────────────────────────────────────── */
   // Audit every invocation (SUCCESS = the vendor stage produced a result,
@@ -451,6 +486,8 @@ export async function POST(request: Request) {
         resolutionMode: resolution.mode,
         resolutionError: resolution.resolutionError ?? null,
         vendorStage,
+        // R50-T064 groundwork: record what the invocation ASKED to run.
+        requestedStages: parsed.data.stages ?? null,
         vendorKey: detection?.vendorKey ?? null,
         confidence: detection?.confidence ?? null,
         model: detection?.model ?? null,
@@ -477,6 +514,8 @@ export async function POST(request: Request) {
   // failed; or detection failed, IP resolved) is never collapsed into one
   // boolean. Both blocks are additive; the flat legacy fields below stay.
   const vendorDetectionBlock = {
+    // R50-T064: "skipped-not-requested" joins the status union — a stage
+    // the caller did not request is a no-op, not a failure.
     status: vendorStage,
     outcome:
       detection !== null && detection.vendorKey !== "generic"
@@ -495,11 +534,13 @@ export async function POST(request: Request) {
     hostKeyCaptured: capturedHostKey,
   };
   const addressResolutionBlock = {
-    status: resolvedManagementIp
-      ? ("resolved" as const)
-      : resolution.mode === "refused-ipv6-literal" || resolution.mode === "refused-aaaa-only"
-        ? ("refused" as const)
-        : ("failed" as const),
+    status: resolution.mode === "skipped-not-requested"
+      ? ("skipped-not-requested" as const)
+      : resolvedManagementIp
+        ? ("resolved" as const)
+        : resolution.mode === "refused-ipv6-literal" || resolution.mode === "refused-aaaa-only"
+          ? ("refused" as const)
+          : ("failed" as const),
     code: resolutionErrorCode,
     // Raw plane detail (DNS errno / the resolver's typed refusal) — the
     // contract code above is the stable surface, this is the diagnostic.

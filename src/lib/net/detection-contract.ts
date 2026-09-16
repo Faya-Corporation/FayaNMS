@@ -160,3 +160,37 @@ export function mapResolutionToContractCode(
       return "DNS_LOOKUP_FAILED";
   }
 }
+
+/* ───────────────── Stage selection (R50.6 / R50-T064) ───────────────── */
+
+/**
+ * The two independent detection stages, named for stage-specific retry.
+ * "vendor" = credential → host-key trust → worker SSH fingerprint probe;
+ * "address" = the informational hostname → IPv4 management-address DNS
+ * mapping. A retry MUST be able to re-run ONE stage without re-probing
+ * the device over SSH (an address-only retry that redials the device is
+ * not a retry — it is a second probe).
+ */
+export const DETECTION_STAGES = ["vendor", "address"] as const;
+export type DetectionStage = (typeof DETECTION_STAGES)[number];
+
+/**
+ * R50-T064 — normalize the caller's optional stage selection into the two
+ * execution booleans. Omitted/undefined selection = BOTH stages (the
+ * historical full run); an explicit selection runs exactly the named
+ * stages and reports the others as `skipped-not-requested` — never as a
+ * failure, so a partial retry cannot masquerade as a partial outage.
+ * Pure + total: unknown stage names cannot reach this function (the route
+ * schema validates the enum first).
+ */
+export function resolveRequestedStages(
+  requested?: readonly DetectionStage[],
+): { vendor: boolean; address: boolean } {
+  if (!requested || requested.length === 0) {
+    return { vendor: true, address: true };
+  }
+  return {
+    vendor: requested.includes("vendor"),
+    address: requested.includes("address"),
+  };
+}

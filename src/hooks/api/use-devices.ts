@@ -215,6 +215,12 @@ export function useCsvImportDevices() {
 export interface AutoDetectPayload {
   host: string;
   credentialProfileId?: string;
+  /**
+   * R50.6 (R50-T064) — stage-specific retry: run only the named stages.
+   * Omitted = both (the historical full run). Unrequested stages come
+   * back as `skipped-not-requested` and perform NO device work.
+   */
+  stages?: Array<"vendor" | "address">;
 }
 
 export interface AutoDetectResult {
@@ -230,16 +236,18 @@ export interface AutoDetectResult {
     mgmtIp: string | null;
     // R50-T031: the AAAA/IPv6 success modes are gone — the resolver
     // refuses them under the IPv4-only inventory policy
-    // (ADR-management-address-policy).
+    // (ADR-management-address-policy). R50-T064: a stage the caller did
+    // not request reports "skipped-not-requested" (never a failure).
     mode:
       | "ip-literal"
       | "dns-a"
       | "refused-ipv6-literal"
       | "refused-aaaa-only"
-      | "failed";
+      | "failed"
+      | "skipped-not-requested";
     error: string | null;
   };
-  vendorStage: "skipped-no-credential" | "executed";
+  vendorStage: "skipped-no-credential" | "executed" | "skipped-not-requested";
   hostKeyState?: "not-probed" | "pinned" | "capture-requested";
   detection: {
     vendorKey: string;
@@ -263,7 +271,7 @@ export interface AutoDetectResult {
   // R50-T040: the two independent stage blocks — partial results are
   // reported per stage, never collapsed into one boolean.
   vendorDetection?: {
-    status: "skipped-no-credential" | "executed";
+    status: "skipped-no-credential" | "executed" | "skipped-not-requested";
     outcome: "matched" | "generic" | "failed" | "not-attempted";
     code: string | null;
     message: string | null;
@@ -274,7 +282,7 @@ export interface AutoDetectResult {
     hostKeyCaptured: AutoDetectResult["hostKeyCaptured"];
   };
   addressResolution?: {
-    status: "resolved" | "refused" | "failed";
+    status: "resolved" | "refused" | "failed" | "skipped-not-requested";
     code: string | null;
     message: string | null;
     mgmtIp: string | null;
@@ -345,22 +353,34 @@ export function useAutoDetectDevice() {
         return;
       }
       const parts: string[] = [];
-      if (result.detected && result.detection) {
-        parts.push(`Vendor signature: ${result.detection.vendorKey}`);
-        if (result.detection.model) parts.push(`Model: ${result.detection.model}`);
-        if (result.detection.osVersion) parts.push(`OS: ${result.detection.osVersion}`);
-        // R50-T052: the deterministic matched-signature ids — the summary
-        // names WHY the vendor was claimed, not just which one won.
-        if (result.detection.matchReasons?.length) {
-          parts.push(`Matched: ${result.detection.matchReasons.join(", ")}`);
-        }
-      } else if (result.vendorStage === "executed") {
-        parts.push("No vendor signature matched (generic)");
-        // R50-T054: banner/hostname near-misses are surfaced so a generic
-        // answer with "cisco.vendor-name" is visibly different from one
-        // with nothing informative at all.
-        if (result.detection?.softMatches?.length) {
-          parts.push(`Unconfirmed vendor tokens: ${result.detection.softMatches.join(", ")}`);
+      // R50-T064: a skipped-not-requested stage contributes NOTHING to
+      // the summary — an address-only retry must not report a bogus DNS
+      // failure, and a vendor-only retry must not report "no signature
+      // matched" for a probe that never ran.
+      const vendorRan = result.vendorDetection
+        ? result.vendorDetection.status !== "skipped-not-requested"
+        : true;
+      const addressRan = result.addressResolution
+        ? result.addressResolution.status !== "skipped-not-requested"
+        : true;
+      if (vendorRan) {
+        if (result.detected && result.detection) {
+          parts.push(`Vendor signature: ${result.detection.vendorKey}`);
+          if (result.detection.model) parts.push(`Model: ${result.detection.model}`);
+          if (result.detection.osVersion) parts.push(`OS: ${result.detection.osVersion}`);
+          // R50-T052: the deterministic matched-signature ids — the summary
+          // names WHY the vendor was claimed, not just which one won.
+          if (result.detection.matchReasons?.length) {
+            parts.push(`Matched: ${result.detection.matchReasons.join(", ")}`);
+          }
+        } else if (result.vendorStage === "executed") {
+          parts.push("No vendor signature matched (generic)");
+          // R50-T054: banner/hostname near-misses are surfaced so a generic
+          // answer with "cisco.vendor-name" is visibly different from one
+          // with nothing informative at all.
+          if (result.detection?.softMatches?.length) {
+            parts.push(`Unconfirmed vendor tokens: ${result.detection.softMatches.join(", ")}`);
+          }
         }
       }
       if (result.mgmtIpResolution.mgmtIp) {
@@ -369,7 +389,7 @@ export function useAutoDetectDevice() {
             result.mgmtIpResolution.mode === "ip-literal" ? "as entered" : "DNS"
           })`,
         );
-      } else if (result.addressResolution?.code) {
+      } else if (addressRan && result.addressResolution?.code) {
         // R50-T040/T041: the typed resolution block decides the copy when
         // present; the literal-based branches below are the legacy fallback.
         const hint = RESOLUTION_CODE_OPERATOR_HINTS[result.addressResolution.code];
@@ -380,6 +400,7 @@ export function useAutoDetectDevice() {
             })`,
         );
       } else if (
+        addressRan &&
         result.mgmtIpResolution.error === "IPV6_MANAGEMENT_ADDRESS_UNSUPPORTED"
       ) {
         // R50-T031 — the typed IPv6 policy refusal: name the contract, not
@@ -387,7 +408,7 @@ export function useAutoDetectDevice() {
         parts.push(
           "Management IP not mapped: the target advertises IPv6 only — the device inventory requires an IPv4 (A record / IPv4 literal) management address",
         );
-      } else {
+      } else if (addressRan) {
         parts.push(
           `Hostname could not be resolved (${result.mgmtIpResolution.error ?? "DNS failure"})`,
         );
@@ -397,8 +418,17 @@ export function useAutoDetectDevice() {
           "New SSH host key captured — verify it out-of-band and enroll it from the device page",
         );
       }
+      // R50-T064: the title names what RAN, not what was skipped.
+      const title =
+        vendorRan && addressRan
+          ? result.vendorStage === "executed"
+            ? "Auto-detect complete"
+            : "Hostname resolved"
+          : vendorRan
+            ? "Vendor detection complete"
+            : "Address resolution complete";
       toast({
-        title: result.vendorStage === "executed" ? "Auto-detect complete" : "Hostname resolved",
+        title,
         description: parts.join(" · "),
       });
     },

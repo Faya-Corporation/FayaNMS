@@ -219,10 +219,29 @@ describe("R50-T040 — partial results: independent stage blocks", () => {
   test("the resolution stage runs unconditionally AFTER detection (partial success structure)", () => {
     // The DNS stage is not gated on the detection stage's success: a
     // detection transport failure must still answer the resolution block.
+    // R50.6/T064: the ONLY gate is the caller's stage SELECTION
+    // (resolveRequestedStages) — never the detection stage's outcome.
     const detectIdx = ROUTE.indexOf("let detection: WorkerDetection[\"detection\"] | null = null;");
-    const resolveIdx = ROUTE.indexOf("const resolution = await resolveHostToIp(requestedHost);");
+    const resolveIdx = ROUTE.indexOf("const resolved = await resolveHostToIp(requestedHost);");
     expect(detectIdx).toBeGreaterThan(-1);
     expect(resolveIdx).toBeGreaterThan(detectIdx);
+    expect(ROUTE).toContain("if (runStages.address) {");
+    expect(ROUTE).toContain("resolveRequestedStages(parsed.data.stages)");
+  });
+
+  test("R50-T064 — the route schema accepts the stage-specific retry filter", () => {
+    expect(ROUTE).toContain('stages: z');
+    expect(ROUTE).toContain('.array(z.enum(["vendor", "address"]))');
+    // an empty selection cannot reach the handler
+    expect(ROUTE).toContain('.min(1, "stages must name at least one stage")');
+  });
+
+  test("R50-T064 — a skipped stage is a no-op answer, never a failure", () => {
+    // the address block reports skipped-not-requested for a vendor-only run
+    expect(ROUTE).toContain('resolution.mode === "skipped-not-requested"');
+    expect(ROUTE).toContain('("skipped-not-requested" as const)');
+    // and the vendor stage's skip literal exists alongside the legacy one
+    expect(ROUTE).toContain('"skipped-not-requested"');
   });
 
   test("a completed detection with no certified family answers VENDOR_UNKNOWN, not failure", () => {

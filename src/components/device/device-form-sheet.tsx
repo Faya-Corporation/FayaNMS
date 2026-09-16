@@ -1,14 +1,35 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { useEffect, useMemo, useState } from "react";
+import { useForm, useWatch, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { LoaderCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleSlash,
+  KeyRound,
+  LoaderCircle,
+  MinusCircle,
+  RefreshCw,
+  XCircle,
+} from "lucide-react";
 import { isLiveWebApiVendor } from "@/lib/devices/live-transport";
+import {
+  buildAddressStageRow,
+  buildHostKeyPanel,
+  buildVendorStageRow,
+  decideApply,
+  type DetectableField,
+  type StageRow,
+} from "@/lib/devices/detection-ui";
 
 import { useMeta } from "@/hooks/api/use-meta";
-import { useCreateDevice, useUpdateDevice, useAutoDetectDevice } from "@/hooks/api/use-devices";
+import {
+  useCreateDevice,
+  useUpdateDevice,
+  useAutoDetectDevice,
+  type AutoDetectResult,
+} from "@/hooks/api/use-devices";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -75,6 +96,373 @@ const formSchema = z
 
 type FormValues = z.infer<typeof formSchema>;
 
+/** R50-T062 — a detected value held for the operator's explicit pick. */
+interface PendingPick {
+  field: DetectableField;
+  value: string;
+  label: string;
+}
+
+const PICK_FIELD_LABELS: Record<DetectableField, string> = {
+  vendorId: "Vendor",
+  model: "Model",
+  mgmtIp: "Management IP",
+};
+
+/** R50-T060 — the icon speaks the row state at a glance. */
+function StageRowIcon({ row }: { row: StageRow }) {
+  switch (row.state) {
+    case "running":
+      return <LoaderCircle aria-hidden="true" className="size-4 shrink-0 animate-spin text-muted-foreground" />;
+    case "matched":
+    case "resolved":
+      return <CheckCircle2 aria-hidden="true" className="size-4 shrink-0 text-success" />;
+    case "generic":
+      return <MinusCircle aria-hidden="true" className="size-4 shrink-0 text-warning" />;
+    case "failed":
+    case "refused":
+      return <XCircle aria-hidden="true" className="size-4 shrink-0 text-danger" />;
+    default:
+      return <CircleSlash aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />;
+  }
+}
+
+/** One explicit stage row (T060) with its retry affordance (T064). */
+function StageRowView({
+  onRetry,
+  retryDisabled,
+  row,
+}: {
+  row: StageRow;
+  onRetry: () => void;
+  retryDisabled: boolean;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <div className="flex min-w-0 items-start gap-2">
+        <span className="mt-0.5">
+          <StageRowIcon row={row} />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium">{row.headline}</p>
+          {row.detail && (
+            <p className="text-xs break-words text-muted-foreground">{row.detail}</p>
+          )}
+          {row.code && (
+            <p className="font-tech text-[10px] tracking-wide text-muted-foreground">
+              {row.code}
+            </p>
+          )}
+        </div>
+      </div>
+      {row.retryable && (
+        <Button
+          aria-label={`Retry ${row.stage === "vendor" ? "vendor detection" : "address resolution"}`}
+          className="h-7 shrink-0 gap-1 px-2 text-xs"
+          disabled={retryDisabled}
+          onClick={onRetry}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <RefreshCw aria-hidden="true" className="size-3" />
+          Retry
+        </Button>
+      )}
+    </div>
+  );
+}
+
+
+/**
+ * R50.6 — the detection section of the Add/Edit device sheet: the Detect
+ * button, the two explicit stage rows (T060/T061), the first-contact
+ * host-key disclosure (T063), the explicit Use / Keep-mine picks (T062)
+ * and the per-stage retries (T064).
+ *
+ * It is rendered INSIDE the sheet content on purpose: Radix unmounts that
+ * subtree when the sheet closes, so every open session starts with fresh
+ * detection state — no effect-driven reset (which the react-hooks
+ * set-state-in-effect rule — and honestly, the invariant — forbid).
+ * Form writes go through the shared RHF instance via `form`.
+ */
+function DetectionSection({
+  editing,
+  form,
+  vendors,
+}: {
+  editing: boolean;
+  form: UseFormReturn<FormValues>;
+  vendors: Array<{ id: string; key: string; name: string }>;
+}) {
+  const autoDetect = useAutoDetectDevice();
+  // Compiler-safe field subscriptions (form.watch() in render is the
+  // incompatible-library pattern).
+  const hostnameValue = useWatch({ control: form.control, name: "hostname" });
+  const credentialProfileId = useWatch({
+    control: form.control,
+    name: "credentialProfileId",
+  });
+
+  /** The last detection response — the two stage blocks drive the rows. */
+  const [detectionResult, setDetectionResult] = useState<AutoDetectResult | null>(null);
+  /** Which stages the CURRENT/last invocation was asked to run (T064). */
+  const [ranStages, setRanStages] = useState<{ vendor: boolean; address: boolean }>({
+    vendor: false,
+    address: false,
+  });
+  /** T062 — detected values awaiting the operator's explicit Use / Keep. */
+  const [pendingPicks, setPendingPicks] = useState<PendingPick[]>([]);
+
+  /**
+   * R50 — auto-detect: FIRST fingerprint the vendor over read-only SSH
+   * (when a credential profile is selected), THEN map the hostname to its
+   * management address. R50.6 hardening:
+   *  - T060/T061: results are rendered per stage in the panel — partial
+   *    success stays visible, nothing is collapsed into one toast.
+   *  - T062: the result reaches the form ONLY through decideApply — an
+   *    empty field is filled, a field the operator typed is staged for an
+   *    explicit Use / Keep-mine pick (never silently overwritten).
+   *  - T064: `stages` re-runs exactly one stage (an address-only retry
+   *    does NOT re-probe the device over SSH).
+   */
+  const runDetection = (stages?: Array<"vendor" | "address">) => {
+    const host = (form.getValues("hostname") ?? "").trim();
+    if (!host) return;
+    const credentialProfileId = form.getValues("credentialProfileId") || undefined;
+    setRanStages({
+      vendor: stages ? stages.includes("vendor") : true,
+      address: stages ? stages.includes("address") : true,
+    });
+    autoDetect.mutate(
+      stages ? { host, credentialProfileId, stages } : { host, credentialProfileId },
+      {
+        onSuccess: (result) => {
+          setDetectionResult(result);
+          // T062 — explicit replace/keep semantics, applied per field.
+          const picks: PendingPick[] = [];
+          const consider = (
+            field: DetectableField,
+            currentValue: string | undefined | null,
+            value: string,
+            label: string,
+          ) => {
+            const decision = decideApply(currentValue, { field, value, label });
+            if (decision.action === "apply") {
+              form.setValue(field, decision.value, { shouldValidate: true });
+            } else if (decision.action === "stage") {
+              picks.push({ field, value: decision.value, label: decision.label });
+            }
+          };
+          const detectedVendor =
+            result.detected && result.detection
+              ? vendors.find((v) => v.key === result.detection?.vendorKey)
+              : undefined;
+          // Vendor + model are create-flow concerns: on edit the vendor
+          // select is locked and the edit submit does not persist model,
+          // so a pick there would silently do nothing on save.
+          if (!editing && detectedVendor) {
+            consider(
+              "vendorId",
+              form.getValues("vendorId"),
+              detectedVendor.id,
+              detectedVendor.name,
+            );
+          }
+          if (!editing && result.detection?.model) {
+            consider("model", form.getValues("model"), result.detection.model, "model");
+          }
+          const detectedIp =
+            result.addressResolution?.mgmtIp ?? result.mgmtIpResolution.mgmtIp;
+          if (detectedIp) {
+            consider("mgmtIp", form.getValues("mgmtIp"), detectedIp, "management IP");
+          }
+          setPendingPicks(picks);
+        },
+      },
+    );
+  };
+
+  /** T062 — the operator accepted a staged value. */
+  const applyPick = (pick: PendingPick) => {
+    form.setValue(pick.field, pick.value, { shouldValidate: true });
+    setPendingPicks((current) => current.filter((entry) => entry !== pick));
+  };
+
+  /** T062 — the operator kept their own value. */
+  const discardPick = (pick: PendingPick) => {
+    setPendingPicks((current) => current.filter((entry) => entry !== pick));
+  };
+
+  // R50.6 panel derivations (pure layer, pinned by the audit suite).
+  const vendorStageRow = buildVendorStageRow(
+    detectionResult?.vendorDetection ?? null,
+    autoDetect.isPending && ranStages.vendor,
+  );
+  const addressStageRow = buildAddressStageRow(
+    detectionResult?.addressResolution ?? null,
+    autoDetect.isPending && ranStages.address,
+  );
+  const hostKeyPanel = buildHostKeyPanel(
+    detectionResult?.vendorDetection ?? null,
+    detectionResult?.requestedHost ?? detectionResult?.host ?? null,
+    detectionResult?.connectionAddress ?? null,
+  );
+  const retryDisabled = autoDetect.isPending || !hostnameValue.trim();
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <Button
+          aria-label="Detect vendor and management IP"
+          disabled={autoDetect.isPending || !hostnameValue.trim()}
+          onClick={() => runDetection()}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          {autoDetect.isPending && (
+            <LoaderCircle aria-hidden="true" className="animate-spin" />
+          )}
+          Detect vendor &amp; IP
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Read-only SSH fingerprint via the worker{": "}
+          {credentialProfileId
+            ? "uses the selected credential profile"
+            : "select a credential profile to fingerprint the vendor"}
+          , then maps the hostname to its management address (DNS).
+        </p>
+      </div>
+
+      {/* R50.6 — the two-stage detection panel (T060/T061) with explicit
+          picks (T062), first-contact host-key disclosure (T063) and
+          per-stage retry (T064). */}
+      {(autoDetect.isPending || detectionResult) && (
+        <div
+          aria-live="polite"
+          className="flex flex-col gap-2.5 rounded-md border bg-muted/30 p-3"
+          role="status"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold">
+              Detection
+              {detectionResult
+                ? ` — ${detectionResult.requestedHost ?? detectionResult.host}`
+                : ""}
+            </p>
+            {detectionResult?.contractVersion != null && (
+              <span className="font-tech text-[10px] text-muted-foreground">
+                contract v{detectionResult.contractVersion}
+              </span>
+            )}
+          </div>
+          <StageRowView
+            onRetry={() => runDetection(["vendor"])}
+            retryDisabled={retryDisabled}
+            row={vendorStageRow}
+          />
+          <StageRowView
+            onRetry={() => runDetection(["address"])}
+            retryDisabled={retryDisabled}
+            row={addressStageRow}
+          />
+          {hostKeyPanel && (
+            <div
+              className={`flex flex-col gap-1 rounded-md border p-2.5 ${
+                hostKeyPanel.state === "pinned"
+                  ? "border-success/40 bg-success-subtle/40"
+                  : "border-warning/40 bg-warning-subtle/40"
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <KeyRound
+                  aria-hidden="true"
+                  className={`size-3.5 ${
+                    hostKeyPanel.state === "pinned" ? "text-success" : "text-warning"
+                  }`}
+                />
+                <p className="text-xs font-medium">
+                  {hostKeyPanel.state === "capture-requested"
+                    ? "First contact — host key captured (NOT enrolled)"
+                    : "Host key verified against the enrolled pin"}
+                </p>
+              </div>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                {hostKeyPanel.target && (
+                  <>
+                    <dt className="text-muted-foreground">Target</dt>
+                    <dd className="font-tech break-all">{hostKeyPanel.target}</dd>
+                  </>
+                )}
+                {hostKeyPanel.dialed && (
+                  <>
+                    <dt className="text-muted-foreground">Dialed</dt>
+                    <dd className="font-tech break-all">{hostKeyPanel.dialed}</dd>
+                  </>
+                )}
+                {hostKeyPanel.captured && (
+                  <>
+                    <dt className="text-muted-foreground">Key</dt>
+                    <dd className="font-tech break-all">{hostKeyPanel.captured.keyType}</dd>
+                  </>
+                )}
+                {hostKeyPanel.captured && (
+                  <>
+                    <dt className="text-muted-foreground">Fingerprint</dt>
+                    <dd className="font-tech break-all">
+                      {hostKeyPanel.captured.fingerprint}
+                    </dd>
+                  </>
+                )}
+              </dl>
+              {hostKeyPanel.state === "capture-requested" && (
+                <p className="text-xs text-muted-foreground">
+                  Verify this fingerprint out-of-band with the device operator, then
+                  enroll it from the device page. FayaNMS has not trusted this key yet.
+                </p>
+              )}
+            </div>
+          )}
+          {pendingPicks.map((pick) => (
+            <div
+              className="flex items-center justify-between gap-2 rounded-md border bg-background px-2.5 py-1.5"
+              key={`${pick.field}-${pick.value}`}
+            >
+              <p className="min-w-0 text-xs">
+                <span className="text-muted-foreground">
+                  Detected {PICK_FIELD_LABELS[pick.field]}:{" "}
+                </span>
+                <span className="font-tech break-all">{pick.value}</span>
+                <span className="text-muted-foreground"> — field has your input</span>
+              </p>
+              <div className="flex shrink-0 gap-1">
+                <Button
+                  className="h-7 px-2 text-xs"
+                  onClick={() => applyPick(pick)}
+                  size="sm"
+                  type="button"
+                >
+                  Use
+                </Button>
+                <Button
+                  className="h-7 px-2 text-xs"
+                  onClick={() => discardPick(pick)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Keep mine
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 interface DeviceFormSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -98,7 +486,6 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
   const meta = useMeta();
   const createDevice = useCreateDevice();
   const updateDevice = useUpdateDevice();
-  const autoDetect = useAutoDetectDevice();
   const setActiveView = useNavigationStore((state) => state.setActiveView);
 
   const editing = Boolean(device);
@@ -142,53 +529,8 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
     name: "credentialProfileId",
   });
   const isLive = dataSource === "LIVE_SSH";
-  // R50 — compiler-safe field subscriptions for the auto-detect row
-  // (form.watch() in render is the incompatible-library pattern).
-  const hostnameValue = useWatch({ control: form.control, name: "hostname" });
-
-  // Reset the form whenever the sheet opens (or the edited device changes).
-  useEffect(() => {
-    if (open) {
-      form.reset(defaultValues);
-    }
-  }, [open, defaultValues, form]);
 
   const pending = createDevice.isPending || updateDevice.isPending;
-
-  /**
-   * R50 — auto-detect: FIRST fingerprint the vendor over read-only SSH
-   * (when a credential profile is selected), THEN map the hostname to its
-   * management address. Fills vendor (create mode — vendor is locked on
-   * edit), management IP and model; the operator reviews before submit.
-   */
-  const onAutoDetect = () => {
-    const host = (form.getValues("hostname") ?? "").trim();
-    if (!host) return;
-    const credentialProfileId = form.getValues("credentialProfileId") || undefined;
-    autoDetect.mutate(
-      { host, credentialProfileId },
-      {
-        onSuccess: (result) => {
-          if (result.mgmtIpResolution.mgmtIp) {
-            form.setValue("mgmtIp", result.mgmtIpResolution.mgmtIp, { shouldValidate: true });
-          }
-          if (result.detected && result.detection) {
-            if (result.detection.model) {
-              form.setValue("model", result.detection.model);
-            }
-            if (!editing) {
-              const vendor = (meta.data?.vendors ?? []).find(
-                (entry) => entry.key === result.detection?.vendorKey,
-              );
-              if (vendor) {
-                form.setValue("vendorId", vendor.id, { shouldValidate: true });
-              }
-            }
-          }
-        },
-      },
-    );
-  };
 
   const onSubmit = (values: FormValues) => {
     if (editing && device) {
@@ -237,6 +579,7 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
   const vendors = meta.data?.vendors ?? [];
   const sites = meta.data?.sites ?? [];
   const profiles = meta.data?.credentialProfiles ?? [];
+
   const criticalities: { value: FormValues["criticality"]; label: string }[] = [
     { value: "LOW", label: "Low" },
     { value: "MEDIUM", label: "Medium" },
@@ -324,28 +667,7 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
             {form.formState.errors.mgmtIp && (
               <p className="text-xs text-danger">{form.formState.errors.mgmtIp.message}</p>
             )}
-            <div className="flex items-center gap-2">
-              <Button
-                aria-label="Detect vendor and management IP"
-                disabled={autoDetect.isPending || !hostnameValue.trim()}
-                onClick={onAutoDetect}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                {autoDetect.isPending && (
-                  <LoaderCircle aria-hidden="true" className="animate-spin" />
-                )}
-                Detect vendor &amp; IP
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                Read-only SSH fingerprint via the worker{": "}
-                {credentialProfileId
-                  ? "uses the selected credential profile"
-                  : "select a credential profile to fingerprint the vendor"}
-                , then maps the hostname to its management address (DNS).
-              </p>
-            </div>
+            <DetectionSection editing={editing} form={form} vendors={vendors} />
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
