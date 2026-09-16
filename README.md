@@ -923,7 +923,10 @@ flowing against PostgreSQL, authenticated AppShell rendered, zero
 console/page errors.
 
 **LANDED — R50 device auto-detection (user request): vendor fingerprint
-first (when reachable), then hostname → management-IP mapping.**
++ hostname → management-IP mapping. INDEPENDENTLY AUDITED 2026-09-16 —
+implemented but production-BLOCKED: the P0 host-key fail-open and the
+dns-before-vendor order violation were both confirmed (see the audit
+note at the end of this block).**
 Adding a device no longer requires knowing the vendor up front. The
 Add/Edit device sheet carries a "Detect vendor & IP" action backed by a
 new `POST /api/v1/devices/auto-detect` route and a new worker surface
@@ -952,6 +955,21 @@ Sophos SFOS has no read-only SSH status command BY DESIGN (WebAPI
 vendor, CERT-006) — SSH detection answers "generic" for it. Browser
 verified end-to-end: localhost → 127.0.0.1 auto-fill in the sheet, and
 the typed worker error surfaced verbatim in the operator toast.
+
+R50 INDEPENDENT AUDIT (2026-09-16, docs/audits/FayaNMS-R50-Vendor-Autodetect-Audit-Verdict-2026-09-16.md):
+an external end-to-end review was read back and independently re-verified against the exact
+`572ba31` tree — all 8 P0/P1 findings CONFIRMED. Two hard blockers: (a) R50-001 P0 — the
+auto-detect route's `catch { pin = null }` converts an enrollment-store failure into
+first-contact host-key CAPTURE mode (a SAFE-001 fail-open; the defect is confined to the
+API route — worker + helper remain fail-closed — and the current test suite pins the
+defective `enrollHostKey: !pin` line); (b) R50-002 P1 — the route resolves DNS BEFORE
+vendor detection, contradicting the vendor-first requirement and this block's earlier
+wording. R50-003 sharpened: with DNS failed, the pin lookup silently switches identity
+from the certified mgmtIp key to the hostname → an enrolled device probes as unenrolled.
+All local gates re-verified green on `572ba31` (640 pass / 12 skip); CI remains blocked
+by the documented no-runner infrastructure signature. Remediation follows the accepted
+roadmap (docs/audits/FayaNMS-R50-Vendor-IP-Autodetect-Remediation-Roadmap-2026-09-16.md):
+fail-closed trust first, then vendor-first orchestration.
 
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
