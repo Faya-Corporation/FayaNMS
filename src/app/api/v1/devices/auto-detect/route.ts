@@ -13,28 +13,48 @@ export const dynamic = "force-dynamic";
  * POST /api/v1/devices/auto-detect — R50 vendor auto-detection + hostname →
  * management-IP mapping, for the Add/Edit device sheet ("Detect vendor & IP").
  *
- * Order of operations mirrors the user-facing promise: FIRST attribute the
- * device's vendor (when reachable + credential available), THEN map the
- * hostname to its management address:
+ * VENDOR-FIRST orchestration (R50-T010) — the stages run in the order the
+ * user-facing promise states: FIRST attribute the device's vendor (when
+ * reachable + credential available), THEN map the hostname to its
+ * management address:
  *
- *   1. DNS stage (always): resolve `host` to a management address
- *      (IP literals pass through; hostnames go through DNS A → AAAA).
- *   2. Vendor stage (when credentialProfileId is provided): the worker
- *      execs ONLY the read-only DETECT_COMMANDS ("show version", "show
- *      system info", "get system status") over the real SSH transport and
- *      attributes the output to a certified vendor family
- *      (mini-services/worker/vendor-fingerprint.ts). SAFE-001 (R50-T001):
- *      the trust state is resolved EXPLICITLY via resolveHostKeyTrustState —
- *      the enrolled pin rides along; a PROVEN-unenrolled target runs in
- *      audited capture mode (presented key returned for out-of-band
- *      verification + enrollment); a trust-store LOOKUP FAILURE aborts the
- *      probe BEFORE any connection with the typed
- *      HOST_KEY_ENROLLMENT_LOOKUP_FAILED error + a dedicated audit event —
- *      unknown trust state is never first contact (fail-closed).
+ *   1. Authorization — requirePermission("config.backup"); the dedicated
+ *      `device.detect` permission arrives with roadmap R50-T020.
+ *   2. Target policy — today the request-schema validation (charset,
+ *      length); the CIDR/special-address policy is R50-T022/T023 and will
+ *      land as an explicit stage at this position.
+ *   3. Credential authorization — the referenced profile must exist and be
+ *      SSH_PASSWORD (actor→profile→scope enrichment is R50-T021). Resolved
+ *      BEFORE any network activity.
+ *   4. Host-key policy — SAFE-001 (R50-T001): resolveHostKeyTrustState runs
+ *      against the REQUESTED ENDPOINT (R50-T012 ADR: a detection probe's
+ *      trust identity is the operator-typed host + credential port — never
+ *      a DNS-derived address, so DNS health cannot flip trust semantics,
+ *      which was finding R50-003). enrolled → the pin rides along;
+ *      PROVEN-unenrolled → audited capture mode; lookup-FAILED → abort
+ *      BEFORE any connection with the typed HOST_KEY_ENROLLMENT_LOOKUP_FAILED
+ *      error + a dedicated audit event — unknown trust state is never first
+ *      contact (fail-closed).
+ *   5. Vendor detection — the worker dials connectionAddress (== the
+ *      requested endpoint exactly as typed; NO DNS indirection, R50-T013)
+ *      and execs ONLY the read-only DETECT_COMMANDS ("show version", "show
+ *      system info", "get system status") over the real SSH transport,
+ *      attributing the output to a certified vendor family
+ *      (mini-services/worker/vendor-fingerprint.ts).
+ *   6. Hostname resolution — resolveHostToIp(requestedHost) runs ONCE,
+ *      AFTER detection, and is purely informational for the form
+ *      (resolvedManagementIp). It NEVER retargets the probe (R50-T013:
+ *      resolve once, bind the connection before any DNS is consulted —
+ *      silent re-resolution is structurally impossible here because the
+ *      connection does not use DNS at all).
+ *   7. Preview response — requestedHost / connectionAddress /
+ *      resolvedManagementIp named explicitly (R50-T011), plus the original
+ *      fields (UI compatibility).
  *
  * The endpoint NEVER mutates the device inventory — it is a form helper;
  * applying the result is the operator's submit action. Every invocation is
- * audited (DEVICE_VENDOR_AUTODETECTED).
+ * audited (DEVICE_VENDOR_AUTODETECTED, with the credential profile id and
+ * the host-key state).
  *
  * Graceful degradation (mirrors test-connection): a missing worker answers
  * 200 with detection=null + a human-readable error, never a 500.
@@ -86,6 +106,7 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, requestContext(request));
   }
 
+  /* ── Stage 1: authorization ─────────────────────────────────────────── */
   // Data-plane probe: same permission class as test-connection (operator +
   // engineer seeded), attributed to the session principal.
   let actor: Awaited<ReturnType<typeof requirePermission>>;
@@ -98,19 +119,17 @@ export async function POST(request: Request) {
   }
 
   const correlationId = newJobCorrelationId();
-  const { host, credentialProfileId } = parsed.data;
+  // R50-T011: the three endpoint identities are kept apart. requestedHost is
+  // the operator-typed string; connectionAddress is what the worker actually
+  // dials; resolvedManagementIp is the informational DNS mapping (stage 6).
+  const requestedHost = parsed.data.host;
+  const { credentialProfileId } = parsed.data;
 
-  /* ── Stage 1: hostname → management address ─────────────────────────── */
-  const resolution = await resolveHostToIp(host);
+  /* ── Stage 2: target policy ─────────────────────────────────────────── */
+  // Today: the request schema (charset/length) IS the target policy. The
+  // CIDR/special-address policy is R50-T022/T023 and lands at this position.
 
-  /* ── Stage 2: vendor fingerprint over the real SSH transport ────────── */
-  let detection: WorkerDetection["detection"] | null = null;
-  let detectionError: string | null = null;
-  let command: string | null = null;
-  let latencyMs: number | null = null;
-  let capturedHostKey: { keyType: string; fingerprint: string } | null = null;
-  let vendorStage: "skipped-no-credential" | "executed" = "skipped-no-credential";
-
+  /* ── Stage 3: credential authorization ──────────────────────────────── */
   let profile: {
     id: string;
     type: string;
@@ -144,8 +163,25 @@ export async function POST(request: Request) {
     }
   }
 
+  /* ── Stages 4+5: host-key policy, then vendor detection ─────────────── */
+  let detection: WorkerDetection["detection"] | null = null;
+  let detectionError: string | null = null;
+  let command: string | null = null;
+  let latencyMs: number | null = null;
+  let capturedHostKey: { keyType: string; fingerprint: string } | null = null;
+  let vendorStage: "skipped-no-credential" | "executed" = "skipped-no-credential";
+  // R50-T070 groundwork: the audit records which trust path the probe took.
+  let hostKeyState: "not-probed" | "pinned" | "capture-requested" = "not-probed";
+
   if (profile) {
     vendorStage = "executed";
+    // R50-T012 (ADR-host-key-trust-identity): the trust identity of a
+    // DETECTION probe is the requested endpoint — the exact string the
+    // worker will dial — plus the credential port. It is deliberately NOT
+    // a DNS-derived address: a DNS failure must never silently switch the
+    // trust identity (the R50-003 finding).
+    const connectionAddress = requestedHost;
+
     // SAFE-001 / R50-T001: the trust state is resolved EXPLICITLY —
     // enrolled, PROVEN-unenrolled, or lookup-failed. The R50-001 P0
     // fail-open (a persistence error swallowed into a null pin, which the
@@ -153,8 +189,7 @@ export async function POST(request: Request) {
     // impossible here: a lookup failure returns the typed
     // HOST_KEY_ENROLLMENT_LOOKUP_FAILED error BEFORE the worker SSH
     // connection is attempted, with a dedicated audit event.
-    const probeTarget = resolution.mgmtIp ?? host;
-    const trust = await resolveHostKeyTrustState(probeTarget, profile.port);
+    const trust = await resolveHostKeyTrustState(connectionAddress, profile.port);
     if (trust.state === "lookup-failed") {
       try {
         await db.auditEvent.create({
@@ -164,12 +199,12 @@ export async function POST(request: Request) {
             action: "HOST_KEY_TRUST_LOOKUP_FAILED",
             resourceType: "Device",
             resourceId: null,
-            resourceLabel: host,
+            resourceLabel: requestedHost,
             result: "FAILURE",
             correlationId,
             afterJson: JSON.stringify({
-              host,
-              probeTarget,
+              requestedHost,
+              connectionAddress,
               port: profile.port,
               reason: trust.reason,
             }),
@@ -193,13 +228,17 @@ export async function POST(request: Request) {
     // worker); PROVEN-unenrolled → the audited first-contact capture, with
     // the presented key returned for out-of-band verification.
     const pin = trust.state === "enrolled" ? trust.fingerprint : null;
+    hostKeyState = trust.state === "enrolled" ? "pinned" : "capture-requested";
 
     try {
       const response = await fetch(WORKER_URL, {
         method: "POST",
         headers: workerControlHeaders(),
         body: JSON.stringify({
-          host: probeTarget,
+          // R50-T013: the connection target is bound to the requested
+          // endpoint BEFORE any DNS is consulted — DNS cannot retarget the
+          // probe during this request.
+          host: connectionAddress,
           credential: {
             username: profile.username,
             port: profile.port,
@@ -252,6 +291,13 @@ export async function POST(request: Request) {
     }
   }
 
+  /* ── Stage 6: hostname → management address (ONCE, informational) ───── */
+  // R50-T013: resolved exactly once, AFTER detection; the result never
+  // retargets the probe (the connection was already bound in stage 5).
+  const resolution = await resolveHostToIp(requestedHost);
+  const resolvedManagementIp = resolution.mgmtIp;
+
+  /* ── Stage 7: preview response ──────────────────────────────────────── */
   // Audit every invocation (SUCCESS = the vendor stage produced a result,
   // whether high-confidence or honest generic; FAILURE = transport error).
   const detected = detection !== null && detection.vendorKey !== "generic";
@@ -262,12 +308,13 @@ export async function POST(request: Request) {
       action: "DEVICE_VENDOR_AUTODETECTED",
       resourceType: "Device",
       resourceId: null,
-      resourceLabel: host,
+      resourceLabel: requestedHost,
       result: detectionError ? "FAILURE" : "SUCCESS",
       correlationId,
       afterJson: JSON.stringify({
-        host,
-        mgmtIp: resolution.mgmtIp,
+        requestedHost,
+        connectionAddress: profile ? requestedHost : null,
+        resolvedManagementIp,
         resolutionMode: resolution.mode,
         resolutionError: resolution.resolutionError ?? null,
         vendorStage,
@@ -276,6 +323,8 @@ export async function POST(request: Request) {
         model: detection?.model ?? null,
         osVersion: detection?.osVersion ?? null,
         probeCommand: command,
+        credentialProfileId: profile?.id ?? null,
+        hostKeyState,
         error: detectionError,
       }),
     },
@@ -283,13 +332,18 @@ export async function POST(request: Request) {
 
   return ok(
     {
-      host,
+      // R50-T011 naming + the original fields (UI compatibility).
+      host: requestedHost,
+      requestedHost,
+      connectionAddress: profile ? requestedHost : null,
       mgmtIpResolution: {
-        mgmtIp: resolution.mgmtIp,
+        mgmtIp: resolvedManagementIp,
         mode: resolution.mode,
         error: resolution.resolutionError ?? null,
       },
+      resolvedManagementIp,
       vendorStage,
+      hostKeyState,
       detection,
       detected,
       probeCommand: command,

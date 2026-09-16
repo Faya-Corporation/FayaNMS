@@ -319,6 +319,61 @@ describe("R50 — /api/v1/devices/auto-detect route contract", () => {
     expect(ROUTE).toContain('enrollHostKey: trust.state === "unenrolled"');
   });
 
+  test("R50-T010 — vendor-FIRST orchestration: credential → trust → detection → DNS", () => {
+    // The user-facing promise (README, form copy, verdict R50-002) is
+    // vendor-first; the stage ORDER is executable contract now.
+    const authIdx = ROUTE.indexOf('requirePermission(request, "config.backup")');
+    const credIdx = ROUTE.indexOf("db.credentialProfile.findUnique");
+    const trustIdx = ROUTE.indexOf("await resolveHostKeyTrustState(");
+    const fetchIdx = ROUTE.indexOf("await fetch(WORKER_URL");
+    const dnsIdx = ROUTE.indexOf("await resolveHostToIp(requestedHost)");
+    for (const [name, idx] of [
+      ["auth", authIdx],
+      ["credential", credIdx],
+      ["trust", trustIdx],
+      ["worker fetch", fetchIdx],
+      ["dns resolution", dnsIdx],
+    ] as const) {
+      expect(idx).toBeGreaterThan(-1);
+    }
+    expect(authIdx).toBeLessThan(credIdx);
+    expect(credIdx).toBeLessThan(trustIdx);
+    expect(trustIdx).toBeLessThan(fetchIdx);
+    expect(fetchIdx).toBeLessThan(dnsIdx);
+  });
+
+  test("R50-T013 — resolution is single-shot and never retargets the probe", () => {
+    // Exactly ONE resolution call; it happens AFTER the worker fetch.
+    expect(ROUTE.match(/await resolveHostToIp\(/g)?.length).toBe(1);
+    const fetchIdx = ROUTE.indexOf("await fetch(WORKER_URL");
+    const dnsIdx = ROUTE.indexOf("await resolveHostToIp(");
+    expect(dnsIdx).toBeGreaterThan(fetchIdx);
+    // The worker dials the bound connection address (the requested
+    // endpoint) — DNS output is never a fetch input.
+    expect(ROUTE).toContain("host: connectionAddress");
+  });
+
+  test("R50-T011 — requestedHost / connectionAddress / resolvedManagementIp are explicit", () => {
+    expect(ROUTE).toContain("const requestedHost = parsed.data.host;");
+    expect(ROUTE).toContain("const connectionAddress = requestedHost;");
+    expect(ROUTE).toContain("const resolvedManagementIp = resolution.mgmtIp;");
+    // Response contract carries the three names explicitly (plus the
+    // original fields for UI compatibility).
+    expect(ROUTE).toContain("requestedHost,");
+    expect(ROUTE).toContain("resolvedManagementIp,");
+  });
+
+  test("R50-T012 — trust identity is the requested endpoint (ADR), audit carries it", () => {
+    // The trust lookup runs against the connection address BEFORE the fetch,
+    // and the audit event records the host-key state + credential profile.
+    const trustIdx = ROUTE.indexOf("await resolveHostKeyTrustState(");
+    const fetchIdx = ROUTE.indexOf("await fetch(WORKER_URL");
+    expect(trustIdx).toBeGreaterThan(-1);
+    expect(trustIdx).toBeLessThan(fetchIdx);
+    expect(ROUTE).toContain("hostKeyState");
+    expect(ROUTE).toContain("credentialProfileId: profile?.id ?? null");
+  });
+
   test("the route NEVER mutates the device inventory (form helper)", () => {
     expect(ROUTE).not.toContain("db.device.create");
     expect(ROUTE).not.toContain("db.device.update");

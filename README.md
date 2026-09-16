@@ -971,6 +971,30 @@ by the documented no-runner infrastructure signature. Remediation follows the ac
 roadmap (docs/audits/FayaNMS-R50-Vendor-IP-Autodetect-Remediation-Roadmap-2026-09-16.md):
 fail-closed trust first, then vendor-first orchestration.
 
+R50 REMEDIATION — PHASES R50.0 + R50.1 LANDED on branch `z_ai_v2` (2026-09-16,
+evidence: docs/audits/FayaNMS-R50-T001-T003-Trust-FailClosed-2026-09-16.md +
+docs/audits/FayaNMS-R50-T010-T013-VendorFirst-2026-09-16.md + ADR-host-key-trust-identity):
+(a) R50-001 P0 FIXED — the trust state is resolved EXPLICITLY via the new
+`HostKeyTrustState` resolver (enrolled / PROVEN-unenrolled / lookup-failed); a trust-store
+failure now aborts the probe BEFORE any SSH connection with the typed
+`HOST_KEY_ENROLLMENT_LOOKUP_FAILED` (503) + a dedicated `HOST_KEY_TRUST_LOOKUP_FAILED`
+audit event; capture mode is opted into ONLY for a proven-unenrolled endpoint; the
+defect-enshrining test pin was replaced with the fail-closed contract (17 new pins,
+suite 640 → 657); a REAL PostgreSQL-outage run proved the resolver returns
+lookup-failed — never first contact. (b) R50-002/R50-003 FIXED (Phase R50.1) — the route
+now runs vendor-FIRST (authorization → credential → host-key policy → detection →
+hostname mapping), resolves the hostname ONCE and only for the form
+(`resolvedManagementIp`), never retargets the probe, and the trust identity of a
+detection probe is the REQUESTED ENDPOINT by ADR (docs/adr/ADR-host-key-trust-identity.md)
+— DNS health can no longer flip SSH trust semantics. The response contract gained
+`requestedHost` / `connectionAddress` / `resolvedManagementIp` / `hostKeyState`, and the
+audit event records the credential profile id + host-key state. Live-verified on the
+sandbox stack: the vendor stage executes and reaches the worker even when DNS fails
+(ENOTFOUND), with the trust path deterministic. Remaining open R50 phases (authorization
+& abuse controls R50.2, IPv6 decision R50.3, typed contract R50.4, fingerprint registry
+R50.5, UI hardening R50.6, telemetry R50.7, real-device + CI certification) stay tracked
+in docs/audits/FayaNMS-NEXT-TASKS.md.
+
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
 not); the demo dataset is never committed (rebuild via the seed above — it runs
