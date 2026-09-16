@@ -2958,3 +2958,16 @@ Work Log:
 
 Stage Summary:
 - R49 COMPLETE: the preview's DB plane is fixed at the repo level (dev script self-aligns DATABASE_URL with _setup.ts semantics; instrumentation is edge-safe); the demo dataset was restored to the embedded PG cluster; the sign-in → dashboard golden path is browser-verified end-to-end with real data and zero errors. Remaining environment caveat (documented, not a repo defect): tool-shell-spawned servers are reaped at tool-call boundaries by the sandbox; the boot-flow server (init-tree ancestry) is unaffected and now boots with the correct DATABASE_URL via the hardened script.
+---
+Task ID: R49-preview-db-fix-ci-addendum
+Agent: Orchestrator (Z.ai Code)
+Task: CI verification addendum for commit 861b3ea (R49 preview DB fix) — honest evidence record
+
+Work Log:
+- Pushed 861b3ea; run 35040538297 completed "failure" with the IDENTICAL infrastructure signature as runs #34–#62: gate failed with ZERO steps executed and an EMPTY runner_name; browser + e2e + scan skipped (no runner ever assigned). GitHub-hosted runner unavailability, not a gate/scanner finding.
+- Every locally runnable gate was executed green on the exact commit tree before push: lint 0 · bunx tsc --noEmit FULL 0 · bun test tests/ 614 pass + 12 skips (626 across 37 files; 3,428 expects) · drift guard 0 (fresh fayanms_shadow) · certify.ts PASSED (6 flavors) · build:gate 0 · golden-path browser verification (sign-in → dashboard, real seeded data, zero console/page errors).
+- API re-run issued (HTTP 201).
+
+Stage Summary:
+- TRUTHFUL CI STATE for 861b3ea: locally gate-proven, CI-blocked by infrastructure only (same documented no-runner blockage since run #34).
+- R49: COMPLETE — the preview's DB plane is fixed at the repo level (dev script self-aligns DATABASE_URL; instrumentation edge-safe); the demo dataset is restored; the golden path is browser-verified end-to-end.
