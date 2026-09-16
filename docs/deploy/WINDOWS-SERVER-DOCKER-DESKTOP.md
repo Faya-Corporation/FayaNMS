@@ -445,6 +445,44 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
   Keep N weekly + 4 daily off-box copies. Restore drill: create a throwaway postgres
   container, `pg_restore` into it, point the app at it once, then delete. Custom format
   (`-Fc`) is compressed and supports selective restore.
+
+  **D1-DRILL — executable recoverability drill (TASK-OPS-003-A, 2026-09-16).** The repo
+  ships `scripts/drill-restore.ts`: it READ-ONLY dumps the live database (PG-side
+  `to_jsonb` — used on hosts without `pg_dump`, e.g. the embedded Zonky distribution),
+  restores the schema into a FRESH scratch database via `prisma migrate deploy` (the
+  production restore path), loads every row back (FK triggers disabled per table,
+  `pg_restore --disable-triggers`-equivalent), verifies per-table row-count equality,
+  the health surface, the simulator plane, and DECRYPTS a real ConfigSnapshot from the
+  restored database under the deployment KEK (sha256 plaintext digest verified), then
+  reports measured RPO/RTO and drops the scratch database (name-pattern-guarded).
+
+  ```bash
+  export DATABASE_URL="postgresql://fayanms:<pw>@<host>:5432/fayanms"
+  bun scripts/drill-restore.ts            # add --keep to inspect the scratch DB
+  ```
+
+  Recovery scenario dispositions (printed with every run):
+  - **App loss:** the app plane is stateless — redeploy and point it at the restored
+    database; nothing else to recover.
+  - **DB loss:** restore the schema (`prisma migrate deploy` or `pg_restore --clean`)
+    + data (the drill's loader, or `pg_restore`) into a fresh database, then re-point
+    `DATABASE_URL` and restart the app + worker. Evidence bar: the drill's 11 checks
+    (row counts ≡, health, simulator plane, snapshot decrypt).
+  - **Interrupted change:** a `RUNNING` JobExecution restored from backup is stale —
+    re-drive it via Jobs → retry, or mark it FAILED; the worker's claim loop ignores
+    jobs past their lease. Restore immediately BEFORE an active maintenance window
+    (see D4) so in-flight changes are zero by construction.
+  - **KEK loss: CATASTROPHIC by design** — at-rest config snapshots and webhook
+    signing secrets are AES-256-GCM ciphertext under `FAYANMS_CONFIG_ENC_KEY`; with
+    the key gone the plaintext is unrecoverable. KEK ROTATION (key still held):
+    `bun scripts/migrate-encrypt-snapshots.ts` re-wraps every envelope under the new
+    master key. Back the KEK up OFF-BOX with the same discipline as the dumps —
+    a backup without its KEK restores counts, not configurations.
+  - **RPO/RTO:** measured and recorded in every drill report (sandbox evidence
+    2026-09-16: 66,694 rows / 42 tables round-tripped, RPO ≈ 1 s dump window,
+    RTO 3 s on the drill instance; production fresh-HOST restore is the
+    throwaway-container path above and should be timed once per release train).
+  Run the drill after every schema migration and at least quarterly.
 - [ ] **D2. TLS/reverse proxy — SHIPPED PROFILE (DEPLOY-001-A, 2026-09-15): the safe
   path is the default path.** The repo ships `compose.tls.yml` + `docs/deploy/Caddyfile.tls`:
   a Caddy sidecar terminates TLS (automatic ACME certificates for a real DNS name, or
