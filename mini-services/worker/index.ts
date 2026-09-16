@@ -98,6 +98,7 @@ import {
 import { SshError, sshExecText, type SshCredentials } from "./ssh-transport";
 import {
   DETECT_COMMANDS,
+  isInformativeCliOutput,
   parseVendorFingerprint,
 } from "./vendor-fingerprint";
 import { resolveVaultSecret, VaultError } from "./vault";
@@ -624,7 +625,11 @@ export async function handle(req: Request): Promise<Response> {
         for (const command of DETECT_COMMANDS) {
           try {
             const out = await sshExecText(creds, command, 15000);
-            if (out.trim()) {
+            // R50.5 (R50-T050): a SHORT CLI-rejection answer ("% Invalid
+            // input detected…", often with exit 0) is NOT informative —
+            // keep walking the allowlist so the probe reaches the command
+            // this CLI actually answers (FortiOS/PAN-OS answer probe #2/#3).
+            if (isInformativeCliOutput(out)) {
               output = out;
               usedCommand = command;
               break;

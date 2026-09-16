@@ -1,0 +1,15 @@
+Hostname: branch-mx204
+Model: mx204
+Junos: 21.3R1.7
+JUNOS OS Kernel 64-bit  [20210908.8a1b2c3_builder_release]
+JUNOS OS Crypto 64-bit [20210908.8a1b2c3_builder_release]
+JUNOS OS packet Forwarding Engine Support (mx64) [20210908.8a1b2c3_builder_release]
+JUNOS OS Runtime [20210908.8a1b2c3_builder_release]
+JUNOS Online Log [20210908.8a1b2c3_builder_release]
+JUNOS jsd [21.3R1.7]
+JUNOS jfirmware [21.3R1.7]
+JUNOS OS Documentation [20210908.8a1b2c3_builder_release]
+
+JUNOS SW mips [20210908.8a1b2c3_builder_release]
+
+Juniper Networks, Inc. mx204 internet router, kernel JUNOS 21.3R1.7, Build date: 2023-01-01

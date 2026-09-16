@@ -1,0 +1,19 @@
+Cisco Nexus Operating System (NX-OS) Software
+TAC support: http://www.cisco.com/tac
+Copyright (c) 2002-2023, Cisco Systems, Inc. All rights reserved.
+
+Software
+  BIOS: version 05.42
+  NXOS: version 9.3(5)
+  NX-OS version 9.3(5)
+  BIOS compile time:  07/16/2020
+  NXOS image file is: bootflash:///nxos.9.3.5.bin
+  NXOS compile time:  3/11/2021 14:00:00 [03/11/2021 19:05:21]
+
+Hardware
+  cisco Nexus 3048 Chassis ("48x1GE + 4x10G Supervisor")
+  Intel(R) Core(TM) i3 CPU @ 2.50GHz with 16401800 kB of memory.
+  Processor Board ID FJC20190A2B
+
+  Device name: dc-agg-sw-01
+  bootflash:  2007040 kB

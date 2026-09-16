@@ -1,0 +1,10 @@
+*** AUTHORIZED ACCESS ONLY ***
+
+This system is operated by NetOps and is monitored 24/7. Vendor equipment
+referenced in runbooks includes Fortinet, Juniper Networks and Cisco gear.
+Escalation contacts are listed in the wiki. Palo Alto Networks Panorama
+manages the perimeter fleet; Aruba switch upgrades are scheduled nightly.
+
+All sessions are recorded. Disconnect immediately if you are not authorized.
+
+login:

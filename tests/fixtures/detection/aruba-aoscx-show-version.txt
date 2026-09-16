@@ -1,0 +1,13 @@
+ArubaOS-CX
+(c) Copyright 2017-2023 Hewlett Packard Enterprise Development LP
+
+Switch System Description : Aruba JL075A 3810M-24G-port 24p Class4 PoE 4SFP+ Switch
+Software revision : GL.10.06.0001
+Build date : 2023-04-11 11:22:33 UTC
+Build ID : ArubaOS-CX GL.10.06.0001
+Switch MAC Address : 48:0f:cf:aa:bb:cc
+
+Up Time : 42 days, 6 hours, 17 minutes
+CPU Utilization : 11%
+
+Aruba OS-CX Software Version GL.10.06.0001

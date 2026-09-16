@@ -1,0 +1,10 @@
+Inventory export (2026-09-17) — asset ledger, not device output:
+
+Spare units in storage cage C: Cisco Catalyst 9300 (SN FJC2401AAAA), one
+PA-460 appliance awaiting RMA, one FortiGate-100F kept as cold spare, and
+an mx204 chassis for the lab bench. HPE switch parts (fans, PSUs) are in
+bin 12. Software images on the TFTP server: FortiOS 7.2.4, PAN-OS 11.1.2,
+JUNOS 21.3R1.7, SFOS 19.5.1. None of these units is currently reachable
+over SSH; do not schedule probes against spares.
+
+Asset tags follow FA-XXXX convention. Contact inventory@faya.local.

@@ -1,0 +1,20 @@
+FortiGate-100F (18:23-11-17-2020)
+Ver:0.4.0-bulldog
+Build:1396
+Branch:1396
+Patched:0
+Branch point:0
+Motion:0
+Version:FortiGate-100F v7.2.4,build1396,230801 (GA.F)
+Firmware Signature: certified
+Firmware build time: 07-26-2023
+Branch Point:1396
+Release Version:GA.F
+Current Time:Thu Sep 17 09:00:00 2026
+FortiOS version: 7.2.4
+FortiOS build: 1396
+License Status: Valid
+Log Disk: Internal disk (Serial Number: FGT100F-2023-0001)
+Administration Mode: https
+FortiGate-100F Serial Number: FGVMEVXXXXXXAAAA
+BIOS version: 04020002

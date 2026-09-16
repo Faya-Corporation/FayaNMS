@@ -140,6 +140,10 @@ interface WorkerDetection {
     model: string | null;
     osVersion: string | null;
     evidence: string[];
+    // R50.5 (R50-T052/T054): deterministic match reasons + banner
+    // near-misses (optional so older worker payloads stay assignable).
+    matchReasons?: string[];
+    softMatches?: string[];
   };
   hostKey?: { keyType: string; fingerprint: string };
   error?: string;
@@ -451,6 +455,10 @@ export async function POST(request: Request) {
         confidence: detection?.confidence ?? null,
         model: detection?.model ?? null,
         osVersion: detection?.osVersion ?? null,
+        // R50-T052: the deterministic matched-signature ids (audit trail
+        // records WHY the vendor was claimed, not just that it was).
+        matchReasons: detection?.matchReasons ?? null,
+        softMatches: detection?.softMatches ?? null,
         probeCommand: command,
         credentialProfileId: profile?.id ?? null,
         hostKeyState,

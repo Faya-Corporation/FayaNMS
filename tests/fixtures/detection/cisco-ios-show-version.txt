@@ -1,0 +1,20 @@
+Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.2(4)E7, RELEASE SOFTWARE (fc3)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2018 by Cisco Systems, Inc.
+Compiled Fri 15-Jun-18 15:30 by prod_rel_team
+
+ROM: Bootstrap program is C2960 boot loader
+
+HARNESS-IOS-01 uptime is 42 days, 6 hours, 17 minutes
+System returned to ROM by power-on
+System restarted at 09:12:04 UTC Mon Aug 3 2026
+System image file is "flash:c2960-lanbasek9-mz.152-4.E7.bin"
+
+cisco WS-C2960X-24TS-L (APM86XXX) processor (revision B0) with 131072K bytes of memory.
+Processor board ID FOC1932X0AB
+Last reset from power-on
+1 Virtual Ethernet interface
+24 Gigabit Ethernet interfaces
+The password-recovery mechanism is enabled.
+
+Configuration register is 0xF

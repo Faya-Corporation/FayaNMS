@@ -16,7 +16,11 @@ import { serviceAuthHeader } from "../../mini-services/worker/service-token";
  *   - the fingerprint parser attributes realistic `show version` /
  *     `show system info` / `get system status` output to the certified
  *     vendor families, with best-effort model/OS extraction and BOUNDED
- *     evidence;
+ *     evidence; R50.5 (T050..T054) hardened this into a frozen per-vendor
+ *     REGISTRY with deterministic match reasons, sanitized evidence and a
+ *     structural-only attribution policy — the full matrix lives in
+ *     r50-fingerprint-registry.test.ts, the two banner-form pins this file
+ *     used to enshrine were re-spelled to near-misses (R50-T054);
  *   - READ-ONLY discipline: DETECT_COMMANDS is a fixed list of read-only
  *     status commands, no mutation-shaped literal may ever enter the
  *     fingerprint module or the /live/detect-vendor worker surface;
@@ -121,20 +125,37 @@ describe("R50 — parseVendorFingerprint fixtures", () => {
     expect(fp.osVersion).toBe("10.2.6");
   });
 
-  test("Palo Alto PAN-OS banner form → palo", () => {
+  test("R50-T054 — PAN-OS banner-form text is a near-miss, never an attribution", () => {
+    // Re-spelled by R50.5 (R50-T054): the pre-hardening pin attributed palo
+    // from a single banner-shaped line naming the vendor. The structural-
+    // only policy answers honest generic and reports the near-miss tokens.
     const fp = parseVendorFingerprint(
       "Palo Alto Networks PA-460 firewall, PAN-OS 11.1.2",
     );
-    expect(fp.vendorKey).toBe("palo");
-    expect(fp.model).toBe("PA-460");
-    expect(fp.osVersion).toBe("11.1.2");
+    expect(fp.vendorKey).toBe("generic");
+    expect(fp.confidence).toBe("low");
+    expect(fp.matchReasons).toEqual([]);
+    expect(fp.softMatches).toEqual([
+      "palo.vendor-name",
+      "palo.panos-name",
+      "palo.model-token",
+    ]);
   });
 
-  test("Sophos banner text → sophos (when the CLI answers at all)", () => {
+  test("R50-T054 — Sophos banner text stays generic on SSH (SFOS rides WebAPI)", () => {
+    // Re-spelled by R50.5 (R50-T054): SFOS has no read-only SSH status
+    // command (CERT-006), so every SFOS token is a name-shaped near-miss;
+    // the pre-hardening pin attributed sophos from banner text.
     const fp = parseVendorFingerprint("Sophos Firewall SFOS 19.5.1 on XG 230");
-    expect(fp.vendorKey).toBe("sophos");
-    expect(fp.model).toBe("XG 230");
-    expect(fp.osVersion).toBe("19.5.1");
+    expect(fp.vendorKey).toBe("generic");
+    expect(fp.model).toBeNull();
+    expect(fp.osVersion).toBeNull();
+    expect(fp.softMatches).toEqual([
+      "sophos.sfos-version",
+      "sophos.vendor-name",
+      "sophos.sfos-name",
+      "sophos.model-token",
+    ]);
   });
 
   test("unrecognized output → honest generic / low with bounded evidence", () => {

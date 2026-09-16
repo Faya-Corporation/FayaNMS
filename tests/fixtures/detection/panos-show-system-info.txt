@@ -1,0 +1,27 @@
+type: firewall
+family: 3000
+model: PA-VM
+serial: unknown
+sw-version: 10.2.6
+global-protect-client-package-version: 0.0.0
+vm-license: none
+vm-mode: VMware ESXi
+disk-partitioned: False
+operational-mode: normal
+multivsys: off
+uptime: 42 days, 6:17:33
+platform-family: vm
+effective-loading: 3
+advanced-routing: False
+dpms-stat: N/A
+licensed-device-log-capacity: 0
+logdb-version: 324
+plugins: vm-series-id
+content-version: 8632-7749
+threats-version: N/A
+app-version: 8632-7749
+ Threat Version: N/A
+url-filtering-version: N/A
+wildfire-version: N/A
+av-version: N/A
+get-certificate-status: Valid

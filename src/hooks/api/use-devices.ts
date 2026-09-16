@@ -247,6 +247,9 @@ export interface AutoDetectResult {
     model: string | null;
     osVersion: string | null;
     evidence: string[];
+    // R50.5 (R50-T052/T054) — optional so older servers stay assignable.
+    matchReasons?: string[];
+    softMatches?: string[];
   } | null;
   detected: boolean;
   probeCommand: string | null;
@@ -346,8 +349,19 @@ export function useAutoDetectDevice() {
         parts.push(`Vendor signature: ${result.detection.vendorKey}`);
         if (result.detection.model) parts.push(`Model: ${result.detection.model}`);
         if (result.detection.osVersion) parts.push(`OS: ${result.detection.osVersion}`);
+        // R50-T052: the deterministic matched-signature ids — the summary
+        // names WHY the vendor was claimed, not just which one won.
+        if (result.detection.matchReasons?.length) {
+          parts.push(`Matched: ${result.detection.matchReasons.join(", ")}`);
+        }
       } else if (result.vendorStage === "executed") {
         parts.push("No vendor signature matched (generic)");
+        // R50-T054: banner/hostname near-misses are surfaced so a generic
+        // answer with "cisco.vendor-name" is visibly different from one
+        // with nothing informative at all.
+        if (result.detection?.softMatches?.length) {
+          parts.push(`Unconfirmed vendor tokens: ${result.detection.softMatches.join(", ")}`);
+        }
       }
       if (result.mgmtIpResolution.mgmtIp) {
         parts.push(

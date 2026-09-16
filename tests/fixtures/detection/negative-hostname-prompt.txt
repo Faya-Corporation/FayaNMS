@@ -1,0 +1,6 @@
+cisco-backup-sw> show clock
+sophos-mgmt-01>
+PA-460-fw-branch3> show interface
+fortigate-lab-fw> whoami
+mx204-spare-rack3> show uptime
+ArubaAP-lobby-02>

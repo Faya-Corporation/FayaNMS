@@ -1,0 +1,12 @@
+Welcome to Netgate pfSense Plus
+
+The system is currently installed on: ada0
+
+A firewall ruleset is active. Remote administration is restricted to the
+management subnet. Report issues to the operations ticket queue.
+
+pfSense-pc (pfSense) 23.09.1-RELEASE (amd64)
+
+Login attempt 1 of 3.
+Type "?" for a list of commands.
+branch-edge-01>

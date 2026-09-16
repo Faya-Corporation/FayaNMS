@@ -1,0 +1,18 @@
+Cisco IOS XE Software, Version 17.09.04a
+Cisco IOS Software [Cupertino], Catalyst L3 Switch Software (CAT9K_IOSXE), Version 17.9.4a
+TECHNICAL SUPPORT: https://www.cisco.com/techsupport
+Copyright (c) 1986-2023 by Cisco Systems, Inc.
+Compiled Wed 09-Aug-23 08:14 by mcpre
+
+Cisco IOS-XE software, Copyright (c) 2005-2023 by cisco Systems, Inc.
+All rights reserved. Certain components of this software are licensed under
+the GNU General Public License ("GPL") Version 2.0. The software code licensed
+under GPL Version 2.0 is free software that comes with ABSOLUTELY NO WARRANTY.
+
+cisco Catalyst 8000V Edge Software (ciscoC8000V) processor (1)vcpus with 1764380K/6147K bytes of memory.
+Processor Board ID FLM2044W2FD
+
+2 Virtual Ethernet interfaces
+32768K bytes of non-volatile configuration memory.
+1764380K bytes of physical memory.
+11534336K bytes of virtual hard disk at bootflash:.
