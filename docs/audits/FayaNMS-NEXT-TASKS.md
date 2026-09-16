@@ -5,8 +5,7 @@ Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-P
 ## ACTIVE (only genuinely remaining work)
 
 ```text
-R50 Phase R50.3 — IPv4/IPv6 management-address contract decision (R50-T030..T033; fixes open P1 R50-004: AAAA fallback vs IPv4-only form) — authorable, NEXT
-R50 Phase R50.4 — typed detection API contract (R50-T040..T042: stable per-stage error codes, stage status enums, contract versioning)
+R50 Phase R50.4 — typed detection API contract (R50-T040..T042: stable per-stage error codes, stage status enums, contract versioning) — authorable, NEXT
 R50 Phase R50.5+ — fingerprint registry, UI two-stage flow, audit/telemetry, test matrix (R50-T050..T072)
 R50-T021/T022-follow-up/T025 — actor→credential-profile→scope authorization enrichment; worker-side resolved-address policy; explicit DNS-timeout budget
 R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (needs operator-side hardware or free DevNet AAA credentials; Step 0: PUBLIC DEMO DEVICE PLANE — docs/certification/PUBLIC-DEMO-DEVICES.md + `bun run demo:fleet`)
@@ -14,7 +13,13 @@ R50-T100..T103 / OWNER-CI-001 — restore GitHub Actions runner capacity (infras
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4)
 ```
 
-The remediation authoring backlog for the R34–R47 program is EMPTY: every code/doc task from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R47). AUTH-001 is FIXED end-to-end (R35 guard + R46 fleet-wide store); the rendering layer is continuously verified (R47 browser journeys + axe a11y). The R50 P0 (R50-001) and P1s R50-002/003/005/006 are FIXED on `z_ai_v2` (Phases R50.0/R50.1/R50.2 below).
+The remediation authoring backlog for the R34–R47 program is EMPTY: every code/doc task from the original backlog is ✅ LANDED with evidence (see the history below and worklog.md R34–R47). AUTH-001 is FIXED end-to-end (R35 guard + R46 fleet-wide store); the rendering layer is continuously verified (R47 browser journeys + axe a11y). The R50 P0 (R50-001) and P1s R50-002/003/004/005/006 are FIXED on `z_ai_v2` (Phases R50.0/R50.1/R50.2/R50.3 below).
+
+---
+
+TASK-R50-PHASE-3 — R50-T030..T033 IPv4 management-address policy ✊ → ✅ LANDED (2026-09-16, branch `z_ai_v2`)
+
+R50-004 is FIXED at the contract level: the T030 DECISION is recorded in `docs/adr/ADR-management-address-policy.md` — `Device.mgmtIp` is IPv4-ONLY (matching the already-IPv4 create/update/form/CSV surfaces and the IPv4-CIDR discovery scanner; dual-stack would be a multi-plane schema change with no operator demand). R50-T031: `resolveHostToIp` REFUSES IPv6 with the typed `IPV6_MANAGEMENT_ADDRESS_UNSUPPORTED` result — an IPv6 literal pre-DNS (`refused-ipv6-literal`) and an AAAA-only hostname after an honest AAAA diagnostic (`refused-aaaa-only`) — the old A→AAAA fallback + IPv6-literal passthrough (the misleading success the audit flagged) is structurally gone and its mode union is re-pinned; detection itself is unaffected (probes dial the endpoint directly, never the mapping). R50-T033: multi-address A RRsets resolve deterministically to the numeric-ASCENDING first address (per-octet compare; resolver RR rotation cannot move a device's management address). The operator toast names the policy instead of a generic DNS failure; the client `AutoDetectResult` type carries the new mode union + the T011 fields. Tests: `tests/audit/r50-address-policy.test.ts` (15 pins) + re-pinned resolver matrix in vendor-detect.test.ts; suite 681 → 696 (696 pass / 12 skip / 0 fail, 3,741 expects), lint 0, tsc 0. Evidence: `FayaNMS-R50-T030-T033-AddressPolicy-2026-09-16.md`.
 
 ---
 

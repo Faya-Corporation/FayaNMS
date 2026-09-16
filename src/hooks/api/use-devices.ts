@@ -219,12 +219,26 @@ export interface AutoDetectPayload {
 
 export interface AutoDetectResult {
   host: string;
+  // R50-T011 explicit endpoint identities (the route returns them; optional
+  // here so older servers remain assignable).
+  requestedHost?: string;
+  connectionAddress?: string | null;
+  resolvedManagementIp?: string | null;
   mgmtIpResolution: {
     mgmtIp: string | null;
-    mode: "ip-literal" | "dns-a" | "dns-aaaa" | "failed";
+    // R50-T031: the AAAA/IPv6 success modes are gone — the resolver
+    // refuses them under the IPv4-only inventory policy
+    // (ADR-management-address-policy).
+    mode:
+      | "ip-literal"
+      | "dns-a"
+      | "refused-ipv6-literal"
+      | "refused-aaaa-only"
+      | "failed";
     error: string | null;
   };
   vendorStage: "skipped-no-credential" | "executed";
+  hostKeyState?: "not-probed" | "pinned" | "capture-requested";
   detection: {
     vendorKey: string;
     confidence: "high" | "low";
@@ -270,6 +284,14 @@ export function useAutoDetectDevice() {
           `Management IP: ${result.mgmtIpResolution.mgmtIp} (${
             result.mgmtIpResolution.mode === "ip-literal" ? "as entered" : "DNS"
           })`,
+        );
+      } else if (
+        result.mgmtIpResolution.error === "IPV6_MANAGEMENT_ADDRESS_UNSUPPORTED"
+      ) {
+        // R50-T031 — the typed IPv6 policy refusal: name the contract, not
+        // a generic DNS failure. (ADR-management-address-policy)
+        parts.push(
+          "Management IP not mapped: the target advertises IPv6 only — the device inventory requires an IPv4 (A record / IPv4 literal) management address",
         );
       } else {
         parts.push(

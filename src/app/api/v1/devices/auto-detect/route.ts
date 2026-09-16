@@ -56,7 +56,12 @@ export const dynamic = "force-dynamic";
  *      (resolvedManagementIp). It NEVER retargets the probe (R50-T013:
  *      resolve once, bind the connection before any DNS is consulted —
  *      silent re-resolution is structurally impossible here because the
- *      connection does not use DNS at all).
+ *      connection does not use DNS at all). R50-T030/T031
+ *      (ADR-management-address-policy): the mapping enforces the IPv4-only
+ *      inventory contract — IPv6 literals and AAAA-only hostnames answer a
+ *      typed IPV6_MANAGEMENT_ADDRESS_UNSUPPORTED result instead of a
+ *      misleading success the form would reject on submit (R50-004); the
+ *      A RRset pick is deterministic (R50-T033).
  *   8. Preview response — requestedHost / connectionAddress /
  *      resolvedManagementIp named explicitly (R50-T011), plus the original
  *      fields (UI compatibility).

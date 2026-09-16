@@ -249,47 +249,61 @@ describe("R50 — /live/detect-vendor host-key policy (pre-connection refusals)"
 describe("R50 — resolveHostToIp (injectable, total)", () => {
   test("IPv4 literal passes through without touching DNS", async () => {
     let dnsCalls = 0;
-    const probe = async (): Promise<{ address: string; family: number }> => {
+    const probe = async (): Promise<string[]> => {
       dnsCalls += 1;
-      return { address: "0.0.0.0", family: 4 };
+      return ["0.0.0.0"];
     };
     const result = await resolveHostToIp("10.20.255.1", probe);
     expect(result).toEqual({ mgmtIp: "10.20.255.1", mode: "ip-literal" });
     expect(dnsCalls).toBe(0);
   });
 
-  test("IPv6 literal passes through", async () => {
-    const result = await resolveHostToIp("fd00::1", async () => ({
-      address: "x",
-      family: 4,
-    }));
-    expect(result).toEqual({ mgmtIp: "fd00::1", mode: "ip-literal" });
+  test("IPv6 literal is REFUSED by the inventory policy (R50-T031)", async () => {
+    // Re-pinned by R50.3: the old passthrough fed the form a value its own
+    // IPv4 validation would always reject (R50-004). The full policy matrix
+    // lives in r50-address-policy.test.ts.
+    const result = await resolveHostToIp("fd00::1", async () => ["10.0.0.1"]);
+    expect(result.mgmtIp).toBeNull();
+    expect(result.resolutionError).toBe("IPV6_MANAGEMENT_ADDRESS_UNSUPPORTED");
   });
 
-  test("hostname resolves via the A record", async () => {
-    const seen: number[] = [];
-    const result = await resolveHostToIp("hq-core-rtr-01", async (_host, opts) => {
-      seen.push(opts.family);
-      return { address: "10.20.255.9", family: opts.family };
+  test("hostname resolves via the A record (deterministic pick)", async () => {
+    const seen: string[] = [];
+    const result = await resolveHostToIp("hq-core-rtr-01", async (host) => {
+      seen.push(host);
+      return ["10.20.255.9"];
     });
     expect(result).toEqual({ mgmtIp: "10.20.255.9", mode: "dns-a" });
-    expect(seen).toEqual([4]);
+    expect(seen).toEqual(["hq-core-rtr-01"]);
   });
 
-  test("A-record failure falls back to AAAA", async () => {
-    const result = await resolveHostToIp("v6-only.host", async (_host, opts) => {
-      if (opts.family === 4) {
+  test("AAAA-only hostname is a typed refusal, never a success (R50-T031)", async () => {
+    // Re-pinned by R50.3: the old A→AAAA fallback returned the IPv6 address
+    // as a SUCCESS the inventory would always reject (R50-004).
+    const result = await resolveHostToIp(
+      "v6-only.host",
+      async () => {
         throw Object.assign(new Error("no A"), { code: "ENOTFOUND" });
-      }
-      return { address: "2001:db8::9", family: 6 };
+      },
+      async () => ["2001:db8::9"],
+    );
+    expect(result).toEqual({
+      mgmtIp: null,
+      mode: "refused-aaaa-only",
+      resolutionError: "IPV6_MANAGEMENT_ADDRESS_UNSUPPORTED",
     });
-    expect(result).toEqual({ mgmtIp: "2001:db8::9", mode: "dns-aaaa" });
   });
 
   test("total resolution failure is a typed RESULT, never a throw", async () => {
-    const result = await resolveHostToIp("missing.invalid", async () => {
-      throw Object.assign(new Error("nope"), { code: "ENOTFOUND" });
-    });
+    const result = await resolveHostToIp(
+      "missing.invalid",
+      async () => {
+        throw Object.assign(new Error("nope"), { code: "ENOTFOUND" });
+      },
+      async () => {
+        throw Object.assign(new Error("nope"), { code: "ENOTFOUND" });
+      },
+    );
     expect(result.mode).toBe("failed");
     expect(result.mgmtIp).toBeNull();
     expect(result.resolutionError).toBe("ENOTFOUND");

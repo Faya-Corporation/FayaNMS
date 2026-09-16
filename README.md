@@ -946,8 +946,12 @@ verified pre-auth; unpinned → refused (SSH_HOSTKEY_UNENROLLED) unless
 the caller opts into the audited first-contact capture (enrollHostKey)
 that answers with the presented host key for out-of-band enrollment.
 (2) HOSTNAME MAPPING — `src/lib/dns/resolve-host.ts` maps the hostname to
-its management address (IP literals pass through; DNS A with AAAA
-fallback) as a typed, never-throwing result. The API route is a pure
+its management address as a typed, never-throwing result under the
+IPv4-ONLY management-address policy (R50.3 — ADR-management-address-policy:
+IPv4 literals pass through; hostnames resolve via the A RRset with a
+deterministic numeric-ascending pick; IPv6 literals and AAAA-only hosts
+answer the typed IPV6_MANAGEMENT_ADDRESS_UNSUPPORTED refusal — never a
+success the form would reject on submit). The API route is a pure
 form helper — it NEVER mutates the inventory (test-pinned) — applies the
 result on submit, degrades gracefully when the worker is down, and
 audits every invocation (DEVICE_VENDOR_AUTODETECTED). Coverage honesty:
@@ -990,10 +994,41 @@ detection probe is the REQUESTED ENDPOINT by ADR (docs/adr/ADR-host-key-trust-id
 `requestedHost` / `connectionAddress` / `resolvedManagementIp` / `hostKeyState`, and the
 audit event records the credential profile id + host-key state. Live-verified on the
 sandbox stack: the vendor stage executes and reaches the worker even when DNS fails
-(ENOTFOUND), with the trust path deterministic. Remaining open R50 phases (authorization
-& abuse controls R50.2, IPv6 decision R50.3, typed contract R50.4, fingerprint registry
-R50.5, UI hardening R50.6, telemetry R50.7, real-device + CI certification) stay tracked
-in docs/audits/FayaNMS-NEXT-TASKS.md.
+(ENOTFOUND), with the trust path deterministic.
+
+R50 REMEDIATION — PHASE R50.2 LANDED on branch `z_ai_v2` (2026-09-16,
+evidence: docs/audits/FayaNMS-R50-T020-T024-Abuse-Controls-2026-09-16.md):
+R50-005/R50-006 FIXED — the detection route requires the DEDICATED `device.detect`
+permission (operator + engineer; manager explicitly without; R50-T020); the NEW
+`src/lib/net/target-policy.ts` refuses loopback / cloud-metadata link-local /
+multicast / reserved literals BEFORE any credential, trust, or network work
+(typed TARGET_NOT_ALLOWED 403 + a dedicated DEVICE_PROBE_TARGET_REFUSED audit
+event; FAYANMS_PROBE_ALLOW_SPECIAL=true is the documented lab hatch);
+detection budgets run per actor AND per target over the SHARED fleet-wide rate
+store → typed DEVICE_PROBE_RATE_LIMITED 429 + Retry-After (R50-T024). The
+verdict's own demo case (localhost) now 403s. Also landed: TASK-OPS-003-A —
+`scripts/drill-restore.ts` (`bun scripts/drill-restore.ts`) makes
+recoverability an
+executable claim: read-only logical dump → fresh scratch DB restored via
+`prisma migrate deploy` → 42/42 row-count equality + a REAL ConfigSnapshot
+decrypted from the restored DB under the deployment KEK → measured RPO/RTO
+(LIVE evidence: 66,694 rows, 11/11 checks, RTO 3 s) + the D1-DRILL runbook in
+the deploy doc.
+
+R50 REMEDIATION — PHASE R50.3 LANDED on branch `z_ai_v2` (2026-09-16,
+evidence: docs/audits/FayaNMS-R50-T030-T033-AddressPolicy-2026-09-16.md +
+docs/adr/ADR-management-address-policy.md): R50-004 FIXED — the T030 DECISION
+is recorded (Device.mgmtIp is IPv4-ONLY, matching every validated surface);
+`resolveHostToIp` refuses IPv6 with the typed
+`IPV6_MANAGEMENT_ADDRESS_UNSUPPORTED` result (IPv6 literals pre-DNS;
+AAAA-only hostnames after an honest AAAA diagnostic) instead of the old
+A→AAAA fallback success the form would always reject; multi-address A RRsets
+resolve deterministically (numeric-ascending first, R50-T033); detection is
+unaffected (probes never consult the mapping); the operator toast names the
+policy; suite 681 → 696 (696 pass / 12 skip / 0 fail). Remaining open R50
+phases (typed contract R50.4, fingerprint registry R50.5, UI hardening
+R50.6, telemetry R50.7, real-device + CI certification) stay tracked in
+docs/audits/FayaNMS-NEXT-TASKS.md.
 
 Known limitations (not production claims): physical-device certification of the LIVE_SSH
 plane (the code is certified against a real-protocol harness; the wire to real hardware is
