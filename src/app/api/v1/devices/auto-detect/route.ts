@@ -7,7 +7,15 @@ import {
   ok,
   requestContext,
 } from "../../_lib/api";
-import { AuthError, requirePermission } from "@/lib/auth/session";
+import { AuthError, requirePermission, requireUser } from "@/lib/auth/session";
+import {
+  observeDetectionDuration,
+  recordDetectionFailure,
+  recordDetectionOutcome,
+  recordDetectionRequest,
+  recordHostKeyMismatch,
+  type DetectionOutcome,
+} from "@/lib/metrics/detection-metrics";
 import { resolveHostKeyTrustState } from "@/lib/ssh/host-keys";
 import { resolveHostToIp, type HostResolutionMode } from "@/lib/dns/resolve-host";
 import {
@@ -85,6 +93,30 @@ export const dynamic = "force-dynamic";
  * audited (DEVICE_VENDOR_AUTODETECTED, with the credential profile id and
  * the host-key state).
  *
+ * R50.7 — Audit + telemetry (R50-T070/T071/T072):
+ *   - T070: the DEVICE_VENDOR_AUTODETECTED evidence is STRUCTURED and
+ *     non-secret — actor + correlationId (mirrored from the audit columns
+ *     for self-contained exports), tenant (null BY DESIGN: single-tenant
+ *     schema — reserved for the roadmap's shape, never silently omitted),
+ *     requested host, connection address, resolved address, credential
+ *     profile id, host-key state, vendor/model/version, the outcome literal
+ *     (matched / vendor-unknown / failed / not-attempted), the typed error
+ *     codes, the total route duration, and the match reasons.
+ *   - T071: EVERY failure class is audited — authorization refusal
+ *     (DEVICE_PROBE_AUTH_REFUSED, null actor when unauthenticated BY
+ *     DESIGN), target-policy refusal (DEVICE_PROBE_TARGET_REFUSED),
+ *     credential failure (DEVICE_PROBE_CREDENTIAL_REFUSED), trust-lookup
+ *     failure (HOST_KEY_TRUST_LOOKUP_FAILED), host-key mismatch
+ *     (DEVICE_PROBE_HOST_KEY_MISMATCH), timeout/unreachable/VENDOR_UNKNOWN
+ *     (the main event with the typed codes). Refusal emissions are
+ *     best-effort (a probe refusal must never become a 500 because the
+ *     audit plane hiccuped — and never a success either).
+ *   - T072: the operational counters (src/lib/metrics/detection-metrics.ts)
+ *     tick on this route; readable at GET /api/v1/metrics/detection
+ *     (metrics.read). Rate-limit refusals are counted but NOT audited
+ *     per-hit BY DESIGN — the budget itself is the abuse control, and
+ *     per-hit rows would let an attacker flood the audit plane.
+ *
  * R50.4 — Detection API contract (R50-T040/T041/T042):
  *   - PARTIAL RESULTS: the success envelope carries TWO independent stage
  *     blocks — `vendorDetection` and `addressResolution` — each with its
@@ -141,6 +173,41 @@ const bodySchema = z.object({
     .optional(),
 });
 
+/**
+ * R50-T071 — best-effort FAILURE audit emission for probe refusals.
+ *
+ * A refusal must never become a 500 because the audit plane hiccuped — and
+ * must never become a success either: the typed refusal response IS the
+ * contract, this emission is the evidence trail, and its failure is logged
+ * (the same posture the trust-lookup path established in R50-T001).
+ */
+async function auditProbeFailureBestEffort(entry: {
+  actorId: string | null;
+  actorName: string;
+  action: string;
+  resourceLabel: string;
+  correlationId: string;
+  detail: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await db.auditEvent.create({
+      data: {
+        actorId: entry.actorId,
+        actorName: entry.actorName,
+        action: entry.action,
+        resourceType: "Device",
+        resourceId: null,
+        resourceLabel: entry.resourceLabel,
+        result: "FAILURE",
+        correlationId: entry.correlationId,
+        afterJson: JSON.stringify(entry.detail),
+      },
+    });
+  } catch (auditError) {
+    console.error(`[auto-detect] ${entry.action} audit emission failed`, auditError);
+  }
+}
+
 /** The resolver result widened with the R50-T064 not-requested marker. */
 interface RouteResolution {
   mgmtIp: string | null;
@@ -169,6 +236,10 @@ interface WorkerDetection {
 }
 
 export async function POST(request: Request) {
+  // R50-T072: wall-clock start. Refusal paths return BEFORE the duration
+  // observation — the duration distribution covers stage-running invocations
+  // only (documented semantics in detection-metrics.ts).
+  const startedAt = Date.now();
   let body: unknown;
   try {
     body = await request.json();
@@ -185,6 +256,14 @@ export async function POST(request: Request) {
     }, requestContext(request));
   }
 
+  // R50-T072: a WELL-FORMED detection request — counted from here on
+  // (INVALID_BODY never enters the counters).
+  recordDetectionRequest();
+  // The correlation id exists from the first post-validation step so EVERY
+  // refusal audit row (R50-T071) carries the same correlation surface as
+  // the success rows.
+  const correlationId = newJobCorrelationId();
+
   /* ── Stage 1: authorization (R50-T020 dedicated probe permission) ───── */
   let actor: Awaited<ReturnType<typeof requirePermission>>;
   try {
@@ -193,6 +272,33 @@ export async function POST(request: Request) {
     // R50-T041: the probe-permission refusal carries the stable
     // PROBE_NOT_AUTHORIZED code (status preserved from the AuthError).
     if (error instanceof AuthError) {
+      // R50-T071: authorization refusals leave an audit trail. The actor is
+      // identified when the session itself was valid (RBAC refusal); an
+      // unauthenticated hit audits a NULL actor BY DESIGN (actorId is
+      // nullable — no identity is fabricated).
+      let refusalActorId: string | null = null;
+      let refusalActorName = "Anonymous";
+      try {
+        const sessionUser = await requireUser(request);
+        refusalActorId = sessionUser.id;
+        refusalActorName = sessionUser.name ?? "Unknown user";
+      } catch {
+        /* unauthenticated / disabled — the null-actor row is the truth */
+      }
+      await auditProbeFailureBestEffort({
+        actorId: refusalActorId,
+        actorName: refusalActorName,
+        action: "DEVICE_PROBE_AUTH_REFUSED",
+        resourceLabel: parsed.data.host,
+        correlationId,
+        detail: {
+          requestedHost: parsed.data.host,
+          permission: "device.detect",
+          reason: error.code,
+        },
+      });
+      // R50-T072: refusal → failure_total with the registry reason.
+      recordDetectionFailure("PROBE_NOT_AUTHORIZED");
       return failWithMeta(
         "PROBE_NOT_AUTHORIZED",
         error.message,
@@ -204,7 +310,6 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  const correlationId = newJobCorrelationId();
   // R50-T011: the three endpoint identities are kept apart. requestedHost is
   // the operator-typed string; connectionAddress is what the worker actually
   // dials; resolvedManagementIp is the informational DNS mapping (stage 7).
@@ -216,22 +321,20 @@ export async function POST(request: Request) {
   /* ── Stage 2: target policy (R50-T022/T023 — refuse special classes) ── */
   const targetPolicy = evaluateTargetPolicy(requestedHost);
   if (!targetPolicy.allowed) {
-    await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? "Unknown user",
-        action: "DEVICE_PROBE_TARGET_REFUSED",
-        resourceType: "Device",
-        resourceId: null,
-        resourceLabel: requestedHost,
-        result: "FAILURE",
-        correlationId,
-        afterJson: JSON.stringify({
-          requestedHost,
-          addressClass: targetPolicy.addressClass,
-        }),
+    // R50-T071: refusal emissions are best-effort (the helper) — a probe
+    // refusal must never become a 500 because the audit plane hiccuped.
+    await auditProbeFailureBestEffort({
+      actorId: actor.id,
+      actorName: actor.name ?? "Unknown user",
+      action: "DEVICE_PROBE_TARGET_REFUSED",
+      resourceLabel: requestedHost,
+      correlationId,
+      detail: {
+        requestedHost,
+        addressClass: targetPolicy.addressClass,
       },
     });
+    recordDetectionFailure("TARGET_NOT_ALLOWED");
     return failWithMeta(
       "TARGET_NOT_ALLOWED",
       `Probe target refused by the target network policy (${targetPolicy.addressClass})`,
@@ -256,6 +359,10 @@ export async function POST(request: Request) {
         requestContext(request),
       );
       refusal.headers.set("Retry-After", String(slot.retryAfterSec));
+      // R50-T072: counted, NOT audited per-hit BY DESIGN — the budget is
+      // the abuse control, per-hit rows would let an attacker flood the
+      // audit plane (see the route docstring).
+      recordDetectionFailure("DEVICE_PROBE_RATE_LIMITED");
       return refusal;
     }
   }
@@ -278,6 +385,20 @@ export async function POST(request: Request) {
     });
     if (!profile) {
       // R50-T041: stable registry code (was CREDENTIAL_PROFILE_NOT_FOUND).
+      // R50-T071: the credential failure is audited.
+      await auditProbeFailureBestEffort({
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
+        action: "DEVICE_PROBE_CREDENTIAL_REFUSED",
+        resourceLabel: requestedHost,
+        correlationId,
+        detail: {
+          requestedHost,
+          credentialProfileId,
+          reason: "not-found",
+        },
+      });
+      recordDetectionFailure("CREDENTIAL_UNRESOLVED");
       return failWithMeta(
         "CREDENTIAL_UNRESOLVED",
         "The selected credential profile does not exist",
@@ -290,6 +411,21 @@ export async function POST(request: Request) {
       // Detection rides the SSH exec transport — API_TOKEN/SNMPV3/HTTPS
       // profiles cannot answer the read-only CLI probes.
       // R50-T041: stable registry code (was DETECT_CREDENTIAL_TYPE_UNSUPPORTED).
+      // R50-T071: the credential failure is audited (profile type recorded).
+      await auditProbeFailureBestEffort({
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
+        action: "DEVICE_PROBE_CREDENTIAL_REFUSED",
+        resourceLabel: requestedHost,
+        correlationId,
+        detail: {
+          requestedHost,
+          credentialProfileId,
+          reason: "type-unsupported",
+          profileType: profile.type,
+        },
+      });
+      recordDetectionFailure("CREDENTIAL_NOT_AUTHORIZED");
       return failWithMeta(
         "CREDENTIAL_NOT_AUTHORIZED",
         `Vendor detection over SSH requires an SSH_PASSWORD credential profile (got ${profile.type})`,
@@ -359,6 +495,7 @@ export async function POST(request: Request) {
         // converted into a success path.
         console.error("[auto-detect] trust-lookup audit emission failed", auditError);
       }
+      recordDetectionFailure("HOST_KEY_ENROLLMENT_LOOKUP_FAILED");
       return failWithMeta(
         "HOST_KEY_ENROLLMENT_LOOKUP_FAILED",
         "Host-key enrollment lookup failed — probe aborted before any connection (trust state unknown; fail-closed)",
@@ -440,6 +577,30 @@ export async function POST(request: Request) {
       detectionError = "Worker service unreachable";
       detectionErrorCode = mapWorkerErrorToDetectionCode(detectionError);
     }
+
+    // R50-T071: a PRESENTED key that fails the enrolled pin is its own
+    // audit class — the credential was never the problem, the ENDPOINT's
+    // identity was. The worker rejects pre-auth (SAFE-001), so this row
+    // records a possible first-contact substitution attempt against a
+    // pinned coordinate. host_key_mismatch_total ticks alongside (R50-T072;
+    // failure_total ticks once at the end path with the same code).
+    if (detectionErrorCode === "HOST_KEY_MISMATCH") {
+      await auditProbeFailureBestEffort({
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
+        action: "DEVICE_PROBE_HOST_KEY_MISMATCH",
+        resourceLabel: requestedHost,
+        correlationId,
+        detail: {
+          requestedHost,
+          connectionAddress,
+          port: profile.port,
+          credentialProfileId: profile.id,
+          workerMessage: detectionError,
+        },
+      });
+      recordHostKeyMismatch();
+    }
   }
 
   /* ── Stage 6: hostname → management address (ONCE, informational) ───── */
@@ -469,6 +630,43 @@ export async function POST(request: Request) {
   // Audit every invocation (SUCCESS = the vendor stage produced a result,
   // whether high-confidence or honest generic; FAILURE = transport error).
   const detected = detection !== null && detection.vendorKey !== "generic";
+  // R50-T070: one explicit OUTCOME literal per invocation — the vendor
+  // stage is the primary action; a skipped vendor stage is `not-attempted`
+  // even when the address stage failed (THAT failure still reaches the
+  // operational metrics below, with its resolution code as the reason).
+  const outcome: DetectionOutcome =
+    vendorStage === "executed"
+      ? detected
+        ? "matched"
+        : detection !== null
+          ? "vendor-unknown"
+          : "failed"
+      : "not-attempted";
+  // R50-T072: route wall-clock duration (the worker's latencyMs is the
+  // probe leg only; this is the whole handler). Refusal paths return
+  // before this line — the distribution covers stage-running invocations
+  // only (documented semantics in detection-metrics.ts).
+  const durationMs = Date.now() - startedAt;
+  observeDetectionDuration(durationMs);
+  // R50-T072: the operational counters (semantics in detection-metrics.ts;
+  // recordDetectionFailure increments failure_total — never combine it with
+  // recordDetectionOutcome("failed")).
+  switch (outcome) {
+    case "matched":
+    case "vendor-unknown":
+      recordDetectionOutcome(outcome);
+      break;
+    case "failed":
+      recordDetectionFailure(detectionErrorCode ?? resolutionErrorCode ?? "WORKER_REJECTED");
+      break;
+    case "not-attempted":
+      // No probe was asked for; the invocation still FAILED operationally
+      // when the REQUESTED address stage failed (e.g. DNS_NOT_FOUND).
+      if (resolutionErrorCode) {
+        recordDetectionFailure(resolutionErrorCode);
+      }
+      break;
+  }
   await db.auditEvent.create({
     data: {
       actorId: actor.id,
@@ -480,6 +678,16 @@ export async function POST(request: Request) {
       result: detectionError ? "FAILURE" : "SUCCESS",
       correlationId,
       afterJson: JSON.stringify({
+        // R50-T070: the structured NON-SECRET evidence. actor + correlation
+        // mirror the audit columns so exports are self-contained; tenant is
+        // null BY DESIGN (single-tenant schema — the field is reserved for
+        // the roadmap's shape, never silently omitted); outcome + durationMs
+        // make the row comparable without replaying the request.
+        actorId: actor.id,
+        correlationId,
+        tenant: null,
+        outcome,
+        durationMs,
         requestedHost,
         connectionAddress: profile ? requestedHost : null,
         resolvedManagementIp,
