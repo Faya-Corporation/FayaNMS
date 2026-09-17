@@ -1155,7 +1155,7 @@ export interface SearchResults {
 export interface MetaPayload {
   vendors: { id: string; key: string; name: string }[];
   sites: { id: string; name: string; code: string }[];
-  credentialProfiles: { id: string; name: string; type: string; username: string }[];
+  credentialProfiles: { id: string; name: string; type: string }[];
   /** Seeded accounts for the Act-as demo identity (Task 4-b). */
   users: UserOption[];
 }

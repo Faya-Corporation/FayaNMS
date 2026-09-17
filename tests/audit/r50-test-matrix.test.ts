@@ -141,6 +141,26 @@ describe("R50.8 — test-matrix governance (roadmap §10 ↔ matrix doc)", () =>
     expect(bySuite(BROWSER_SUITE)).toBeGreaterThanOrEqual(5);
   });
 
+  test("R51-D1 — §4 prose counts are pinned to the §3 registry (26→24 COVERED drift)", () => {
+    // The registry is the single source of truth; the doc's §4 summary
+    // previously claimed "26 cells COVERED" against 24 actual rows. Pin
+    // every disposition count so the prose can never drift again.
+    const count = (d: MatrixRow["disposition"]): number =>
+      rows.filter((row) => row.disposition === d).length;
+    expect(count("COVERED")).toBe(24);
+    expect(count("GAP-CLOSED-R50.8")).toBe(14);
+    expect(count("LIVE-EVIDENCE")).toBe(2);
+    expect(count("N-A-DOCUMENTED")).toBe(1);
+    // The four dispositions partition the 41 roadmap cells exactly.
+    expect(count("COVERED") + count("GAP-CLOSED-R50.8") + count("LIVE-EVIDENCE") + count("N-A-DOCUMENTED")).toBe(41);
+    // And the §4 prose itself carries the corrected numbers (no silent rewrite).
+    const docText = readFileSync(MATRIX, "utf8");
+    expect(docText).toContain("24 cells `COVERED`");
+    expect(docText).not.toContain("26 cells `COVERED`");
+    expect(docText).toContain("1 cell `N-A-DOCUMENTED`");
+    expect(docText).toContain("2 cells `LIVE-EVIDENCE`");
+  });
+
   test("the N-A row keeps its written rationale (tenant crossing)", () => {
     const na = rows.filter((row) => row.disposition === "N-A-DOCUMENTED");
     expect(na.length).toBe(1);

@@ -36,6 +36,7 @@
 import { pickAdapter, type DeviceAdapter, type DeviceTarget } from "./adapters";
 import { createLiveSshAdapter } from "./live-ssh";
 import { createLiveWebApiAdapter } from "./live-webapi";
+import { resolveTargetForDial } from "./target-policy";
 import { resolveVaultSecret, VaultError } from "./vault";
 
 export interface TargetCredential {
@@ -94,6 +95,56 @@ export class HostKeyPolicyError extends Error {
     super(message);
     this.name = "HostKeyPolicyError";
   }
+}
+
+/**
+ * R51-A1 (Independent Production ReAudit 2026-09-18, F-1) — request-level
+ * target network-policy failure. The R50-T022 resolved-address policy was
+ * enforced on the DETECTION probe plane only; every other LIVE dial plane
+ * (CONFIG_BACKUP via resolveAdapter, /simulate/connect probes,
+ * /live/fetch-config, /live/apply) dialed the raw payload address with
+ * vault-resolved credentials. This error is raised BEFORE any credential
+ * resolution or connection (the caller maps it to 400, mirroring
+ * HostKeyPolicyError: nothing reached the device, no secret was read).
+ */
+export class TargetPolicyError extends Error {
+  constructor(
+    public readonly code:
+      | "SSH_TARGET_POLICY_REFUSED"
+      | "SSH_TARGET_UNRESOLVED"
+      | "SSH_TARGET_RESOLVE_TIMEOUT",
+    message: string,
+  ) {
+    super(message);
+    this.name = "TargetPolicyError";
+  }
+}
+
+/**
+ * Resolve + govern the dial target for EVERY live transport (R51-A1):
+ * the same resolved-address policy as the detection probe (R50-T022
+ * follow-up), now applied to all dial planes. IP literals classify with
+ * no I/O; hostnames resolve under the R50-T025 budget and EVERY candidate
+ * address must pass (fail-closed across the RRset). Returns the VALIDATED
+ * address the caller MUST dial (no second DNS lookup — the resolve-then-dial
+ * rebinding window stays structurally closed); a governed target throws
+ * TargetPolicyError BEFORE any credential resolution or network work.
+ * The documented FAYANMS_PROBE_ALLOW_SPECIAL=true lab hatch is honored
+ * (same hatch as the probe plane — app↔worker parity stays pinned).
+ */
+export async function guardDialTarget(
+  host: string,
+  resolve4Fn?: Parameters<typeof resolveTargetForDial>[1],
+  resolve6Fn?: Parameters<typeof resolveTargetForDial>[2],
+): Promise<string> {
+  const dial = await resolveTargetForDial(host, resolve4Fn, resolve6Fn);
+  if (!dial.decision.ok) {
+    throw new TargetPolicyError(
+      dial.decision.code,
+      `${dial.decision.code}: ${dial.decision.detail} — the target network policy refuses this address class before any credential or connection work`,
+    );
+  }
+  return dial.decision.dialedAddress;
 }
 
 /** OpenSSH-style fingerprint: "SHA256:" + 43 base64 chars (padding stripped). */
@@ -179,10 +230,16 @@ export async function resolveAdapter(
     // handshake to pin); trust is the fail-closed TLS policy documented in
     // webapi-transport.ts. The api-key rides the SAME vault secretRef
     // pipeline as SSH passwords — resolved worker-side, never transported.
+    // R51-A1 — the target policy governs EVERY live dial plane: classify
+    // the resolved address BEFORE any vault/credential work so a governed
+    // target class never sees a resolved secret.
+    const webApiDialHost = await guardDialTarget(
+      target.managementIp ?? target.hostname,
+    );
     if (isLiveWebApiVendor(target.vendor)) {
       const apiKey = await resolveVaultSecret(credential.secretRef);
       return createLiveWebApiAdapter(target.vendor, {
-        host: target.managementIp ?? target.hostname,
+        host: webApiDialHost,
         port: credential.port,
         apiKey,
       });
@@ -205,11 +262,17 @@ export async function resolveAdapter(
         )}`,
       );
     }
+    // R51-A1 — the SSH dial plane is governed by the same resolved-address
+    // policy (refusal BEFORE vault resolution), and the adapter dials the
+    // VALIDATED address — never a second lookup of the original name.
+    const sshDialHost = await guardDialTarget(
+      target.managementIp ?? target.hostname,
+    );
     // P1-005: vault resolution is async (exec provider carries a real
     // deadline); the adapter is resolved through the awaited promise.
     const password = await resolveVaultSecret(credential.secretRef);
     return createLiveSshAdapter(target.vendor, {
-      host: target.managementIp ?? target.hostname,
+      host: sshDialHost,
       port: credential.port,
       username: credential.username,
       password,

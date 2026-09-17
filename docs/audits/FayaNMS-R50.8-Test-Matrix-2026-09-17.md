@@ -104,7 +104,7 @@ The two LIVE-EVIDENCE browser cells need a policy-allowed SSH persona on the wir
 
 - 14 cells marked `GAP-CLOSED-R50.8` (7 worker + 7 browser) — all previously mapper-pinned or live-only.
 - 1 harness defect fixed (`persona-sshd.ts` teardown) so the new worker matrix can run hermetically in-process.
-- 26 cells `COVERED` by pre-existing suites — no re-litigation, only traceability.
+- 24 cells `COVERED` by pre-existing suites — no re-litigation, only traceability. (R51-D1 re-audit correction: this §4 summary previously said "26" while the §3 registry itself carried 24 COVERED rows — the count is now machine-pinned by `tests/audit/r50-test-matrix.test.ts` so prose can never drift from the registry again.)
 - 1 cell `N-A-DOCUMENTED` (tenant crossing, single-tenant schema) with the structural pin cited.
 - 2 cells `LIVE-EVIDENCE` (browser cells needing real SSH personas) with their recorded artifacts cited.
 

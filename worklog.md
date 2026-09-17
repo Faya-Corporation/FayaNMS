@@ -3188,3 +3188,23 @@ Stage Summary:
 - VERIFIED: lint 0 / tsc 0 / 869 pass + 18 skip / 0 fail (4,712 expects, 50 files); five live browser journeys re-verified against the deployed stack (D6/D7/D10/D11/D12) with 0 console errors; deployment fully rebuilt after the sandbox reset (app :3000, worker :3030, PG :5433).
 - NOT TESTED / HONEST SCOPE: detection-journeys execution needs a production build (browser job; build:gate OOM-blocked in this sandbox — hermetic skip verified); remote CI platform-blocked since run #34 (OWNER-CI-001); real-device certification lab-side.
 - REMAINING (all outside the sandbox's control): R50-T090..T092 / LAB-FUNC-001 (hardware or DevNet AAA creds; Step 0 = demo:fleet), R50-T100..T103 / OWNER-CI-001, OWNER-GOV-001.
+
+---
+Task ID: R51-reaudit-remediation
+Agent: Z.ai Code (orchestrator, GLM session)
+Task: "review and audit then start immediately" — Independent Production Re-Audit of z_ai_v2 @ f813d7a + immediate remediation of every finding, gates, live/browser verification, commit + push.
+
+Work Log:
+- Audit executed by two parallel read-only passes (security plane; supply-chain/docs plane) + a personally executed gate battery; report: docs/audits/FayaNMS-z_ai_v2-Independent-Production-ReAudit-2026-09-18.md (score 88/100; R50.0–R50.8 re-verified TRUE; blockers unchanged and owner/lab-side).
+- SECURITY re-verified: secrets hygiene, 4-plane auth chain (all 125 v1 routes swept), rate gates, SSRF/webhook signing, AES-256-GCM config crypto, host-key fail-closed pin, execution/approval guards, env boundary, dangerous-pattern sweep CLEAN.
+- F-1 (P2) FOUND + FIXED (R51-A1): target network policy was probe-plane only — CONFIG_BACKUP (runner.ts:263), /simulate/connect (index.ts:262), /live/fetch-config (:519), /live/apply (:804) dialed raw payload addresses with vault-resolved credentials. NEW guardDialTarget() + TargetPolicyError in adapter-router.ts governs resolveAdapter (BOTH LIVE transports, BEFORE vault) + both direct endpoints; dial = VALIDATED resolved address; lab hatch honored. NEW tests/audit/r51-dial-target-policy.test.ts (16 pins incl. pre-vault order proof, fail-closed RRset, hatch parity, SIMULATOR untouched, runner/index wiring).
+- F-2 (P3) FIXED (R51-A2): /api/v1/meta (session-exempt) no longer selects credential-profile username; MetaPayload + pin updated; zero client consumers (verified).
+- N1 (docs) FIXED (R51-D1): R50.8 matrix §4 "26 cells COVERED" → 24 (registry truth); four disposition counts + 41-partition + literal §4 sentences machine-pinned in r50-test-matrix.test.ts.
+- N2/N3 (INFO) FIXED (R51-D2/D3): /db/META-INF/ gitignored; README OPS-001 → OWNER-GOV-001 (×3).
+- PROTOCOL TRAP documented: the suite requires the CI env shape (ci.yml:91-96, .env stashed/restore) — a bare run auto-loads local EdDSA keys and rejects HS256 test mints (~24 env-caused failures, NOT a code defect).
+- Gates: lint 0, tsc FULL 0; suite 869 → 884 pass (884 / 18 skip / 0 fail, 4,754 expects, 51 files) in CI shape, pre-remediation baseline reproduced exactly (869/18/0).
+- LIVE verification: app :3000 + worker :3030 restarted with the remediation (worker health ok, PG :5433 ready); browser journey: sign-in → admin shell → Devices inventory → Add-Device sheet (credential picker name · type from remediated meta) → Test connection on simulator device via governed /simulate/connect → "Connection OK — 776 ms" + Online; 0 console errors; mobile 390×844 no h-scroll. Screenshots: agent-ctx/verify-r51-device-detail.png, agent-ctx/verify-r51-device-detail-mobile.png.
+
+Stage Summary:
+- R51 RE-AUDIT INCREMENT LANDED on z_ai_v2: every finding of the independent re-audit remediated with machine-pinned regression tests; suite 884/18/0; deployed stack live-verified end-to-end.
+- The tree is now internally consistent with its own stated invariants (F-1 closed); production position unchanged — controlled pilot; the only remaining items are owner-side (OWNER-CI-001, OWNER-GOV-001) and lab-side (R50-T090..T092).

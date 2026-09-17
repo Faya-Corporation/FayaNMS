@@ -77,6 +77,8 @@ tool-results/
 # NEVER tracked: portable engine binaries and the dev cluster's data files.
 /db/pg-embed/
 /db/pgdata/
+# Zonky embedded-PG extraction scratch (R51-D2: untracked-but-visible in git status)
+/db/META-INF/
 # user-upload scratch (release tars/zips, working docs). Canonical documents
 # live in docs/ — nothing under upload/ belongs in git.
 /upload/

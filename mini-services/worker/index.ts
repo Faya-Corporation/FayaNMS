@@ -82,11 +82,13 @@ import { createHash } from "node:crypto";
 import { adapters, pickAdapter, type DeviceTarget } from "./adapters";
 import { LIVE_SSH_FLAVORS, LiveAdapterError, createLiveSshAdapter } from "./live-ssh";
 import {
+  guardDialTarget,
   HostKeyPolicyError,
   parseHostKeyPin,
   parseTargetCredential,
   resolveAdapter,
   takeRecordedHostKey,
+  TargetPolicyError,
   type TargetCredential,
 } from "./adapter-router";
 import {
@@ -275,13 +277,18 @@ export async function handle(req: Request): Promise<Response> {
           ...(capturedHostKey ? { hostKey: capturedHostKey } : {}),
         });
       } catch (e) {
-        // Failure semantics (Phase 22 slice 1 + SAFE-001):
-        //   VaultError / HostKeyPolicyError = request/credential/policy
-        //     problem (NO connection was ever attempted) → 400 bad request;
+        // Failure semantics (Phase 22 slice 1 + SAFE-001 + R51-A1):
+        //   VaultError / HostKeyPolicyError / TargetPolicyError =
+        //     request/credential/policy problem (NO connection was ever
+        //     attempted) → 400 bad request;
         //   SshError / LiveAdapterError = the probe really failed against the
         //     device/transport → 200 ok:false so the test-connection UI
         //     renders the actionable reason instead of a generic 500.
-        if (e instanceof VaultError || e instanceof HostKeyPolicyError) {
+        if (
+          e instanceof VaultError ||
+          e instanceof HostKeyPolicyError ||
+          e instanceof TargetPolicyError
+        ) {
           return Response.json(
             { ok: false, vendor, host, dataSource, error: `${e.code}: ${e.message}` },
             { status: 400 }
@@ -515,9 +522,14 @@ export async function handle(req: Request): Promise<Response> {
         dataSource: "LIVE_SSH",
       };
       try {
+        // R51-A1 — the resolved-address target policy governs this dial
+        // plane too (it previously covered only the detection probe):
+        // a governed address class is refused BEFORE any credential or
+        // connection work, and the validated address is dialed verbatim.
+        const dialHost = await guardDialTarget(host);
         const password = await resolveVaultSecret(credential.secretRef);
         const adapter = createLiveSshAdapter(vendor, {
-          host,
+          host: dialHost,
           port: credential.port,
           username: credential.username,
           password,
@@ -536,9 +548,14 @@ export async function handle(req: Request): Promise<Response> {
         });
       } catch (e) {
         // Failure semantics identical to /simulate/connect: VaultError /
-        // LiveAdapterError = request problem → 400 (no connection made);
-        // SshError = the collection really failed → 200 ok:false.
-        if (e instanceof VaultError || e instanceof LiveAdapterError) {
+        // LiveAdapterError / TargetPolicyError = request problem → 400 (no
+        // connection made); SshError = the collection really failed → 200
+        // ok:false.
+        if (
+          e instanceof VaultError ||
+          e instanceof LiveAdapterError ||
+          e instanceof TargetPolicyError
+        ) {
           return Response.json(
             { ok: false, vendor, host, error: `${e.code}: ${e.message}` },
             { status: 400 }
@@ -799,10 +816,15 @@ export async function handle(req: Request): Promise<Response> {
         throw e;
       }
       try {
+        // R51-A1 — controlled changes are governed by the resolved-address
+        // target policy BEFORE any plan/vault work: a governed address
+        // class never reaches a credential resolution, and the validated
+        // address (not the payload literal) is what gets dialed.
+        const dialHost = await guardDialTarget(host);
         const plan = parseChangePlan(body?.plan ?? null);
         const password = await resolveVaultSecret(credential.secretRef);
         const result = await applyLiveChangePlan(vendor, {
-          host,
+          host: dialHost,
           port: credential.port,
           username: credential.username,
           password,
@@ -824,7 +846,8 @@ export async function handle(req: Request): Promise<Response> {
         if (
           e instanceof VaultError ||
           e instanceof LiveChangeError ||
-          e instanceof LiveAdapterError
+          e instanceof LiveAdapterError ||
+          e instanceof TargetPolicyError
         ) {
           // Request-level problem — NOTHING reached the device.
           return Response.json(

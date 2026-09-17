@@ -199,7 +199,7 @@ claim: hardware certification of the live SSH plane and the remaining vendor fla
 (Sophos needs a WebAPI transport) and the optional Phase 21
 components (Redis/KMS/object storage/distributed
 locks). (Branch protection on `main` was previously activated 2026-09-10 but the
-live GitHub state is currently UNPROTECTED — corrected and tracked as OPS-001, see below.)
+live GitHub state is currently UNPROTECTED — corrected and tracked as OWNER-GOV-001, see below.)
 
 Update (Phase 22 slice 3 + Phase 23, 2026-09-13): the live read-only plane now covers
 **five certified flavors** (Cisco IOS/IOS-XE, Fortinet FortiOS, HPE Aruba AOS-CX,
@@ -218,7 +218,7 @@ finding-by-finding against the source and **accepted in full** — see
 level). **Every P0-gated item of the adopted remediation order is now LANDED**
 (SAFE-007 → SAFE-001 → SAFE-002 → SAFE-003/004/005 → SAFE-006 → TEST-001/002/003 →
 SAFE-008/009); the remaining backlog is the audit's P1/P2 tiers (POL/SEC/OPS items),
-hardware certification of the live plane, and OPS-001 (branch-protection restoration). **LANDED — SAFE-007:** the
+hardware certification of the live plane, and OWNER-GOV-001 (branch-protection restoration). **LANDED — SAFE-007:** the
 inaccurate live restore is now fail-closed — restore-flow changes are stamped
 `operationKind = RESTORE_SNAPSHOT` and the engine refuses to apply them to LIVE_SSH
 devices (typed `LIVE_RESTORE_NOT_CERTIFIED` refusal + `LIVE_RESTORE_REFUSED` audit
@@ -1079,7 +1079,7 @@ settings-API activation (docs/brand/SOCIAL-REPOSITORY.md §6) has since been los
 reflected by the platform, and a previous version of this section wrongly described the
 branch as protected — that was governance drift. The truthful current statement is:
 CI runs on every push, but push-triggered CI is NOT pre-merge enforcement. Restoring
-protection/rulesets is OPS-001 on the remediation backlog (approval
+protection/rulesets is OWNER-GOV-001 on the remediation backlog (approval
 quorum/fingerprint/expiry LANDED as POL-001/002/003);
 asymmetric service identity LANDED as P1-007 (Ed25519 EdDSA verifiers,
 two-phase flag-free rotation — see the deploy runbook note 17); the
