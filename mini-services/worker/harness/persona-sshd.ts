@@ -34,6 +34,7 @@
  */
 
 import { Server, utils, type Connection } from "ssh2";
+import type { Socket } from "node:net";
 
 import { computeHostKeyFingerprint, parseHostKeyType } from "../ssh-transport";
 
@@ -145,10 +146,23 @@ export async function startPersonaSshHarness(
   const hostKeyType = publicBlob ? parseHostKeyType(publicBlob) : "unknown";
   const connections = new Set<Connection>();
   const allowlist = new Set(Object.keys(opts.commands));
+  // Raw TCP sockets (ssh2 wraps the real socket on the connection's
+  // `_sock`) — tracked so close() can DESTROY lingering idle sessions.
+  // In-process clients (the test matrix, the certify driver) keep
+  // failed-auth / mismatched-handshake connections open past a graceful
+  // end, and server.close() then never completes on runtimes without
+  // net.Server#closeAllConnections (Bun). Purely teardown plumbing — the
+  // SSH semantics of the harness are untouched.
+  const rawSockets = new Set<Socket>();
 
   const server = new Server({ hostKeys: [hostKey] }, (ctx) => {
     connections.add(ctx);
     ctx.on("close", () => connections.delete(ctx));
+    const rawSocket = (ctx as unknown as { _sock?: Socket })._sock;
+    if (rawSocket) {
+      rawSockets.add(rawSocket);
+      rawSocket.once("close", () => rawSockets.delete(rawSocket));
+    }
     ctx.on("authentication", (auth) => {
       if (auth.method !== "password") {
         auth.reject();
@@ -211,6 +225,17 @@ export async function startPersonaSshHarness(
         for (const conn of connections) {
           try {
             conn.end();
+          } catch {
+            /* already closed */
+          }
+        }
+        // Destroy lingering raw sockets — a graceful end cannot reach
+        // connections whose in-process client never closes its side
+        // (failed-auth, killed handshake); without this server.close()
+        // never completes on runtimes without closeAllConnections.
+        for (const rawSocket of rawSockets) {
+          try {
+            rawSocket.destroy();
           } catch {
             /* already closed */
           }
