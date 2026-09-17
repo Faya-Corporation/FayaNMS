@@ -328,7 +328,7 @@ describe("R50-T071 — refusal audit events (route wiring)", () => {
     expect(ROUTE).toContain('console.error(`[auto-detect] ${entry.action} audit emission failed`');
     // every call site awaits the helper
     const callSites = ROUTE.split("await auditProbeFailureBestEffort(").length - 1;
-    expect(callSites).toBe(5); // auth, target, credential×2, mismatch
+    expect(callSites).toBe(6); // auth, target, credential×3 (not-found, type-unsupported, R50-T021 allowlist), mismatch
   });
 
   test("the unauthenticated authorization refusal audits a NULL actor BY DESIGN", () => {

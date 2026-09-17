@@ -1025,9 +1025,46 @@ AAAA-only hostnames after an honest AAAA diagnostic) instead of the old
 A→AAAA fallback success the form would always reject; multi-address A RRsets
 resolve deterministically (numeric-ascending first, R50-T033); detection is
 unaffected (probes never consult the mapping); the operator toast names the
-policy; suite 681 → 696 (696 pass / 12 skip / 0 fail). Remaining open R50
-phases (typed contract R50.4, fingerprint registry R50.5, UI hardening
-R50.6, telemetry R50.7, real-device + CI certification) stay tracked in
+policy; suite 681 → 696 (696 pass / 12 skip / 0 fail).
+
+R50 REMEDIATION — PHASES R50.4 → R50.7 LANDED on branch `z_ai_v2` (2026-09-16/17,
+evidence docs: FayaNMS-R50-T040-T042-Detection-Contract / -T050-T054-Fingerprint-Registry /
+-T060-T064-UIUX-Hardening / -T070-T072-Audit-Telemetry-2026-09-1*.md): the detection API is
+a VERSIONED typed contract (contractVersion 1 stamped on every surface; two independent
+stage blocks `vendorDetection` / `addressResolution` reporting partial outcomes; the closed
+stable-code registry answers the roadmap's recommended 15 verbatim); vendor fingerprinting
+is a frozen per-vendor REGISTRY with deterministic match reasons, bounded/sanitized evidence
+and a structural-only attribution policy that refuses banner/hostname false positives BY
+CONSTRUCTION (seven positive + three negative fixture families); the Add/Edit sheet shows
+the two stages explicitly with per-stage retry, explicit Use/Keep-mine semantics (silent
+overwrite structurally impossible), and the first-contact host-key panel; and the plane is
+fully instrumented — structured non-secret audit evidence (actor/correlation/outcome/
+duration/requestedStages), every failure class audited (best-effort emissions that can never
+500), and bounded operational counters readable at GET /api/v1/metrics/detection
+(metrics.read). Suite 696 → 811 (811 pass / 12 skip / 0 fail, 4,275 expects).
+
+R50 REMEDIATION — PHASE 8 (R50-T021 + R50-T022-follow-up + R50-T025) LANDED on branch
+`z_ai_v2` (2026-09-17, evidence: docs/audits/FayaNMS-R50-T021-T022fu-T025-Authorization-Budgets-2026-09-17.md):
+(a) R50-T021 — the actor → credential profile → tenant → target authorization chain is
+ENFORCED and AUDITED as one `credentialAuthorization` block on every invocation: the probe
+credential must exist + be SSH_PASSWORD + (NEW) be authorized for active probing via the
+optional FAYANMS_PROBE_CREDENTIAL_ALLOWLIST (csv of profile ids/names; unset = documented
+single-tenant default posture; set = fail-closed → CREDENTIAL_NOT_AUTHORIZED + audited
+"profile-not-allowlisted"); the tenant link passes structurally (single-tenant schema) and
+is RECORDED as such; the target link records BOTH policy classes. (b) R50-T022-follow-up —
+the WORKER now enforces the target policy on the RESOLVED address: hostnames (opaque to the
+app-plane literal policy) resolve under a DNS budget, EVERY candidate address must pass
+(fail-closed across the RRset), and the probe dials the VALIDATED address — no second
+lookup, so the resolve-then-dial DNS-rebinding window is structurally gone; worker codes
+SSH_TARGET_POLICY_REFUSED / SSH_TARGET_UNRESOLVED / SSH_TARGET_RESOLVE_TIMEOUT map to the
+SAME registry entries (TARGET_NOT_ALLOWED / DNS_NOT_FOUND / DNS_TIMEOUT); classification
+parity between the two planes is test-pinned over a shared corpus. (c) R50-T025 — bounded
+resources end to end: app-resolver DNS budget (FAYANMS_RESOLVE_TIMEOUT_MS), worker
+resolution budget (FAYANMS_WORKER_RESOLVE_TIMEOUT_MS), worker total probe budget
+(FAYANMS_DETECT_TOTAL_BUDGET_MS, checked between candidates), and a per-stream exec output
+cap in the SSH transport (default 1 MiB; the detection probe passes the 256 KiB analysis
+budget). Suite 811 → 852 (852 pass / 12 skip / 0 fail, 4,431 expects). Remaining open R50
+items (real-device + CI certification, both outside the sandbox) stay tracked in
 docs/audits/FayaNMS-NEXT-TASKS.md.
 
 Known limitations (not production claims): physical-device certification of the LIVE_SSH

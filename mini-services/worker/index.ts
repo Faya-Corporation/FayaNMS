@@ -97,10 +97,12 @@ import {
 } from "./live-change";
 import { SshError, sshExecText, type SshCredentials } from "./ssh-transport";
 import {
+  ANALYSIS_MAX_BYTES,
   DETECT_COMMANDS,
   isInformativeCliOutput,
   parseVendorFingerprint,
 } from "./vendor-fingerprint";
+import { resolveTargetForDial } from "./target-policy";
 import { resolveVaultSecret, VaultError } from "./vault";
 import { startRunner, getCounters } from "./runner";
 import { startScheduler, getSchedulerState } from "./scheduler";
@@ -108,6 +110,17 @@ import { log } from "./next-client";
 import { controlRejectResponse, verifyControlToken } from "./control-auth";
 
 const PORT = 3030; // hardcoded — do not read PORT env (task 2-b contract)
+
+/**
+ * R50-T025 — the detection probe's TOTAL budget (resolution + every
+ * candidate handshake + exec). The app plane aborts its worker fetch at
+ * 30 s; this budget bounds the WORK even for callers without an abort
+ * (per-command exec budgets still apply within it).
+ */
+const DETECT_TOTAL_BUDGET_MS =
+  Number(process.env.FAYANMS_DETECT_TOTAL_BUDGET_MS) > 0
+    ? Number(process.env.FAYANMS_DETECT_TOTAL_BUDGET_MS)
+    : 45_000;
 const STARTED_AT = Date.now();
 
 /**
@@ -600,10 +613,31 @@ export async function handle(req: Request): Promise<Response> {
         throw e;
       }
       try {
+        // R50-T025: the probe clock starts here — the total budget covers
+        // resolution, handshakes and execs (the app plane aborts earlier
+        // at 30 s; this is the worker-side bound).
+        const startedAt = Date.now();
         const password = await resolveVaultSecret(credential.secretRef);
+        // R50-T022 follow-up — RESOLVED-ADDRESS target policy (the worker
+        // never trusts the app plane): literals classify with no I/O;
+        // hostnames resolve under the R50-T025 budget and EVERY candidate
+        // address must pass the policy (fail-closed across the RRset).
+        // The probe then dials the VALIDATED address — no second lookup,
+        // so the resolve-then-dial rebinding window is structurally gone.
+        const dial = await resolveTargetForDial(host);
+        if (!dial.decision.ok) {
+          return Response.json(
+            {
+              ok: false,
+              host,
+              error: `${dial.decision.code}: ${dial.decision.detail}`,
+            },
+            { status: 400 },
+          );
+        }
         let capturedHostKey: { keyType: string; fingerprint: string } | null = null;
         const creds: SshCredentials = {
-          host,
+          host: dial.decision.dialedAddress,
           port: credential.port,
           username: credential.username,
           password,
@@ -618,13 +652,21 @@ export async function handle(req: Request): Promise<Response> {
                 }
               : undefined,
         };
-        const startedAt = Date.now();
         let output: string | null = null;
         let usedCommand: string | null = null;
         let lastError: string | null = null;
         for (const command of DETECT_COMMANDS) {
+          // R50-T025: the candidate loop honors the total budget — an
+          // exhausted budget aborts BEFORE the next handshake (the
+          // in-flight exec is bounded by its own per-command timeout).
+          if (Date.now() - startedAt > DETECT_TOTAL_BUDGET_MS) {
+            lastError = `SSH_TIMEOUT: detection total budget (${DETECT_TOTAL_BUDGET_MS} ms) exceeded before "${command}"`;
+            break;
+          }
           try {
-            const out = await sshExecText(creds, command, 15000);
+            // R50-T025: per-command exec timeout (15 s) + the per-stream
+            // output cap pinned to the analysis budget (256 KiB).
+            const out = await sshExecText(creds, command, 15000, ANALYSIS_MAX_BYTES);
             // R50.5 (R50-T050): a SHORT CLI-rejection answer ("% Invalid
             // input detected…", often with exit 0) is NOT informative —
             // keep walking the allowlist so the probe reaches the command
@@ -667,6 +709,14 @@ export async function handle(req: Request): Promise<Response> {
         return Response.json({
           ok: true,
           host,
+          // R50-T022 follow-up evidence: the validated address actually
+          // dialed + the policy decision (the app plane records it in the
+          // audit trail). Additive fields — older callers ignore them.
+          dialedAddress: dial.decision.dialedAddress,
+          targetPolicy: {
+            checked: dial.decision.checked,
+            addressClass: dial.decision.addressClass,
+          },
           command: usedCommand,
           latencyMs: Date.now() - startedAt,
           detection,

@@ -29,6 +29,11 @@
  *     only by the audited enrollment probe.
  *   - BOUNDED: every connect/exec/session carries an explicit timeout;
  *     sockets are always ended (success and failure paths both).
+ *   - BOUNDED OUTPUT (R50-T025): exec accumulation is capped per stream
+ *     (default 1 MiB, caller-tightenable) — a chatty or malicious endpoint
+ *     cannot exhaust worker memory through a read-only probe. The tail
+ *     beyond the budget is dropped at chunk granularity; the detection
+ *     plane additionally bounds its ANALYSIS input (ANALYSIS_MAX_BYTES).
  */
 
 import { createHash } from "node:crypto";
@@ -220,6 +225,36 @@ export async function sshProbe(
 }
 
 /**
+ * R50-T025 — the bounded stdout/stderr accumulator. Appends a chunk while
+ * the byte budget allows; past the budget the tail is DROPPED (chunk
+ * granularity — no partial re-slicing) and the truncation is reported so
+ * callers can observe it. Pure: unit-pinned in the audit suite.
+ */
+export function appendBounded(
+  current: { text: string; bytes: number; truncated: boolean },
+  chunk: Buffer | string,
+  maxBytes: number,
+): { text: string; bytes: number; truncated: boolean } {
+  if (current.bytes >= maxBytes) {
+    return { ...current, truncated: true };
+  }
+  const chunkBytes = Buffer.byteLength(chunk);
+  if (current.bytes + chunkBytes <= maxBytes) {
+    return {
+      text: current.text + chunk.toString(),
+      bytes: current.bytes + chunkBytes,
+      truncated: current.truncated,
+    };
+  }
+  // This chunk crosses the budget: take the whole chunk, drop the rest.
+  return {
+    text: current.text + chunk.toString(),
+    bytes: current.bytes + chunkBytes,
+    truncated: true,
+  };
+}
+
+/**
  * Connect, execute ONE command on the exec channel, collect stdout,
  * disconnect. Non-zero exit or stderr-backed failures surface as
  * SSH_EXEC_FAILED with a bounded excerpt.
@@ -228,6 +263,10 @@ export async function sshExecText(
   creds: SshCredentials,
   command: string,
   timeoutMs = 20000,
+  // R50-T025 — per-stream output budget (bytes). The worker's detection
+  // probe passes the tighter ANALYSIS_MAX_BYTES; other surfaces keep the
+  // 1 MiB default (no legitimate config excerpt approaches it).
+  maxOutputBytes = 1_048_576,
 ): Promise<string> {
   const { client } = await openConnection(creds, timeoutMs);
   try {
@@ -249,12 +288,17 @@ export async function sshExecText(
         }
         let out = "";
         let errOut = "";
+        // R50-T025: bounded accumulation (see appendBounded above).
+        let outAcc = { text: "", bytes: 0, truncated: false };
+        let errAcc = { text: "", bytes: 0, truncated: false };
         let exitCode: number | null = null;
         stream.on("data", (chunk: Buffer) => {
-          out += chunk.toString();
+          outAcc = appendBounded(outAcc, chunk, maxOutputBytes);
+          out = outAcc.text;
         });
         stream.stderr?.on?.("data", (chunk: Buffer) => {
-          errOut += chunk.toString();
+          errAcc = appendBounded(errAcc, chunk, maxOutputBytes);
+          errOut = errAcc.text;
         });
         stream.on("exit", (code: number | null) => {
           exitCode = code;

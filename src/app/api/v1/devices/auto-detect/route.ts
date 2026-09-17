@@ -26,6 +26,10 @@ import {
   type DetectionErrorCode,
 } from "@/lib/net/detection-contract";
 import { evaluateTargetPolicy } from "@/lib/net/target-policy";
+import {
+  authorizeProbeCredential,
+  parseProbeCredentialAllowlist,
+} from "@/lib/security/probe-credential";
 import { getRateStore } from "@/lib/api/rate-store";
 import { workerControlHeaders } from "@/lib/worker/control-client";
 import { WORKER_BASE_URL } from "@/lib/worker/worker-url";
@@ -56,8 +60,15 @@ export const dynamic = "force-dynamic";
  *      keyed per actor and per target; exhausted → typed
  *      DEVICE_PROBE_RATE_LIMITED 429 + Retry-After.
  *   4. Credential authorization — the referenced profile must exist and be
- *      SSH_PASSWORD (actor→profile→scope enrichment is R50-T021). Resolved
- *      BEFORE any network activity.
+ *      SSH_PASSWORD, and (R50-T021) be authorized for ACTIVE PROBING: the
+ *      actor → profile link is requirePermission("device.detect") + the
+ *      optional FAYANMS_PROBE_CREDENTIAL_ALLOWLIST (csv of profile ids or
+ *      names; unset = every profile usable — the documented single-tenant
+ *      posture; set = fail-closed). The profile → tenant link passes
+ *      structurally (single-tenant schema) and is RECORDED as such; the
+ *      profile → target link is the two-plane target policy (stage 2
+ *      literal class + the worker's resolved-address class, R50-T022
+ *      follow-up). The FULL chain is audited on every invocation.
  *   5. Host-key policy — SAFE-001 (R50-T001): resolveHostKeyTrustState runs
  *      against the REQUESTED ENDPOINT (R50-T012 ADR: a detection probe's
  *      trust identity is the operator-typed host + credential port — never
@@ -220,6 +231,10 @@ interface WorkerDetection {
   host?: string;
   command?: string | null;
   latencyMs?: number;
+  // R50-T022 follow-up evidence (additive — older workers omit them): the
+  // validated address the worker actually dialed + the policy decision.
+  dialedAddress?: string;
+  targetPolicy?: { checked: "literal" | "resolved"; addressClass: string };
   detection?: {
     vendorKey: string;
     confidence: "high" | "low";
@@ -367,9 +382,32 @@ export async function POST(request: Request) {
     }
   }
 
-  /* ── Stage 4: credential authorization ──────────────────────────────── */
+  /* ── Stage 4: credential authorization (R50-T021 chain) ────────────── */
+  // The optional probe-credential allowlist is read AT REQUEST TIME (the
+  // same posture as the target-policy escape hatch) so operators can
+  // tighten probing without a redeploy. null = not enforced (documented
+  // single-tenant default posture — the RBAC gate still bounds who).
+  const probeAllowlist = parseProbeCredentialAllowlist(
+    process.env.FAYANMS_PROBE_CREDENTIAL_ALLOWLIST,
+  );
+  // R50-T021: the actor → profile → tenant → target chain as EVIDENCE —
+  // attached to every audit row this invocation produces (null profileId
+  // = no credential requested / vendor stage not requested).
+  const credentialAuthorization: Record<string, unknown> = {
+    profileId: credentialProfileId ?? null,
+    profileName: null as string | null,
+    profileType: null as string | null,
+    decision: null as string | null,
+    allowlistEnforced: probeAllowlist !== null,
+    tenantScope: "single-tenant",
+    actorPermission: "device.detect",
+    targetPolicyClass: targetPolicy.addressClass,
+    resolvedAddressPolicy: null as unknown,
+  };
+
   let profile: {
     id: string;
+    name: string;
     type: string;
     username: string;
     port: number;
@@ -381,9 +419,10 @@ export async function POST(request: Request) {
     // an address-only retry is not asked to validate it.)
     profile = await db.credentialProfile.findUnique({
       where: { id: credentialProfileId },
-      select: { id: true, type: true, username: true, port: true, secretRef: true },
+      select: { id: true, name: true, type: true, username: true, port: true, secretRef: true },
     });
     if (!profile) {
+      credentialAuthorization.decision = "not-found";
       // R50-T041: stable registry code (was CREDENTIAL_PROFILE_NOT_FOUND).
       // R50-T071: the credential failure is audited.
       await auditProbeFailureBestEffort({
@@ -396,6 +435,7 @@ export async function POST(request: Request) {
           requestedHost,
           credentialProfileId,
           reason: "not-found",
+          credentialAuthorization,
         },
       });
       recordDetectionFailure("CREDENTIAL_UNRESOLVED");
@@ -408,6 +448,8 @@ export async function POST(request: Request) {
       );
     }
     if (profile.type !== "SSH_PASSWORD") {
+      credentialAuthorization.decision = "type-unsupported";
+      credentialAuthorization.profileType = profile.type;
       // Detection rides the SSH exec transport — API_TOKEN/SNMPV3/HTTPS
       // profiles cannot answer the read-only CLI probes.
       // R50-T041: stable registry code (was DETECT_CREDENTIAL_TYPE_UNSUPPORTED).
@@ -423,12 +465,47 @@ export async function POST(request: Request) {
           credentialProfileId,
           reason: "type-unsupported",
           profileType: profile.type,
+          credentialAuthorization,
         },
       });
       recordDetectionFailure("CREDENTIAL_NOT_AUTHORIZED");
       return failWithMeta(
         "CREDENTIAL_NOT_AUTHORIZED",
         `Vendor detection over SSH requires an SSH_PASSWORD credential profile (got ${profile.type})`,
+        403,
+        { contractVersion: DETECTION_CONTRACT_VERSION },
+        requestContext(request),
+      );
+    }
+    // R50-T021: the profile is existent + type-supported — the remaining
+    // link is the PROBE-USE authorization (allowlist; fail-closed when
+    // enforced). Refusal = stable CREDENTIAL_NOT_AUTHORIZED + audit.
+    const authorization = authorizeProbeCredential({
+      profileId: profile.id,
+      profileName: profile.name,
+      allowlist: probeAllowlist,
+    });
+    credentialAuthorization.profileName = profile.name;
+    credentialAuthorization.profileType = profile.type;
+    credentialAuthorization.decision = authorization.decision;
+    if (authorization.decision === "refused-not-allowlisted") {
+      await auditProbeFailureBestEffort({
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
+        action: "DEVICE_PROBE_CREDENTIAL_REFUSED",
+        resourceLabel: requestedHost,
+        correlationId,
+        detail: {
+          requestedHost,
+          credentialProfileId,
+          reason: "profile-not-allowlisted",
+          credentialAuthorization,
+        },
+      });
+      recordDetectionFailure("CREDENTIAL_NOT_AUTHORIZED");
+      return failWithMeta(
+        "CREDENTIAL_NOT_AUTHORIZED",
+        "The selected credential profile is not authorized for active probing",
         403,
         { contractVersion: DETECTION_CONTRACT_VERSION },
         requestContext(request),
@@ -562,6 +639,9 @@ export async function POST(request: Request) {
           command = payload.command ?? null;
           latencyMs = typeof payload.latencyMs === "number" ? Math.round(payload.latencyMs) : null;
           capturedHostKey = payload.hostKey ?? null;
+          // R50-T021/T022-fu: the worker's resolved-address policy decision
+          // completes the profile → target link of the authorization chain.
+          credentialAuthorization.resolvedAddressPolicy = payload.targetPolicy ?? null;
           if (!detection) {
             detectionError = "Worker answered without a detection payload";
             detectionErrorCode = mapWorkerErrorToDetectionCode(detectionError);
@@ -707,6 +787,10 @@ export async function POST(request: Request) {
         probeCommand: command,
         credentialProfileId: profile?.id ?? null,
         hostKeyState,
+        // R50-T021: the actor → profile → tenant → target authorization
+        // chain (decision, allowlist enforcement state, both policy
+        // classes) — the probe's full authorization evidence.
+        credentialAuthorization,
         // R50-T041/T042: the typed stage codes + the contract version ride
         // in the audit trail next to the human-readable error.
         detectionErrorCode,

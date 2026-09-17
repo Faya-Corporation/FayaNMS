@@ -107,6 +107,14 @@ const WORKER_CODE_MAP: Record<string, DetectionErrorCode> = {
   // No read-only probe produced output: the endpoint speaks SSH but no
   // known CLI answered — no vendor could be attributed.
   DETECT_NO_OUTPUT: "VENDOR_UNKNOWN",
+  // R50-T022 follow-up (worker-plane target policy): the worker refuses a
+  // target whose RESOLVED address lands in a governed class, and a target
+  // hostname that does not resolve (or blows its resolution budget) never
+  // reaches a dial. These are the worker-side mirrors of the app-plane
+  // literal policy — the codes are the SAME registry entries.
+  SSH_TARGET_POLICY_REFUSED: "TARGET_NOT_ALLOWED",
+  SSH_TARGET_UNRESOLVED: "DNS_NOT_FOUND",
+  SSH_TARGET_RESOLVE_TIMEOUT: "DNS_TIMEOUT",
 };
 
 /**
@@ -155,6 +163,9 @@ export function mapResolutionToContractCode(
       return "DNS_NOT_FOUND";
     case "EAI_AGAIN":
     case "ETIMEOUT":
+    // R50-T025: the bounded resolver's budget-exceeded marker (the wait
+    // raced past FAYANMS_RESOLVE_TIMEOUT_MS) shares the timeout code.
+    case "DNS_TIMEOUT":
       return "DNS_TIMEOUT";
     default:
       return "DNS_LOOKUP_FAILED";
