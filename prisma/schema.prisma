@@ -13,6 +13,12 @@
 //      constant maps live in `src/lib/domain/status.ts` (Task 1-b).
 //   2. NO Prisma `Json` type. Serialized JSON lives in `String` columns
 //      suffixed with `Json` (e.g. `tagsJson`, `payloadJson`).
+//      SINGLE SANCTIONED EXCEPTION (R52, Full E2E ReAudit 2026-09-18):
+//      `LoginGuardState.failures Json @default("[]")` — a real JSONB column
+//      added by migration 20260915223000_scale001b_login_guard_state for the
+//      fleet-wide login-guard store (bounded in-process attempt arrays that
+//      are read/rewritten whole by the guard, never queried field-wise).
+//      Every FUTURE Json use requires the same explicit governance decision.
 //   3. Composite indexes on every hot query path (status filters, time series,
 //      per-device ordering). PostgreSQL enforces the declared order, so these
 //      indexes now serve both ASC and DESC ORDER BY paths directly.

@@ -1,16 +1,18 @@
-# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-18, R51-VERIFICATION/z_ai_v2)
+# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-18, R52/z_ai_v2)
 
 Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R47), then the R50 program on branch `z_ai_v2`. ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, ALL of it outside the sandbox's control:
 
 ## ACTIVE (only genuinely remaining work)
 
+**The execution backlog has moved to the Production-Readiness Implementation Roadmap:** `docs/audits/FayaNMS-Production-Readiness-Implementation-Roadmap-2026-09-18.md` — Phase HC is the AUTHORABLE queue (HC-1 per-endpoint rate budgets → NEXT; HC-2 meta bootstrap split; HC-3 RequestContext removal; HC-4 i18n completion; HC-5 dependabot config; HC-6 rides CI), each item with files/tests/acceptance/gates. Everything else is outside the sandbox's control:
+
 ```text
-R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (needs operator-side hardware or free DevNet AAA credentials; Step 0: PUBLIC DEMO DEVICE PLANE — docs/certification/PUBLIC-DEMO-DEVICES.md + `bun run demo:fleet`)
-R50-T100..T103 / OWNER-CI-001 — restore GitHub Actions runner capacity (infrastructure signature since run #34) and run the full gate on the release SHA
+OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (green 4-job run on the release SHA)
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4)
+R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (needs operator-side hardware or free DevNet AAA credentials; Step 0: PUBLIC DEMO DEVICE PLANE — docs/certification/PUBLIC-DEMO-DEVICES.md + `bun run demo:fleet`)
 ```
 
-The remediation authoring backlog is EMPTY — for BOTH the R34–R47 program and the R50 program: every roadmap authorable task through T072/T025 AND the §10 test-matrix consolidation (Phase 9 below) are ✅ LANDED with evidence. AUTH-001 is FIXED end-to-end (R35 guard + R46 fleet-wide store); the rendering layer is continuously verified (R47 browser journeys + axe a11y); the R50 P0 (R50-001) and P1s R50-002/003/004/005/006 are FIXED on `z_ai_v2` (Phases R50.0–R50.3); the T021/T022-follow-up/T025 authorization-chain + budget increment is LANDED (Phase 8); the 41-cell §10 matrix is fully dispositioned with its governance pin (Phase 9). What remains is exclusively owner-side (CI runners, branch protection) and lab-side (real-device certification).
+The remediation authoring backlog remains EMPTY for the R34–R47, R50 and R51 programs; the R52 full end-to-end re-audit found zero P1/P2 and its single P3 (F-N1 auth ordering on the AI routes) + the hygiene set were remediated IN the R52 increment.
 
 ---
 
@@ -23,6 +25,12 @@ A fresh independent re-audit of the exact `z_ai_v2` tree (two parallel read-only
 - **R51-D2/D3 (N2/N3, INFO — FIXED):** `/db/META-INF/` gitignored; README's retired "OPS-001" ID renamed OWNER-GOV-001 (×3, states already agreed).
 - **Protocol trap documented (§6 of the audit):** the suite MUST run in the CI env shape (ci.yml:91-96 with `.env` stashed) — a bare run auto-loads the local EdDSA keys and rejects the HS256 test mints (~24 environment-caused failures, NOT a code defect).
 Gates on the remediated tree: lint 0, tsc FULL 0, suite 869 → 884 pass (884 / 18 skip / 0 fail, 4,754 expects, 51 files). LIVE browser verification (deployed stack, restarted with the remediation): sign-in → admin shell with live data; Devices inventory renders; Add-Device sheet + credential-profile picker (`name · type`) feed correctly from the remediated meta endpoint; Test connection on a simulator device through the governed `/simulate/connect` path → "Connection OK — 776 ms" + Online; 0 console errors; mobile 390×844 no h-scroll; app 200 + worker healthy + PG ready after teardown. Screenshots: `agent-ctx/verify-r51-device-detail.png`, `agent-ctx/verify-r51-device-detail-mobile.png`.
+
+---
+
+TASK-R52-REAUDIT — Full End-to-End Production ReAudit + remediation ✊ → ✅ LANDED (2026-09-18, branch `z_ai_v2`)
+
+A full end-to-end production re-audit of `z_ai_v2` @ `1c6ab0c` (three independent read-only passes: security 8 families / supply-chain+deps+docs / architecture+code-quality+tests+data+UI-UX) re-derived every prior claim TRUE — zero P1/P2, both R51 fixes held, zero dependency drift, 46/46 view parity, 42/42 migration-table parity, en/ar 1285=1285. Report: `docs/audits/FayaNMS-z_ai_v2-Full-End-to-End-Production-ReAudit-2026-09-18.md`; the forward path it derives is codified in `docs/audits/FayaNMS-Production-Readiness-Implementation-Roadmap-2026-09-18.md` (Phase HC authorable queue). ALL findings remediated in the same increment (R52): **R52-F-N1 (P3)** — `ai/assist`/`ai/change-draft`/`ai/rca-draft` resolved the actor AFTER DB context work (404-vs-401 existence oracle for half-authenticated principals); `resolveActingUser` hoisted above ALL DB work on the three routes, NEW `tests/audit/r52-auth-ordering.test.ts` (10 pins: per-route actor-before-DB ordering, exactly-once resolution, `ai/query` within-handler regression guard); LIVE-proven: unauth → 401, authed+nonexistent device → `DEVICE_NOT_FOUND`, authed+real device → full LLM `{answer,correlationId,contextSummary}`, `ai/query` dialog answered from live data. **R52-F-N2** — stale comments corrected (auth route now points at `src/proxy.ts`; `meta.users` consumer = alert assign/suppress picker). **R52-H1** — dead `credentials-view.tsx` deleted (router mounts AdminCredentialsView; pinned absent). **R52-H2** — 9 unused runtime deps removed (@dnd-kit ×3, @mdxeditor/editor, @reactuses/core, @tanstack/react-table, react-markdown, react-syntax-highlighter, uuid — all verified zero imports) + socket.io pair demoted to devDeps (examples-only scaffold; pinned). **R52-H3** — schema "NO Json" rule documents its SINGLE SANCTIONED EXCEPTION (`LoginGuardState.failures` JSONB), pinned as the ONLY Json column. Pin-count correction recorded: r51 suite = 14 test blocks / 30 expects (the "16 pins" prose is corrected here, historical worklog left as append-only trail). Gates: lint 0, tsc FULL 0, suite 884 → **894 pass / 18 skip / 0 fail** (4,800 expects, 52 files, CI env shape). Live: mobile 390×844 NO h-scroll (precise diagnosis: zero overflowing elements), 0 console errors; app 200 + worker healthy (236 jobs, 0 failed) + PG ready. Screenshots: `agent-ctx/verify-r52-ai-assist-auth-order.png`.
 
 ---
 

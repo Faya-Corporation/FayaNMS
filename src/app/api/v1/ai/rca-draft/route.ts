@@ -113,6 +113,13 @@ export async function POST(request: Request) {
   }
   const { incidentId, locale } = parsed.data;
 
+  // R52-F-N1 (Full End-to-End Production ReAudit 2026-09-18): actor BEFORE DB
+  // work — no pre-auth incident lookup or 404-vs-401 existence oracle.
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
+
   const incident = await db.incident.findUnique({
     where: { id: incidentId },
     select: { id: true, number: true, title: true },
@@ -127,10 +134,6 @@ export async function POST(request: Request) {
   }
 
   const correlationId = newCorrelationId("AI");
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
 
   // ── LLM round-trip (timeout guard + one retry inside aiChat) ─────────
   let raw: string;

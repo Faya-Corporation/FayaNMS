@@ -8,8 +8,10 @@ import { preCheckCredentialsSignin } from "@/lib/auth/login-guard";
  * NextAuth catch-all handler (Task 7-a) + AUTH-001-A login abuse control.
  *
  * Serves /api/auth/{csrf,signin,session,signout,callback/credentials,…}.
- * Enforcement of the /api/v1 surface happens in src/middleware.ts; the auth
- * routes themselves stay public (they bootstrap the session).
+ * Enforcement of the /api/v1 surface happens in src/proxy.ts (the Next 16
+ * successor of the old src/middleware.ts — do not edit a middleware file
+ * that no longer exists); the auth routes themselves stay public (they
+ * bootstrap the session).
  *
  * AUTH-001-A (external independent audit 2026-09-15): ONLY the credentials
  * sign-in submission — POST /api/auth/callback/credentials — passes through

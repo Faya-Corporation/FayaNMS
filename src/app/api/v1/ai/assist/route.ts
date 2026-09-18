@@ -63,6 +63,16 @@ export async function POST(request: Request) {
   }
   const { scope, id, question, locale } = parsed.data;
 
+  // R52-F-N1 (Full End-to-End Production ReAudit 2026-09-18): resolve the
+  // actor BEFORE any DB work. A principal that passes the proxy but fails
+  // requireUser (deactivated user with a live JWT, or an opaque-bearer API
+  // client admitted on the mutation plane) must get 401 here — never a
+  // 404-vs-401 existence oracle or pre-auth context-build work. Mirrors ai/query.
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
+
   // ── Assemble the operational context (server-side, secret-free) ──────
   let contextText: string;
   let contextSummary: {
@@ -93,10 +103,6 @@ export async function POST(request: Request) {
   }
 
   const correlationId = newCorrelationId("AI");
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
   const scopeLabel = scope === "device" ? "device" : "incident";
 
   // ── LLM round-trip (timeout guard + one retry inside aiChat) ─────────

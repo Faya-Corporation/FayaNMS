@@ -18,10 +18,10 @@ const ROLE_LABELS: Record<string, string> = {
  * form pickers (vendors, sites, credential profiles). Consumed by the
  * device filters, the Add/Edit Device form and the Sites view.
  *
- * Task 4-b adds `users`: the 5 seeded accounts (id/name only + a
- * username-style key derived from the email local-part) powering the
- * "Act as" demo identity Selects on the approval surfaces. No emails are
- * exposed beyond the local-part (already public inside the demo lab).
+ * `users`: the active seeded accounts (id/name/role + a username-style key
+ * derived from the email local-part) powering the alert assign/suppress
+ * picker (alert-action-dialogs.tsx). No emails are exposed beyond the
+ * local-part (already public inside the demo lab).
  *
  * R51-A2 (Independent Production ReAudit 2026-09-18, F-2): this endpoint
  * is SESSION-EXEMPT (bootstrap surface — see src/proxy.ts) and therefore

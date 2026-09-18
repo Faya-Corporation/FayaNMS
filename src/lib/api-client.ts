@@ -1156,11 +1156,12 @@ export interface MetaPayload {
   vendors: { id: string; key: string; name: string }[];
   sites: { id: string; name: string; code: string }[];
   credentialProfiles: { id: string; name: string; type: string }[];
-  /** Seeded accounts for the Act-as demo identity (Task 4-b). */
+  /** Active accounts for the alert assign/suppress picker (R52-F-N2: the
+   * SEC-001 "act as" demo identity was removed long ago). */
   users: UserOption[];
 }
 
-/** One "Act as" identity option (Task 4-b). */
+/** One user option for the alert assign/suppress picker. */
 export interface UserOption {
   id: string;
   name: string;

@@ -168,6 +168,13 @@ export async function POST(request: Request) {
   }
   const { prompt, locale } = parsed.data;
 
+  // R52-F-N1 (Full End-to-End Production ReAudit 2026-09-18): actor BEFORE DB
+  // work — no pre-auth context-build or 404-vs-401 existence oracle.
+  const actor = await resolveActingUser(request);
+  if (!actor) {
+    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
+  }
+
   // ── Real inventory snapshot for grounding (labels only — no secrets) ──
   const devices = await db.device.findMany({
     orderBy: { hostname: "asc" },
@@ -183,10 +190,6 @@ export async function POST(request: Request) {
   });
 
   const correlationId = newCorrelationId("AI");
-  const actor = await resolveActingUser(request);
-  if (!actor) {
-    return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
-  }
 
   const deviceListText = devices
     .map((device) =>
