@@ -818,6 +818,21 @@ satisfies the supply-chain gate. Pinned by
 provenance/signing stays owner-side (no registry/OIDC infrastructure),
 and CI execution is honestly runner-blocked (CI-001).
 
+**LANDED — HC-5 (R57): supply-chain automation config.** `.github/dependabot.yml`
+now automates the weekly intended-diff for BOTH bun manifests — the root app
+(`package.json` + `bun.lock`) and the worker mini-service
+(`mini-services/worker/` pair, the two projects behind the dual-lockfile osv
+scan). Bun ecosystem, weekly (Monday), security updates GROUPED per manifest
+into one reviewable PR, and an explicit `allow` list (`dependency-type: all`)
+covering the production AND development trees. The repo's pin discipline is
+respected by construction: dependabot preserves each dependency's declared
+range style — a caret dep gets a caret bump, an exact pin (`next`, `react`,
+…) is bumped in place as an exact pin, never widened. Updates ACTIVATE once
+GitHub runner capacity exists (OWNER-CI-001); until then the weekly
+intended-diff is reviewable directly from the config + osv gate. Pinned by
+`tests/audit/r57-dependabot-config.test.ts` (config-hygiene: both manifest
+paths, weekly cadence, security group, allow policy, README note).
+
 **LANDED — P3 hardening batch (independent audit 2026-09-15): every low-
 severity finding classified, none silently disappeared.** Admin-plane
 sessions are bounded to **12 h** (was 30 days — per-request role/

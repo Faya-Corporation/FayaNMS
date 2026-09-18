@@ -3339,3 +3339,22 @@ Work Log:
 Stage Summary:
 - HC-4 LANDED: the named triage closed with the FIRST parity pin + a shrinking-debt sweep ledger; suite 927 → 935; EN/AR journeys wire-proven.
 - Phase HC queue advances: HC-5 (R57) supply-chain automation config is NEXT.
+
+---
+
+## R57 — HC-5: Supply-chain automation config (2026-09-18)
+
+- Pre-flight clean (z_ai_v2 @ 955aad4, origin in sync — R56/HC-4 verified fully landed + pushed on resume; upload/ empty; app 200/meta 200).
+- Read the roadmap HC-5 spec: NEW `.github/dependabot.yml` (bun ecosystem, weekly, both manifests, grouped security updates) + config-hygiene pin + README supply-chain note.
+- Surveyed the real manifests: exactly TWO bun projects (root `package.json`+`bun.lock`, `mini-services/worker/` pair — the dual-lockfile osv scan pair in ci.yml); versioning style is mixed (61 caret deps + deliberate exact pins like next 16.3.4 / react 19.2.3); re-audit INFO note confirms the debt origin.
+- NEW `.github/dependabot.yml` (version 2): two `updates:` entries (`/` and `/mini-services/worker`), bun ecosystem, weekly Monday 06:00 UTC, open-PR limits 10/5, `allow: dependency-type "all"` (the versioning policy: bumps PRESERVE declared range style — exact pins bumped in place, never widened — documented in the header), `security-updates` groups (applies-to: security-updates, production), `deps(<scope>)` commit prefixes, no `ignore` block (nothing muted).
+- YAML one-off validated with PyYAML (version 2, 2 entries, directories/groups/allow all correct) — the pin suite itself stays dependency-free.
+- README: LANDED — HC-5 (R57) supply-chain note appended after the SUPPLY-001-A paragraph (both manifests, grouped security waves, pin-preservation policy, OWNER-CI-001 activation caveat, pin reference).
+- Tests: NEW tests/audit/r57-dependabot-config.test.ts — 8 dependency-free config-hygiene pins: version 2; exactly two bun entries (no other ecosystem); BOTH manifest paths pinned AND cross-checked to exist on disk with their lockfiles (config ↔ reality cannot drift); weekly cadence both; security-updates group both (exactly 2 occurrences); allow policy both + exact-pin preservation documented; no-ignore guard; README note with caveat.
+- Gates in CI env shape (.env staged to /tmp + full CI secrets set; restored after): lint 0 · tsc FULL 0 · suite 935 → 943 pass / 18 skip / 0 fail (7,998 expects, 56 files).
+- LIVE: app 200 · meta 200 · browser sign-in gate → demo-account login → shell → NETWORK → Devices renders fully keyed (HC-4 chrome intact) with 0 console/page errors · authed GET /api/v1/devices?pageSize=5 → 200 (5 rows, requestId present). Screenshot: agent-ctx/verify-r57-hc5-devices-post-config.png.
+- Appended: docs/audits/FayaNMS-R57-HC5-Dependabot-Config-2026-09-18.md, roadmap ledger (HC-5 → LANDED (R57); HC-6 line annotated Phase HC authorable queue EMPTY), NEXT-TASKS header + ACTIVE + TASK-HC-5 block, README note, this worklog + orchestrator worklog. Committed and pushed to origin/z_ai_v2; db/, .env planes, PAT never staged.
+
+Stage Summary:
+- HC-5 LANDED: dependabot config merged + machine-pinned; suite 935 → 943; honest scope — execution validity is GitHub-side and proves out when OWNER-CI-001 closes.
+- **Phase HC authorable queue COMPLETE (HC-1..HC-5 all LANDED)**; the only remaining roadmap item is HC-6, which rides OWNER-CI-001 (external).

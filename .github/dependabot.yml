@@ -1,0 +1,77 @@
+# Dependabot — HC-5 (R57): supply-chain automation config.
+#
+# Why: pin discipline was previously manual + the CI osv gate only (re-audit
+# 2026-09-18 INFO note, codified as roadmap HC-5). This file automates the
+# weekly intended-diff for BOTH bun manifests in the repo — the two projects
+# behind the dual-lockfile osv scan in ci.yml:
+#
+#   1. the root app  —  /package.json            + /bun.lock
+#   2. the worker    —  mini-services/worker/…   + mini-services/worker/bun.lock
+#
+# Policy (the "known versioning policy", enforced by construction):
+#   - Dependabot PRESERVES each dependency's declared range style when it
+#     bumps: a caret dep (the 61-entry default) gets a caret bump; an exact
+#     pin (next, react, and every other unprefixed version) is bumped IN
+#     PLACE as a new exact pin and is never widened. The allow list below
+#     (dependency-type: all) declares what is auto-updatable so the exact-
+#     pin discipline stays intact — updates never loosen a constraint.
+#   - Security updates are GROUPED per manifest (applies-to:
+#     security-updates) so several CVE bumps land as one reviewable PR
+#     instead of N dangling branches.
+#   - Cadence: weekly, Monday. Regular (non-security) version updates come
+#     as individual PRs capped by open-pull-requests-limit.
+#
+# ACTIVATION CAVEAT (OWNER-CI-001): this config is merged and reviewable
+# now, but Dependabot PRs only appear once the repo has Actions/runner
+# capacity for GitHub to run the scheduled update jobs. Until then the
+# weekly intended-diff is reviewable manually from this file + osv gate.
+# Validity of the ecosystem keys is GitHub-side; YAML shape is pinned by
+# tests/audit/r57-dependabot-config.test.ts and was parsed locally at R57.
+
+version: 2
+
+updates:
+  # ── Manifest 1/2: root app (package.json + bun.lock) ──────────────────
+  - package-ecosystem: "bun"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+    # Allow list — the versioning policy: everything is auto-updatable, but
+    # bumps preserve the declared range style (exact pins stay exact pins).
+    allow:
+      - dependency-type: "all"
+    # Grouped security updates: one reviewable PR per security wave.
+    groups:
+      security-updates:
+        applies-to: security-updates
+        dependency-type: "production"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    labels:
+      - "dependencies"
+
+  # ── Manifest 2/2: worker mini-service (its own package.json + lockfile) ─
+  - package-ecosystem: "bun"
+    directory: "/mini-services/worker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    allow:
+      - dependency-type: "all"
+    groups:
+      security-updates:
+        applies-to: security-updates
+        dependency-type: "production"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    labels:
+      - "dependencies"
