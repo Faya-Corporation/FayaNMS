@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   ArrowDown,
@@ -187,10 +188,13 @@ function SortableHead({
 }) {
   const active = sort === field;
   const Icon = !active ? ChevronsUpDown : dir === "asc" ? ArrowUp : ArrowDown;
+  // HC-4 (R56): the sort-announcer reads the COLUMN label; the label text
+  // itself is resolved by the caller from the devices columns namespace.
+  const t = useTranslations("devices");
   return (
     <TableHead aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"} className={className}>
       <button
-        aria-label={`Sort by ${label}`}
+        aria-label={t("table.sortAria", { field: label })}
         className={cn(
           "inline-flex items-center gap-1 rounded-sm text-xs font-medium transition-colors hover:text-foreground",
           active ? "text-foreground" : "text-muted-foreground"
@@ -239,11 +243,12 @@ const DeviceRow = memo(function DeviceRow({
   actionsPending,
   testPending,
 }: DeviceRowProps) {
+  const tDevices = useTranslations("devices");
   return (
     <TableRow data-state={isSelected ? "selected" : undefined} className={cn(highlighted && "bg-primary/5")}>
       <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
         <Checkbox
-          aria-label={`Select ${device.hostname}`}
+          aria-label={tDevices("rows.selectAria", { hostname: device.hostname })}
           checked={isSelected}
           onCheckedChange={(checked) => onSelectRow(device.id, checked === true)}
         />
@@ -252,7 +257,7 @@ const DeviceRow = memo(function DeviceRow({
         <button
           className="flex max-w-[24ch] items-start gap-2 leading-tight hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent sm:max-w-none"
           onClick={() => onOpenDetail(device.id)}
-          title={`Open ${device.hostname}`}
+          title={tDevices("rows.openTitle", { hostname: device.hostname })}
           type="button"
         >
           {/* Device-type glyph (decorative — hostname labels the row). */}
@@ -267,7 +272,7 @@ const DeviceRow = memo(function DeviceRow({
               {device.dataSource === "LIVE_SSH" && (
                 <span
                   className="shrink-0 rounded-full border border-brand-accent/40 bg-brand-accent/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-brand-accent"
-                  title="LIVE device — worker connects over real SSH (read-only)"
+                  title={tDevices("rows.liveTitle")}
                 >
                   LIVE
                 </span>
@@ -326,7 +331,7 @@ const DeviceRow = memo(function DeviceRow({
                 ? formatDistanceToNow(new Date(device.lastBackupAt), {
                     addSuffix: true,
                   })
-                : "never"}
+                : tDevices("rows.never")}
             </span>
             <BackupComplianceBadge className="w-fit" value={device.backupCompliance} />
           </span>
@@ -369,7 +374,7 @@ const DeviceRow = memo(function DeviceRow({
       <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button aria-label={`Actions for ${device.hostname}`} size="icon" variant="ghost">
+            <Button aria-label={tDevices("rows.actionsAria", { hostname: device.hostname })} size="icon" variant="ghost">
               <MoreHorizontal aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
@@ -380,18 +385,18 @@ const DeviceRow = memo(function DeviceRow({
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onOpenDetail(device.id)}>
               <Eye aria-hidden="true" />
-              Open detail
+              {tDevices("rows.openDetail")}
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={device.status === "UNMANAGED" || actionsPending}
               onClick={() => onBackup(device.id)}
             >
               <CloudUpload aria-hidden="true" />
-              Backup now
+              {tDevices("rows.backupNow")}
             </DropdownMenuItem>
             <DropdownMenuItem disabled={testPending} onClick={() => onTestConnection(device.id)}>
               <PlugZap aria-hidden="true" />
-              Test connection
+              {tDevices("rows.testConnection")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -399,7 +404,9 @@ const DeviceRow = memo(function DeviceRow({
               onClick={() => onToggleMaintenance(device)}
             >
               <Wrench aria-hidden="true" />
-              {device.status === "MAINTENANCE" ? "Exit maintenance" : "Enter maintenance"}
+              {device.status === "MAINTENANCE"
+                ? tDevices("rows.exitMaintenance")
+                : tDevices("rows.enterMaintenance")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -416,6 +423,8 @@ const DeviceRow = memo(function DeviceRow({
  */
 export function DevicesView() {
   const { toast } = useToast();
+  const t = useTranslations("devices");
+  const tCommon = useTranslations("common");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   const params = useNavigationStore((state) => state.params);
   // Status labels resolve in the active locale (falls back to config.label).
@@ -527,11 +536,11 @@ export function DevicesView() {
   const activeFilterChips = useMemo(() => {
     const chips: { label: string; value: string; clear: () => void }[] = [];
     if (filters.q) {
-      chips.push({ label: "Search", value: filters.q, clear: () => setSearchInput("") });
+      chips.push({ label: t("chips.search"), value: filters.q, clear: () => setSearchInput("") });
     }
     if (filters.status !== ALL) {
       chips.push({
-        label: "Status",
+        label: t("chips.status"),
         value: resolveStatusLabel(getStatusConfig(DEVICE_STATUS, filters.status)),
         clear: () => {
           setFilter("status", ALL);
@@ -542,7 +551,7 @@ export function DevicesView() {
     if (filters.vendorId !== ALL) {
       const vendor = meta.data?.vendors.find((entry) => entry.id === filters.vendorId);
       chips.push({
-        label: "Vendor",
+        label: t("chips.vendor"),
         value: vendor?.name ?? filters.vendorId,
         clear: () => {
           setFilter("vendorId", ALL);
@@ -553,7 +562,7 @@ export function DevicesView() {
     if (filters.siteId !== ALL) {
       const site = meta.data?.sites.find((entry) => entry.id === filters.siteId);
       chips.push({
-        label: "Site",
+        label: t("chips.site"),
         value: site?.name ?? filters.siteId,
         clear: () => {
           setFilter("siteId", ALL);
@@ -563,7 +572,7 @@ export function DevicesView() {
     }
     if (filters.criticality !== ALL) {
       chips.push({
-        label: "Criticality",
+        label: t("chips.criticality"),
         value: resolveStatusLabel(getStatusConfig(SEVERITY, filters.criticality)),
         clear: () => {
           setFilter("criticality", ALL);
@@ -573,7 +582,7 @@ export function DevicesView() {
     }
     if (filters.backupCompliance !== ALL) {
       chips.push({
-        label: "Backup",
+        label: t("chips.backup"),
         value: resolveStatusLabel(getStatusConfig(BACKUP_COMPLIANCE, filters.backupCompliance)),
         clear: () => {
           setFilter("backupCompliance", ALL);
@@ -693,16 +702,16 @@ export function DevicesView() {
         buildDeviceCsv(capped)
       );
       toast({
-        title: `Exported ${capped.length} device${capped.length === 1 ? "" : "s"}`,
+        title: t("toast.exportedTitle", { count: capped.length }),
         description:
           allRows.length > EXPORT_CAP
-            ? `Capped at ${EXPORT_CAP} rows (current filter matches ${allRows.length}).`
-            : "CSV built from the current filter and sort set.",
+            ? t("toast.exportCapped", { cap: EXPORT_CAP, total: allRows.length })
+            : t("toast.exportBody"),
       });
     } catch (error) {
       toast({
-        title: "Export failed",
-        description: error instanceof Error ? error.message : "Unknown error",
+        title: t("toast.exportFailed"),
+        description: error instanceof Error ? error.message : t("toast.unknownError"),
         variant: "destructive",
       });
     } finally {
@@ -716,8 +725,8 @@ export function DevicesView() {
       setSaveViewName("");
       setSaveViewOpen(false);
       toast({
-        title: "View saved",
-        description: `"${created.name}" is available as a chip above the table.`,
+        title: t("savedViews.savedTitle"),
+        description: t("savedViews.savedBody", { name: created.name }),
       });
     }
   };
@@ -735,17 +744,17 @@ export function DevicesView() {
         actions={
           <Button onClick={() => setCsvOpen(true)} variant="outline">
             <FileUp aria-hidden="true" />
-            Import CSV
+            {t("actions.importCsv")}
           </Button>
         }
-        description="Multi-vendor device inventory with health, backups and actions"
+        description={t("page.description")}
         primaryAction={
           <Button onClick={() => setAddOpen(true)}>
             <Plus aria-hidden="true" />
-            Add Device
+            {t("actions.addDevice")}
           </Button>
         }
-        title="Devices"
+        title={t("page.title")}
       />
 
       {/* Saved views strip */}
@@ -753,7 +762,7 @@ export function DevicesView() {
         {savedViews.map((view) => (
           <span key={view.id} className="relative inline-flex items-center">
             <button
-              aria-label={`Apply saved view ${view.name}`}
+              aria-label={t("savedViews.applyAria", { name: view.name })}
               className={cn(
                 "rounded-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent",
                 activeSavedView?.id === view.id && "ring-2 ring-primary/40"
@@ -764,10 +773,10 @@ export function DevicesView() {
               }}
               type="button"
             >
-              <FilterChip label="View" value={view.name} />
+              <FilterChip label={t("savedViews.chip")} value={view.name} />
             </button>
             <button
-              aria-label={`Remove saved view ${view.name}`}
+              aria-label={t("savedViews.removeAria", { name: view.name })}
               className="absolute -end-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full border bg-background text-muted-foreground transition-colors after:absolute after:-inset-1 after:rounded-full after:content-[''] hover:text-danger"
               onClick={() => removeView(view.id)}
               type="button"
@@ -786,7 +795,7 @@ export function DevicesView() {
               variant="outline"
             >
               <BookmarkPlus aria-hidden="true" />
-              Save view
+              {t("savedViews.save")}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-64 p-3">
@@ -800,7 +809,7 @@ export function DevicesView() {
                 className="text-xs font-medium text-muted-foreground"
                 htmlFor="save-view-name"
               >
-                Name this filter set
+                {t("savedViews.nameLabel")}
               </label>
               <Input
                 autoFocus
@@ -808,16 +817,16 @@ export function DevicesView() {
                 id="save-view-name"
                 maxLength={40}
                 onChange={(event) => setSaveViewName(event.target.value)}
-                placeholder="e.g. Critical firewalls"
+                placeholder={t("savedViews.namePlaceholder")}
                 value={saveViewName}
               />
               <div className="mt-3 flex justify-end gap-2">
                 <Button onClick={() => setSaveViewOpen(false)} size="sm" variant="ghost" type="button">
-                  Cancel
+                  {tCommon("cancel")}
                 </Button>
                 <Button disabled={!saveViewName.trim()} size="sm" type="submit">
                   <Check aria-hidden="true" />
-                  Save
+                  {tCommon("save")}
                 </Button>
               </div>
             </form>
@@ -825,7 +834,7 @@ export function DevicesView() {
         </Popover>
         {!hasActiveFilters(filters) && savedViews.length === 0 && (
           <span className="text-xs text-muted-foreground">
-            Tip: filter the inventory, then save the set as a reusable view.
+            {t("savedViews.tip")}
           </span>
         )}
       </div>
@@ -839,10 +848,10 @@ export function DevicesView() {
               className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
             />
             <Input
-              aria-label="Search devices"
+              aria-label={t("toolbar.searchAria")}
               className="h-9 pl-8"
               onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Search hostname, name, IP…"
+              placeholder={t("toolbar.searchPlaceholder")}
               value={searchInput}
             />
           </div>
@@ -853,11 +862,11 @@ export function DevicesView() {
             }}
             value={filters.status}
           >
-            <SelectTrigger aria-label="Filter by status" className="h-9 w-full sm:w-36">
-              <SelectValue placeholder="Status" />
+            <SelectTrigger aria-label={t("toolbar.statusAria")} className="h-9 w-full sm:w-36">
+              <SelectValue placeholder={t("chips.status")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All statuses</SelectItem>
+              <SelectItem value="ALL">{t("toolbar.allStatuses")}</SelectItem>
               {Object.values(DEVICE_STATUS).map((config) => (
                 <SelectItem key={config.key} value={config.key}>
                   {resolveStatusLabel(config)}
@@ -872,11 +881,11 @@ export function DevicesView() {
             }}
             value={filters.vendorId}
           >
-            <SelectTrigger aria-label="Filter by vendor" className="h-9 w-full sm:w-40">
-              <SelectValue placeholder="Vendor" />
+            <SelectTrigger aria-label={t("toolbar.vendorAria")} className="h-9 w-full sm:w-40">
+              <SelectValue placeholder={t("chips.vendor")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All vendors</SelectItem>
+              <SelectItem value="ALL">{t("toolbar.allVendors")}</SelectItem>
               {(meta.data?.vendors ?? []).map((vendor) => (
                 <SelectItem key={vendor.id} value={vendor.id}>
                   {vendor.name}
@@ -891,11 +900,11 @@ export function DevicesView() {
             }}
             value={filters.siteId}
           >
-            <SelectTrigger aria-label="Filter by site" className="h-9 w-full sm:w-40">
-              <SelectValue placeholder="Site" />
+            <SelectTrigger aria-label={t("toolbar.siteAria")} className="h-9 w-full sm:w-40">
+              <SelectValue placeholder={t("chips.site")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All sites</SelectItem>
+              <SelectItem value="ALL">{t("toolbar.allSites")}</SelectItem>
               {(meta.data?.sites ?? []).map((site) => (
                 <SelectItem key={site.id} value={site.id}>
                   {site.name}
@@ -910,11 +919,11 @@ export function DevicesView() {
             }}
             value={filters.criticality}
           >
-            <SelectTrigger aria-label="Filter by criticality" className="h-9 w-full sm:w-36">
-              <SelectValue placeholder="Criticality" />
+            <SelectTrigger aria-label={t("toolbar.criticalityAria")} className="h-9 w-full sm:w-36">
+              <SelectValue placeholder={t("chips.criticality")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All criticality</SelectItem>
+              <SelectItem value="ALL">{t("toolbar.allCriticality")}</SelectItem>
               {["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((key) => (
                 <SelectItem key={key} value={key}>
                   {resolveStatusLabel(getStatusConfig(SEVERITY, key))}
@@ -929,11 +938,11 @@ export function DevicesView() {
             }}
             value={filters.backupCompliance}
           >
-            <SelectTrigger aria-label="Filter by backup compliance" className="h-9 w-full sm:w-40">
-              <SelectValue placeholder="Backup" />
+            <SelectTrigger aria-label={t("toolbar.backupAria")} className="h-9 w-full sm:w-40">
+              <SelectValue placeholder={t("chips.backup")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">All backup states</SelectItem>
+              <SelectItem value="ALL">{t("toolbar.allBackupStates")}</SelectItem>
               {Object.values(BACKUP_COMPLIANCE).map((config) => (
                 <SelectItem key={config.key} value={config.key}>
                   {resolveStatusLabel(config)}
@@ -950,18 +959,18 @@ export function DevicesView() {
               variant="outline"
             >
               <Download aria-hidden="true" />
-              {exporting ? "Exporting…" : "Export CSV"}
+              {exporting ? t("toolbar.exporting") : t("toolbar.exportCsv")}
             </Button>
             {/* Column visibility (persisted) */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button aria-label="Toggle visible columns" size="sm" variant="outline">
+                <Button aria-label={t("toolbar.columnsAria")} size="sm" variant="outline">
                   <Columns3 aria-hidden="true" />
-                  Columns
+                  {t("toolbar.columns")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuLabel>Visible columns</DropdownMenuLabel>
+                <DropdownMenuLabel>{t("toolbar.visibleColumns")}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {(Object.keys(DEVICE_COLUMN_LABELS) as DeviceColumnKey[]).map((key) => (
                   <DropdownMenuCheckboxItem
@@ -970,7 +979,7 @@ export function DevicesView() {
                     onCheckedChange={() => toggleColumn(key)}
                     onSelect={(event) => event.preventDefault()}
                   >
-                    {DEVICE_COLUMN_LABELS[key]}
+                    {t(`columns.${key}`)}
                   </DropdownMenuCheckboxItem>
                 ))}
               </DropdownMenuContent>
@@ -997,7 +1006,7 @@ export function DevicesView() {
               size="sm"
               variant="ghost"
             >
-              Reset
+              {t("toolbar.reset")}
             </Button>
           </div>
         )}
@@ -1010,7 +1019,7 @@ export function DevicesView() {
           className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/25 bg-primary/5 px-4 py-2.5"
         >
           <span className="text-sm font-medium">
-            {selected.size} device{selected.size === 1 ? "" : "s"} selected
+            {t("bulk.selected", { count: selected.size })}
           </span>
           <Button
             disabled={bulkPending}
@@ -1018,7 +1027,7 @@ export function DevicesView() {
             size="sm"
           >
             <CloudUpload aria-hidden="true" />
-            Backup now
+            {t("bulk.backupNow")}
           </Button>
           <Button
             disabled={exporting}
@@ -1027,26 +1036,26 @@ export function DevicesView() {
             variant="outline"
           >
             <Download aria-hidden="true" />
-            Export CSV
+            {t("toolbar.exportCsv")}
           </Button>
           <Button
             onClick={() => setSelected(new Set())}
             size="sm"
             variant="ghost"
           >
-            Clear
+            {tCommon("clear")}
           </Button>
         </div>
       )}
 
       {/* Table */}
-      <SectionCard contentClassName="p-0" title="Inventory">
+      <SectionCard contentClassName="p-0" title={t("table.cardTitle")}>
         {devices.isError ? (
           <div className="p-4">
             <ErrorState
               onRetry={() => void devices.refetch()}
               reason={devices.error.message}
-              title="Devices could not be loaded"
+              title={t("table.errorTitle")}
             />
           </div>
         ) : devices.isLoading ? (
@@ -1061,19 +1070,19 @@ export function DevicesView() {
         ) : rows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="Adjust or reset the filters above, or add a device to start collecting configs."
+              description={t("table.emptyDescription")}
               icon={SearchX}
-              title="No devices match the current filters"
+              title={t("table.emptyTitle")}
             />
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table aria-label="Device inventory — hostname, management IP, vendor, model, site, status and backup compliance per device" className="min-w-[980px]">
+            <Table aria-label={t("table.aria")} className="min-w-[980px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="h-(--density-row-h) px-(--density-cell-x) w-10">
                     <Checkbox
-                      aria-label="Select all devices on this page"
+                      aria-label={t("table.selectAllAria")}
                       checked={
                         allOnPageSelected
                           ? true
@@ -1088,7 +1097,7 @@ export function DevicesView() {
                     className="h-(--density-row-h) px-(--density-cell-x)"
                     dir={filters.dir}
                     field="hostname"
-                    label="Hostname"
+                    label={t("columns.hostname")}
                     onSort={handleSort}
                     sort={filters.sort}
                   />
@@ -1097,29 +1106,29 @@ export function DevicesView() {
                       className="h-(--density-row-h) px-(--density-cell-x)"
                       dir={filters.dir}
                       field="status"
-                      label="Status"
+                      label={t("columns.status")}
                       onSort={handleSort}
                       sort={filters.sort}
                     />
                   )}
                   {columns.mgmtIp && (
                     <TableHead className="h-(--density-row-h) px-(--density-cell-x)">
-                      Management IP
+                      {t("columns.mgmtIp")}
                     </TableHead>
                   )}
                   {columns.vendor && (
                     <TableHead className="h-(--density-row-h) px-(--density-cell-x)">
-                      Vendor
+                      {t("columns.vendor")}
                     </TableHead>
                   )}
                   {columns.model && (
                     <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) md:table-cell">
-                      Model
+                      {t("columns.model")}
                     </TableHead>
                   )}
                   {columns.site && (
                     <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) lg:table-cell">
-                      Site
+                      {t("columns.site")}
                     </TableHead>
                   )}
                   {columns.criticality && (
@@ -1127,7 +1136,7 @@ export function DevicesView() {
                       className="h-(--density-row-h) px-(--density-cell-x)"
                       dir={filters.dir}
                       field="criticality"
-                      label="Criticality"
+                      label={t("columns.criticality")}
                       onSort={handleSort}
                       sort={filters.sort}
                     />
@@ -1137,7 +1146,7 @@ export function DevicesView() {
                       className="h-(--density-row-h) px-(--density-cell-x)"
                       dir={filters.dir}
                       field="lastBackupAt"
-                      label="Backup"
+                      label={t("columns.backup")}
                       onSort={handleSort}
                       sort={filters.sort}
                     />
@@ -1147,14 +1156,14 @@ export function DevicesView() {
                       className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell"
                       dir={filters.dir}
                       field="lastSeen"
-                      label="Last seen"
+                      label={t("columns.lastSeen")}
                       onSort={handleSort}
                       sort={filters.sort}
                     />
                   )}
                   {columns.health && (
                     <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
-                      Health
+                      {t("columns.health")}
                     </TableHead>
                   )}
                   <TableHead className="h-(--density-row-h) px-(--density-cell-x) w-10" />
@@ -1186,8 +1195,11 @@ export function DevicesView() {
         {metaInfo && metaInfo.total > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-xs text-muted-foreground">
             <span className="tabular-nums">
-              {metaInfo.total} device{metaInfo.total === 1 ? "" : "s"} · page{" "}
-              {metaInfo.page} of {metaInfo.totalPages}
+              {t("pagination.summary", {
+                total: metaInfo.total,
+                page: metaInfo.page,
+                pages: metaInfo.totalPages,
+              })}
             </span>
             <div className="flex items-center gap-2">
               <Select
@@ -1197,36 +1209,36 @@ export function DevicesView() {
                 }}
                 value={String(pageSize)}
               >
-                <SelectTrigger aria-label="Rows per page" className="h-8 w-[6.5rem] text-xs" size="sm">
+                <SelectTrigger aria-label={t("pagination.rowsAria")} className="h-8 w-[6.5rem] text-xs" size="sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {PAGE_SIZE_OPTIONS.map((option) => (
                     <SelectItem key={option} value={String(option)}>
-                      {option} / page
+                      {t("pagination.perPage", { option })}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <div className="flex items-center gap-1">
                 <Button
-                  aria-label="Previous page"
+                  aria-label={t("pagination.prevAria")}
                   disabled={metaInfo.page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   size="sm"
                   variant="outline"
                 >
                   <ChevronLeft aria-hidden="true" />
-                  Prev
+                  {t("pagination.prev")}
                 </Button>
                 <Button
-                  aria-label="Next page"
+                  aria-label={t("pagination.nextAria")}
                   disabled={metaInfo.page >= metaInfo.totalPages}
                   onClick={() => setPage((p) => p + 1)}
                   size="sm"
                   variant="outline"
                 >
-                  Next
+                  {t("pagination.next")}
                   <ChevronRight aria-hidden="true" />
                 </Button>
               </div>

@@ -162,7 +162,7 @@ The container stack ships in-repo: `Dockerfile` (multi-stage bun → Next standa
 ## Conventions
 
 - Every list/detail surface uses the envelope `{ success, data, meta }` (with `meta.requestId` + the `X-Request-Id` header stamped on every response) with Zod-validated inputs and machine-readable error codes.
-- All UI strings live in `messages/en.json` + `messages/ar.json` — kept at exact key parity (1285 = 1285 at time of writing); Arabic is genuine network-ops terminology, not machine translation.
+- All UI strings live in `messages/en.json` + `messages/ar.json` — kept at exact key parity (1419 = 1419 at time of writing, machine-pinned by the i18n audit; Arabic is genuine network-ops terminology, not machine translation). The devices-plane chrome was the last documented English-literal triage — keyed in R56; the remaining partially-keyed views are tracked as a shrinking per-file debt ledger in `tests/audit/r56-i18n-chrome-sweep.test.ts`.
 - Accessibility: WCAG 2.2 AA is the TARGET (skip link, reduced motion, focus-visible rings, named tables/charts, ≥24px targets implemented — see docs/design-governance.md §5–§6 for the per-criterion status and the honestly-graded browser QA matrix); responsive 375 → 1920 with a no-horizontal-overflow rule.
 - High-risk operations (restore, failover test, rebalance apply, deletions) run through typed-confirm `HighRiskActionDialog` flows.
 

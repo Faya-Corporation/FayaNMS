@@ -99,8 +99,8 @@ Everything here is executable inside the sandbox with no external dependency, or
 | HC-1 rate budgets | ✅ LANDED (R53) — evidence: `FayaNMS-R53-HC1-Rate-Budgets-2026-09-18.md` |
 | HC-2 meta split | ✅ LANDED (R54) — evidence: `FayaNMS-R54-HC2-Meta-Users-Split-2026-09-18.md` |
 | HC-3 RequestContext removal | ✅ LANDED (R55) — evidence: `FayaNMS-R55-HC3-RequestContext-Removal-2026-09-18.md` |
-| HC-4 i18n completion | 🔜 NEXT (R56) |
-| HC-5 dependabot config | queued |
+| HC-4 i18n completion | ✅ LANDED (R56) — evidence: `FayaNMS-R56-HC4-I18n-Chrome-2026-09-18.md` |
+| HC-5 dependabot config | 🔜 NEXT (R57) |
 | HC-6 real-CI release gate | blocked → OWNER-CI-001 |
 | OWNER-CI-001 / OWNER-GOV-001 | external, config ready |
 | LAB R50-T090..T092 + CERT-HW-001-A | external, Step 0 ready (`demo:fleet`) |

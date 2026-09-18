@@ -3320,3 +3320,22 @@ Work Log:
 Stage Summary:
 - HC-3 LANDED: the SAFE-002 tracked debt is retired mechanically with machine-enforced non-regrowth (zero-reference sweeps + compile-time param removal); envelope behavior proven invariant at unit + wire level; suite 915 → 927.
 - Phase HC queue advances: HC-4 (R56) i18n completion of chrome copy is NEXT.
+
+---
+Task ID: R56-HC4
+Agent: Z.ai orchestrator (main session)
+Task: "continue" — execute HC-4 (i18n completion of chrome copy: the devices plane + the brand/i18n sweep-pin extension).
+
+Work Log:
+- Pre-flight clean (z_ai_v2 @ 64dca8f). Surveyed the real i18n coverage: devices-view + device-detail-view had ZERO useTranslations (the documented triage); sweep across all views surfaced 18 keyed / 32 with residual literals (incl. views with partial namespaces like alerts/events).
+- Built the full hand inventory of both named files (~100 sites: props, JSX text, ternaries, template arias, toast ICU counts) + found DEVICE_COLUMN_LABELS store strings rendered verbatim in the columns dropdown.
+- Dictionaries: NEW `devices` (78 leaves) + `deviceDetail` (56) namespaces added to messages/en.json + ar.json in lockstep (1285 → 1419 = 1419); Arabic drafted as genuine net-ops terminology with full ICU plural categories (one/two/few/many/other) matching house style; columnsAria key added programmatically to both sides.
+- Components: both views fully keyed (DeviceRow/SortableHead/OverviewSection with their own hooks; TAB_ITEMS collapsed to value array + t(`tabs.${value}`); DEVICE_COLUMN_LABELS → t(`columns.${key}`); export toasts → ICU plurals; maintenance ternary + connection-banner chain keyed). Documented survivors: LIVE chip, — placeholders, date-fns English relative times (app-wide convention).
+- Tests: NEW tests/audit/r56-i18n-chrome-sweep.test.ts — 8 pins: FIRST machine-enforced dictionary parity (deep leaf sets both directions + non-empty values), new namespaces balanced, named views pinned at exact candidate inventories (["LIVE"] / []), PENDING_VIEWS debt ledger (32 files at R56 ceilings, may only shrink, untracked literals forbidden).
+- Gates in CI env shape: lint 0 · tsc FULL 0 · suite 927 → 935 pass / 18 skip / 0 fail (7,968 expects, 55 files).
+- LIVE: EN devices chrome pixel-equivalent through the keys; header language switch → dir=rtl/lang=ar; AR devices (الأجهزة / استيراد CSV / جميع الحالات / فرز حسب اسم المضيف) + detail journey (فتح BR1-Access-SW-01 → نظرة عامة…التدقيق / سجل الجهاز / النشاط الأخير); authed devices API 200 (20 rows) mid-journey; 0 console/page errors in both locales; mobile 390 AR no h-scroll. Screenshots: verify-r56-hc4-devices-en.png, verify-r56-hc4-devices-ar-rtl.png, verify-r56-hc4-detail-ar-rtl.png, verify-r56-hc4-mobile-390-ar.png.
+- Appended: docs/audits/FayaNMS-R56-HC4-I18n-Chrome-2026-09-18.md, roadmap ledger (HC-4 → LANDED, HC-5 → NEXT (R57)), NEXT-TASKS header + ACTIVE + TASK-HC-4 block, README parity note (1419 + ledger pointer), this worklog + orchestrator worklog. Committed and pushed to origin/z_ai_v2; db/, .env planes, PAT never staged.
+
+Stage Summary:
+- HC-4 LANDED: the named triage closed with the FIRST parity pin + a shrinking-debt sweep ledger; suite 927 → 935; EN/AR journeys wire-proven.
+- Phase HC queue advances: HC-5 (R57) supply-chain automation config is NEXT.

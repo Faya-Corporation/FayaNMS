@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   ArrowLeft,
@@ -63,17 +64,17 @@ type DetailTab =
   | "assistant"
   | "audit";
 
-const TAB_ITEMS: { value: DetailTab; label: string }[] = [
-  { value: "overview", label: "Overview" },
-  { value: "health", label: "Health" },
-  { value: "interfaces", label: "Interfaces" },
-  { value: "config", label: "Config" },
-  { value: "backups", label: "Backups" },
-  { value: "changes", label: "Changes" },
-  { value: "incidents", label: "Incidents" },
-  { value: "alerts", label: "Alerts" },
-  { value: "assistant", label: "Assistant" },
-  { value: "audit", label: "Audit" },
+const TAB_ITEMS: DetailTab[] = [
+  "overview",
+  "health",
+  "interfaces",
+  "config",
+  "backups",
+  "changes",
+  "incidents",
+  "alerts",
+  "assistant",
+  "audit",
 ];
 
 function formatUptime(seconds: string | null): string {
@@ -103,6 +104,8 @@ export function DeviceDetailView() {
   const params = useNavigationStore((state) => state.params);
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   const { toast } = useToast();
+  const t = useTranslations("deviceDetail");
+  const tCommon = useTranslations("common");
 
   const deviceId = params?.deviceId ?? null;
   const detail = useDevice(deviceId);
@@ -132,11 +135,11 @@ export function DeviceDetailView() {
         actions={
           <Button onClick={() => setActiveView("network.devices")} variant="outline">
             <ArrowLeft aria-hidden="true" />
-            Back to devices
+            {t("back")}
           </Button>
         }
-        description="Open a device from the inventory list or the command palette."
-        title="No device selected"
+        description={t("noDevice.description")}
+        title={t("noDevice.title")}
       />
     );
   }
@@ -151,12 +154,12 @@ export function DeviceDetailView() {
           variant="ghost"
         >
           <ArrowLeft aria-hidden="true" />
-          Back to devices
+          {t("back")}
         </Button>
         <ErrorState
           onRetry={() => void detail.refetch()}
           reason={detail.error.message}
-          title="The device record could not be loaded"
+          title={t("error.title")}
         />
       </div>
     );
@@ -202,7 +205,7 @@ export function DeviceDetailView() {
         variant="ghost"
       >
         <ArrowLeft aria-hidden="true" />
-        Back to devices
+        {t("back")}
       </Button>
 
       {lastTest && testBannerTone && (
@@ -216,10 +219,12 @@ export function DeviceDetailView() {
           <PlugZap aria-hidden="true" className="size-4" />
           <span className="font-medium">
             {!lastTest.reachable
-              ? "Worker service unreachable"
+              ? t("test.workerUnreachable")
               : lastTest.ok
-                ? `Connection OK${lastTest.latencyMs !== null ? ` — ${lastTest.latencyMs} ms` : ""}`
-                : "Connection failed"}
+                ? lastTest.latencyMs !== null
+                  ? t("test.okLatency", { latency: lastTest.latencyMs })
+                  : t("test.ok")
+                : t("test.failed")}
           </span>
           {lastTest.message && !lastTest.ok && (
             <span className="text-muted-foreground">{lastTest.message}</span>
@@ -229,7 +234,7 @@ export function DeviceDetailView() {
             onClick={() => setLastTest(null)}
             type="button"
           >
-            Dismiss
+            {tCommon("dismiss")}
           </button>
         </div>
       )}
@@ -245,7 +250,7 @@ export function DeviceDetailView() {
               variant="outline"
             >
               <PlugZap aria-hidden="true" />
-              Test connection
+              {t("test.action")}
             </Button>
             <Button
               disabled={device.status === "UNMANAGED" || createJob.isPending}
@@ -259,13 +264,13 @@ export function DeviceDetailView() {
               variant="outline"
             >
               <CloudUpload aria-hidden="true" />
-              Backup now
+              {t("header.backupNow")}
             </Button>
           </>
         }
         breadcrumbs={[
-          { label: "Network" },
-          { label: "Devices" },
+          { label: t("header.breadcrumbNetwork") },
+          { label: t("header.breadcrumbDevices") },
           { label: device.hostname },
         ]}
         description={
@@ -286,7 +291,7 @@ export function DeviceDetailView() {
         primaryAction={
           <Button onClick={() => setEditOpen(true)} size="sm">
             <Edit aria-hidden="true" />
-            Edit
+            {tCommon("edit")}
           </Button>
         }
         title={device.hostname}
@@ -299,9 +304,9 @@ export function DeviceDetailView() {
       >
         <div className="overflow-x-auto pb-1">
           <TabsList className="min-w-full justify-start">
-            {TAB_ITEMS.map((item) => (
-              <TabsTrigger key={item.value} value={item.value}>
-                {item.label}
+            {TAB_ITEMS.map((value) => (
+              <TabsTrigger key={value} value={value}>
+                {t(`tabs.${value}`)}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -373,6 +378,8 @@ function OverviewSection({
   device: DeviceDetail;
   onGoAudit: () => void;
 }) {
+  const t = useTranslations("deviceDetail");
+  const tCommon = useTranslations("common");
   const audit = useDeviceAudit(device.id, { pageSize: 5 });
   // Phase 13-b — lifecycle dot next to the firmware value (static matrix).
   const lifecycle = getLifecycle(device.vendor.key, device.firmware);
@@ -388,33 +395,33 @@ function OverviewSection({
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <KpiCard
           className={cn(device.counts.openAlerts > 0 && "border-danger/40")}
-          description="ACTIVE alerts on this device"
+          description={t("kpi.openAlertsDescription")}
           icon={Siren}
-          label="Open Alerts"
+          label={t("kpi.openAlertsLabel")}
           value={device.counts.openAlerts}
         />
         <KpiCard
-          description="Linked incidents, open lifecycle"
+          description={t("kpi.openIncidentsDescription")}
           icon={TriangleAlert}
-          label="Open Incidents"
+          label={t("kpi.openIncidentsLabel")}
           value={device.counts.openIncidents}
         />
         <KpiCard
-          description="Config versions captured"
+          description={t("kpi.snapshotsDescription")}
           icon={History}
-          label="Snapshots"
+          label={t("kpi.snapshotsLabel")}
           value={device.counts.snapshots}
         />
         <div className="flex flex-col justify-between gap-2 rounded-xl border bg-card p-4 shadow-e1">
-          <p className="text-xs font-medium text-muted-foreground" title="Backup compliance">
-            Backup Compliance
+          <p className="text-xs font-medium text-muted-foreground" title={t("kpi.backupComplianceTitle")}>
+            {t("kpi.backupComplianceTitle")}
           </p>
           <div className="flex flex-col gap-1.5">
             <BackupComplianceBadge className="w-fit" value={device.backupCompliance} />
             <span className="text-xs text-muted-foreground tabular-nums">
               {device.lastBackupAt
-                ? `Last backup ${relative(device.lastBackupAt)}`
-                : "No backup on record"}
+                ? t("kpi.lastBackup", { time: relative(device.lastBackupAt) })
+                : t("kpi.noBackup")}
             </span>
           </div>
         </div>
@@ -429,55 +436,59 @@ function OverviewSection({
         {/* Identity */}
         <SectionCard
           contentClassName="p-0"
-          description="Identity, firmware and management addressing"
-          title="Device Record"
+          description={t("record.description")}
+          title={t("record.title")}
         >
           <dl className="grid grid-cols-1 gap-x-6 gap-y-0 p-card sm:grid-cols-2">
-            <RecordItem label="Management IP" mono value={device.mgmtIp} />
+            <RecordItem label={t("record.mgmtIp")} mono value={device.mgmtIp} />
             <RecordItem
-              label="Data plane"
+              label={t("record.dataPlane")}
               value={
                 device.dataSource === "LIVE_SSH"
-                  ? `Live — real SSH (read-only)${device.credentialProfile ? ` · ${device.credentialProfile.name}` : ""}`
-                  : "Simulator (deterministic)"
+                  ? device.credentialProfile
+                    ? t("record.dataPlaneLiveWithProfile", {
+                        profile: device.credentialProfile.name,
+                      })
+                    : t("record.dataPlaneLive")
+                  : t("record.dataPlaneSimulator")
               }
             />
-            <RecordItem label="Hostname" mono value={device.hostname} />
-            <RecordItem label="Vendor" value={device.vendor.name} />
+            <RecordItem label={t("record.hostname")} mono value={device.hostname} />
+            <RecordItem label={t("record.vendor")} value={device.vendor.name} />
             <RecordItem
-              label="Model"
+              label={t("record.model")}
               value={[device.model, device.platform].filter(Boolean).join(" · ") || "—"}
             />
             <RecordItem
               dotClass={lifecycleBadgeConfig.dotClass}
               dotTitle={lifecycleTitle}
-              label="Firmware"
+              label={t("record.firmware")}
               mono
               value={device.firmware ?? "—"}
             />
-            <RecordItem label="Serial number" mono value={device.serialNumber ?? "—"} />
-            <RecordItem label="Role" value={device.role ? deviceRoleLabelFor(device.role) : "—"} />
-            <RecordItem label="Site" value={device.site ? `${device.site.name} (${device.site.code})` : "—"} />
-            <RecordItem label="Last seen" value={relative(device.lastSeen)} />
-            <RecordItem label="Uptime" value={formatUptime(device.uptimeSeconds)} />
+            <RecordItem label={t("record.serialNumber")} mono value={device.serialNumber ?? "—"} />
+            <RecordItem label={t("record.role")} value={device.role ? deviceRoleLabelFor(device.role) : "—"} />
+            <RecordItem label={t("record.site")} value={device.site ? `${device.site.name} (${device.site.code})` : "—"} />
+            <RecordItem label={t("record.lastSeen")} value={relative(device.lastSeen)} />
+            <RecordItem label={t("record.uptime")} value={formatUptime(device.uptimeSeconds)} />
             <RecordItem
-              label="Last config change"
+              label={t("record.lastConfigChange")}
               value={relative(device.lastConfigChangeAt)}
             />
             <RecordItem
-              label="Backup jobs"
+              label={t("record.backupJobs")}
               value={String(device.counts.backupJobs)}
             />
           </dl>
           {device.notes && (
             <div className="border-t p-card">
-              <p className="text-xs font-medium text-muted-foreground">Description</p>
+              <p className="text-xs font-medium text-muted-foreground">{t("record.notesLabel")}</p>
               <p className="mt-1 text-sm leading-relaxed">{device.notes}</p>
             </div>
           )}
           {device.tags.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 border-t p-card">
-              <span className="text-xs font-medium text-muted-foreground">Tags</span>
+              <span className="text-xs font-medium text-muted-foreground">{t("record.tagsLabel")}</span>
               {device.tags.map((tag) => (
                 <StatusBadge
                   key={tag}
@@ -500,11 +511,11 @@ function OverviewSection({
         {/* Recent activity */}
         <SectionCard
           contentClassName="p-0"
-          description="Latest audit events for this device"
-          title="Recent Activity"
+          description={t("activity.description")}
+          title={t("activity.title")}
           actions={
             <Button onClick={onGoAudit} size="sm" variant="ghost">
-              View all
+              {tCommon("viewAll")}
             </Button>
           }
         >
@@ -519,16 +530,16 @@ function OverviewSection({
               <ErrorState
                 onRetry={() => void audit.refetch()}
                 reason={audit.error.message}
-                title="Activity could not be loaded"
+                title={t("activity.errorTitle")}
               />
             </div>
           ) : (audit.data?.data.length ?? 0) === 0 ? (
             <div className="p-4">
               <EmptyState
                 className="border-none bg-transparent py-8"
-                description="Audit events appear as the platform touches this device."
+                description={t("activity.emptyDescription")}
                 icon={History}
-                title="No audit events yet"
+                title={t("activity.emptyTitle")}
               />
             </div>
           ) : (

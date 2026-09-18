@@ -1,10 +1,10 @@
-# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-18, HC-3 LANDED/z_ai_v2)
+# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-18, HC-4 LANDED/z_ai_v2)
 
 Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R47), then the R50 program on branch `z_ai_v2`. ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, ALL of it outside the sandbox's control:
 
 ## ACTIVE (only genuinely remaining work)
 
-**The execution backlog has moved to the Production-Readiness Implementation Roadmap:** `docs/audits/FayaNMS-Production-Readiness-Implementation-Roadmap-2026-09-18.md` — Phase HC is the AUTHORABLE queue (~~HC-1 per-endpoint rate budgets~~ → ✅ LANDED (R53); ~~HC-2 meta bootstrap split~~ → ✅ LANDED (R54); ~~HC-3 RequestContext removal~~ → ✅ LANDED (R55); HC-4 i18n completion → NEXT (R56); HC-5 dependabot config; HC-6 rides CI), each item with files/tests/acceptance/gates. Everything else is outside the sandbox's control:
+**The execution backlog has moved to the Production-Readiness Implementation Roadmap:** `docs/audits/FayaNMS-Production-Readiness-Implementation-Roadmap-2026-09-18.md` — Phase HC is the AUTHORABLE queue (~~HC-1 per-endpoint rate budgets~~ → ✅ LANDED (R53); ~~HC-2 meta bootstrap split~~ → ✅ LANDED (R54); ~~HC-3 RequestContext removal~~ → ✅ LANDED (R55); ~~HC-4 i18n completion~~ → ✅ LANDED (R56); HC-5 dependabot config → NEXT (R57); HC-6 rides CI), each item with files/tests/acceptance/gates. Everything else is outside the sandbox's control:
 
 ```text
 OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (green 4-job run on the release SHA)
@@ -13,6 +13,12 @@ R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (n
 ```
 
 The remediation authoring backlog remains EMPTY for the R34–R47, R50 and R51 programs; the R52 full end-to-end re-audit found zero P1/P2 and its single P3 (F-N1 auth ordering on the AI routes) + the hygiene set were remediated IN the R52 increment.
+
+---
+
+TASK-HC-4 — i18n completion of chrome copy (R56) ✊ → ✅ LANDED (2026-09-18, branch `z_ai_v2`)
+
+The documented devices-plane triage is CLOSED: `devices-view.tsx` and `device-detail-view.tsx` (zero translations before) are fully keyed through the NEW `devices` (78 leaves) / `deviceDetail` (56 leaves) namespaces — buttons, toasts (ICU plurals), placeholders, filter toolbar, table headers + sort announcer, row menu incl. the maintenance ternary, tabs, KPI cards, device-record labels, activity states — added to en/ar in lockstep (dictionary 1285 → **1419 = 1419**), Arabic drafted as genuine net-ops terminology with full ICU plural categories (one/two/few/many/other); `DEVICE_COLUMN_LABELS` store strings now resolve via `t(\`columns.${key}\`)` at render; the `LIVE` chip + `—` placeholders + date-fns English relative times are documented survivors. FIRST dictionary parity pin (deep leaf-path equality both directions + non-empty values) — previously prose-only. NEW sweep pin: the two named views pinned at their exact candidate inventory (`["LIVE"]` / `[]`), and a `PENDING_VIEWS` debt ledger pins each of the 32 remaining partially-keyed views at its R56 candidate ceiling — counts may only shrink, untracked literals are forbidden (the sweep also surfaced that coverage app-wide is partial — 18 keyed / 32 pending — now machine-tracked and honestly reflected in README). Gates in CI env shape: lint 0 · tsc FULL 0 · suite 927 → **935 pass / 18 skip / 0 fail** (7,968 expects, 55 files). LIVE: EN chrome pixel-equivalent through the keys; locale switch → `dir="rtl" lang="ar"`; devices + device-detail fully Arabic (الأجهزة / استيراد CSV / جميع الحالات / فرز حسب اسم المضيف / نظرة عامة…التدقيق / سجل الجهاز); authed devices API 200 mid-journey; 0 console/page errors both locales; mobile 390 AR no h-scroll. Screenshots: `agent-ctx/verify-r56-hc4-devices-en.png`, `verify-r56-hc4-devices-ar-rtl.png`, `verify-r56-hc4-detail-ar-rtl.png`, `verify-r56-hc4-mobile-390-ar.png`. Evidence doc: `docs/audits/FayaNMS-R56-HC4-I18n-Chrome-2026-09-18.md`. NEXT: HC-5 (R57) supply-chain automation config.
 
 ---
 

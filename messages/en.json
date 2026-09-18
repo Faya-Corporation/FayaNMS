@@ -1705,5 +1705,181 @@
       "openScheduled": "Open scheduled reports",
       "close": "Close"
     }
+  },
+  "devices": {
+    "page": {
+      "title": "Devices",
+      "description": "Multi-vendor device inventory with health, backups and actions"
+    },
+    "actions": {
+      "importCsv": "Import CSV",
+      "addDevice": "Add Device"
+    },
+    "savedViews": {
+      "applyAria": "Apply saved view {name}",
+      "removeAria": "Remove saved view {name}",
+      "chip": "View",
+      "save": "Save view",
+      "nameLabel": "Name this filter set",
+      "namePlaceholder": "e.g. Critical firewalls",
+      "savedTitle": "View saved",
+      "savedBody": "“{name}” is available as a chip above the table.",
+      "tip": "Tip: filter the inventory, then save the set as a reusable view."
+    },
+    "toolbar": {
+      "searchAria": "Search devices",
+      "searchPlaceholder": "Search hostname, name, IP…",
+      "statusAria": "Filter by status",
+      "vendorAria": "Filter by vendor",
+      "siteAria": "Filter by site",
+      "criticalityAria": "Filter by criticality",
+      "backupAria": "Filter by backup compliance",
+      "allStatuses": "All statuses",
+      "allVendors": "All vendors",
+      "allSites": "All sites",
+      "allCriticality": "All criticality",
+      "allBackupStates": "All backup states",
+      "exportCsv": "Export CSV",
+      "exporting": "Exporting…",
+      "columns": "Columns",
+      "columnsAria": "Toggle visible columns",
+      "visibleColumns": "Visible columns",
+      "reset": "Reset"
+    },
+    "chips": {
+      "search": "Search",
+      "status": "Status",
+      "vendor": "Vendor",
+      "site": "Site",
+      "criticality": "Criticality",
+      "backup": "Backup"
+    },
+    "bulk": {
+      "selected": "{count, plural, one {# device selected} other {# devices selected}}",
+      "backupNow": "Backup now"
+    },
+    "columns": {
+      "hostname": "Hostname",
+      "status": "Status",
+      "mgmtIp": "Management IP",
+      "vendor": "Vendor",
+      "model": "Model",
+      "site": "Site",
+      "criticality": "Criticality",
+      "backup": "Backup",
+      "lastSeen": "Last seen",
+      "health": "Health"
+    },
+    "table": {
+      "cardTitle": "Inventory",
+      "errorTitle": "Devices could not be loaded",
+      "emptyTitle": "No devices match the current filters",
+      "emptyDescription": "Adjust or reset the filters above, or add a device to start collecting configs.",
+      "aria": "Device inventory — hostname, management IP, vendor, model, site, status and backup compliance per device",
+      "selectAllAria": "Select all devices on this page",
+      "sortAria": "Sort by {field}"
+    },
+    "rows": {
+      "selectAria": "Select {hostname}",
+      "openTitle": "Open {hostname}",
+      "actionsAria": "Actions for {hostname}",
+      "openDetail": "Open detail",
+      "backupNow": "Backup now",
+      "testConnection": "Test connection",
+      "exitMaintenance": "Exit maintenance",
+      "enterMaintenance": "Enter maintenance",
+      "liveTitle": "LIVE device — worker connects over real SSH (read-only)",
+      "never": "never"
+    },
+    "pagination": {
+      "rowsAria": "Rows per page",
+      "perPage": "{option} / page",
+      "prev": "Prev",
+      "next": "Next",
+      "prevAria": "Previous page",
+      "nextAria": "Next page",
+      "summary": "{total, plural, one {# device · page {page} of {pages}} other {# devices · page {page} of {pages}}}"
+    },
+    "toast": {
+      "exportedTitle": "{count, plural, one {Exported # device} other {Exported # devices}}",
+      "exportCapped": "Capped at {cap} rows (current filter matches {total}).",
+      "exportBody": "CSV built from the current filter and sort set.",
+      "exportFailed": "Export failed",
+      "unknownError": "Unknown error"
+    }
+  },
+  "deviceDetail": {
+    "back": "Back to devices",
+    "tabs": {
+      "overview": "Overview",
+      "health": "Health",
+      "interfaces": "Interfaces",
+      "config": "Config",
+      "backups": "Backups",
+      "changes": "Changes",
+      "incidents": "Incidents",
+      "alerts": "Alerts",
+      "assistant": "Assistant",
+      "audit": "Audit"
+    },
+    "noDevice": {
+      "title": "No device selected",
+      "description": "Open a device from the inventory list or the command palette."
+    },
+    "error": {
+      "title": "The device record could not be loaded"
+    },
+    "test": {
+      "workerUnreachable": "Worker service unreachable",
+      "ok": "Connection OK",
+      "okLatency": "Connection OK — {latency} ms",
+      "failed": "Connection failed",
+      "action": "Test connection"
+    },
+    "header": {
+      "backupNow": "Backup now",
+      "breadcrumbNetwork": "Network",
+      "breadcrumbDevices": "Devices"
+    },
+    "kpi": {
+      "openAlertsLabel": "Open Alerts",
+      "openAlertsDescription": "ACTIVE alerts on this device",
+      "openIncidentsLabel": "Open Incidents",
+      "openIncidentsDescription": "Linked incidents, open lifecycle",
+      "snapshotsLabel": "Snapshots",
+      "snapshotsDescription": "Config versions captured",
+      "backupComplianceTitle": "Backup Compliance",
+      "lastBackup": "Last backup {time}",
+      "noBackup": "No backup on record"
+    },
+    "record": {
+      "title": "Device Record",
+      "description": "Identity, firmware and management addressing",
+      "mgmtIp": "Management IP",
+      "dataPlane": "Data plane",
+      "dataPlaneLive": "Live — real SSH (read-only)",
+      "dataPlaneLiveWithProfile": "Live — real SSH (read-only) · {profile}",
+      "dataPlaneSimulator": "Simulator (deterministic)",
+      "hostname": "Hostname",
+      "vendor": "Vendor",
+      "model": "Model",
+      "firmware": "Firmware",
+      "serialNumber": "Serial number",
+      "role": "Role",
+      "site": "Site",
+      "lastSeen": "Last seen",
+      "uptime": "Uptime",
+      "lastConfigChange": "Last config change",
+      "backupJobs": "Backup jobs",
+      "notesLabel": "Description",
+      "tagsLabel": "Tags"
+    },
+    "activity": {
+      "title": "Recent Activity",
+      "description": "Latest audit events for this device",
+      "errorTitle": "Activity could not be loaded",
+      "emptyTitle": "No audit events yet",
+      "emptyDescription": "Audit events appear as the platform touches this device."
+    }
   }
 }

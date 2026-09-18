@@ -1705,5 +1705,181 @@
       "openScheduled": "فتح التقارير المجدولة",
       "close": "إغلاق"
     }
+  },
+  "devices": {
+    "page": {
+      "title": "الأجهزة",
+      "description": "جرد أجهزة متعدد الموردين مع الحالة الصحية والنسخ الاحتياطي والإجراءات"
+    },
+    "actions": {
+      "importCsv": "استيراد CSV",
+      "addDevice": "إضافة جهاز"
+    },
+    "savedViews": {
+      "applyAria": "تطبيق العرض المحفوظ {name}",
+      "removeAria": "إزالة العرض المحفوظ {name}",
+      "chip": "عرض",
+      "save": "حفظ العرض",
+      "nameLabel": "سمِّ مجموعة عوامل التصفية هذه",
+      "namePlaceholder": "مثال: الجدران النارية الحرجة",
+      "savedTitle": "تم حفظ العرض",
+      "savedBody": "«{name}» متاح الآن كشريحة أعلى الجدول.",
+      "tip": "تلميح: رشِّح الجرد، ثم احفظ المجموعة كعرض قابل لإعادة الاستخدام."
+    },
+    "toolbar": {
+      "searchAria": "البحث في الأجهزة",
+      "searchPlaceholder": "ابحث باسم المضيف أو الاسم أو عنوان IP…",
+      "statusAria": "تصفية حسب الحالة",
+      "vendorAria": "تصفية حسب المورد",
+      "siteAria": "تصفية حسب الموقع",
+      "criticalityAria": "تصفية حسب درجة الحرجية",
+      "backupAria": "تصفية حسب الالتزام بالنسخ الاحتياطي",
+      "allStatuses": "جميع الحالات",
+      "allVendors": "جميع الموردين",
+      "allSites": "جميع المواقع",
+      "allCriticality": "جميع درجات الحرجية",
+      "allBackupStates": "جميع حالات النسخ الاحتياطي",
+      "exportCsv": "تصدير CSV",
+      "exporting": "جارٍ التصدير…",
+      "columns": "الأعمدة",
+      "columnsAria": "إظهار/إخفاء الأعمدة",
+      "visibleColumns": "الأعمدة الظاهرة",
+      "reset": "إعادة تعيين"
+    },
+    "chips": {
+      "search": "بحث",
+      "status": "الحالة",
+      "vendor": "المورد",
+      "site": "الموقع",
+      "criticality": "الحرجية",
+      "backup": "النسخ الاحتياطي"
+    },
+    "bulk": {
+      "selected": "{count, plural, one {تم تحديد جهاز واحد} two {تم تحديد جهازين} few {تم تحديد # أجهزة} many {تم تحديد # جهازًا} other {تم تحديد # جهاز}}",
+      "backupNow": "نسخ احتياطي الآن"
+    },
+    "columns": {
+      "hostname": "اسم المضيف",
+      "status": "الحالة",
+      "mgmtIp": "عنوان الإدارة (IP)",
+      "vendor": "المورد",
+      "model": "الطراز",
+      "site": "الموقع",
+      "criticality": "الحرجية",
+      "backup": "النسخ الاحتياطي",
+      "lastSeen": "آخر ظهور",
+      "health": "الحالة الصحية"
+    },
+    "table": {
+      "cardTitle": "الجرد",
+      "errorTitle": "تعذر تحميل الأجهزة",
+      "emptyTitle": "لا توجد أجهزة مطابقة لعوامل التصفية الحالية",
+      "emptyDescription": "عدِّل أو أعد تعيين عوامل التصفية أعلاه، أو أضف جهازًا لبدء جمع التكوينات.",
+      "aria": "جرد الأجهزة — اسم المضيف وعنوان الإدارة والمورد والطراز والموقع والحالة والالتزام بالنسخ الاحتياطي لكل جهاز",
+      "selectAllAria": "تحديد جميع الأجهزة في هذه الصفحة",
+      "sortAria": "فرز حسب {field}"
+    },
+    "rows": {
+      "selectAria": "تحديد {hostname}",
+      "openTitle": "فتح {hostname}",
+      "actionsAria": "إجراءات {hostname}",
+      "openDetail": "عرض التفاصيل",
+      "backupNow": "نسخ احتياطي الآن",
+      "testConnection": "اختبار الاتصال",
+      "exitMaintenance": "الخروج من وضع الصيانة",
+      "enterMaintenance": "الدخول إلى وضع الصيانة",
+      "liveTitle": "جهاز مباشر — يتصل العامل عبر SSH حقيقي (قراءة فقط)",
+      "never": "أبدًا"
+    },
+    "pagination": {
+      "rowsAria": "الصفوف في الصفحة",
+      "perPage": "{option} / صفحة",
+      "prev": "السابق",
+      "next": "التالي",
+      "prevAria": "الصفحة السابقة",
+      "nextAria": "الصفحة التالية",
+      "summary": "{total, plural, one {جهاز واحد · صفحة {page} من {pages}} two {جهازان · صفحة {page} من {pages}} few {# أجهزة · صفحة {page} من {pages}} many {# جهازًا · صفحة {page} من {pages}} other {# جهاز · صفحة {page} من {pages}}}"
+    },
+    "toast": {
+      "exportedTitle": "{count, plural, one {تم تصدير جهاز واحد} two {تم تصدير جهازين} few {تم تصدير # أجهزة} many {تم تصدير # جهازًا} other {تم تصدير # جهاز}}",
+      "exportCapped": "سقف التصدير {cap} صفًّا (عوامل التصفية الحالية تطابق {total}).",
+      "exportBody": "بُني ملف CSV من عوامل التصفية والفرز الحالية.",
+      "exportFailed": "فشل التصدير",
+      "unknownError": "خطأ غير معروف"
+    }
+  },
+  "deviceDetail": {
+    "back": "العودة إلى الأجهزة",
+    "tabs": {
+      "overview": "نظرة عامة",
+      "health": "الصحة",
+      "interfaces": "الواجهات",
+      "config": "التكوين",
+      "backups": "النسخ الاحتياطي",
+      "changes": "التغييرات",
+      "incidents": "الحوادث",
+      "alerts": "التنبيهات",
+      "assistant": "المساعد",
+      "audit": "التدقيق"
+    },
+    "noDevice": {
+      "title": "لم يتم تحديد جهاز",
+      "description": "افتح جهازًا من قائمة الجرد أو من لوحة الأوامر."
+    },
+    "error": {
+      "title": "تعذر تحميل سجل الجهاز"
+    },
+    "test": {
+      "workerUnreachable": "خدمة العامل غير قابلة للوصول",
+      "ok": "الاتصال سليم",
+      "okLatency": "الاتصال سليم — {latency} مللي ثانية",
+      "failed": "فشل الاتصال",
+      "action": "اختبار الاتصال"
+    },
+    "header": {
+      "backupNow": "نسخ احتياطي الآن",
+      "breadcrumbNetwork": "الشبكة",
+      "breadcrumbDevices": "الأجهزة"
+    },
+    "kpi": {
+      "openAlertsLabel": "التنبيهات المفتوحة",
+      "openAlertsDescription": "تنبيهات نشطة على هذا الجهاز",
+      "openIncidentsLabel": "الحوادث المفتوحة",
+      "openIncidentsDescription": "الحوادث المرتبطة، دورة حياة مفتوحة",
+      "snapshotsLabel": "اللقطات",
+      "snapshotsDescription": "إصدارات التكوين الملتقطة",
+      "backupComplianceTitle": "الالتزام بالنسخ الاحتياطي",
+      "lastBackup": "آخر نسخة احتياطية {time}",
+      "noBackup": "لا توجد نسخة احتياطية مسجلة"
+    },
+    "record": {
+      "title": "سجل الجهاز",
+      "description": "الهوية والبرنامج الثابت وعنوان الإدارة",
+      "mgmtIp": "عنوان الإدارة (IP)",
+      "dataPlane": "مستوى البيانات",
+      "dataPlaneLive": "مباشر — SSH حقيقي (قراءة فقط)",
+      "dataPlaneLiveWithProfile": "مباشر — SSH حقيقي (قراءة فقط) · {profile}",
+      "dataPlaneSimulator": "محاكي (حتمي)",
+      "hostname": "اسم المضيف",
+      "vendor": "المورد",
+      "model": "الطراز",
+      "firmware": "البرنامج الثابت",
+      "serialNumber": "الرقم التسلسلي",
+      "role": "الدور",
+      "site": "الموقع",
+      "lastSeen": "آخر ظهور",
+      "uptime": "مدة التشغيل",
+      "lastConfigChange": "آخر تغيير تكوين",
+      "backupJobs": "مهام النسخ الاحتياطي",
+      "notesLabel": "الوصف",
+      "tagsLabel": "الوسوم"
+    },
+    "activity": {
+      "title": "النشاط الأخير",
+      "description": "أحدث أحداث التدقيق لهذا الجهاز",
+      "errorTitle": "تعذر تحميل النشاط",
+      "emptyTitle": "لا توجد أحداث تدقيق بعد",
+      "emptyDescription": "تظهر أحداث التدقيق عندما يتفاعل النظام الأساسي مع هذا الجهاز."
+    }
   }
 }
