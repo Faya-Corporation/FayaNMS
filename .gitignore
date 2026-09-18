@@ -91,3 +91,6 @@ mini-services/**/*.out
 mini-services/**/*.log
 *.out
 *.pid
+
+# R65 — orchestration scratch artifacts (verification screenshots etc.) are never repo artifacts
+agent-ctx/

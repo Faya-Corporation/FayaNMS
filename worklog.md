@@ -3470,3 +3470,21 @@ Work Log:
 Stage Summary:
 - R61–R63 verification claims are now independently re-executed and hold; the suite is hermetic against dev-.env drift.
 - Authorable queue EMPTY; operator path unchanged (capacity → dispatch/candidate PR → protect main → hardware cert → merge → final independent audit).
+
+---
+
+Task ID: R65
+Agent: Z.ai Code (orchestrator, single-session)
+Task: Session-resume reconciliation + independent gate re-execution + first real HC-6 workflow_dispatch execution; append + push.
+
+Work Log:
+- Resume reconciliation: the session summary claimed R60/@38c93f1 with re-verification fixes "not started" — source-of-truth check CONTRADICTED it: repo at 7cb6be4 (R64), R61–R64 committed AND pushed (rev-list 0/0). Protocol caught the lag again.
+- Gates independently re-executed from a cold shell (not trusted from R64's record): lint 0 · tsc 0 · full suite 972 pass / 18 skip / 0 fail (8,231 expects, 61 files) under the canonical 3-knob gate env (/tmp/fayanms-ci-gate.env) — EXACT reproduction of the R64 record.
+- LIVE re-proven: app /api/v1/meta 200 · worker :3030 /health 200 · unauth POST /simulate/connect 401 WORKER_UNAUTHENTICATED (fail-closed).
+- HC-6 EXECUTED end-to-end for the first time: POST workflow_dispatch {"ref":"z_ai_v2"} → 204; run 35406875963 created, event=workflow_dispatch, head 7cb6be4 (correct binding); job-level: gate FAILURE with 0 steps, browser/e2e/scan skipped 0 steps — the known GitHub runner-infra signature (#34/#89), NOT a code regression (same tree green locally). Trigger path PROVEN; sole remaining HC-6 blocker = runner capacity.
+- Hygiene: agent-ctx/ (orchestration scratch screenshots) gitignored — R64 had left two untracked PNGs; scratch never enters the repo.
+- Evidence doc FayaNMS-R65-Operator-Path-Dispatch-Verification-2026-09-19.md written; roadmap row appended; NEXT-TASKS OWNER-CI-001 updated with the R65 dispatch proof; db/, .env, PAT never staged.
+
+Stage Summary:
+- Authorable backlog EMPTY (unchanged since R63); suite 972/18/0 reproduced, not asserted.
+- HC-6: dispatch mechanism verified working; the operator's remaining action is exactly one step — restore runner capacity → re-dispatch (or candidate PR), then the rest of the corrected operator runbook (protect main → LAB hardware cert → protective merge → independent final audit on the release SHA).

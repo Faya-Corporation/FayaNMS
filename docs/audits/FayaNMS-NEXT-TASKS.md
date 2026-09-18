@@ -7,7 +7,12 @@ Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-P
 **The execution backlog has moved to the Production-Readiness Implementation Roadmap:** `docs/audits/FayaNMS-Production-Readiness-Implementation-Roadmap-2026-09-18.md` — Phase HC is the AUTHORABLE queue (~~HC-1 per-endpoint rate budgets~~ → ✅ LANDED (R53); ~~HC-2 meta bootstrap split~~ → ✅ LANDED (R54); ~~HC-3 RequestContext removal~~ → ✅ LANDED (R55); ~~HC-4 i18n completion~~ → ✅ LANDED (R56); ~~HC-5 dependabot config~~ → ✅ LANDED (R57); HC-6 rides CI) — **Phase HC is now FULLY LANDED (HC-1..HC-5); the only remaining item rides OWNER-CI-001**, each item with files/tests/acceptance/gates. Everything else is outside the sandbox's control:
 
 ```text
-OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (green 4-job run on the release SHA)
+OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (green 4-job run on the release SHA).
+  R65 UPDATE: the corrected trigger path is now PROVEN end-to-end — a manual `workflow_dispatch` on
+  `z_ai_v2`@`7cb6be4` was ACCEPTED (204) and created run `35406875963`, whose gate job failed with
+  0 steps (the known runner-infra signature, #34/#89 — NOT a code regression: the same tree
+  reproduces lint 0 / tsc 0 / 972-18-0 locally). The operator's HC-6 action is now exactly one
+  step: resolve runner capacity → re-dispatch (or open the candidate PR; both paths triggerable).
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4)
 R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (needs operator-side hardware or free DevNet AAA credentials; Step 0: PUBLIC DEMO DEVICE PLANE — docs/certification/PUBLIC-DEMO-DEVICES.md + `bun run demo:fleet`)
 ```
