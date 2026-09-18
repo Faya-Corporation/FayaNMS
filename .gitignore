@@ -26,7 +26,8 @@ Thumbs.db
 .idea/
 *.pem
 # CERT-006: committed TEST-ONLY harness TLS material (loopback SFOS WebAPI
-# harness certificate — never production material; see harness/tls/README.md)
+# harness certificate — never production material; see
+# mini-services/worker/harness/tls/README.md)
 !mini-services/worker/harness/tls/*.pem
 
 # debug

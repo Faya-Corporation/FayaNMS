@@ -76,7 +76,10 @@ jobs:
     # CI-only values on an ephemeral runner.
     services:
       postgres:
-        image: postgres:16-alpine
+        # R60: digest-pinned reusing the SUPPLY-001-A registry resolution of
+        # postgres:16-alpine (same byte-strict digest as compose.yml) — CI-only
+        # and ephemeral, but no longer a mutable tag-pinned base input.
+        image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
         env:
           POSTGRES_USER: fayanms
           POSTGRES_DB: fayanms
@@ -241,7 +244,7 @@ jobs:
     continue-on-error: false # release-critical journeys are a hard gate
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
         env:
           POSTGRES_USER: fayanms
           POSTGRES_DB: fayanms
@@ -287,7 +290,7 @@ jobs:
     continue-on-error: false # rendering-layer evidence is a hard gate
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
         env:
           POSTGRES_USER: fayanms
           POSTGRES_DB: fayanms

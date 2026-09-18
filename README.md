@@ -8,7 +8,7 @@
   <p>
     <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square" alt="Next.js 16">
     <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square" alt="TypeScript 5">
-    <img src="https://img.shields.io/badge/Bun-%E2%89%A51.1-525252?style=flat-square" alt="Bun ≥ 1.1">
+    <img src="https://img.shields.io/badge/Bun-%E2%89%A51.3.14-525252?style=flat-square" alt="Bun ≥ 1.3.14">
     <img src="https://img.shields.io/badge/Prisma-6-2D3748?style=flat-square" alt="Prisma 6">
     <img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square" alt="Tailwind CSS 4">
     <img src="https://img.shields.io/badge/next--intl-EN%20%C2%B7%20AR-475569?style=flat-square" alt="next-intl — English + Arabic">
@@ -59,7 +59,9 @@ Global surfaces: dashboard KPIs, command palette, guided tour, job center sheet,
 
 ## Getting started
 
-Prerequisites: [Bun](https://bun.sh) ≥ 1.1.
+Prerequisites: [Bun](https://bun.sh) ≥ 1.3.14 — the floor is the version the CI
+workflow and the digest-pinned `oven/bun:1.3.14` runtime images actually
+validate; older Bun is untested and unsupported.
 
 ```bash
 bun install

@@ -3386,3 +3386,20 @@ Stage Summary:
 Stage Summary:
 - The operator now has ONE document to run the endgame: docs/audits/FayaNMS-Operator-Handoff-Release-Notes-2026-09-18.md.
 - In-sandbox program fully closed (R50→R59); remaining path is exclusively the operator runbook.
+
+---
+
+## R60 — R52 re-audit INFO polish zeroed out (2026-09-18)
+
+- Surveyed the R52 re-audit's four INFO notes: note 4 (dependabot) closed by HC-5/R57; notes 1–3 verified still open — the last authorable items in the repo.
+- Fix 1: all THREE postgres:16-alpine service containers in ci.yml digest-pinned reusing the byte-strict SUPPLY-001-A resolution (sha256:cf78e766…20685 — same as compose.yml; one image one truth, no new registry resolution); inline rationale comment; PyYAML one-off validates the workflow YAML.
+- Fix 2: .gitignore CERT-006 comment path made unambiguous (mini-services/worker/harness/tls/README.md — exists on disk, cross-pinned).
+- Fix 3: README Bun floor ≥ 1.1 → ≥ 1.3.14 (badge label+alt, prerequisites + rationale); stale claim zeroed; floor byte-equals the digest-pinned oven/bun:1.3.14 runtime.
+- Tests: NEW tests/audit/r60-reaudit-info-polish.test.ts (4 pins incl. every-ci-image-digest-pinned + comment↔reality + README-floor===image cross-checks).
+- Caught + fixed a self-inflicted replace_all double-append on the first ci.yml image line before staging (verified all 3 lines single-digest after).
+- Gates in CI env shape: lint 0 · tsc FULL 0 · suite 943 → 947 pass / 18 skip / 0 fail (8,017 expects, 57 files). LIVE: app 200 / meta 200.
+- Appended: docs/audits/FayaNMS-R60-Info-Polish-Zero-2026-09-18.md, roadmap ledger row, NEXT-TASKS TASK-INFO-POLISH-ZERO block, this worklog + orchestrator worklog. Committed + pushed; db/, .env, PAT never staged.
+
+Stage Summary:
+- Audit trail now carries ZERO open notes of any severity: P1/P2/P3 = 0, INFO = 0.
+- Suite 947; in-sandbox authorable work genuinely exhausted (PENDING_VIEWS shrinking remains optional future debt, ledgered at R56 ceilings).
