@@ -3403,3 +3403,20 @@ Stage Summary:
 Stage Summary:
 - Audit trail now carries ZERO open notes of any severity: P1/P2/P3 = 0, INFO = 0.
 - Suite 947; in-sandbox authorable work genuinely exhausted (PENDING_VIEWS shrinking remains optional future debt, ledgered at R56 ceilings).
+
+---
+
+## R61 — P0 remediations: SSH first-contact + IPv6 canonicalization (2026-09-19)
+
+- Independent re-verification of 38c93f1 (reviewer) contradicted the "authorable work done" claim: 2 P0 + 2 P1 authorable + INFO drift. Verified EVERY finding directly in the tree (upload/ was empty — the report file did not land) before fixing. All confirmed.
+- P0-1 SSH: captureSshHostKey added to ssh-transport (credential-FREE connect: no password/private key, fixed non-secret marker username; hostVerifier captures + returns FALSE → handshake aborts DURING key exchange; persona authAttempts stays 0). Legacy onHostKey capture mode REMOVED from SshCredentials (type-level retirement of unpinned credentialed capture). adapter-router: enrollment branch BEFORE vault → HostKeyCaptureSignal; NEW captureTimeoutMs bound. Worker /simulate/connect: same enrollment answer shape, zero vault/auth. Detect: dial policy before vault; enrollHostKey without pin → credential-free capture + detectionDeferred:true (true two-stage flow); auto-detect route handles deferred as capture-stage SUCCESS (no failure metric; hostKeyState capture-requested rides the existing R50 two-stage UI). demo-fleet-probe: capture-first flow.
+- P0-2 IPv6: BOTH target-policy copies rewritten to group-math classification (8×16-bit groups; :: compression, uppercase, dotted-tail with separator-colon handling): unspecified/loopback/v4-mapped→classifyV4/fe80::/10/ff00::/8; unparsable literals now FAIL CLOSED (malformed); policy scope unchanged (global/ULA allowed, private-mapped allowed, PROBE_ALLOW_SPECIAL hatch intact). 25-vector corpus pins APP↔WORKER parity.
+- Tests: NEW tests/audit/r61-p0-ssh-first-contact.test.ts (7 pins incl. the GOLD protocol pin: persona fingerprint match + server-side authAttempts === 0 via the NEW harness counter; credentialed sanity proves the counter works); REWROTE the old flawed SAFE-001 pin ("enrollment → adapter resolves") to "enrollment NEVER resolves a credential".
+- Debug journey (honest): ssh2 requires a username field → fixed non-secret marker; dotted-tail parser needed separator-colon strip; the zero-vault test needed a bounded capture window (captureTimeoutMs) — all fixed before landing.
+- Gates in CI env shape: lint 0 · tsc FULL 0 · suite 947 → 954 pass / 18 skip / 0 fail (8,151 expects, 58 files).
+- LIVE: app 200 · meta 200 · worker :3030 serving (unauth → 401 fail-closed).
+- Appended: evidence doc R61-P0-SSH-First-Contact-and-IPv6-Canonicalization, roadmap row, NEXT-TASKS block, worklogs. Committed + pushed; db/, .env, PAT never staged.
+
+Stage Summary:
+- Both P0s from the independent re-verification are CLOSED with protocol-level proofs; suite 947 → 954.
+- Next: R62 (P1 pair: proxy service-JWT surface isolation + sensitive GET/read RBAC), then R63 (INFO doc refresh + ci.yml workflow_dispatch + dependabot caveat).

@@ -7,6 +7,7 @@ import {
   parseTargetCredential,
   resolveAdapter,
 } from "../../mini-services/worker/adapter-router";
+import { VaultError } from "../../mini-services/worker/vault";
 import {
   computeHostKeyFingerprint,
   parseHostKeyType,
@@ -143,9 +144,28 @@ describe("SAFE-001 — routing policy (fail-closed before any connection)", () =
     }
   });
 
-  test("LIVE without a pin but in enrollment mode → adapter resolves (audited probe only)", async () => {
-    const adapter = await resolveAdapter(target, credential, { enrollmentMode: true });
-    expect(adapter.adapter).toBe("cisco-ios-live");
+  test("R61 P0: enrollment mode NEVER resolves a credential (zero-vault even on dial-policy refusal)", async () => {
+    // The old pin — "enrollment mode → adapter resolves" — encoded the
+    // P0 the independent re-verification called out: enrollment used to
+    // resolve the REAL vault secret and build a credentialed connection
+    // whose hostVerifier returned true with no pin. The invariant is now
+    // the reverse: enrollment resolves NO secret at all. Proven here with
+    // an UNRESOLVABLE secretRef: if the vault were ever consulted, the
+    // typed VaultError would win — instead the transport refusal (this
+    // 10.x address has no listener → SSH_UNREACHABLE) surfaces, proving
+    // the vault was never read. (The full behavioral capture proof —
+    // fingerprint match + zero auth attempts against a real SSH persona —
+    // lives in r61-p0-ssh-first-contact.test.ts.)
+    try {
+      await resolveAdapter(
+        target,
+        parseTargetCredential({ username: "netadmin", port: 22, secretRef: "vault://ssh/no-such-entry" }),
+        { enrollmentMode: true, captureTimeoutMs: 300 },
+      );
+      expect.unreachable("expected a refusal, never an adapter");
+    } catch (e) {
+      expect(e).not.toBeInstanceOf(VaultError);
+    }
   });
 
   test("LIVE with a valid pin → adapter resolves and rides the pin", async () => {

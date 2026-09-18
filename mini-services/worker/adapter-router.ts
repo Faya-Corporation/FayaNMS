@@ -38,6 +38,7 @@ import { createLiveSshAdapter } from "./live-ssh";
 import { createLiveWebApiAdapter } from "./live-webapi";
 import { resolveTargetForDial } from "./target-policy";
 import { resolveVaultSecret, VaultError } from "./vault";
+import { captureSshHostKey } from "./ssh-transport";
 
 export interface TargetCredential {
   username: string;
@@ -184,12 +185,19 @@ export interface ResolveAdapterOptions {
    */
   hostKeyPin?: string | null;
   /**
-   * Enrollment mode (SAFE-001): connect WITHOUT enforcement and CAPTURE the
-   * presented key so the operator can pin it. Only the audited enrollment
-   * probe on /simulate/connect may set this — never the job/backup/change
-   * planes.
+   * R61 P0 (was "connect WITHOUT enforcement and CAPTURE"): FIRST-CONTACT
+   * CAPTURE — a credential-free connection that aborts during key exchange
+   * (zero vault access, zero authentication) and signals the presented key
+   * via HostKeyCaptureSignal. Only the audited enrollment probe on
+   * /simulate/connect may set this — never the job/backup/change planes.
    */
   enrollmentMode?: boolean;
+  /**
+   * Bounded capture window for the enrollment connection (default 8 s —
+   * the same bound as every other transport probe). The probe handlers
+   * derive it from their own budgets.
+   */
+  captureTimeoutMs?: number;
 }
 
 /**
@@ -268,8 +276,30 @@ export async function resolveAdapter(
     const sshDialHost = await guardDialTarget(
       target.managementIp ?? target.hostname,
     );
+    // R61 P0 — credential-free first-contact enrollment. In enrollment
+    // mode the worker captures the presented host key WITHOUT any vault
+    // access and WITHOUT any user authentication: the capture connection
+    // carries no credential material and aborts during key exchange, so
+    // the protocol never reaches authentication. The signal carries the
+    // captured key back to the probe handler for the operator's
+    // out-of-band verification; only AFTER the key is pinned can a
+    // credentialed connection exist (the SshCredentials type REQUIRES a
+    // pin for enforcement — see ssh-transport.ts).
+    if (options.enrollmentMode) {
+      const capture = await captureSshHostKey(
+        {
+          host: sshDialHost,
+          port: credential.port,
+        },
+        options.captureTimeoutMs,
+      );
+      recordedHostKey = { keyType: capture.keyType, fingerprint: capture.fingerprint };
+      throw new HostKeyCaptureSignal(capture);
+    }
     // P1-005: vault resolution is async (exec provider carries a real
     // deadline); the adapter is resolved through the awaited promise.
+    // NOTE: structurally AFTER the enrollment branch — enrollment mode
+    // can never reach this line (zero vault access on first contact).
     const password = await resolveVaultSecret(credential.secretRef);
     return createLiveSshAdapter(target.vendor, {
       host: sshDialHost,
@@ -277,22 +307,36 @@ export async function resolveAdapter(
       username: credential.username,
       password,
       expectedFingerprint: pin,
-      // Enrollment capture only when explicitly requested (and pin-less).
-      onHostKey: options.enrollmentMode
-        ? (meta): void => {
-            recordedHostKey = meta;
-          }
-        : undefined,
     });
   }
   return pickAdapter(target.vendor);
 }
 
 /**
- * Enrollment capture slot — set by resolveAdapter's onHostKey callback
- * during an enrollment-mode connection and read by the /simulate/connect
- * handler to answer the probe with the presented key. Single-connection
- * lifetime: the probe records exactly one handshake.
+ * R61 P0 — thrown by resolveAdapter in enrollment mode AFTER the
+ * credential-free capture succeeded. Carries the presented key for the
+ * operator's out-of-band verification; callers must answer the probe with
+ * it, never treat it as a failure.
+ */
+export class HostKeyCaptureSignal extends Error {
+  constructor(
+    public readonly capture: {
+      keyType: string;
+      fingerprint: string;
+      latencyMs: number;
+      banner: string;
+    },
+  ) {
+    super("SSH_HOSTKEY_CAPTURED");
+    this.name = "HostKeyCaptureSignal";
+  }
+}
+
+/**
+ * Enrollment capture slot — set directly by resolveAdapter's R61 enrollment
+ * branch after the credential-free capture and read by the /simulate/connect
+ * handler for compatibility. Single-connection lifetime: the probe records
+ * exactly one handshake.
  */
 let recordedHostKey: { keyType: string; fingerprint: string } | null = null;
 

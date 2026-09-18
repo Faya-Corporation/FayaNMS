@@ -83,11 +83,11 @@ import { adapters, pickAdapter, type DeviceTarget } from "./adapters";
 import { LIVE_SSH_FLAVORS, LiveAdapterError, createLiveSshAdapter } from "./live-ssh";
 import {
   guardDialTarget,
+  HostKeyCaptureSignal,
   HostKeyPolicyError,
   parseHostKeyPin,
   parseTargetCredential,
   resolveAdapter,
-  takeRecordedHostKey,
   TargetPolicyError,
   type TargetCredential,
 } from "./adapter-router";
@@ -97,7 +97,7 @@ import {
   LiveChangeError,
   parseChangePlan,
 } from "./live-change";
-import { SshError, sshExecText, type SshCredentials } from "./ssh-transport";
+import { SshError, sshExecText, captureSshHostKey, type SshCredentials } from "./ssh-transport";
 import {
   ANALYSIS_MAX_BYTES,
   DETECT_COMMANDS,
@@ -262,7 +262,6 @@ export async function handle(req: Request): Promise<Response> {
       try {
         const adapter = await resolveAdapter(target, credential, { hostKeyPin, enrollmentMode });
         const conn = await adapter.connect(target);
-        const capturedHostKey = enrollmentMode ? takeRecordedHostKey() : null;
         return Response.json({
           ok: true,
           vendor,
@@ -272,11 +271,30 @@ export async function handle(req: Request): Promise<Response> {
           latencyMs: conn.latencyMs,
           banner: conn.banner,
           negotiated: conn.negotiated,
-          // SAFE-001 — enrollment answer: the presented key, for the operator
-          // to pin after (out-of-band) verification. Never stored worker-side.
-          ...(capturedHostKey ? { hostKey: capturedHostKey } : {}),
         });
       } catch (e) {
+        // R61 P0 — the credential-free first-contact capture is a SUCCESS
+        // outcome, not an error: the presented key travels back for the
+        // operator's out-of-band verification (same answer shape as the
+        // pre-R61 enrollment probe; the difference is that NO credential
+        // was ever resolved from the vault and NO authentication was ever
+        // attempted — the handshake aborts during key exchange).
+        if (e instanceof HostKeyCaptureSignal) {
+          return Response.json({
+            ok: true,
+            vendor,
+            host,
+            adapter:
+              dataSource === "LIVE_SSH"
+                ? LIVE_SSH_FLAVORS[vendor.trim().toLowerCase()]?.adapter
+                : undefined,
+            dataSource,
+            latencyMs: e.capture.latencyMs,
+            banner: e.capture.banner,
+            negotiated: "ssh2 (pre-auth host-key capture — credential-free)",
+            hostKey: { keyType: e.capture.keyType, fingerprint: e.capture.fingerprint },
+          });
+        }
         // Failure semantics (Phase 22 slice 1 + SAFE-001 + R51-A1):
         //   VaultError / HostKeyPolicyError / TargetPolicyError =
         //     request/credential/policy problem (NO connection was ever
@@ -634,13 +652,14 @@ export async function handle(req: Request): Promise<Response> {
         // resolution, handshakes and execs (the app plane aborts earlier
         // at 30 s; this is the worker-side bound).
         const startedAt = Date.now();
-        const password = await resolveVaultSecret(credential.secretRef);
         // R50-T022 follow-up — RESOLVED-ADDRESS target policy (the worker
         // never trusts the app plane): literals classify with no I/O;
         // hostnames resolve under the R50-T025 budget and EVERY candidate
         // address must pass the policy (fail-closed across the RRset).
         // The probe then dials the VALIDATED address — no second lookup,
         // so the resolve-then-dial rebinding window is structurally gone.
+        // R61 P0: the dial policy runs BEFORE the vault — a policy refusal
+        // never even reads a secret.
         const dial = await resolveTargetForDial(host);
         if (!dial.decision.ok) {
           return Response.json(
@@ -652,22 +671,39 @@ export async function handle(req: Request): Promise<Response> {
             { status: 400 },
           );
         }
-        let capturedHostKey: { keyType: string; fingerprint: string } | null = null;
+        // R61 P0 — credential-free first-contact capture. When the caller
+        // explicitly opts into enrollment (enrollHostKey=true, no pin),
+        // the worker captures the presented host key with ZERO vault
+        // access and ZERO authentication (the capture connection carries
+        // no credential material and aborts during key exchange), then
+        // answers with the key and DEFERS detection: the operator verifies
+        // the fingerprint out-of-band, pins it, and re-runs detection —
+        // the re-run rides the pinned path (verified pre-auth).
+        if (enrollmentMode && !hostKeyPin) {
+          const remaining = Math.max(0, DETECT_TOTAL_BUDGET_MS - (Date.now() - startedAt));
+          const capture = await captureSshHostKey(
+            { host: dial.decision.dialedAddress, port: credential.port },
+            remaining || 1,
+          );
+          return Response.json({
+            ok: true,
+            host,
+            negotiated: "ssh2 (pre-auth host-key capture — credential-free)",
+            latencyMs: capture.latencyMs,
+            banner: capture.banner,
+            hostKey: { keyType: capture.keyType, fingerprint: capture.fingerprint },
+            detectionDeferred: true,
+          });
+        }
+        // Credentialed detection — structurally AFTER the enrollment branch
+        // (enrollment mode can never reach this line with real secrets).
+        const password = await resolveVaultSecret(credential.secretRef);
         const creds: SshCredentials = {
           host: dial.decision.dialedAddress,
           port: credential.port,
           username: credential.username,
           password,
           expectedFingerprint: hostKeyPin,
-          // Capture only when explicitly requested (and pin-less) — the
-          // presented key travels back for OUT-OF-BAND verification and
-          // enrollment; it is never stored worker-side.
-          onHostKey:
-            enrollmentMode && !hostKeyPin
-              ? (meta): void => {
-                  capturedHostKey = meta;
-                }
-              : undefined,
         };
         let output: string | null = null;
         let usedCommand: string | null = null;
@@ -737,7 +773,10 @@ export async function handle(req: Request): Promise<Response> {
           command: usedCommand,
           latencyMs: Date.now() - startedAt,
           detection,
-          ...(capturedHostKey ? { hostKey: capturedHostKey } : {}),
+          // R61 P0: the credentialed detect path no longer captures host
+          // keys — first-contact capture is the separate credential-free
+          // branch above (detectionDeferred). A pinned credentialed probe
+          // answers no hostKey field.
         });
       } catch (e) {
         // Same failure contract as /live/fetch-config: VaultError = request

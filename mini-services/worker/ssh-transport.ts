@@ -63,16 +63,12 @@ export interface SshCredentials {
   /**
    * SAFE-001 host-key pin: OpenSSH-style "SHA256:<base64>" fingerprint the
    * server's key MUST match (verified pre-auth). null/absent = no pin —
-   * only legitimate in enrollment mode (see onHostKey).
+   * an UNPINNED credentialed connection is therefore IMPOSSIBLE through
+   * this type: first-contact capture is a separate credential-free path
+   * (captureSshHostKey, R61 P0) that carries no credential material at
+   * all, so a pin-less connection can never authenticate.
    */
   expectedFingerprint?: string | null;
-  /**
-   * Enrollment capture (SAFE-001): records the presented host key during
-   * the handshake WITHOUT enforcement. Only the audited enrollment probe
-   * may set this — capture never bypasses a pin; the two modes are
-   * mutually exclusive by construction (enroll ⇒ expected=null).
-   */
-  onHostKey?: (meta: { keyType: string; fingerprint: string }) => void;
 }
 
 /**
@@ -176,23 +172,133 @@ function openConnection(creds: SshCredentials, timeoutMs: number): Promise<OpenC
       keepaliveInterval: 0,
     };
 
-    // SAFE-001 — pin enforcement and/or enrollment capture. ssh2 calls the
-    // verifier with the raw server host key DURING the handshake, BEFORE
-    // any authentication: a mismatch aborts the connection without the
-    // credential ever being transmitted.
-    if (creds.expectedFingerprint || creds.onHostKey) {
+    // SAFE-001 — pin enforcement. ssh2 calls the verifier with the raw
+    // server host key DURING the handshake, BEFORE any authentication: a
+    // mismatch aborts the connection without the credential ever being
+    // transmitted. A credential-FREE connection (captureSshHostKey) cannot
+    // reach this type at all — the SshCredentials type carries auth
+    // material, so every connection built from it is credentialed and
+    // therefore REQUIRES a pin by policy (unpinned live = refused at the
+    // router; R61 P0 removed the credential-bearing capture mode).
+    if (creds.expectedFingerprint) {
+      const expected = creds.expectedFingerprint;
       connectConfig.hostVerifier = (key: Buffer): boolean => {
         const fingerprint = computeHostKeyFingerprint(key);
-        if (creds.onHostKey) {
-          creds.onHostKey({ keyType: parseHostKeyType(key), fingerprint });
-        }
-        if (creds.expectedFingerprint && fingerprint !== creds.expectedFingerprint) {
-          hostKeyRejected = creds.expectedFingerprint;
+        if (fingerprint !== expected) {
+          hostKeyRejected = expected;
           return false;
         }
         return true;
       };
     }
+
+    try {
+      client.connect(connectConfig);
+    } catch (err) {
+      fail(err);
+    }
+  });
+}
+
+/**
+ * R61 P0 — credential-free FIRST-CONTACT host-key capture.
+ *
+ * The invariant (independent re-verification 2026-09-19, P0): enrollment
+ * must capture the presented host key with ZERO vault access and ZERO user
+ * authentication — the credential must never be transmitted before the
+ * operator has verified the captured fingerprint out-of-band.
+ *
+ * How the invariant is enforced structurally:
+ *   - the connect config carries NO password, NO private key, NO target
+ *     username — only a FIXED non-secret marker (ssh2's API requires the
+ *     field) and no authentication method whatsoever; the parameter type
+ *     accepts only host + port;
+ *   - the hostVerifier captures the presented key and returns FALSE — the
+ *     handshake is deliberately aborted DURING key exchange, so the SSH
+ *     protocol never even reaches the authentication stage (a persona
+ *     harness counter proves auth attempts stay at 0);
+ *   - the expected post-capture error is treated as the SUCCESS outcome and
+ *     resolved with the captured key; any pre-capture transport failure
+ *     (unreachable, timeout) is rejected as the usual typed SshError.
+ */
+export interface HostKeyCaptureResult {
+  keyType: string;
+  fingerprint: string;
+  latencyMs: number;
+  banner: string;
+}
+
+export async function captureSshHostKey(
+  target: { host: string; port: number },
+  timeoutMs = 8000,
+): Promise<HostKeyCaptureResult> {
+  const startedAt = Date.now();
+  let banner = "";
+  let captured: { keyType: string; fingerprint: string } | null = null;
+  let captureAborted = false;
+  let settled = false;
+
+  return new Promise<HostKeyCaptureResult>((resolve, reject) => {
+    const client = new Client();
+    const fail = (err: unknown): void => {
+      if (settled) return;
+      settled = true;
+      try {
+        client.end();
+      } catch {
+        /* already closed */
+      }
+      if (captureAborted && captured) {
+        // The deliberate post-capture handshake abort — the EXPECTED outcome.
+        resolve({ ...captured, latencyMs: Date.now() - startedAt, banner });
+        return;
+      }
+      reject(classifyConnectError(err));
+    };
+
+    client
+      .on("banner", (text: string) => {
+        banner = (text ?? "").trim();
+      })
+      .on("ready", () => {
+        // Structurally unreachable: with no auth methods configured the
+        // server can never accept us. If a server somehow completes auth,
+        // kill the connection immediately — this function must NEVER
+        // authenticate.
+        if (settled) return;
+        settled = true;
+        try {
+          client.end();
+        } catch {
+          /* already closed */
+        }
+        reject(new SshError("SSH_AUTH_FAILED", "host-key capture reached authentication — config bug, connection killed"));
+      })
+      .on("error", fail);
+
+    const connectConfig: Parameters<Client["connect"]>[0] = {
+      host: target.host,
+      port: target.port,
+      // ssh2 requires SOME username to build the connection; this is a
+      // FIXED, non-secret marker (not the target's username — the probe
+      // never learns or sends it). With no password/privateKey/none-auth
+      // configured there is no way to authenticate, and the hostVerifier
+      // below aborts the handshake during key exchange anyway — the
+      // persona-harness counter proves the server sees ZERO auth events.
+      username: "fayanms-hostkey-probe",
+      readyTimeout: timeoutMs,
+      keepaliveInterval: 0,
+      // NO password, NO privateKey — zero credential material by
+      // construction (see the R61 P0 invariant above).
+    };
+
+    connectConfig.hostVerifier = (key: Buffer): boolean => {
+      captured = { keyType: parseHostKeyType(key), fingerprint: computeHostKeyFingerprint(key) };
+      captureAborted = true;
+      // Abort the handshake NOW, during key exchange, before the protocol
+      // can reach authentication.
+      return false;
+    };
 
     try {
       client.connect(connectConfig);

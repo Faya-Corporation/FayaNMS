@@ -79,6 +79,13 @@ export interface PersonaHarness {
   hostKeyFingerprint: string | null;
   /** key algorithm the persona presents, e.g. "ssh-ed25519" */
   hostKeyType: string;
+  /**
+   * R61 P0 — number of AUTHENTICATION attempts the server has received
+   * (every "authentication" event). The credential-free first-contact
+   * capture must leave this at ZERO: the connection aborts during key
+   * exchange, before the SSH protocol ever reaches authentication.
+   */
+  authAttempts: number;
   close(): Promise<void>;
 }
 
@@ -154,6 +161,9 @@ export async function startPersonaSshHarness(
   // net.Server#closeAllConnections (Bun). Purely teardown plumbing — the
   // SSH semantics of the harness are untouched.
   const rawSockets = new Set<Socket>();
+  // R61 P0 — the auth-attempt counter (exposed on the harness handle via a
+  // getter so the tests read the live count).
+  const authState = { attempts: 0 };
 
   const server = new Server({ hostKeys: [hostKey] }, (ctx) => {
     connections.add(ctx);
@@ -164,6 +174,7 @@ export async function startPersonaSshHarness(
       rawSocket.once("close", () => rawSockets.delete(rawSocket));
     }
     ctx.on("authentication", (auth) => {
+      authState.attempts += 1;
       if (auth.method !== "password") {
         auth.reject();
         return;
@@ -220,6 +231,9 @@ export async function startPersonaSshHarness(
     port,
     hostKeyFingerprint,
     hostKeyType,
+    get authAttempts(): number {
+      return authState.attempts;
+    },
     close: () =>
       new Promise<void>((resolve) => {
         for (const conn of connections) {

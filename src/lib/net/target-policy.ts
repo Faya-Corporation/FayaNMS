@@ -70,14 +70,6 @@ const V4_CLASSES: V4Class[] = [
   { network: int(240, 0, 0, 0), bits: 4, cls: "reserved", allowed: false },
 ];
 
-/** R50-T023 — governed IPv6 special classes (prefix match on the literal). */
-const V6_SPECIALS: Array<{ test: (v: string) => boolean; cls: string; allowed: boolean }> = [
-  { test: (v) => v === "::", cls: "unspecified", allowed: false },
-  { test: (v) => v === "::1", cls: "loopback", allowed: false },
-  { test: (v) => /^fe[89ab]/.test(v), cls: "link-local", allowed: false },
-  { test: (v) => /^ff/.test(v), cls: "multicast", allowed: false },
-];
-
 const allowSpecial = (): boolean => process.env.FAYANMS_PROBE_ALLOW_SPECIAL === "true";
 
 function classifyV4(ip: string): TargetPolicyDecision {
@@ -95,6 +87,100 @@ function classifyV4(ip: string): TargetPolicyDecision {
 }
 
 /**
+ * R61 P0 — canonicalization-safe IPv6 classification. The previous
+ * TEXTUAL rules (`v === "::1"`, `v.startsWith("::ffff:")`) missed
+ * equivalent EXPANDED forms (`0:0:0:0:0:0:0:1`, `0:0:0:0:0:ffff:a01:101`),
+ * letting them fall through as allowed `ipv6-global` (independent
+ * re-verification 2026-09-19, P0). The rules now parse the literal into
+ * its eight 16-bit groups (handling `::` compression, uppercase, and the
+ * embedded dotted-quad tail) and classify on the GROUP VALUES — every
+ * textual representation of the same address collapses to the same
+ * decision. Unparsable IPv6-ish literals fail CLOSED (refused as
+ * malformed) instead of silently riding the global allow.
+ */
+function ipv6ToGroups(text: string): number[] | null {
+  let head = text;
+  let tail: [number, number] | null = null;
+  // Embedded IPv4 dotted-quad tail (::ffff:1.2.3.4 and friends) → two groups.
+  const v4Tail = /^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/.exec(text);
+  if (v4Tail) {
+    const v4 = v4ToInt(v4Tail[2]);
+    if (v4 === null) return null;
+    tail = [(v4 >>> 16) & 0xffff, v4 & 0xffff];
+    // The captured head keeps its trailing ":" (the tail's separator) —
+    // strip it so the group split below sees clean groups ("::ffff:" →
+    // "::ffff" → halves ["", "ffff"]).
+    head = v4Tail[1].replace(/:$/, "");
+  }
+  const halves = head.split("::");
+  if (halves.length > 2) return null; // more than one "::"
+  const parseGroup = (s: string): number | null =>
+    /^[0-9a-f]{1,4}$/.test(s) ? parseInt(s, 16) : null;
+  const left = halves[0] === "" ? [] : halves[0].split(":");
+  const right = halves.length === 2 ? (halves[1] === "" ? [] : halves[1].split(":")) : [];
+  const groups: number[] = [];
+  for (const part of left) {
+    const g = parseGroup(part);
+    if (g === null) return null;
+    groups.push(g);
+  }
+  if (halves.length === 2) {
+    const rightGroups: number[] = [];
+    for (const part of right) {
+      const g = parseGroup(part);
+      if (g === null) return null;
+      rightGroups.push(g);
+    }
+    const fill = 8 - groups.length - rightGroups.length - (tail ? 2 : 0);
+    if (fill < 0) return null;
+    for (let i = 0; i < fill; i += 1) groups.push(0);
+    groups.push(...rightGroups);
+  } else {
+    for (const part of right) {
+      const g = parseGroup(part);
+      if (g === null) return null;
+      groups.push(g);
+    }
+  }
+  if (tail) {
+    groups.push(tail[0], tail[1]);
+  }
+  return groups.length === 8 ? groups : null;
+}
+
+function classifyV6Canonical(v6: string): TargetPolicyDecision {
+  const groups = ipv6ToGroups(v6);
+  if (!groups) {
+    // Unparsable IPv6-ish literal → fail closed (never ride the global allow).
+    return { allowed: false, addressClass: "malformed", reason: "malformed" };
+  }
+  const allZero = groups.every((g) => g === 0);
+  if (allZero) {
+    return { allowed: allowSpecial(), addressClass: "unspecified", reason: allowSpecial() ? undefined : "unspecified" };
+  }
+  // ::1 loopback — every textual form (compressed, expanded, leading zeros).
+  if (groups.slice(0, 7).every((g) => g === 0) && groups[7] === 1) {
+    return { allowed: allowSpecial(), addressClass: "loopback", reason: allowSpecial() ? undefined : "loopback" };
+  }
+  // IPv4-mapped ::ffff:0:0/96 — the EMBEDDED v4 address classifies under
+  // the v4 rules (both dotted-tail and hex forms reach here identically).
+  if (
+    groups[0] === 0 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0 && groups[4] === 0 && groups[5] === 0xffff
+  ) {
+    return classifyV4(`${groups[6] >> 8}.${groups[6] & 255}.${groups[7] >> 8}.${groups[7] & 255}`);
+  }
+  // fe80::/10 link-local (canonical group math, not a textual prefix).
+  if ((groups[0] & 0xffc0) === 0xfe80) {
+    return { allowed: allowSpecial(), addressClass: "link-local", reason: allowSpecial() ? undefined : "link-local" };
+  }
+  // ff00::/8 multicast.
+  if ((groups[0] & 0xff00) === 0xff00) {
+    return { allowed: allowSpecial(), addressClass: "multicast", reason: allowSpecial() ? undefined : "multicast" };
+  }
+  return { allowed: true, addressClass: "ipv6-global" };
+}
+
+/**
  * Evaluate the LITERAL target. Hostnames are allowed here by design
  * (they carry no address semantics; resolved-address policy is enforced
  * on the worker plane). IP literals in governed special classes are
@@ -109,19 +195,7 @@ export function evaluateTargetPolicy(host: string): TargetPolicyDecision {
   if (target.includes(":")) {
     // IPv6-ish literal (the request schema forbids ":" in hostnames).
     const v6 = target.split("%")[0].toLowerCase();
-    const special = V6_SPECIALS.find((s) => s.test(v6));
-    if (special) {
-      return {
-        allowed: allowSpecial(),
-        addressClass: special.cls,
-        reason: special.allowed ? undefined : special.cls,
-      };
-    }
-    const mapped = v6.startsWith("::ffff:") ? v6.slice("::ffff:".length) : null;
-    if (mapped && v4ToInt(mapped) !== null) {
-      return classifyV4(mapped);
-    }
-    return { allowed: true, addressClass: "ipv6-global" };
+    return classifyV6Canonical(v6);
   }
 
   if (v4ToInt(target) !== null) {

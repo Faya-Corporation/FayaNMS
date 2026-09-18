@@ -246,6 +246,13 @@ interface WorkerDetection {
     softMatches?: string[];
   };
   hostKey?: { keyType: string; fingerprint: string };
+  /**
+   * R61 P0 — first-contact capture is credential-free and DEFERS vendor
+   * detection: the worker answers ok:true with the presented hostKey and
+   * this flag, without running any credentialed probe. The operator pins
+   * the key and re-runs detection (two-stage flow).
+   */
+  detectionDeferred?: boolean;
   error?: string;
 }
 
@@ -634,7 +641,18 @@ export async function POST(request: Request) {
           // R50-T021/T022-fu: the worker's resolved-address policy decision
           // completes the profile → target link of the authorization chain.
           credentialAuthorization.resolvedAddressPolicy = payload.targetPolicy ?? null;
-          if (!detection) {
+          if (payload.detectionDeferred === true) {
+            // R61 P0 — the credential-free first-contact capture succeeded.
+            // This is a SUCCESS of the capture stage, NOT a detection
+            // failure: no detectionError, no failure metric. The UI's
+            // hostKeyState is already "capture-requested" and the presented
+            // key rides the response (hostKeyCaptured) — the operator pins
+            // it and re-runs detection over the pinned path.
+            if (!capturedHostKey) {
+              detectionError = "Worker deferred detection without a captured host key";
+              detectionErrorCode = mapWorkerErrorToDetectionCode(detectionError);
+            }
+          } else if (!detection) {
             detectionError = "Worker answered without a detection payload";
             detectionErrorCode = mapWorkerErrorToDetectionCode(detectionError);
           } else if (detection.vendorKey === "generic") {
@@ -702,6 +720,13 @@ export async function POST(request: Request) {
   // Audit every invocation (SUCCESS = the vendor stage produced a result,
   // whether high-confidence or honest generic; FAILURE = transport error).
   const detected = detection !== null && detection.vendorKey !== "generic";
+  // R61 P0: a credential-free first-contact capture DEFERS vendor detection
+  // by design — the invocation's action (the capture) SUCCEEDED, so it must
+  // not tick the failure metric nor audit as FAILURE. Outcome is
+  // "not-attempted" (no vendor attempt was made), the audit row is SUCCESS,
+  // and the presented key rides hostKeyCaptured for the pin-then-rerun flow.
+  const captureDeferred =
+    vendorStage === "executed" && detection === null && detectionError === null && capturedHostKey !== null;
   // R50-T070: one explicit OUTCOME literal per invocation — the vendor
   // stage is the primary action; a skipped vendor stage is `not-attempted`
   // even when the address stage failed (THAT failure still reaches the
@@ -710,9 +735,11 @@ export async function POST(request: Request) {
     vendorStage === "executed"
       ? detected
         ? "matched"
-        : detection !== null
-          ? "vendor-unknown"
-          : "failed"
+        : captureDeferred
+          ? "not-attempted"
+          : detection !== null
+            ? "vendor-unknown"
+            : "failed"
       : "not-attempted";
   // R50-T072: route wall-clock duration (the worker's latencyMs is the
   // probe leg only; this is the whole handler). Refusal paths return

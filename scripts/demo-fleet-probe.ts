@@ -39,6 +39,7 @@
 
 import { createConnection } from "node:net";
 import {
+  captureSshHostKey,
   sshExecText,
   sshProbe,
   type SshCredentials,
@@ -223,11 +224,11 @@ function toSshCredentials(creds: DemoSshCreds): SshCredentials {
     port: creds.port,
     username: creds.username,
     password: creds.password,
-    // Enrollment capture ONLY (SAFE-001): record the presented key so the
-    // operator can pin it for subsequent runs. expectedFingerprint stays null.
-    onHostKey: (meta) => {
-      presentedHostKey = meta;
-    },
+    // R61 P0: enrollment capture is NO LONGER a credentialed-connection
+    // side effect — the credential-free captureSshHostKey runs FIRST (see
+    // runSshStage) and the credentialed probe below carries no capture
+    // mode. expectedFingerprint stays null (the demo operator pins the
+    // captured key for subsequent runs).
   };
 }
 
@@ -238,6 +239,18 @@ export async function runSshStage(
   options: { backup?: boolean } = {},
 ): Promise<SshStageReport> {
   presentedHostKey = null;
+  // R61 P0 — the host key is captured on a SEPARATE credential-free
+  // connection that aborts during key exchange (zero authentication).
+  // A capture failure is recorded and non-fatal: the credentialed probe
+  // still runs only when an operator-pinned key already exists; on a TRUE
+  // first contact the tool reports the captured key for out-of-band
+  // verification (same discipline as the worker enrollment probe).
+  try {
+    const capture = await captureSshHostKey({ host: creds.host, port: creds.port }, 12_000);
+    presentedHostKey = { keyType: capture.keyType, fingerprint: capture.fingerprint };
+  } catch {
+    // Pre-capture transport failure (unreachable/timeout) — leave null.
+  }
   const sshCreds = toSshCredentials(creds);
   const probe = await sshProbe(sshCreds, 12_000);
   const showVersion = await sshExecText(sshCreds, SHOW_VERSION, 20_000);
