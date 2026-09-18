@@ -6,7 +6,6 @@ import {
   firstIssueMessage,
   newCorrelationId,
   ok,
-  requestContext,
 } from "../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
@@ -70,8 +69,7 @@ export async function GET(request: Request) {
     return ok(
       { settings },
       { total: settings.length },
-      200,
-      requestContext(request)
+      200
     );
   } catch (error) {
     const authFail = authErrorToFail(error);
@@ -182,8 +180,7 @@ export async function PATCH(request: Request) {
         audit: { correlationId },
       },
       undefined,
-      200,
-      requestContext(request)
+      200
     );
   } catch (error) {
     const authFail = authErrorToFail(error);

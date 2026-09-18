@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { fail, firstIssueMessage, ok, requestContext } from "../_lib/api";
+import { fail, firstIssueMessage, ok } from "../_lib/api";
 import { z } from "zod";
 import {
   FLOW_BUCKET_MS,
@@ -45,7 +45,6 @@ const querySchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const ctx = requestContext(request);
   const url = new URL(request.url);
 
   const parsed = querySchema.safeParse({
@@ -53,7 +52,7 @@ export async function GET(request: Request) {
     window: url.searchParams.get("window") ?? undefined,
   });
   if (!parsed.success) {
-    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400, ctx);
+    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400);
   }
   const { deviceId, window } = parsed.data;
 
@@ -71,8 +70,7 @@ export async function GET(request: Request) {
     return fail(
       "DEVICE_NOT_FOUND",
       `No device with id "${deviceId}" exists.`,
-      404,
-      ctx
+      404
     );
   }
 
@@ -120,7 +118,6 @@ export async function GET(request: Request) {
       },
     },
     { window, computedAt },
-    200,
-    ctx
+    200
   );
 }

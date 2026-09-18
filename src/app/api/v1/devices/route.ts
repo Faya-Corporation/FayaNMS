@@ -7,7 +7,6 @@ import {
   ok,
   pageMeta,
   paginationSchema,
-  requestContext,
 } from "../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { requiredLiveCredentialType } from "@/lib/devices/live-transport";
@@ -63,7 +62,7 @@ export async function GET(request: Request) {
     dir: url.searchParams.get("dir") ?? undefined,
   });
   if (!parsed.success) {
-    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400, requestContext(request));
+    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400);
   }
 
   const {
@@ -133,7 +132,7 @@ export async function GET(request: Request) {
     }),
   ]);
 
-  return ok(rows, { ...pageMeta(page, pageSize, total), sort, dir }, 200, requestContext(request));
+  return ok(rows, { ...pageMeta(page, pageSize, total), sort, dir }, 200);
 }
 
 /* ------------------------------------------------------------------ */
@@ -175,12 +174,12 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400, requestContext(request));
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
 
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, requestContext(request));
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const data = parsed.data;
 
@@ -201,13 +200,13 @@ export async function POST(request: Request) {
     select: { id: true, key: true, name: true },
   });
   if (!vendor) {
-    return fail("VENDOR_NOT_FOUND", "The selected vendor does not exist", 400, requestContext(request));
+    return fail("VENDOR_NOT_FOUND", "The selected vendor does not exist", 400);
   }
 
   if (data.siteId) {
     const site = await db.site.findUnique({ where: { id: data.siteId }, select: { id: true } });
     if (!site) {
-      return fail("SITE_NOT_FOUND", "The selected site does not exist", 400, requestContext(request));
+      return fail("SITE_NOT_FOUND", "The selected site does not exist", 400);
     }
   }
 
@@ -218,7 +217,7 @@ export async function POST(request: Request) {
       select: { id: true, type: true },
     });
     if (!profile) {
-      return fail("CREDENTIAL_PROFILE_NOT_FOUND", "The selected credential profile does not exist", 400, requestContext(request));
+      return fail("CREDENTIAL_PROFILE_NOT_FOUND", "The selected credential profile does not exist", 400);
     }
     linkedProfileType = profile.type;
   }
@@ -233,8 +232,7 @@ export async function POST(request: Request) {
       return fail(
         "CREDENTIAL_REQUIRED_FOR_LIVE",
         "LIVE_SSH devices require a linked credential profile (username/port/secretRef) — link one before switching to the live plane",
-        400,
-        requestContext(request),
+        400
       );
     }
     // The live transport is vendor-determined (CERT-006): SSH exec with
@@ -245,8 +243,7 @@ export async function POST(request: Request) {
       return fail(
         "CREDENTIAL_TYPE_UNSUPPORTED",
         `LIVE_SSH for vendor "${vendor.key}" requires a ${requiredType} credential profile (got ${linkedProfileType ?? "unknown"})`,
-        400,
-        requestContext(request),
+        400
       );
     }
   }
@@ -256,7 +253,7 @@ export async function POST(request: Request) {
     select: { id: true },
   });
   if (existing) {
-    return fail("HOSTNAME_TAKEN", `A device with hostname "${data.hostname}" already exists`, 409, requestContext(request));
+    return fail("HOSTNAME_TAKEN", `A device with hostname "${data.hostname}" already exists`, 409);
   }
 
   const correlationId = newJobCorrelationId();
@@ -321,12 +318,12 @@ export async function POST(request: Request) {
       },
     });
 
-    return ok({ device, audit }, { correlationId }, 201, requestContext(request));
+    return ok({ device, audit }, { correlationId }, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     if (message.includes("Unique constraint")) {
-      return fail("HOSTNAME_TAKEN", `A device with hostname "${data.hostname}" already exists`, 409, requestContext(request));
+      return fail("HOSTNAME_TAKEN", `A device with hostname "${data.hostname}" already exists`, 409);
     }
-    return fail("CREATE_FAILED", "The device could not be created", 500, requestContext(request));
+    return fail("CREATE_FAILED", "The device could not be created", 500);
   }
 }

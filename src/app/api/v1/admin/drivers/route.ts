@@ -1,5 +1,5 @@
 import { driverCatalog } from "@/lib/vendors/drivers";
-import { ok, requestContext } from "../../_lib/api";
+import { ok } from "../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail } from "@/lib/auth/session";
 
@@ -21,8 +21,7 @@ export async function GET(request: Request) {
         drivers: driverCatalog,
       },
       { total: driverCatalog.length },
-      200,
-      requestContext(request)
+      200
     );
   } catch (error) {
     const authFail = authErrorToFail(error);

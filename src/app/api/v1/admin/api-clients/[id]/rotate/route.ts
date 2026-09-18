@@ -5,7 +5,6 @@ import {
   fail,
   newCorrelationId,
   ok,
-  requestContext,
 } from "../../../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
@@ -102,8 +101,7 @@ export async function POST(
         audit: { correlationId },
       },
       { correlationId },
-      200,
-      requestContext(request)
+      200
     );
   } catch (error) {
     const authFail = authErrorToFail(error);

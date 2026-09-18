@@ -3300,3 +3300,23 @@ Work Log:
 Stage Summary:
 - HC-2 LANDED: the pre-auth bootstrap surface carries ZERO user records (wire-pinned); the user directory lives behind the session plane with actor-before-DB ordering; both pickers work authenticated end-to-end.
 - Phase HC queue advances: HC-3 (R55) mechanical RequestContext removal is NEXT.
+
+---
+Task ID: R55-HC3
+Agent: Z.ai orchestrator (main session)
+Task: "continue" — execute HC-3 (mechanical removal of the deprecated RequestContext/_ctx surface), the next authorable item in the Phase HC queue.
+
+Work Log:
+- Confirmed on resume that R54/HC-2 was already fully landed+pushed (49d33f3) from the compacted session; advanced to the queue's next item.
+- Read the HC-3 spec; surveyed the shim surface: RequestContext + requestContext() + `_ctx` params on all four builders in _lib/api.ts; 40 route files / ~100 references in two shapes (inline trailing arg; `const ctx = requestContext(request)` indirection incl. multi-line own-line args).
+- Codemod (tool-results/hc3-codemod.mjs, gitignored): FIRST cut had two real bugs — a `\bctx\b` pre-filter reached 5 unrelated files (NextAuth route context, zod superRefine ctx ×3, login-guard AtomicMutateContext) and the global import-cleanup regex corrupted inline call sites (`200, requestContext(request)` → `200(request)`). BOTH caught by diff inspection; tree fully reverted (`git checkout -- src/`); corrected pass re-ordered (inline regexes first, ctx pass gated on a real `const ctx = requestContext` decl, import cleanup scoped to import blocks, import blank-line artifacts collapsed).
+- Final tree: exactly 40 route files touched (net −127 lines); rg sweep → zero shim tokens outside _lib/api.ts; firmware doc-comment prose reworded to keep the sweep machine-exact.
+- api.ts: `_ctx` params REMOVED from ok/fail/failWithMeta/failWithDetail; debt comment retired → HC-3/R55 retirement record; shim stays exported as an inert no-op (roadmap test spec) pinned unreferenced. README §Conventions stale envelope `{ success, data, meta, requestContext }` corrected to `{ success, data, meta }` + requestId/header note.
+- Tests: NEW tests/audit/r55-requestcontext-removal.test.ts — 12 pins (shim exported-but-inert unit; debt-comment retirement incl. zero `@deprecated`/`_ctx`; zero-reference sweeps over all src/ with a >50-file walk sanity guard; representative import proof; envelope-invariance units for all four builders; WIRE devices POST unparseable → 400 INVALID_BODY + WIRE devices GET → 200 with UUID requestId + header equality on the real CI DB).
+- Gates in FULL CI env shape (.env stash + exported CI secret set): lint 0 · tsc FULL 0 · suite 915 → 927 pass / 18 skip / 0 fail (5,051 expects, 54 files, 4.31 s).
+- LIVE: sign-in → shell; authed GET devices → 200 envelope with x-request-id header === meta.requestId (ok() stamps identically with zero per-call context); authed meta/users → 200 {users:[5]}; unauth devices POST → 401 UNAUTHENTICATED (pre-existing auth-error envelope, unchanged); E2E assign journey: Alerts → row actions → Assign… → combobox renders all 5 users from meta/users → assigned Yousef Ghalib → submit → owner toast, row updated; 0 console/page errors; mobile 390×844 no h-scroll; worker claim/complete 200s flowing (5/4773 cumulative FAILED rows are historical fault-injection drills). Screenshots: agent-ctx/verify-r55-hc3-alerts-assigned.png, verify-r55-hc3-mobile-390.png.
+- Appended: docs/audits/FayaNMS-R55-HC3-RequestContext-Removal-2026-09-18.md, roadmap status ledger (HC-3 → LANDED with evidence ref, HC-4 → NEXT (R56)), NEXT-TASKS header + ACTIVE + TASK-HC-3 LANDED block, this worklog + orchestrator worklog. Committed and pushed to origin/z_ai_v2; db/, .env planes, PAT never staged.
+
+Stage Summary:
+- HC-3 LANDED: the SAFE-002 tracked debt is retired mechanically with machine-enforced non-regrowth (zero-reference sweeps + compile-time param removal); envelope behavior proven invariant at unit + wire level; suite 915 → 927.
+- Phase HC queue advances: HC-4 (R56) i18n completion of chrome copy is NEXT.

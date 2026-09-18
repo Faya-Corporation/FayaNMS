@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { fail, firstIssueMessage, ok, requestContext } from "../_lib/api";
+import { fail, firstIssueMessage, ok } from "../_lib/api";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -210,8 +210,7 @@ export async function GET(request: Request) {
     return fail(
       "INVALID_QUERY",
       firstIssueMessage(parsed.error),
-      400,
-      requestContext(request)
+      400
     );
   }
   const { siteId } = parsed.data;
@@ -585,7 +584,7 @@ export async function GET(request: Request) {
     },
   });
 
-  return ok(payload, undefined, 200, requestContext(request));
+  return ok(payload, undefined, 200);
 }
 
 /* ── top-factor details: English fallback + numeric i18n params ── */

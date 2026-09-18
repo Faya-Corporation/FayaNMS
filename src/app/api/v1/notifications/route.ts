@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { fail, firstIssueMessage, ok, requestContext } from "../_lib/api";
+import { fail, firstIssueMessage, ok } from "../_lib/api";
 import { resolveActingUser } from "../_lib/actor";
 import { z } from "zod";
 
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     unreadOnly: url.searchParams.get("unreadOnly") ?? undefined,
   });
   if (!parsed.success) {
-    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400, requestContext(request));
+    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400);
   }
 
   const actor = await resolveActingUser(request);
@@ -60,7 +60,6 @@ export async function GET(request: Request) {
   return ok(
     rows.map((row) => ({ ...row, mine: row.userId !== null })),
     { unreadCount, total, identity: actor ? { id: actor.id, name: actor.name } : null },
-    200,
-    requestContext(request)
+    200
   );
 }

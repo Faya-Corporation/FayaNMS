@@ -1,10 +1,10 @@
-# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-18, HC-2 LANDED/z_ai_v2)
+# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-18, HC-3 LANDED/z_ai_v2)
 
 Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R47), then the R50 program on branch `z_ai_v2`. ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, ALL of it outside the sandbox's control:
 
 ## ACTIVE (only genuinely remaining work)
 
-**The execution backlog has moved to the Production-Readiness Implementation Roadmap:** `docs/audits/FayaNMS-Production-Readiness-Implementation-Roadmap-2026-09-18.md` — Phase HC is the AUTHORABLE queue (~~HC-1 per-endpoint rate budgets~~ → ✅ LANDED (R53); ~~HC-2 meta bootstrap split~~ → ✅ LANDED (R54); HC-3 RequestContext removal → NEXT (R55); HC-4 i18n completion; HC-5 dependabot config; HC-6 rides CI), each item with files/tests/acceptance/gates. Everything else is outside the sandbox's control:
+**The execution backlog has moved to the Production-Readiness Implementation Roadmap:** `docs/audits/FayaNMS-Production-Readiness-Implementation-Roadmap-2026-09-18.md` — Phase HC is the AUTHORABLE queue (~~HC-1 per-endpoint rate budgets~~ → ✅ LANDED (R53); ~~HC-2 meta bootstrap split~~ → ✅ LANDED (R54); ~~HC-3 RequestContext removal~~ → ✅ LANDED (R55); HC-4 i18n completion → NEXT (R56); HC-5 dependabot config; HC-6 rides CI), each item with files/tests/acceptance/gates. Everything else is outside the sandbox's control:
 
 ```text
 OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (green 4-job run on the release SHA)
@@ -13,6 +13,12 @@ R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (n
 ```
 
 The remediation authoring backlog remains EMPTY for the R34–R47, R50 and R51 programs; the R52 full end-to-end re-audit found zero P1/P2 and its single P3 (F-N1 auth ordering on the AI routes) + the hygiene set were remediated IN the R52 increment.
+
+---
+
+TASK-HC-3 — Deprecated `RequestContext` removal (R55) ✊ → ✅ LANDED (2026-09-18, branch `z_ai_v2`)
+
+The tracked SAFE-002 debt note in `_lib/api.ts` is RETIRED: the `_ctx?: RequestContext` trailing parameter is REMOVED from `ok` / `fail` / `failWithMeta` / `failWithDetail` (future accidental use = compile error), and every in-repo call site is gone — 40 route files, ~100 references, net −127 lines (imports, inline trailing args, own-line trailing args in multi-line calls, `const ctx = requestContext(request)` indirection). `RequestContext` + `requestContext()` remain exported as an INERT no-op compat shim per the roadmap test spec, machine-pinned so it cannot silently grow callers again. Unrelated `ctx` uses were deliberately untouched (NextAuth route context, zod `superRefine` contexts, login-guard `AtomicMutateContext`); the codemod's first cut was caught reaching 5 such files + corrupting inline call sites — the tree was reverted and the corrected pass re-run before staging (honest note in the evidence doc §2). README §Conventions stale envelope description corrected to `{ success, data, meta }` with `meta.requestId` + `X-Request-Id`. Tests: NEW `tests/audit/r55-requestcontext-removal.test.ts` (12 pins: shim exported-but-inert, debt-comment retirement, zero-reference sweeps over all of `src/` with a walk sanity guard, envelope-invariance units for all four builders, WIRE-level devices 400/200 handler envelopes with UUID requestId + header equality on the real CI DB). Gates in CI env shape: lint 0 · tsc FULL 0 · suite 915 → **927 pass / 18 skip / 0 fail** (5,051 expects, 54 files). LIVE: authed devices GET → 200 with header === meta.requestId (ok() stamps identically with zero context); meta/users → 200 `{users:[5]}`; unauth devices POST → 401 UNAUTHENTICATED unchanged; E2E assign journey re-proven end-to-end (5 options → select → submit → owner toast, row updated); 0 console/page errors; mobile 390 no h-scroll. Screenshots: `agent-ctx/verify-r55-hc3-alerts-assigned.png`, `agent-ctx/verify-r55-hc3-mobile-390.png`. Evidence doc: `docs/audits/FayaNMS-R55-HC3-RequestContext-Removal-2026-09-18.md`. NEXT: HC-4 (R56) i18n completion of chrome copy.
 
 ---
 

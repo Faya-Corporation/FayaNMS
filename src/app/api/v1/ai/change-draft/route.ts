@@ -5,7 +5,6 @@ import {
   firstIssueMessage,
   newCorrelationId,
   ok,
-  requestContext,
 } from "../../_lib/api";
 import { resolveActingUser } from "../../_lib/actor";
 import { buildChangeDraftMessages, type AiLocale } from "@/lib/ai/prompts";
@@ -154,17 +153,16 @@ function deviceLine(row: {
 }
 
 export async function POST(request: Request) {
-  const ctx = requestContext(request);
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400, ctx);
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const { prompt, locale } = parsed.data;
 
@@ -243,8 +241,7 @@ export async function POST(request: Request) {
       unavailable && error.message
         ? `The AI service is temporarily unavailable — ${error.message} Please try again in a moment.`
         : "The AI service is temporarily unavailable. Please try again in a moment.",
-      503,
-      ctx
+      503
     );
   }
 
@@ -262,7 +259,7 @@ export async function POST(request: Request) {
   } catch (error) {
     if (!(error instanceof AiBadResponseError)) {
       console.error("[ai/change-draft] unexpected parse failure", error);
-      return fail("AI_FAILED", "The AI draft could not be generated", 500, ctx);
+      return fail("AI_FAILED", "The AI draft could not be generated", 500);
     }
     console.error("[ai/change-draft] bad LLM response");
     try {
@@ -290,8 +287,7 @@ export async function POST(request: Request) {
       "AI_BAD_RESPONSE",
       "The AI returned a response that could not be parsed as a valid change draft. Please retry.",
       502,
-      { raw: error.raw.slice(0, RAW_DETAIL_MAX) },
-      ctx
+      { raw: error.raw.slice(0, RAW_DETAIL_MAX) }
     );
   }
 
@@ -375,7 +371,6 @@ export async function POST(request: Request) {
       correlationId,
     },
     { correlationId },
-    200,
-    ctx
+    200
   );
 }

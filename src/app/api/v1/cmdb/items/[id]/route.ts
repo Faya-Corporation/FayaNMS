@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { fail, firstIssueMessage, newCorrelationId, ok, requestContext } from "../../../_lib/api";
+import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
   CMDB_ITEM_SUMMARY_SELECT,
@@ -222,26 +222,24 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ctx = requestContext(request);
   const { id } = await params;
 
   const detail = await loadItemDetail(id);
   if (!detail) {
-    return fail("CMDB_NOT_FOUND", `No configuration item matches "${id}"`, 404, ctx);
+    return fail("CMDB_NOT_FOUND", `No configuration item matches "${id}"`, 404);
   }
 
   // Zod-validated response contract — a malformed payload fails loudly
   // instead of shipping a shape the client cannot trust (HA precedent).
   const validated = detailResponseSchema.parse(detail) as ItemDetail;
 
-  return ok(validated, undefined, 200, ctx);
+  return ok(validated, undefined, 200);
 }
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ctx = requestContext(request);
   const { id } = await params;
 
   // Phase 19-C (audit AUTHZ-001 sweep): updating configuration items
@@ -261,7 +259,7 @@ export async function PATCH(
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400, ctx);
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
 
   // The device link is established at creation and intentionally immutable —
@@ -275,28 +273,26 @@ export async function PATCH(
     return fail(
       "DEVICE_LINK_IMMUTABLE",
       "The device link is set at CI creation and cannot be changed — create a new CI for a different device",
-      422,
-      ctx
+      422
     );
   }
 
   const parsed = updateItemSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const data = parsed.data;
   if (Object.keys(data).length === 0) {
     return fail(
       "INVALID_BODY",
       "No fields to update — provide status, criticality, ownerId or description",
-      400,
-      ctx
+      400
     );
   }
 
   const item = await resolveCmdbItem(id);
   if (!item) {
-    return fail("CMDB_NOT_FOUND", `No configuration item matches "${id}"`, 404, ctx);
+    return fail("CMDB_NOT_FOUND", `No configuration item matches "${id}"`, 404);
   }
 
   if (data.ownerId) {
@@ -305,7 +301,7 @@ export async function PATCH(
       select: { id: true },
     });
     if (!owner) {
-      return fail("UNKNOWN_OWNER", "The referenced owner (user) does not exist", 422, ctx);
+      return fail("UNKNOWN_OWNER", "The referenced owner (user) does not exist", 422);
     }
   }
 
@@ -335,7 +331,7 @@ export async function PATCH(
   if (Object.keys(patch).length === 0) {
     // Nothing actually changed — return the current state without an audit row.
     const detail = await loadItemDetail(id);
-    return ok(detail, { unchanged: true }, 200, ctx);
+    return ok(detail, { unchanged: true }, 200);
   }
 
   const actorName = actor.name ?? "Unknown user";
@@ -381,7 +377,6 @@ export async function PATCH(
       correlationId,
     },
     { actor: actorName },
-    200,
-    ctx
+    200
   );
 }

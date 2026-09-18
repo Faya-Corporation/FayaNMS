@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { fail, firstIssueMessage, newJobCorrelationId, ok, requestContext } from "../../_lib/api";
+import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { ZTP_TEMPLATES, getZtpTemplate } from "@/lib/ztp/templates";
 import { projectMgmtIp } from "@/lib/ztp/provision";
@@ -68,7 +68,6 @@ function safeParseJson(text: string | null | undefined): Record<string, unknown>
 }
 
 export async function GET(request: Request) {
-  const ctx = requestContext(request);
 
   const [claims, siteRows, vendorRows, ztpAudits] = await Promise.all([
     db.ztpClaim.findMany({ orderBy: { createdAt: "desc" } }),
@@ -214,24 +213,22 @@ export async function GET(request: Request) {
       meta: { computedAt: new Date().toISOString() },
     },
     undefined,
-    200,
-    ctx
+    200
   );
 }
 
 export async function POST(request: Request) {
-  const ctx = requestContext(request);
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400, ctx);
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
 
   const parsed = createClaimSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const { serial, hostname, vendorKey, model, templateId } = parsed.data;
 
@@ -253,26 +250,24 @@ export async function POST(request: Request) {
     return fail(
       "UNKNOWN_TEMPLATE",
       `Template "${templateId}" does not exist — available: ${ZTP_TEMPLATES.map((t) => t.id).join(", ")}`,
-      422,
-      ctx
+      422
     );
   }
   if (template.vendorKey !== vendorKey) {
     return fail(
       "TEMPLATE_MISMATCH",
       `Template "${template.id}" provisions ${template.vendorKey} devices, not ${vendorKey}`,
-      422,
-      ctx
+      422
     );
   }
   const vendor = await db.vendor.findUnique({ where: { key: vendorKey } });
   if (!vendor) {
-    return fail("UNKNOWN_VENDOR", `Vendor "${vendorKey}" is not in the vendor set`, 422, ctx);
+    return fail("UNKNOWN_VENDOR", `Vendor "${vendorKey}" is not in the vendor set`, 422);
   }
   if (parsed.data.siteId) {
     const site = await db.site.findUnique({ where: { id: parsed.data.siteId } });
     if (!site) {
-      return fail("SITE_NOT_FOUND", "The referenced site does not exist", 422, ctx);
+      return fail("SITE_NOT_FOUND", "The referenced site does not exist", 422);
     }
   }
 
@@ -287,8 +282,7 @@ export async function POST(request: Request) {
       `An active claim for serial ${serial} already exists (status ${
         ACTIVE_CLAIM_STATUSES.join("|")
       }) — failed or provisioned serials may re-claim`,
-      409,
-      ctx
+      409
     );
   }
   const hostnameTaken = await db.device.findUnique({
@@ -299,8 +293,7 @@ export async function POST(request: Request) {
     return fail(
       "HOSTNAME_TAKEN",
       `A device with hostname ${hostname} already exists — provisioning would collide`,
-      409,
-      ctx
+      409
     );
   }
 
@@ -394,7 +387,6 @@ export async function POST(request: Request) {
       status: "QUEUED",
     },
     { actor: actorName },
-    200,
-    ctx
+    200
   );
 }

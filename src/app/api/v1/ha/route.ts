@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { ok, requestContext } from "../_lib/api";
+import { ok } from "../_lib/api";
 import { INCIDENT_OPEN_STATUSES } from "@/lib/incidents/lifecycle";
 import {
   composeDrReadiness,
@@ -103,7 +103,6 @@ const responseSchema = z.object({
 export type HaTopologyResponse = z.infer<typeof responseSchema>;
 
 export async function GET(request: Request) {
-  const ctx = requestContext(request);
 
   /* 1 — pair members, live from the DB (status is never guessed). */
   const memberDevices = await db.device.findMany({
@@ -268,5 +267,5 @@ export async function GET(request: Request) {
   // instead of shipping a shape the client cannot trust.
   const validated: HaTopologyResponse = responseSchema.parse(payload);
 
-  return ok(validated, { generatedAt: payload.meta.generatedAt }, 200, ctx);
+  return ok(validated, { generatedAt: payload.meta.generatedAt }, 200);
 }

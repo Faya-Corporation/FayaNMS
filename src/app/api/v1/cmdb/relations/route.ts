@@ -5,7 +5,6 @@ import {
   firstIssueMessage,
   newCorrelationId,
   ok,
-  requestContext,
 } from "../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
@@ -47,7 +46,6 @@ const createRelationSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const ctx = requestContext(request);
   const url = new URL(request.url);
 
   const relationTypeParam = url.searchParams.get("relationType") ?? undefined;
@@ -56,8 +54,7 @@ export async function GET(request: Request) {
     return fail(
       "INVALID_QUERY",
       `relationType: must be one of ${cmdbRelationTypeSchema.options.join(", ")}`,
-      400,
-      ctx
+      400
     );
   }
 
@@ -66,7 +63,7 @@ export async function GET(request: Request) {
   if (itemIdParam !== undefined) {
     const item = await resolveCmdbItem(itemIdParam);
     if (!item) {
-      return fail("CMDB_NOT_FOUND", `No configuration item matches "${itemIdParam}"`, 404, ctx);
+      return fail("CMDB_NOT_FOUND", `No configuration item matches "${itemIdParam}"`, 404);
     }
     itemIdFilter = item.id;
   }
@@ -100,24 +97,22 @@ export async function GET(request: Request) {
       meta: { computedAt: new Date().toISOString() },
     },
     undefined,
-    200,
-    ctx
+    200
   );
 }
 
 export async function POST(request: Request) {
-  const ctx = requestContext(request);
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400, ctx);
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
 
   const parsed = createRelationSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const { sourceId, targetId, relationType } = parsed.data;
 
@@ -141,16 +136,14 @@ export async function POST(request: Request) {
     return fail(
       "CMDB_NOT_FOUND",
       `Unknown configuration item — ${!source ? `source "${sourceId}"` : `target "${targetId}"`} does not exist`,
-      404,
-      ctx
+      404
     );
   }
   if (source.id === target.id) {
     return fail(
       "CMDB_SELF_RELATION",
       "A CI cannot relate to itself",
-      422,
-      ctx
+      422
     );
   }
 
@@ -162,8 +155,7 @@ export async function POST(request: Request) {
     return fail(
       "CMDB_RELATION_EXISTS",
       `${source.ciId} → ${target.ciId} (${relationType}) already exists`,
-      409,
-      ctx
+      409
     );
   }
 
@@ -209,8 +201,7 @@ export async function POST(request: Request) {
       return fail(
         "CMDB_RELATION_EXISTS",
         `${source.ciId} → ${target.ciId} (${relationType}) already exists`,
-        409,
-        ctx
+        409
       );
     }
     throw error;
@@ -227,17 +218,15 @@ export async function POST(request: Request) {
       correlationId,
     },
     { actor: actorName },
-    200,
-    ctx
+    200
   );
 }
 
 export async function DELETE(request: Request) {
-  const ctx = requestContext(request);
   const url = new URL(request.url);
   const id = url.searchParams.get("id");
   if (!id) {
-    return fail("INVALID_QUERY", "id: relation id is required", 400, ctx);
+    return fail("INVALID_QUERY", "id: relation id is required", 400);
   }
 
   // Phase 19-C (audit AUTHZ-001 sweep): removing relations requires the
@@ -260,7 +249,7 @@ export async function DELETE(request: Request) {
     },
   });
   if (!relation) {
-    return fail("CMDB_NOT_FOUND", `No relation matches "${id}"`, 404, ctx);
+    return fail("CMDB_NOT_FOUND", `No relation matches "${id}"`, 404);
   }
 
   const actorName = actor.name ?? "Unknown user";
@@ -290,7 +279,6 @@ export async function DELETE(request: Request) {
   return ok(
     { removed: relation.id, correlationId },
     { actor: actorName },
-    200,
-    ctx
+    200
   );
 }

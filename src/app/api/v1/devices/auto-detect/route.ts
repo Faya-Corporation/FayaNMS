@@ -5,7 +5,6 @@ import {
   firstIssueMessage,
   newJobCorrelationId,
   ok,
-  requestContext,
 } from "../../_lib/api";
 import { AuthError, requirePermission, requireUser } from "@/lib/auth/session";
 import {
@@ -268,7 +267,7 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return failWithMeta("INVALID_BODY", firstIssueMessage(parsed.error), 400, {
       contractVersion: DETECTION_CONTRACT_VERSION,
-    }, requestContext(request));
+    });
   }
 
   // R50-T072: a WELL-FORMED detection request — counted from here on
@@ -318,8 +317,7 @@ export async function POST(request: Request) {
         "PROBE_NOT_AUTHORIZED",
         error.message,
         error.status,
-        { contractVersion: DETECTION_CONTRACT_VERSION },
-        requestContext(request),
+        { contractVersion: DETECTION_CONTRACT_VERSION }
       );
     }
     throw error;
@@ -354,8 +352,7 @@ export async function POST(request: Request) {
       "TARGET_NOT_ALLOWED",
       `Probe target refused by the target network policy (${targetPolicy.addressClass})`,
       403,
-      { contractVersion: DETECTION_CONTRACT_VERSION },
-      requestContext(request),
+      { contractVersion: DETECTION_CONTRACT_VERSION }
     );
   }
 
@@ -370,8 +367,7 @@ export async function POST(request: Request) {
         "DEVICE_PROBE_RATE_LIMITED",
         `Vendor detection ${dimension} budget exhausted — retry in ${slot.retryAfterSec}s`,
         429,
-        { contractVersion: DETECTION_CONTRACT_VERSION },
-        requestContext(request),
+        { contractVersion: DETECTION_CONTRACT_VERSION }
       );
       refusal.headers.set("Retry-After", String(slot.retryAfterSec));
       // R50-T072: counted, NOT audited per-hit BY DESIGN — the budget is
@@ -443,8 +439,7 @@ export async function POST(request: Request) {
         "CREDENTIAL_UNRESOLVED",
         "The selected credential profile does not exist",
         404,
-        { contractVersion: DETECTION_CONTRACT_VERSION },
-        requestContext(request),
+        { contractVersion: DETECTION_CONTRACT_VERSION }
       );
     }
     if (profile.type !== "SSH_PASSWORD") {
@@ -473,8 +468,7 @@ export async function POST(request: Request) {
         "CREDENTIAL_NOT_AUTHORIZED",
         `Vendor detection over SSH requires an SSH_PASSWORD credential profile (got ${profile.type})`,
         403,
-        { contractVersion: DETECTION_CONTRACT_VERSION },
-        requestContext(request),
+        { contractVersion: DETECTION_CONTRACT_VERSION }
       );
     }
     // R50-T021: the profile is existent + type-supported — the remaining
@@ -507,8 +501,7 @@ export async function POST(request: Request) {
         "CREDENTIAL_NOT_AUTHORIZED",
         "The selected credential profile is not authorized for active probing",
         403,
-        { contractVersion: DETECTION_CONTRACT_VERSION },
-        requestContext(request),
+        { contractVersion: DETECTION_CONTRACT_VERSION }
       );
     }
   }
@@ -577,8 +570,7 @@ export async function POST(request: Request) {
         "HOST_KEY_ENROLLMENT_LOOKUP_FAILED",
         "Host-key enrollment lookup failed — probe aborted before any connection (trust state unknown; fail-closed)",
         503,
-        { contractVersion: DETECTION_CONTRACT_VERSION },
-        requestContext(request),
+        { contractVersion: DETECTION_CONTRACT_VERSION }
       );
     }
     // enrolled → the pin rides on the probe (verified pre-auth by the

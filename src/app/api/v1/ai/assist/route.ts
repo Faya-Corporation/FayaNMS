@@ -4,7 +4,6 @@ import {
   firstIssueMessage,
   newCorrelationId,
   ok,
-  requestContext,
 } from "../../_lib/api";
 import { resolveActingUser } from "../../_lib/actor";
 import { buildDeviceContext, buildIncidentContext } from "@/lib/ai/context";
@@ -49,17 +48,16 @@ const bodySchema = z.object({
 const QUESTION_AUDIT_MAX = 200;
 
 export async function POST(request: Request) {
-  const ctx = requestContext(request);
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400, ctx);
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const { scope, id, question, locale } = parsed.data;
 
@@ -91,15 +89,14 @@ export async function POST(request: Request) {
         scope === "device"
           ? "The requested device does not exist"
           : "The requested incident does not exist",
-        404,
-        ctx
+        404
       );
     }
     contextText = context.text;
     contextSummary = context.summary;
   } catch (error) {
     console.error("[ai/assist] context build failed", error);
-    return fail("CONTEXT_FAILED", "The operational context could not be loaded", 500, ctx);
+    return fail("CONTEXT_FAILED", "The operational context could not be loaded", 500);
   }
 
   const correlationId = newCorrelationId("AI");
@@ -143,8 +140,7 @@ export async function POST(request: Request) {
       unavailable && error.message
         ? `The AI assistant is temporarily unavailable — ${error.message} Please try again in a moment.`
         : "The AI assistant is temporarily unavailable. Please try again in a moment.",
-      503,
-      ctx
+      503
     );
   }
 
@@ -180,7 +176,6 @@ export async function POST(request: Request) {
       contextSummary,
     },
     { correlationId },
-    200,
-    ctx
+    200
   );
 }

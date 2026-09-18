@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
-import { fail, ok, requestContext } from "../../../_lib/api";
+import { fail, ok } from "../../../_lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -44,16 +44,14 @@ export async function POST(
     return fail(
       "JOB_NOT_FOUND",
       "The requested job execution does not exist",
-      404,
-      requestContext(request)
+      404
     );
   }
   if (!CANCELLABLE_STATUSES.has(job.status)) {
     return fail(
       "JOB_NOT_CANCELLABLE",
       `Job status is ${job.status} — only QUEUED or RUNNING jobs can be cancelled`,
-      409,
-      requestContext(request)
+      409
     );
   }
 
@@ -87,7 +85,6 @@ export async function POST(
   return ok(
     { job: updated },
     { correlationId: updated.correlationId },
-    200,
-    requestContext(request)
+    200
   );
 }

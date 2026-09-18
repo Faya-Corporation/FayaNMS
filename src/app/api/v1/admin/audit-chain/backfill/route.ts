@@ -4,7 +4,7 @@ import { backfillAuditChain } from "@/lib/audit/chain";
 import {
   newCorrelationId,
   ok,
-  requestContext,
+
 } from "@/app/api/v1/_lib/api";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
 
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       },
     });
 
-    return ok({ ...result, audit: { correlationId } }, undefined, 200, requestContext(request));
+    return ok({ ...result, audit: { correlationId } }, undefined, 200);
   } catch (error) {
     const authFail = authErrorToFail(error);
     if (authFail) return authFail;

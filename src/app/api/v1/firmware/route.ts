@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { ok, requestContext } from "../_lib/api";
+import { ok } from "../_lib/api";
 import {
   getLifecycle,
   suggestTarget,
@@ -26,7 +26,8 @@ export const dynamic = "force-dynamic";
  * Rows are ranked worst-first (eol → eos → aging → current → unknown), then
  * hostname — the view renders them in that order. meta carries the counts
  * by lifecycle status + total. Read-only GET → no audit event (app
- * convention); requestContext trails the envelope for rate-limit + requestId.
+ * convention); the envelope meta carries the stamped requestId (HC-3/R55:
+ * the deprecated per-call context trailing arg was removed everywhere).
  * ───────────────────────────────────────────────────────────────────────────── */
 
 /** Lifecycle severity rank — lower sorts first (worst on top). */
@@ -175,5 +176,5 @@ export async function GET(request: Request) {
   // Defensive: the contract below is what the UI types against.
   const validated = payloadSchema.parse(payload);
 
-  return ok(validated, undefined, 200, requestContext(request));
+  return ok(validated, undefined, 200);
 }

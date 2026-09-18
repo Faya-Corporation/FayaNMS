@@ -1,4 +1,4 @@
-import { ok, requestContext } from "../../_lib/api";
+import { ok } from "../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { snapshotDetectionMetrics } from "@/lib/metrics/detection-metrics";
 
@@ -34,7 +34,6 @@ export async function GET(request: Request) {
   return ok(
     { metrics: snapshotDetectionMetrics() },
     { scope: "process", note: "Per-instance counters since process boot — not a fleet aggregate." },
-    200,
-    requestContext(request)
+    200
   );
 }

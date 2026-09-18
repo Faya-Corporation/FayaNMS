@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { fail, firstIssueMessage, newJobCorrelationId, ok, requestContext } from "../../_lib/api";
+import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { isValidTargetVersion } from "@/lib/firmware/lifecycle";
 import { z } from "zod";
@@ -36,18 +36,17 @@ const upgradeSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const ctx = requestContext(request);
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400, ctx);
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
 
   const parsed = upgradeSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const { deviceId, targetVersion } = parsed.data;
 
@@ -75,38 +74,34 @@ export async function POST(request: Request) {
     },
   });
   if (!device) {
-    return fail("DEVICE_NOT_FOUND", "The device does not exist", 404, ctx);
+    return fail("DEVICE_NOT_FOUND", "The device does not exist", 404);
   }
   if (device.status === "UNMANAGED") {
     return fail(
       "DEVICE_UNMANAGED",
       `${device.hostname} is UNMANAGED — firmware upgrades are only queued for managed devices`,
-      409,
-      ctx
+      409
     );
   }
   if (device.status === "OFFLINE") {
     return fail(
       "DEVICE_OFFLINE",
       `${device.hostname} is OFFLINE — the upgrade cannot be staged until it is reachable`,
-      409,
-      ctx
+      409
     );
   }
   if (device.firmware === targetVersion) {
     return fail(
       "ALREADY_AT_TARGET",
       `${device.hostname} already runs ${targetVersion}`,
-      409,
-      ctx
+      409
     );
   }
   if (!isValidTargetVersion(device.vendor.key, device.firmware, targetVersion)) {
     return fail(
       "INVALID_TARGET_VERSION",
       `Target "${targetVersion}" does not match the ${device.vendor.name} firmware version format`,
-      422,
-      ctx
+      422
     );
   }
 
@@ -123,8 +118,7 @@ export async function POST(request: Request) {
     return fail(
       "UPGRADE_IN_PROGRESS",
       `${device.hostname} already has a firmware upgrade in progress (${openJob.correlationId})`,
-      409,
-      ctx
+      409
     );
   }
 
@@ -185,7 +179,6 @@ export async function POST(request: Request) {
       status: "QUEUED",
     },
     { actor: actorName },
-    200,
-    ctx
+    200
   );
 }

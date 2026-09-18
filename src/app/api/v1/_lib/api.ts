@@ -37,23 +37,25 @@ export interface PageMeta {
 /* ───────────────────────── envelope core ───────────────────────── */
 
 /**
- * @deprecated SAFE-002: request context used to feed the response-build
- * rate limiter (method budget + client IP). The gate now runs pre-handler
- * in the proxy plane (src/proxy.ts → src/lib/api/rate-gate.ts), which
- * derives the method from the real request and the client key from the
- * spoof-resistant rightmost-trusted-hop policy. The type and helper are
- * kept ONLY so existing call sites compile; the value is ignored.
- * Mechanical removal of the ~50 call sites is tracked as backlog.
+ * HC-3 (R55) — `requestContext` compat shim.
+ *
+ * Historic role: the envelope builders below used to accept a trailing
+ * RequestContext argument that fed the (then in-builder) rate limiter.
+ * Since SAFE-002 that gate runs pre-handler in the proxy plane
+ * (src/proxy.ts → src/lib/api/rate-gate.ts), so the argument was dead
+ * weight. R55 retired that parameter from ok/fail/failWithMeta/
+ * failWithDetail and mechanically removed every in-repo call site
+ * (~50 across 40 route files). The type and helper remain exported ONLY
+ * as an inert no-op for external consumers; they are pinned by
+ * tests/audit/r55-requestcontext-removal.test.ts to stay unreferenced
+ * anywhere else in the repo.
  */
 export interface RequestContext {
   method?: string;
   ip?: string;
 }
 
-/**
- * @deprecated SAFE-002 — see RequestContext. Returns an empty context;
- * the proxy plane no longer needs any per-call context from routes.
- */
+/** Inert no-op compat shim — see RequestContext. Returns an empty context. */
 export function requestContext(_request?: Request): RequestContext {
   return {};
 }
@@ -61,9 +63,7 @@ export function requestContext(_request?: Request): RequestContext {
 export function ok<T>(
   data: T,
   meta?: object,
-  status = 200,
-  /** @deprecated ignored since SAFE-002 (proxy-plane rate gate). */
-  _ctx?: RequestContext
+  status = 200
 ): NextResponse {
   const requestId = randomUUID();
   const mergedMeta = { ...(meta ?? {}), requestId };
@@ -76,9 +76,7 @@ export function ok<T>(
 export function fail(
   code: string,
   message: string,
-  status = 400,
-  /** @deprecated ignored since SAFE-002 (proxy-plane rate gate). */
-  _ctx?: RequestContext
+  status = 400
 ): NextResponse {
   const requestId = randomUUID();
   return NextResponse.json(
@@ -96,9 +94,7 @@ export function failWithMeta(
   code: string,
   message: string,
   status = 400,
-  extraMeta?: object,
-  /** @deprecated ignored since SAFE-002 (proxy-plane rate gate). */
-  _ctx?: RequestContext
+  extraMeta?: object
 ): NextResponse {
   const requestId = randomUUID();
   return NextResponse.json(
@@ -121,9 +117,7 @@ export function failWithDetail(
   code: string,
   message: string,
   status = 400,
-  detail?: unknown,
-  /** @deprecated ignored since SAFE-002 (proxy-plane rate gate). */
-  _ctx?: RequestContext
+  detail?: unknown
 ): NextResponse {
   const requestId = randomUUID();
   return NextResponse.json(

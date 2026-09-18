@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { ok, requestContext } from "../../_lib/api";
+import { ok } from "../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail } from "@/lib/auth/session";
 import { WORKER_BASE_URL, WORKER_HOST } from "@/lib/worker/worker-url";
@@ -180,8 +180,7 @@ export async function GET(request: Request) {
         online: collectors.filter((c) => c.status === "ONLINE").length,
         total: collectors.length,
       },
-      200,
-      requestContext(request)
+      200
     );
   } catch (error) {
     const authFail = authErrorToFail(error);

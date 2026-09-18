@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { verifyAuditChain } from "@/lib/audit/chain";
 import {
   ok,
-  requestContext,
+
 } from "@/app/api/v1/_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail } from "@/lib/auth/session";
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   try {
     await resolveAdminActor(request);
     const result = await verifyAuditChain(db as unknown as PrismaClient);
-    return ok(result, undefined, 200, requestContext(request));
+    return ok(result, undefined, 200);
   } catch (error) {
     const authFail = authErrorToFail(error);
     if (authFail) return authFail;

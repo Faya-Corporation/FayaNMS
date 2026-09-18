@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { fail, firstIssueMessage, newCorrelationId, ok, requestContext } from "../../_lib/api";
+import { fail, firstIssueMessage, newCorrelationId, ok } from "../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
   defaultActiveMember,
@@ -45,18 +45,17 @@ const testSchema = z.object({
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function POST(request: Request) {
-  const ctx = requestContext(request);
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400, ctx);
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
 
   const parsed = testSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const { pairId } = parsed.data;
 
@@ -77,8 +76,7 @@ export async function POST(request: Request) {
     return fail(
       "HA_PAIR_NOT_FOUND",
       `Unknown HA pair "${pairId}" — see GET /api/v1/ha for the registered pairs`,
-      404,
-      ctx
+      404
     );
   }
 
@@ -97,8 +95,7 @@ export async function POST(request: Request) {
     return fail(
       "HA_TEST_IN_PROGRESS",
       `A failover test for ${pair.name} ran less than 3 minutes ago (${latest.correlationId ?? "no correlation"}) — wait ${waitSec}s before re-running`,
-      409,
-      ctx
+      409
     );
   }
 
@@ -197,7 +194,6 @@ export async function POST(request: Request) {
       vip: pair.vip,
     },
     { actor: actorName },
-    200,
-    ctx
+    200
   );
 }

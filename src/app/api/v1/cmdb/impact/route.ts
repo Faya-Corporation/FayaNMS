@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { fail, ok, requestContext } from "../../_lib/api";
+import { fail, ok } from "../../_lib/api";
 import {
   CMDB_IMPACT_MAX_DEPTH,
   cmdbBfsImpact,
@@ -65,17 +65,16 @@ const responseSchema = z.object({
 export type CmdbImpactResponse = z.infer<typeof responseSchema>;
 
 export async function GET(request: Request) {
-  const ctx = requestContext(request);
   const url = new URL(request.url);
 
   const itemId = url.searchParams.get("itemId");
   if (!itemId) {
-    return fail("INVALID_QUERY", "itemId: configuration item reference is required", 400, ctx);
+    return fail("INVALID_QUERY", "itemId: configuration item reference is required", 400);
   }
 
   const item = await resolveCmdbItem(itemId);
   if (!item) {
-    return fail("CMDB_NOT_FOUND", `No configuration item matches "${itemId}"`, 404, ctx);
+    return fail("CMDB_NOT_FOUND", `No configuration item matches "${itemId}"`, 404);
   }
 
   // Materialize the whole graph once (bounded: items + edges are small at
@@ -124,5 +123,5 @@ export async function GET(request: Request) {
   // validated shape.
   const validated = responseSchema.parse(payload);
 
-  return ok(validated, undefined, 200, ctx);
+  return ok(validated, undefined, 200);
 }

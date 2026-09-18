@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { ok, requestContext } from "../../../_lib/api";
+import { ok } from "../../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail } from "@/lib/auth/session";
 import {
@@ -112,8 +112,7 @@ export async function GET(request: Request) {
         simulated: true,
         note: "Agent fleet is a documented simulation — assignments are deterministic over real devices",
       },
-      200,
-      requestContext(request)
+      200
     );
   } catch (error) {
     const authFail = authErrorToFail(error);

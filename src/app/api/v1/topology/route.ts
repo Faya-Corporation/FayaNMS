@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { ok, requestContext } from "../_lib/api";
+import { ok } from "../_lib/api";
 import { z } from "zod";
 import {
   buildTopologyGraph,
@@ -82,7 +82,6 @@ const responseSchema = z.object({
 export type TopologyApiResponse = z.infer<typeof responseSchema>;
 
 export async function GET(request: Request) {
-  const ctx = requestContext(request);
 
   /* 1 — sites (grouping backbone, ordered by code for determinism). */
   const sites = await db.site.findMany({
@@ -177,5 +176,5 @@ export async function GET(request: Request) {
   // instead of shipping a shape the client cannot trust.
   const validated: TopologyApiResponse = responseSchema.parse(payload);
 
-  return ok(validated, { generatedAt: payload.generatedAt }, 200, ctx);
+  return ok(validated, { generatedAt: payload.generatedAt }, 200);
 }

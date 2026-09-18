@@ -5,7 +5,6 @@ import {
   firstIssueMessage,
   newCorrelationId,
   ok,
-  requestContext,
 } from "../../_lib/api";
 import { resolveActingUser } from "../../_lib/actor";
 import {
@@ -687,18 +686,17 @@ function buildFallbackSummary(results: QueryResults, locale: AiLocale): string {
 }
 
 export async function POST(request: Request) {
-  const ctx = requestContext(request);
   const startedAt = Date.now();
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400, ctx);
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const { prompt, locale } = parsed.data;
 
@@ -761,8 +759,7 @@ export async function POST(request: Request) {
       unavailable && error.message
         ? `The AI service is temporarily unavailable — ${error.message} Please try again in a moment.`
         : "The AI service is temporarily unavailable. Please try again in a moment.",
-      503,
-      ctx
+      503
     );
   }
 
@@ -779,7 +776,7 @@ export async function POST(request: Request) {
   } catch (error) {
     if (!(error instanceof AiBadResponseError)) {
       console.error("[ai/query] unexpected plan parse failure", error);
-      return fail("AI_FAILED", "The AI query could not be planned", 500, ctx);
+      return fail("AI_FAILED", "The AI query could not be planned", 500);
     }
     console.error("[ai/query] bad LLM plan response");
     try {
@@ -808,8 +805,7 @@ export async function POST(request: Request) {
       "AI_BAD_RESPONSE",
       "The AI returned a response that could not be parsed as a valid query plan. Please retry.",
       502,
-      { raw: error.raw.slice(0, RAW_DETAIL_MAX) },
-      ctx
+      { raw: error.raw.slice(0, RAW_DETAIL_MAX) }
     );
   }
 
@@ -873,8 +869,7 @@ export async function POST(request: Request) {
     return fail(
       "QUERY_EXECUTION_FAILED",
       "The query could not be executed against the network data",
-      500,
-      ctx
+      500
     );
   }
 
@@ -957,7 +952,6 @@ export async function POST(request: Request) {
       correlationId,
     },
     { correlationId },
-    200,
-    ctx
+    200
   );
 }

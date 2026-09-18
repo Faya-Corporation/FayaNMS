@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { fail, firstIssueMessage, ok, requestContext } from "../_lib/api";
+import { fail, firstIssueMessage, ok } from "../_lib/api";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
@@ -171,7 +171,6 @@ function orderByFor(
 }
 
 export async function GET(request: Request) {
-  const ctx = requestContext(request);
 
   const sp = new URL(request.url).searchParams;
   const parsed = querySchema.safeParse({
@@ -187,7 +186,7 @@ export async function GET(request: Request) {
     pageSize: sp.get("pageSize") ?? undefined,
   });
   if (!parsed.success) {
-    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400, ctx);
+    return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400);
   }
   const {
     q,
@@ -301,7 +300,6 @@ export async function GET(request: Request) {
       },
     },
     { generatedAt: new Date().toISOString() },
-    200,
-    ctx
+    200
   );
 }

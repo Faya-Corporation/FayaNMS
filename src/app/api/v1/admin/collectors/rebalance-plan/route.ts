@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { fail, firstIssueMessage, newCorrelationId, ok, requestContext } from "../../../_lib/api";
+import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../_lib/api";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
 import { z } from "zod";
 import {
@@ -51,18 +51,17 @@ async function loadAssignments(): Promise<DeviceAssignmentRow[]> {
 }
 
 export async function POST(request: Request) {
-  const ctx = requestContext(request);
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400, ctx);
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
 
   const parsed = planSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const { dryRun, planId } = parsed.data;
 
@@ -87,8 +86,7 @@ export async function POST(request: Request) {
     return fail(
       "COLLECTOR_NO_MOVES",
       "The fleet is already balanced — no over-capacity agents, nothing to rebalance",
-      404,
-      ctx
+      404
     );
   }
 
@@ -116,8 +114,7 @@ export async function POST(request: Request) {
       return fail(
         "COLLECTOR_REBALANCE_COOLDOWN",
         `A rebalance ran less than 3 minutes ago (${latestApply.correlationId ?? "no correlation"}) — wait ${waitSec}s before re-applying`,
-        409,
-        ctx
+        409
       );
     }
   }
@@ -136,8 +133,7 @@ export async function POST(request: Request) {
         },
       },
       { actor: "plan-preview" },
-      200,
-      ctx
+      200
     );
   }
 
@@ -145,8 +141,7 @@ export async function POST(request: Request) {
     return fail(
       "COLLECTOR_PLAN_STALE",
       `Plan ${planId ?? "(missing)"} no longer matches the live assignment (current ${freshPlanId}) — re-run the preview`,
-      409,
-      ctx
+      409
     );
   }
 
@@ -217,7 +212,6 @@ export async function POST(request: Request) {
       note: "Simulated apply — staged audit rows only, no real collector was redeployed",
     },
     { actor: actorName },
-    200,
-    ctx
+    200
   );
 }

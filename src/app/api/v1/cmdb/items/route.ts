@@ -5,7 +5,6 @@ import {
   firstIssueMessage,
   newCorrelationId,
   ok,
-  requestContext,
 } from "../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
@@ -70,7 +69,6 @@ const createItemSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const ctx = requestContext(request);
   const url = new URL(request.url);
 
   const parsedQuery = listQuerySchema.safeParse({
@@ -83,7 +81,7 @@ export async function GET(request: Request) {
     limit: url.searchParams.get("limit") ?? undefined,
   });
   if (!parsedQuery.success) {
-    return fail("INVALID_QUERY", firstIssueMessage(parsedQuery.error), 400, ctx);
+    return fail("INVALID_QUERY", firstIssueMessage(parsedQuery.error), 400);
   }
   const { ciType, status, criticality, environment, siteId, q, limit } =
     parsedQuery.data;
@@ -197,24 +195,22 @@ export async function GET(request: Request) {
       meta: { computedAt: new Date().toISOString() },
     },
     undefined,
-    200,
-    ctx
+    200
   );
 }
 
 export async function POST(request: Request) {
-  const ctx = requestContext(request);
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return fail("INVALID_BODY", "Request body must be valid JSON", 400, ctx);
+    return fail("INVALID_BODY", "Request body must be valid JSON", 400);
   }
 
   const parsed = createItemSchema.safeParse(body);
   if (!parsed.success) {
-    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400, ctx);
+    return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const data = parsed.data;
 
@@ -238,7 +234,7 @@ export async function POST(request: Request) {
       select: { id: true, hostname: true },
     });
     if (!device) {
-      return fail("UNKNOWN_DEVICE", "The referenced device does not exist", 422, ctx);
+      return fail("UNKNOWN_DEVICE", "The referenced device does not exist", 422);
     }
     const mapped = await db.cmdbItem.findUnique({
       where: { deviceId: data.deviceId },
@@ -248,8 +244,7 @@ export async function POST(request: Request) {
       return fail(
         "CMDB_DEVICE_ALREADY_MAPPED",
         `Device already linked to ${mapped.ciId} — one CI per device`,
-        409,
-        ctx
+        409
       );
     }
   }
@@ -259,8 +254,7 @@ export async function POST(request: Request) {
       return fail(
         "SITE_NOT_FOUND",
         `Site code "${data.siteId}" does not exist`,
-        422,
-        ctx
+        422
       );
     }
   }
@@ -273,8 +267,7 @@ export async function POST(request: Request) {
     return fail(
       "CMDB_DUPLICATE_NAME",
       `A CI named "${data.name}" already exists (${duplicateName.ciId})`,
-      409,
-      ctx
+      409
     );
   }
 
@@ -344,8 +337,7 @@ export async function POST(request: Request) {
           correlationId,
         },
         { actor: actorName },
-        200,
-        ctx
+        200
       );
     } catch (error) {
       // Unique violation on ciId → another create took the number: retry once.
@@ -357,8 +349,7 @@ export async function POST(request: Request) {
           return fail(
             "CMDB_DUPLICATE_NAME",
             `A CI named "${data.name}" already exists`,
-            409,
-            ctx
+            409
           );
         }
         if (attempt === 0) continue;
@@ -368,5 +359,5 @@ export async function POST(request: Request) {
   }
 
   // Unreachable in practice — defensive fall-through keeps the type checker happy.
-  return fail("CMDB_ID_EXHAUSTED", "Could not allocate a CI identifier", 500, ctx);
+  return fail("CMDB_ID_EXHAUSTED", "Could not allocate a CI identifier", 500);
 }

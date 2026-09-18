@@ -6,7 +6,6 @@ import {
   firstIssueMessage,
   newCorrelationId,
   ok,
-  requestContext,
 } from "../../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
@@ -99,8 +98,7 @@ export async function PATCH(
     return ok(
       { channel: channelView(row), audit: { correlationId } },
       undefined,
-      200,
-      requestContext(request)
+      200
     );
   } catch (error) {
     const authFail = authErrorToFail(error);
@@ -152,8 +150,7 @@ export async function DELETE(
     return ok(
       { deleted: true, audit: { correlationId } },
       undefined,
-      200,
-      requestContext(request)
+      200
     );
   } catch (error) {
     const authFail = authErrorToFail(error);

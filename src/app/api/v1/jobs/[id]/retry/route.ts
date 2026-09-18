@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
-import { fail, newJobCorrelationId, ok, requestContext } from "../../../_lib/api";
+import { fail, newJobCorrelationId, ok } from "../../../_lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +42,7 @@ export async function POST(
     return fail(
       "JOB_NOT_FOUND",
       "The requested job execution does not exist",
-      404,
-      requestContext(request)
+      404
     );
   }
 
@@ -100,5 +99,5 @@ export async function POST(
     }),
   ]);
 
-  return ok({ job, audit }, { correlationId }, 201, requestContext(request));
+  return ok({ job, audit }, { correlationId }, 201);
 }
