@@ -13,6 +13,13 @@ export const dynamic = "force-dynamic";
  * "vault://ssh/network-admin", never a secret), port, notes and timestamps.
  * No secret material exists in this database by design.
  *
+ * R61 P1 — AUTHORIZATION: the proxy session gate alone is NOT sufficient
+ * here. Credential profiles are sensitive administration (username + vault
+ * pointer + notes leak targeting material), so the explicit
+ * "admin.credential" permission gates the whole GET — the same key that
+ * already governs POST/PATCH, and the only consumer is the admin
+ * credentials view. 401 UNAUTHENTICATED / 403 RBAC_FORBIDDEN otherwise.
+ *
  * Usage counts: the CredentialProfile model has no relation to Device in the
  * current schema (device↔credential assignment ships with the schema
  * extension), so deviceCount is always 0 for now — the API shape is ready
@@ -25,7 +32,17 @@ export const dynamic = "force-dynamic";
 
 const CREDENTIAL_TYPES = ["SSH_PASSWORD", "SSH_KEY", "API_TOKEN", "SNMPV3", "HTTPS"] as const;
 
-export async function GET() {
+export async function GET(request: Request) {
+  // R61 P1 — explicit permission gate FIRST (before any database work):
+  // credential profiles are sensitive administration, not a read-plane
+  // giveaway (401 UNAUTHENTICATED / 403 RBAC_FORBIDDEN without it).
+  try {
+    await requirePermission(request, "admin.credential");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
   const [profiles, total] = await Promise.all([
     db.credentialProfile.findMany({
       orderBy: { name: "asc" },

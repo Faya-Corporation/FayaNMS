@@ -3420,3 +3420,18 @@ Stage Summary:
 Stage Summary:
 - Both P0s from the independent re-verification are CLOSED with protocol-level proofs; suite 947 → 954.
 - Next: R62 (P1 pair: proxy service-JWT surface isolation + sensitive GET/read RBAC), then R63 (INFO doc refresh + ci.yml workflow_dispatch + dependabot caveat).
+
+---
+
+## R62 — P1 remediations: service-JWT surface isolation + sensitive read RBAC (2026-09-19)
+
+- P1-1 proxy: src/proxy.ts step 1 rewritten — a VERIFIED service JWT now passes ONLY on the machine surface (NEW isMachineSurface: /api/v1/worker/ prefix + alerts/evaluate + reports/execute + metrics/retention/prune); on any other path → hard 401 UNAUTHENTICATED BEFORE the rate gate (no budget burn, F-N1-consistent). Rate-budget exemption preserved on the machine surface; invalid/expired tokens keep the existing fall-through; machine handlers still enforce token+scope via authenticateServiceRequest.
+- P1-2 read RBAC: GET /api/v1/credentials now requires "admin.credential" (the POST/PATCH key; sole consumer is the admin credentials view — device-form pickers use meta.credentialProfiles, unaffected). GET /api/v1/devices/[id]/snapshots now requires "config.read" explicitly, and the DECRYPTED rawText/normalizedText ride ONLY for config.download holders (fields OMITTED otherwise, textIncluded flag, decryptSnapshotTexts runs only on the privileged path — auditor/viewer get metadata-only rows; the download route remains the audited raw-export path).
+- Tests: NEW tests/audit/r62-p1-service-scoping-and-read-rbac.test.ts (9 pins: behavioral proxy runs incl. human-route 401s + machine-surface next() + no-rate-slot-burn + expired-token fall-through; wire 401s on both GETs before any DB work; SOURCE pins for gate ordering + text omission + machine-surface set). Fixed a self-inflicted require() lint error (node:crypto import) and corrected one pin's premise (expired token on worker/claim legitimately reaches the 3a public-with-handler-auth list — the handler 401s it; the pin now uses a human route).
+- Gates in CI env shape: lint clean · tsc FULL 0 · suite 954 → 963 pass / 18 skip / 0 fail (8,198 expects, 59 files).
+- LIVE: app 200 · meta 200; unauth envelopes unchanged (devices POST 401 re-pinned in-suite).
+- Appended: evidence doc R62-P1-Service-Scoping-and-Read-RBAC, roadmap row, NEXT-TASKS block, worklogs. Committed + pushed; db/, .env, PAT never staged.
+
+Stage Summary:
+- P1 count: 2 → 0. All four review findings (2 P0 + 2 P1) are now closed with machine-pinned proofs; suite 894 → 963 over the program.
+- Next: R63 — INFO hygiene (handoff doc refresh + ci.yml workflow_dispatch trigger for the reviewer's runbook-ordering point + dependabot activation caveat).

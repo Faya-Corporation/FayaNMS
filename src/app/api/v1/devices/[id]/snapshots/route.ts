@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { decryptSnapshotTexts } from "@/lib/config/crypto";
 import { fail, firstIssueMessage, ok, pageMeta, paginationSchema } from "../../../_lib/api";
+import { authErrorToFail, loadRolePermissions, requirePermission } from "@/lib/auth/session";
+import { roleHasPermission } from "@/lib/auth/permissions";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -9,10 +11,21 @@ export const dynamic = "force-dynamic";
  * GET /api/v1/devices/[id]/snapshots
  *
  * Configuration snapshot version history for a device, newest version
- * first. Includes rawText + normalizedText so the Phase 2 config viewer
- * (search/wrap/mask) works without a second fetch; per-device history is
- * small (3–5 versions). Optional `source` csv filter (used by the Backups
- * tab to list backup-ish runs).
+ * first. Metadata always rides the list; the DECRYPTED configuration texts
+ * (rawText + normalizedText) are included ONLY when the caller holds the
+ * explicit "config.download" permission — the same key the dedicated
+ * download route enforces (R61 P1: React masking is not an authorization
+ * boundary, and the proxy session gate alone is not either).
+ *
+ * AUTHORIZATION (R61 P1):
+ *   - the whole endpoint requires the explicit "config.read" permission
+ *     (401 UNAUTHENTICATED / 403 RBAC_FORBIDDEN otherwise) — checked FIRST,
+ *     before any database work;
+ *   - texts ride only with "config.download" (seeded to admin/operator/
+ *     engineer/manager — an auditor/viewer session gets metadata without
+ *     decrypted configuration).
+ * Optional `source` csv filter (used by the Backups tab to list backup-ish
+ * runs).
  */
 
 const querySchema = paginationSchema.extend({
@@ -23,6 +36,22 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // R61 P1 — explicit permission gate FIRST, before any database work.
+  // requirePermission returns the session principal; the SECOND check
+  // (config.download) decides whether the decrypted configuration texts
+  // may leave the server at all.
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "config.read");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+  const mayReadTexts = roleHasPermission(
+    await loadRolePermissions(actor.role),
+    "config.download",
+  );
   const { id } = await params;
   if (!id || id.length > 64) {
     return fail("INVALID_ID", "Invalid device id", 400);
@@ -92,24 +121,29 @@ export async function GET(
 
   return ok(
     rows.map((row) => {
+      // R61 P1 — the decrypted texts leave the server ONLY for
+      // config.download holders (the download route's key). For everyone
+      // else the fields are OMITTED — server-side boundary, not a viewer
+      // convention. decryptSnapshotTexts runs only on the privileged path.
+      const base = {
+        id: row.id,
+        version: row.version,
+        source: row.source,
+        configType: row.configType,
+        status: row.status,
+        sha256: row.sha256,
+        sizeBytes: row.sizeBytes,
+        createdAt: row.createdAt,
+        changeNumber: row.change?.number ?? null,
+        capturedBy: row.user?.name ?? null,
+        correlationId: row.job?.correlationId ?? null,
+        textIncluded: mayReadTexts,
+      };
+      if (!mayReadTexts) return base;
       // P19 SEC-003: rows hold AES-256-GCM ciphertext; decrypt for the
       // privileged viewer payload (legacy encKeyId=null rows pass through).
       const texts = decryptSnapshotTexts(row);
-      return {
-      id: row.id,
-      version: row.version,
-      source: row.source,
-      configType: row.configType,
-      status: row.status,
-      sha256: row.sha256,
-      sizeBytes: row.sizeBytes,
-      rawText: texts.rawText,
-      normalizedText: texts.normalizedText,
-      createdAt: row.createdAt,
-      changeNumber: row.change?.number ?? null,
-      capturedBy: row.user?.name ?? null,
-      correlationId: row.job?.correlationId ?? null,
-      };
+      return { ...base, rawText: texts.rawText, normalizedText: texts.normalizedText };
     }),
     { ...pageMeta(page, Math.min(pageSize, 50), total), hostname: device.hostname }
   );

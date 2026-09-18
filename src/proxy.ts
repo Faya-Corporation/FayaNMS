@@ -17,10 +17,14 @@ import {
  * Evaluation order (safe-fastest first):
  *   1. MACHINE PLANE: a VERIFIED service JWT (signature + audience + expiry
  *      + issuer allowlist, src/lib/auth/service-jwt.ts) passes through
- *      untouched — the worker's claim/step/progress loops share the
- *      loopback bucket with human traffic and a live change must never
- *      self-throttle mid-run. The exemption requires a VERIFIED token,
- *      never merely the header's presence.
+ *      untouched ONLY on the machine surface (/api/v1/worker/* plus the
+ *      three service-principal job routes) — the worker's claim/step/
+ *      progress loops share the loopback bucket with human traffic and a
+ *      live change must never self-throttle mid-run. The exemption
+ *      requires a VERIFIED token, never merely the header's presence, and
+ *      (R61 P1) a verified token on any NON-machine path is a hard 401:
+ *      a service principal is not a session credential and must never
+ *      reach human read surfaces through the proxy.
  *   2. RATE GATE (SAFE-002 — external ULTRA audit P0-002): every other
  *      request consumes a sliding-window slot BEFORE any route handler
  *      runs — 300 req/min per client for GET/HEAD, 120 req/min for
@@ -90,6 +94,26 @@ const API_CLIENT_READS_NOT_WIRED_BODY = {
 };
 
 /**
+ * R61 P1 — the MACHINE SURFACE: the pathnames a service principal is
+ * allowed to touch. A verified service JWT is a MACHINE credential — on
+ * anything outside this set the request is UNAUTHENTICATED (401), never a
+ * free pass into human read surfaces (the pre-R61 early next() let a
+ * worker token walk Dashboard/Devices/Events/Credentials GETs that trusted
+ * the proxy gate). Machine routes enforce the token AND its scope at the
+ * handler layer (authenticateServiceRequest) — the proxy merely confines
+ * the principal to its surface.
+ */
+const MACHINE_EXACT_ROUTES: ReadonlySet<string> = new Set([
+  "/api/v1/alerts/evaluate",
+  "/api/v1/reports/execute",
+  "/api/v1/metrics/retention/prune",
+]);
+
+function isMachineSurface(pathname: string): boolean {
+  return pathname.startsWith("/api/v1/worker/") || MACHINE_EXACT_ROUTES.has(pathname);
+}
+
+/**
  * The ApiClient token shape: OPAQUE base64url (24–128 chars, no dots).
  * Service JWTs are three dot-separated segments; NextAuth bearer JWTs are
  * also dot-separated — neither can collide with this pattern.
@@ -99,12 +123,15 @@ const OPAQUE_BEARER_PATTERN = /^[A-Za-z0-9_-]{24,128}$/;
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 1. Machine plane — verified service JWT is exempt from the rate
-  // budget (and from the session checks below; its routes enforce the
-  // token + scope themselves at the handler layer).
+  // 1. Machine plane — a VERIFIED service JWT is exempt from the rate
+  // budget ONLY on the machine surface (R61 P1: surface isolation — a
+  // service principal on a human path is unauthenticated, full stop).
   const bearer = bearerTokenOf(req.headers.get("authorization"));
   if (bearer && verifyServiceToken(bearer).ok) {
-    return NextResponse.next();
+    if (isMachineSurface(pathname)) {
+      return NextResponse.next();
+    }
+    return NextResponse.json(UNAUTHENTICATED_BODY, { status: 401 });
   }
 
   // 2. Rate gate — BEFORE any handler can commit side effects (SAFE-002).
