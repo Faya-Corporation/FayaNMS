@@ -27,7 +27,7 @@ import {
 
 import { useIncidentDetail } from "@/hooks/api/use-incident-detail";
 import { useIncidentAction } from "@/hooks/api/use-incident-mutations";
-import { useMeta } from "@/hooks/api/use-meta";
+import { useMetaUsers } from "@/hooks/api/use-meta";
 import { useChanges } from "@/hooks/api/use-changes";
 import { aiErrorKey, useAiRcaDraft } from "@/hooks/api/use-ai";
 import { useTranslations } from "next-intl";
@@ -168,7 +168,9 @@ export function IncidentDetailView() {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   const incidentId = params?.incidentId ?? null;
 
-  const meta = useMeta();
+  // HC-2 (R54): the user directory is served by the AUTHENTICATED
+  // /api/v1/meta/users — this view consumes ONLY that segment.
+  const meta = useMetaUsers();
 
   const incident = useIncidentDetail(incidentId);
   const detail = incident.data;

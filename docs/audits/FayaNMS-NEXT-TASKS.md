@@ -1,10 +1,10 @@
-# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-18, HC-1 LANDED/z_ai_v2)
+# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-18, HC-2 LANDED/z_ai_v2)
 
 Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R47), then the R50 program on branch `z_ai_v2`. ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, ALL of it outside the sandbox's control:
 
 ## ACTIVE (only genuinely remaining work)
 
-**The execution backlog has moved to the Production-Readiness Implementation Roadmap:** `docs/audits/FayaNMS-Production-Readiness-Implementation-Roadmap-2026-09-18.md` — Phase HC is the AUTHORABLE queue (~~HC-1 per-endpoint rate budgets~~ → ✅ LANDED (R53); HC-2 meta bootstrap split → NEXT (R54); HC-3 RequestContext removal; HC-4 i18n completion; HC-5 dependabot config; HC-6 rides CI), each item with files/tests/acceptance/gates. Everything else is outside the sandbox's control:
+**The execution backlog has moved to the Production-Readiness Implementation Roadmap:** `docs/audits/FayaNMS-Production-Readiness-Implementation-Roadmap-2026-09-18.md` — Phase HC is the AUTHORABLE queue (~~HC-1 per-endpoint rate budgets~~ → ✅ LANDED (R53); ~~HC-2 meta bootstrap split~~ → ✅ LANDED (R54); HC-3 RequestContext removal → NEXT (R55); HC-4 i18n completion; HC-5 dependabot config; HC-6 rides CI), each item with files/tests/acceptance/gates. Everything else is outside the sandbox's control:
 
 ```text
 OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (green 4-job run on the release SHA)
@@ -13,6 +13,12 @@ R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (n
 ```
 
 The remediation authoring backlog remains EMPTY for the R34–R47, R50 and R51 programs; the R52 full end-to-end re-audit found zero P1/P2 and its single P3 (F-N1 auth ordering on the AI routes) + the hygiene set were remediated IN the R52 increment.
+
+---
+
+TASK-HC-2 — Authenticated bootstrap split for `/api/v1/meta` (R54) ✊ → ✅ LANDED (2026-09-18, branch `z_ai_v2`)
+
+The F-N3 finding is CLOSED: the session-exempt bootstrap surface no longer exposes the active user directory. `GET /api/v1/meta` now carries ONLY the pre-auth-needed reference data (vendors / sites / credentialProfiles — R51-A2 shape kept); the `users` segment moved to the NEW authenticated `GET /api/v1/meta/users` (proxy matcher gates it — the bootstrap exemption stays EXACT-match `pathname === "/api/v1/meta"` and the literal `"/api/v1/meta/users"` is pinned ABSENT from proxy.ts; the handler resolves the actor BEFORE the DB read per the R52-F-N1 discipline, 401 never a pre-auth read; opaque API-client tokens stay refused on the read plane per P1-012). Client split: `MetaPayload` sheds `users` (NEW `MetaUsersPayload`), NEW `useMetaUsers()` hook (queryKey `["meta","users"]`), BOTH consumers migrated — `alert-action-dialogs.tsx` (assign picker) AND `incident-detail-view.tsx` (incident owner picker, found in the consumer sweep). Tests: NEW `tests/audit/r54-meta-users-split.test.ts` (10 pins incl. WIRE-LEVEL handler assertions against the real CI DB: meta 200 with NO `users` key + arrays present + no profile usernames; meta/users 401 without a session; actor-before-DB ordering + exactly-once; proxy exemption exactness + end-to-end unauth 401 vs forwarded meta; client type/hook/consumer/query-key pins). Gates in CI env shape: lint 0 · tsc FULL 0 · suite 905 → **915 pass / 18 skip / 0 fail** (5,009 expects, 53 files). LIVE: unauth meta → 200 with keys exactly `[credentialProfiles, sites, vendors]` (has users: False); unauth meta/users → 401; authenticated meta/users → 200 with 5 active users (correct id/name/roleLabel/username shape); E2E picker journey: Alerts → alert row actions → Assign… → the combobox renders ALL five users from the NEW endpoint → assigned `Salma Al-Attar · Service Manager` → submit → dialog closed, assignee shown on the row; 0 console errors; mobile 390×844 no h-scroll. Screenshots: `agent-ctx/verify-r54-hc2-assign-picker.png`, `agent-ctx/verify-r54-hc2-mobile-390.png`. Evidence doc: `docs/audits/FayaNMS-R54-HC2-Meta-Users-Split-2026-09-18.md`. README §Security posture carries the bootstrap-surface note. NEXT: HC-3 (R55) mechanical RequestContext removal.
 
 ---
 

@@ -1156,8 +1156,16 @@ export interface MetaPayload {
   vendors: { id: string; key: string; name: string }[];
   sites: { id: string; name: string; code: string }[];
   credentialProfiles: { id: string; name: string; type: string }[];
-  /** Active accounts for the alert assign/suppress picker (R52-F-N2: the
-   * SEC-001 "act as" demo identity was removed long ago). */
+}
+
+/**
+ * HC-2 (R54): the active-user directory is NO LONGER part of the
+ * session-exempt bootstrap payload — it is served by the AUTHENTICATED
+ * `/api/v1/meta/users` (fetched after hydration for the alert
+ * assign/suppress picker), so the pre-auth surface carries zero user
+ * records.
+ */
+export interface MetaUsersPayload {
   users: UserOption[];
 }
 

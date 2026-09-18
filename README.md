@@ -171,7 +171,11 @@ The container stack ships in-repo: `Dockerfile` (multi-stage bun → Next standa
 Implemented and verified across Phase 19 and the Phase 19-C authorization-completion sprint
 (2026-09-09/10 repository audits — see `docs/audits/` and
 `docs/security/authorization-matrix.md`): session-authoritative actor model (all mutation
-routes swept — synthesized/fallback admin identities removed), **server-authoritative
+routes swept — synthesized/fallback admin identities removed), **bootstrap-surface split
+(HC-2, R54)** — the session-exempt `GET /api/v1/meta` carries ONLY pre-auth-needed
+reference data (vendors/sites/credential profiles; zero user records, machine-pinned) while
+the active-user directory lives behind the session plane at `GET /api/v1/meta/users`
+(actor-gated, for the alert assign/suppress pickers), **server-authoritative
 permission enforcement on every mutating endpoint** (`requirePermission` /
 `requireApprovalEntitlement` / `requireRole`, matrix in
 `docs/security/authorization-matrix.md`), approval-LEVEL entitlements (TECHNICAL / SECURITY /

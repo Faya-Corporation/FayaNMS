@@ -52,6 +52,8 @@ export const queryKeys = {
   notifications: (params: ListParams = {}) => ["notifications", params] as const,
   jobs: (params: ListParams = {}) => ["jobs", params] as const,
   meta: ["meta"] as const,
+  // HC-2 (R54): the authenticated user-directory segment (alert picker).
+  metaUsers: ["meta", "users"] as const,
   search: (q: string) => ["search", q] as const,
   // Backup engine (Task 3-a)
   snapshots: (params: ListParams = {}) => ["snapshots", params] as const,

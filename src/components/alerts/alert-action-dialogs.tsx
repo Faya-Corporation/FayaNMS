@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { useMeta } from "@/hooks/api/use-meta";
+import { useMetaUsers } from "@/hooks/api/use-meta";
 import { useAssignAlert, useSuppressAlert } from "@/hooks/api/use-alert-mutations";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,7 +36,7 @@ export function AssignAlertDialog({
   alert: AlertStreamRow | null;
   onClose: () => void;
 }) {
-  const meta = useMeta();
+  const meta = useMetaUsers();
   const assign = useAssignAlert();
   const [userId, setUserId] = useState("");
   // Render-time reset (react-hooks/set-state-in-effect): clear the picker

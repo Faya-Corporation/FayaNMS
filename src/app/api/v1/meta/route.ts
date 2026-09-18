@@ -3,35 +3,27 @@ import { ok } from "../_lib/api";
 
 export const dynamic = "force-dynamic";
 
-/** Friendly label per seeded role (no auth server yet — demo identity). */
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Administrator",
-  operator: "NOC Operator",
-  engineer: "Network Engineer",
-  auditor: "Auditor",
-  manager: "Service Manager",
-  viewer: "Viewer",
-};
-
 /**
  * GET /api/v1/meta — lightweight reference data for filter bars and
  * form pickers (vendors, sites, credential profiles). Consumed by the
  * device filters, the Add/Edit Device form and the Sites view.
  *
- * `users`: the active seeded accounts (id/name/role + a username-style key
- * derived from the email local-part) powering the alert assign/suppress
- * picker (alert-action-dialogs.tsx). No emails are exposed beyond the
- * local-part (already public inside the demo lab).
+ * HC-2 (R54, Production-Readiness Roadmap — F-N3): this endpoint is
+ * SESSION-EXEMPT (bootstrap surface — see src/proxy.ts, exact-match
+ * exemption) and therefore carries ONLY the pre-auth-needed reference
+ * data for the sign-in transition. The active-user directory moved to
+ * the AUTHENTICATED `/api/v1/meta/users` (the proxy matcher gates it;
+ * the alert assign/suppress picker fetches it after hydration), so the
+ * pre-auth payload contains ZERO user records — machine-pinned in
+ * tests/audit/r54-meta-users-split.test.ts.
  *
- * R51-A2 (Independent Production ReAudit 2026-09-18, F-2): this endpoint
- * is SESSION-EXEMPT (bootstrap surface — see src/proxy.ts) and therefore
- * must not disclose credential-profile OPERATOR usernames. No client
- * consumer ever used the field (pickers render name · type only) — the
- * column is dropped from the select and from MetaPayload. Adding future
- * fields here requires the same pre-auth disclosure review.
+ * R51-A2 (Independent Production ReAudit 2026-09-18, F-2): no
+ * credential-profile OPERATOR usernames here either (pickers render
+ * `name · type` only). Adding future fields here requires the same
+ * pre-auth disclosure review.
  */
 export async function GET() {
-  const [vendors, sites, credentialProfiles, users] = await Promise.all([
+  const [vendors, sites, credentialProfiles] = await Promise.all([
     db.vendor.findMany({
       orderBy: { name: "asc" },
       select: { id: true, key: true, name: true },
@@ -45,22 +37,11 @@ export async function GET() {
       // R51-A2: no `username` here — pre-auth bootstrap surface.
       select: { id: true, name: true, type: true },
     }),
-    db.user.findMany({
-      where: { isActive: true },
-      orderBy: { createdAt: "asc" },
-      select: { id: true, name: true, email: true, role: true },
-    }),
   ]);
 
   return ok({
     vendors,
     sites,
     credentialProfiles,
-    users: users.map((user) => ({
-      id: user.id,
-      name: user.name ?? user.email,
-      username: user.email.split("@")[0] ?? user.id,
-      roleLabel: ROLE_LABELS[user.role] ?? user.role,
-    })),
   });
 }

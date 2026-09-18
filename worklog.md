@@ -3282,3 +3282,21 @@ Work Log:
 Stage Summary:
 - HC-1 LANDED: high-cost surfaces (ai/* 10/min, csv-import 5/min) budgeted per-family at the pre-handler gate; global budgets unchanged; 11 new regression pins; suite 905/18/0; live 429 demonstration matches the roadmap acceptance verbatim.
 - Phase HC queue advances: HC-2 (R54) authenticated bootstrap split for /api/v1/meta is NEXT.
+
+---
+Task ID: R54-HC2
+Agent: Z.ai orchestrator (main session)
+Task: HC-2 — authenticated bootstrap split for /api/v1/meta (roadmap Phase HC; closes the F-N3 finding).
+
+Work Log:
+- Read the HC-2 spec + the meta surface: route, proxy exemption (exact-match /api/v1/meta), MetaPayload, useMeta hook, consumers (alert-action-dialogs assign picker + a SECOND consumer found in the sweep: incident-detail-view incident owner picker).
+- Server split: meta/route.ts sheds the users query + payload segment (doc comment carries the HC-2/R51-A2 pre-auth disclosure notes); NEW meta/users/route.ts returns the same UserOption shape, actor-gated BEFORE the DB read (R52-F-N1 discipline, exactly-once resolveActingUser).
+- Client split: MetaPayload sheds users + NEW MetaUsersPayload in api-client.ts; NEW useMetaUsers() (queryKeys.metaUsers = ["meta","users"]); both consumers migrated to useMetaUsers.
+- Tests: NEW tests/audit/r54-meta-users-split.test.ts — 10 pins incl. WIRE-LEVEL handler assertions on the real CI DB (meta 200 no users key; meta/users 401 no session), actor-before-DB ordering, proxy exemption exactness + end-to-end (meta forwarded vs meta/users 401), client type/hook/consumer/query-key pins. One self-test refinement during authoring: property-syntax assertion (users:) so prose route mentions in comments don't false-positive.
+- Gates in CI env shape: lint 0, tsc FULL 0, suite 905 → 915 pass / 18 skip / 0 fail (5,009 expects, 53 files).
+- LIVE: unauth meta → 200 keys exactly [credentialProfiles, sites, vendors] (has users: False); unauth meta/users → 401; authenticated meta/users → 200 with 5 users; E2E journey: Alerts → row actions → Assign… → combobox renders all five users from the NEW endpoint → assigned Salma Al-Attar → submit → dialog closed, assignee on the row; 0 console errors; mobile 390×844 no h-scroll. Screenshots: agent-ctx/verify-r54-hc2-assign-picker.png, agent-ctx/verify-r54-hc2-mobile-390.png. Stack after teardown: app 200, worker 424 jobs 0 failed.
+- Appended: docs/audits/FayaNMS-R54-HC2-Meta-Users-Split-2026-09-18.md, roadmap ledger (HC-2 LANDED / HC-3 NEXT), NEXT-TASKS header + ACTIVE + TASK-HC-2 LANDED block, README §Security posture bootstrap-surface note, this worklog + orchestrator worklog. Committed and pushed to origin/z_ai_v2; db/, .env planes, PAT never staged.
+
+Stage Summary:
+- HC-2 LANDED: the pre-auth bootstrap surface carries ZERO user records (wire-pinned); the user directory lives behind the session plane with actor-before-DB ordering; both pickers work authenticated end-to-end.
+- Phase HC queue advances: HC-3 (R55) mechanical RequestContext removal is NEXT.
