@@ -22,6 +22,8 @@ import { createHmac } from "node:crypto";
 
 import {
   MAX_RATE_BUCKETS,
+  RATE_LIMIT_AI,
+  RATE_LIMIT_CSV_IMPORT,
   RATE_LIMIT_GET,
   RATE_LIMIT_MUTATION,
   RATE_WINDOW_MS,
@@ -31,6 +33,7 @@ import {
   rateLimitedHeaders,
   resetRateStoreForTests,
   resolveClientIp,
+  resolveNamedRouteBudget,
   storeSizeForTests,
   takeRateSlot,
 } from "@/lib/api/rate-gate";
@@ -407,5 +410,160 @@ describe("SAFE-002 — proxy wiring (pre-handler order)", () => {
     // 301st..305th are limited (401s would need a session; the limiter
     // fires before the session check, so the 429s are the proof).
     expect(limitedSeen).toBe(5);
+  });
+});
+
+describe("HC-1 — named per-endpoint budgets (high-cost surfaces)", () => {
+  test("budget-table literals: ai family → 10/min, csv-import → 5/min", () => {
+    expect(RATE_LIMIT_AI).toBe(10);
+    expect(RATE_LIMIT_CSV_IMPORT).toBe(5);
+  });
+
+  test("registry lookup: every AI route maps to the shared ai family budget", () => {
+    for (const route of ["query", "assist", "change-draft", "rca-draft"]) {
+      expect(resolveNamedRouteBudget(`/api/v1/ai/${route}`)).toEqual({
+        family: "ai",
+        limit: RATE_LIMIT_AI,
+      });
+    }
+  });
+
+  test("registry lookup: csv-import matches EXACTLY — sibling device routes stay on defaults", () => {
+    expect(resolveNamedRouteBudget("/api/v1/devices/csv-import")).toEqual({
+      family: "devices:csv-import",
+      limit: RATE_LIMIT_CSV_IMPORT,
+    });
+    for (const sibling of [
+      "/api/v1/devices",
+      "/api/v1/devices/csv-export",
+      "/api/v1/devices/csv-import/review",
+      "/api/v1/devices/dev-1",
+    ]) {
+      expect(resolveNamedRouteBudget(sibling)).toBeNull();
+    }
+  });
+
+  test("registry lookup: prefix discipline — sibling names and bare family never match", () => {
+    for (const path of [
+      "/api/v1/ai",
+      "/api/v1/aiques",
+      "/api/v1/aidevices",
+      "/api/v1/devices",
+      "/api/v1/meta",
+    ]) {
+      expect(resolveNamedRouteBudget(path)).toBeNull();
+    }
+  });
+
+  test("decision: ai family answers 429 from its OWN bucket — 10 pass, 11th limited", async () => {
+    for (let i = 0; i < RATE_LIMIT_AI; i += 1) {
+      expect(
+        (await takeRateSlot("10.1.0.1", "mutation", undefined, "/api/v1/ai/query")).limited
+      ).toBe(false);
+    }
+    const decision = await takeRateSlot(
+      "10.1.0.1",
+      "mutation",
+      undefined,
+      "/api/v1/ai/assist"
+    );
+    expect(decision.limited).toBe(true);
+    expect(decision.retryAfterSec).toBeGreaterThanOrEqual(1);
+    expect(decision.retryAfterSec).toBeLessThanOrEqual(60);
+  });
+
+  test("decision: the named bucket does not touch the shared client-kind pools", async () => {
+    for (let i = 0; i < RATE_LIMIT_AI; i += 1) {
+      await takeRateSlot("10.1.0.2", "mutation", undefined, "/api/v1/ai/query");
+    }
+    // ai family exhausted for this client…
+    expect(
+      (await takeRateSlot("10.1.0.2", "mutation", undefined, "/api/v1/ai/query")).limited
+    ).toBe(true);
+    // …but the plain mutation pool for the SAME client is untouched…
+    expect((await takeRateSlot("10.1.0.2", "mutation")).limited).toBe(false);
+    // …and the csv-import family is a DIFFERENT named bucket.
+    expect(
+      (await takeRateSlot("10.1.0.2", "mutation", undefined, "/api/v1/devices/csv-import")).limited
+    ).toBe(false);
+  });
+
+  test("decision: csv-import family — 5 pass, 6th limited with a sane Retry-After", async () => {
+    for (let i = 0; i < RATE_LIMIT_CSV_IMPORT; i += 1) {
+      expect(
+        (await takeRateSlot("10.1.0.3", "mutation", undefined, "/api/v1/devices/csv-import")).limited
+      ).toBe(false);
+    }
+    const decision = await takeRateSlot(
+      "10.1.0.3",
+      "mutation",
+      undefined,
+      "/api/v1/devices/csv-import"
+    );
+    expect(decision.limited).toBe(true);
+    expect(decision.retryAfterSec).toBeGreaterThanOrEqual(1);
+    expect(decision.retryAfterSec).toBeLessThanOrEqual(60);
+  });
+
+  test("documented default: no pathname (and unknown routes) keep the kind budgets", async () => {
+    // No pathname → legacy signature semantics unchanged.
+    expect((await takeRateSlot("10.1.0.4", "mutation")).limited).toBe(false);
+    // An unknown route consumes the DEFAULT mutation bucket, not a named one.
+    for (let i = 0; i < RATE_LIMIT_MUTATION; i += 1) {
+      expect(
+        (await takeRateSlot("10.1.0.5", "mutation", undefined, "/api/v1/sites")).limited
+      ).toBe(false);
+    }
+    expect((await takeRateSlot("10.1.0.5", "mutation", undefined, "/api/v1/sites")).limited).toBe(
+      true
+    );
+  });
+
+  test("proxy wiring: the pathname reaches takeRateSlot (source pin)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const proxySrc = readFileSync("src/proxy.ts", "utf8");
+    expect(proxySrc).toContain(
+      "takeRateSlot(clientKey, kind, Date.now(), pathname)"
+    );
+  });
+
+  test("proxy end-to-end: 11 rapid calls on ai/query → ten 401s then ONE 429 from the ai budget", async () => {
+    const headers = { "x-forwarded-for": "10.1.1.1" };
+    let saw401 = 0;
+    let saw429 = 0;
+    for (let i = 0; i < RATE_LIMIT_AI + 1; i += 1) {
+      const response = await proxy(
+        proxyRequest("/api/v1/ai/query", "POST", headers)
+      );
+      if (response.status === 429) {
+        saw429 += 1;
+        expect(response.headers.get("Retry-After")).toBeTruthy();
+        expect(Number(response.headers.get("Retry-After"))).toBeLessThanOrEqual(60);
+        const body = (await response.json()) as { error?: { code?: string } };
+        expect(body.error?.code).toBe("RATE_LIMITED");
+      } else {
+        // Unauthenticated calls consume an ai slot and fall through to the
+        // session plane — the 401 proves the limiter fired BEFORE auth.
+        expect(response.status).toBe(401);
+        saw401 += 1;
+      }
+    }
+    expect(saw429).toBe(1);
+    expect(saw401).toBe(RATE_LIMIT_AI);
+  });
+
+  test("proxy end-to-end: exhausting the ai budget never throttles other routes", async () => {
+    // Burn the ai family for this client via the proxy plane…
+    const aiHeaders = { "x-forwarded-for": "10.1.1.2" };
+    for (let i = 0; i < RATE_LIMIT_AI; i += 1) {
+      await proxy(proxyRequest("/api/v1/ai/query", "POST", aiHeaders));
+    }
+    // …then a NORMAL route for the same client still reaches its handler
+    // (401 session envelope — NOT a 429), because the named bucket is the
+    // ai family's own.
+    const response = await proxy(
+      proxyRequest("/api/v1/devices", "POST", aiHeaders)
+    );
+    expect(response.status).toBe(401);
   });
 });

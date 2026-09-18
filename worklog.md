@@ -3264,3 +3264,21 @@ Work Log:
 Stage Summary:
 - R52 increment (d5ebdab) INDEPENDENTLY VERIFIED PASS — every gate number reproduces exactly (894/18/0, 4,800 expects, 52 files), every remediation claim re-derives at file:line precision, and F-N1 auth ordering is proven behaviorally in both directions (unauth 401 pre-lookup; authed post-auth lookup with a real-LLM positive path).
 - Chain of custody for the R50→R51→R52 program is now: audit → remediation → independent verification, all landed and pushed; the forward path remains the Phase HC queue (HC-1 per-endpoint rate budgets next) + owner-side blockers (OWNER-CI-001, OWNER-GOV-001) + lab certification.
+
+---
+Task ID: R53-HC1
+Agent: Z.ai orchestrator (main session)
+Task: HC-1 — per-endpoint rate budgets for high-cost surfaces (roadmap Phase HC, first authorable item).
+
+Work Log:
+- Read the roadmap HC-1 spec (files/tests/acceptance/gates) + the SAFE-002 rate plane (rate-gate.ts contract, rate-store.ts hit() interface, proxy.ts step-2 enforcement, existing rate-gate.test.ts style; CTRL-3 carried note located in the R52 audit).
+- Implemented the HC-1 named-budget registry in src/lib/api/rate-gate.ts: RATE_LIMIT_AI=10, RATE_LIMIT_CSV_IMPORT=5, NamedRouteBudget, resolveNamedRouteBudget(pathname) — /api/v1/ai/* prefix (trailing-slash anchored) → family ai; /api/v1/devices/csv-import EXACT → family devices:csv-import; else null. takeRateSlot gained an optional 4th pathname param (legacy signatures untouched); matching requests draw from ${ip}:route:${family}, shared pools untouched.
+- Wired the proxy: takeRateSlot(clientKey, kind, Date.now(), pathname) — the single pre-handler enforcement point unchanged (SAFE-002).
+- Tests: 11 NEW pins in tests/audit/rate-gate.test.ts (budget literals; registry lookups for all 4 AI routes + csv exact + sibling/prefix discipline incl. /api/v1/aiques; ai 10→11th limited; named-bucket isolation from shared pools; csv 5→6th limited; documented-default; proxy wiring source pin; 2 proxy end-to-end pins incl. 11 rapid unauth ai/query → ten 401s + ONE 429).
+- Gates in FULL CI env shape (.env stash + exported CI secret set — re-confirmed the protocol trap: without the secret export the 3 SAFE-002 JWT pins fail with SERVICE_ALG_REJECTED): lint 0, tsc FULL 0, suite 894 → 905 pass / 18 skip / 0 fail (4,979 expects, 52 files).
+- LIVE wire: 10 × unauth POST ai/query → 401 ×10 → 11th 429 Too Many Requests (retry-after: 60, RATE_LIMITED envelope); 5 × unauth POST devices/csv-import → 401 ×5 → 6th 429; while ai was exhausted GET meta → 200 and POST devices → 401 (normal calls unaffected). Browser sanity: sign-in → shell, authenticated devices API 200 (5 devices), 0 console errors. Screenshot: agent-ctx/verify-r53-hc1-shell.png.
+- Appended: docs/audits/FayaNMS-R53-HC1-Rate-Budgets-2026-09-18.md (evidence), roadmap status ledger (HC-1 → LANDED, HC-2 → NEXT), NEXT-TASKS header + ACTIVE queue + TASK-HC-1 LANDED block, Windows deploy guide SAFE-002 mentions ×2, this worklog + orchestrator worklog. Committed and pushed to origin/z_ai_v2; db/, .env planes, PAT never staged.
+
+Stage Summary:
+- HC-1 LANDED: high-cost surfaces (ai/* 10/min, csv-import 5/min) budgeted per-family at the pre-handler gate; global budgets unchanged; 11 new regression pins; suite 905/18/0; live 429 demonstration matches the roadmap acceptance verbatim.
+- Phase HC queue advances: HC-2 (R54) authenticated bootstrap split for /api/v1/meta is NEXT.

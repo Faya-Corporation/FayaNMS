@@ -108,9 +108,12 @@ export async function proxy(req: NextRequest) {
   }
 
   // 2. Rate gate — BEFORE any handler can commit side effects (SAFE-002).
+  // HC-1: the pathname rides along so high-cost route families draw their
+  // OWN named budget (ai → 10/min, devices/csv-import → 5/min) instead of
+  // the shared client-kind pool; unknown routes keep the kind budgets.
   const clientKey = resolveClientIp(req.headers);
   const kind = rateKind(req.method);
-  const decision = await takeRateSlot(clientKey, kind);
+  const decision = await takeRateSlot(clientKey, kind, Date.now(), pathname);
   if (decision.limited) {
     const requestId = randomUUID();
     return NextResponse.json(

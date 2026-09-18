@@ -1,10 +1,10 @@
-# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-18, R52 verified/z_ai_v2)
+# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-18, HC-1 LANDED/z_ai_v2)
 
 Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R47), then the R50 program on branch `z_ai_v2`. ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, ALL of it outside the sandbox's control:
 
 ## ACTIVE (only genuinely remaining work)
 
-**The execution backlog has moved to the Production-Readiness Implementation Roadmap:** `docs/audits/FayaNMS-Production-Readiness-Implementation-Roadmap-2026-09-18.md` — Phase HC is the AUTHORABLE queue (HC-1 per-endpoint rate budgets → NEXT; HC-2 meta bootstrap split; HC-3 RequestContext removal; HC-4 i18n completion; HC-5 dependabot config; HC-6 rides CI), each item with files/tests/acceptance/gates. Everything else is outside the sandbox's control:
+**The execution backlog has moved to the Production-Readiness Implementation Roadmap:** `docs/audits/FayaNMS-Production-Readiness-Implementation-Roadmap-2026-09-18.md` — Phase HC is the AUTHORABLE queue (~~HC-1 per-endpoint rate budgets~~ → ✅ LANDED (R53); HC-2 meta bootstrap split → NEXT (R54); HC-3 RequestContext removal; HC-4 i18n completion; HC-5 dependabot config; HC-6 rides CI), each item with files/tests/acceptance/gates. Everything else is outside the sandbox's control:
 
 ```text
 OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (green 4-job run on the release SHA)
@@ -13,6 +13,12 @@ R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (n
 ```
 
 The remediation authoring backlog remains EMPTY for the R34–R47, R50 and R51 programs; the R52 full end-to-end re-audit found zero P1/P2 and its single P3 (F-N1 auth ordering on the AI routes) + the hygiene set were remediated IN the R52 increment.
+
+---
+
+TASK-HC-1 — Per-endpoint rate budgets for high-cost surfaces (R53) ✊ → ✅ LANDED (2026-09-18, branch `z_ai_v2`)
+
+The carried CTRL-3 note is CLOSED: the AI LLM surfaces and the devices CSV import now draw their OWN tighter named budgets instead of the shared client-kind pools. NEW `resolveNamedRouteBudget()` in `src/lib/api/rate-gate.ts` — the HC-1 registry maps `/api/v1/ai/*` (prefix, trailing-slash anchored) → family `ai` at **10/min** and `/api/v1/devices/csv-import` (EXACT) → family `devices:csv-import` at **5/min**; everything else returns null → the documented 300 GET / 120 mutation budgets apply byte-for-byte unchanged. Family match is method-agnostic (the ceiling governs the whole family); a matching request draws from its OWN bucket (`${ip}:route:${family}`) so the shared pools are untouched by high-cost traffic. Wiring: the proxy (single pre-handler enforcement point, SAFE-002) passes `pathname` through — `takeRateSlot(clientKey, kind, Date.now(), pathname)`; legacy 2-arg/3-arg signatures unchanged (zero drift for every other caller); 429 envelope + `Retry-After` unchanged, now derived from the family's own window. Tests: 11 NEW pins in `tests/audit/rate-gate.test.ts` (budget literals, registry lookups incl. sibling-name/prefix discipline, ai 10→11th limited + csv 5→6th limited with sane Retry-After, named-bucket isolation from the shared pools, documented-default pin, proxy wiring source pin, TWO proxy end-to-end pins: 11 rapid unauth ai/query → exactly ten 401s + ONE 429 pre-auth pre-handler, and ai-exhaustion never throttles other routes). Gates in CI env shape: lint 0 · tsc FULL 0 · suite 894 → **905 pass / 18 skip / 0 fail** (4,979 expects, 52 files). LIVE wire: 10 × unauth POST ai/query → 401 ×10 (each consumes an ai slot pre-auth) → 11th **429 Too Many Requests, retry-after: 60, RATE_LIMITED envelope**; 5 × unauth POST csv-import → 401 ×5 → 6th **429**; WHILE the ai family was exhausted, GET /api/v1/meta → 200 and POST /api/v1/devices → 401 (normal calls unaffected, proven on the wire). Browser sanity over the modified proxy: sign-in → shell, authenticated devices API 200 with live data, 0 console errors. Screenshot: `agent-ctx/verify-r53-hc1-shell.png`. Evidence doc: `docs/audits/FayaNMS-R53-HC1-Rate-Budgets-2026-09-18.md`. Docs updated: both SAFE-002 mentions in the Windows deploy guide now carry the named budgets. Honest scope: per-process in-memory default (postgres shared store inherits named buckets via the same hit() interface when opted in); machine-plane service JWTs remain exempt (unchanged design); hardening gate, not an abuse-proof quota (unchanged posture). NEXT: HC-2 (R54) authenticated bootstrap split for /api/v1/meta.
 
 ---
 

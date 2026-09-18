@@ -95,9 +95,9 @@ Everything here is executable inside the sandbox with no external dependency, or
 
 | Phase | State |
 |---|---|
-| R52 (re-audit remediation) | ✅ LANDED — this increment |
-| HC-1 rate budgets | 🔜 NEXT (R53) |
-| HC-2 meta split | queued |
+| R52 (re-audit remediation) | ✅ LANDED |
+| HC-1 rate budgets | ✅ LANDED (R53) — evidence: `FayaNMS-R53-HC1-Rate-Budgets-2026-09-18.md` |
+| HC-2 meta split | 🔜 NEXT (R54) |
 | HC-3 RequestContext removal | queued |
 | HC-4 i18n completion | queued |
 | HC-5 dependabot config | queued |

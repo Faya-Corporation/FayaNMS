@@ -42,6 +42,15 @@
  *     (per-key advisory-lock-serialized transactions) so horizontally scaled
  *     instances draw from ONE budget; an unreachable store fails CLOSED
  *     (documented decision — it is the same DB the app already needs).
+ * HC-1 (per-endpoint rate budgets, R53): high-cost route families draw
+ * from their OWN tighter named budget instead of the shared client-kind
+ * pool — `resolveNamedRouteBudget(pathname)` maps a route family to its
+ * budget (family match, method-agnostic: the named ceiling applies to the
+ * whole family, so cheap traffic cannot ride a family it does not belong
+ * to). Unknown routes keep the documented client-kind budgets unchanged.
+ * The proxy (src/proxy.ts) passes the request pathname through to
+ * takeRateSlot — the single enforcement point stays pre-handler.
+ *
  * This remains a hardening gate, not an abuse-proof quota.
  */
 
@@ -53,6 +62,36 @@ export const RATE_WINDOW_MS = 60_000;
 export const RATE_LIMIT_GET = 300;
 export const RATE_LIMIT_MUTATION = 120;
 export const MAX_RATE_BUCKETS = 5_000;
+
+// HC-1 named per-endpoint budgets — the high-cost surfaces (LLM round-
+// trips, CSV import) are orders of magnitude costlier than an average
+// mutation and get their own tighter ceiling per client per minute.
+export const RATE_LIMIT_AI = 10;
+export const RATE_LIMIT_CSV_IMPORT = 5;
+
+/** A named route-family budget (HC-1): bucket suffix + ceiling. */
+export interface NamedRouteBudget {
+  family: string;
+  limit: number;
+}
+
+/**
+ * HC-1 named-budget registry. Family match on the /api/v1 pathname,
+ * method-agnostic (the ceiling governs the whole family). Unknown routes
+ * return null → the documented client-kind budgets apply unchanged.
+ * Prefix matches ALWAYS include the trailing slash so sibling names can
+ * never collide (e.g. /api/v1/aiques is not an ai route).
+ */
+export function resolveNamedRouteBudget(pathname: string): NamedRouteBudget | null {
+  if (pathname.startsWith("/api/v1/ai/")) {
+    return { family: "ai", limit: RATE_LIMIT_AI };
+  }
+  if (pathname === "/api/v1/devices/csv-import") {
+    return { family: "devices:csv-import", limit: RATE_LIMIT_CSV_IMPORT };
+  }
+  return null;
+}
+
 const MAX_KEY_TOKEN_LENGTH = 64;
 const KEY_TOKEN_PATTERN = /^[0-9A-Za-z:.[\]\-_]+$/;
 
@@ -121,19 +160,25 @@ export interface RateDecision {
 }
 
 /**
- * Consume one slot for `${ip}:${kind}` against the ACTIVE store (in-memory
- * default; PostgreSQL when FAYANMS_RATE_STORE=postgres — see rate-store.ts).
- * Returns the retry window when the budget for the current sliding window is
- * exhausted. `nowMs` is injectable for deterministic tests; production
- * callers omit it (Date.now()).
+ * Consume one slot against the ACTIVE store (in-memory default; PostgreSQL
+ * when FAYANMS_RATE_STORE=postgres — see rate-store.ts). Default bucket is
+ * `${ip}:${kind}` with the client-kind budget; when `pathname` matches an
+ * HC-1 named route family the slot is drawn from the family's OWN tighter
+ * bucket (`${ip}:route:${family}`) instead — the shared pools are untouched
+ * by high-cost traffic. Returns the retry window when the budget for the
+ * current sliding window is exhausted. `nowMs` is injectable for
+ * deterministic tests; production callers omit it (Date.now()).
  */
 export async function takeRateSlot(
   ip: string,
   kind: RateKind,
-  nowMs: number = Date.now()
+  nowMs: number = Date.now(),
+  pathname?: string
 ): Promise<RateDecision> {
-  const limit = kind === "get" ? RATE_LIMIT_GET : RATE_LIMIT_MUTATION;
-  const hit = await getRateStore().hit(`${ip}:${kind}`, limit, RATE_WINDOW_MS, nowMs);
+  const named = pathname !== undefined ? resolveNamedRouteBudget(pathname) : null;
+  const key = named ? `${ip}:route:${named.family}` : `${ip}:${kind}`;
+  const limit = named ? named.limit : kind === "get" ? RATE_LIMIT_GET : RATE_LIMIT_MUTATION;
+  const hit = await getRateStore().hit(key, limit, RATE_WINDOW_MS, nowMs);
   return { limited: !hit.allowed, retryAfterSec: hit.retryAfterSec };
 }
 
