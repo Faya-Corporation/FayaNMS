@@ -103,5 +103,6 @@ Everything here is executable inside the sandbox with no external dependency, or
 | HC-5 dependabot config | ✅ LANDED (R57) — evidence: `FayaNMS-R57-HC5-Dependabot-Config-2026-09-18.md` |
 | HC-6 real-CI release gate | blocked → OWNER-CI-001 (Phase HC authorable queue now EMPTY: HC-1..HC-5 all LANDED) |
 | Phase HC completion report (R58 sweep) | ✅ R58 — `FayaNMS-Phase-HC-Completion-Report-2026-09-18.md` (gates + wire contracts + journeys re-verified on release SHA 5d71466) |
+| Operator hand-off release notes (R59) | ✅ R59 — `FayaNMS-Operator-Handoff-Release-Notes-2026-09-18.md` (single entry point for the operator runbook: OWNER-CI-001 → HC-6, OWNER-GOV-001, LAB, merge + final re-audit) |
 | OWNER-CI-001 / OWNER-GOV-001 | external, config ready |
 | LAB R50-T090..T092 + CERT-HW-001-A | external, Step 0 ready (`demo:fleet`) |

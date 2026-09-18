@@ -3373,3 +3373,16 @@ Stage Summary:
 Stage Summary:
 - Phase HC declared COMPLETE with re-verification on release SHA 5d71466: +49 pins (894→943), five commits 329f0f8..5d71466, zero deferrals.
 - Remaining go-live path is exclusively operator-side: OWNER-CI-001 → HC-6, OWNER-GOV-001, LAB certification; fresh independent re-audit stays the final gate.
+
+---
+
+## R59 — Operator hand-off release notes (2026-09-18)
+
+- Quantified the branch vs origin/main: 28 commits ahead, 179 files, +12,513/−1,875, HEAD 9274be7; no prior handoff/release-notes doc existed.
+- Gathered exact operator pointers: OWNER-CI-001 (hosted runners or self-hosted ≥8 GB → HC-6 four-job green run + run URL + README badge flip), OWNER-GOV-001 (ruleset from TASK-GOV-001-A: PR + ≥1 approval + CODEOWNERS + conversation resolution + required checks + no force-push/deletion + API read-back), LAB (Step 0 PUBLIC-DEMO-DEVICES.md + demo:fleet → per-vendor certification → matrix), merge path (protected PR z_ai_v2→main → fresh independent re-audit).
+- NEW docs/audits/FayaNMS-Operator-Handoff-Release-Notes-2026-09-18.md: TL;DR, thematic changelog (R50 hardening, deploy/supply-chain, audits, HC-1..HC-5 table), proven-vs-not-proven split, 4-step runbook, evidence index, known honest limitations (build:gate OOM, dependabot dormant, i18n survivors + 32-view ledger, Arabic native sign-off in LAB, runner-blocked CI executions, no-Docker TLS smoke).
+- Roadmap ledger row + NEXT-TASKS TASK-OPERATOR-HANDOFF block + this worklog + orchestrator worklog. No code changes; committed + pushed; db/, .env, PAT never staged.
+
+Stage Summary:
+- The operator now has ONE document to run the endgame: docs/audits/FayaNMS-Operator-Handoff-Release-Notes-2026-09-18.md.
+- In-sandbox program fully closed (R50→R59); remaining path is exclusively the operator runbook.
