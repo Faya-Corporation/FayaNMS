@@ -3358,3 +3358,18 @@ Stage Summary:
 Stage Summary:
 - HC-5 LANDED: dependabot config merged + machine-pinned; suite 935 → 943; honest scope — execution validity is GitHub-side and proves out when OWNER-CI-001 closes.
 - **Phase HC authorable queue COMPLETE (HC-1..HC-5 all LANDED)**; the only remaining roadmap item is HC-6, which rides OWNER-CI-001 (external).
+
+---
+
+## R58 — Phase HC program sweep + completion report (2026-09-18)
+
+- Pre-flight clean (z_ai_v2 @ 5d71466 = origin, tree 0 changes, app 200/meta 200). Memory check: ~2.0 Gi available → build:gate stays honestly OOM-caveated (HC-6 closes it).
+- Gates re-run in CI env shape on the release SHA: lint 0 · tsc FULL 0 · suite 943/18/0 (7,998 expects, 56 files) — reproduces exactly.
+- LIVE wire contracts re-proven: unauth meta 200 without users key (HC-2); unauth meta/users 401; unauth devices POST 401 UNAUTHENTICATED pre-lookup (F-N1); authed meta/users 200 (5 users); authed devices 200, X-Request-Id === meta.requestId (HC-3); HC-1 live re-demo — 12× authed POST /api/v1/ai/query → exactly 10× 400 INVALID_BODY then 2× 429 RATE_LIMITED (11th–12th), pinned semantics hold end-to-end.
+- Browser journeys, 0 console/page errors: EN login (Amal Al-Sabri) → shell → devices; language switch → dir=rtl/lang=ar, devices opened via command palette (الأجهزة الشبكة), chrome verified in DOM (استيراد CSV / جميع الحالات / الأجهزة); logout (تسجيل الخروج) → back at sign-in gate. Screenshot: agent-ctx/verify-r57-hc5-sweep-devices-ar.png.
+- Ledger completeness: all five Phase HC evidence docs present (R53..R57); roadmap ledger consistent; go-live checklist re-assessed (item 1 MET; 2–4 operator-side; 5 intentionally left open as pre-go-live gate).
+- NEW docs/audits/FayaNMS-Phase-HC-Completion-Report-2026-09-18.md (program table, sweep results, checklist assessment, honest scope, verdict) + roadmap ledger row + NEXT-TASKS TASK-PHASE-HC-COMPLETE block + this worklog + orchestrator worklog. Committed and pushed; db/, .env, PAT never staged.
+
+Stage Summary:
+- Phase HC declared COMPLETE with re-verification on release SHA 5d71466: +49 pins (894→943), five commits 329f0f8..5d71466, zero deferrals.
+- Remaining go-live path is exclusively operator-side: OWNER-CI-001 → HC-6, OWNER-GOV-001, LAB certification; fresh independent re-audit stays the final gate.
