@@ -3435,3 +3435,19 @@ Stage Summary:
 Stage Summary:
 - P1 count: 2 → 0. All four review findings (2 P0 + 2 P1) are now closed with machine-pinned proofs; suite 894 → 963 over the program.
 - Next: R63 — INFO hygiene (handoff doc refresh + ci.yml workflow_dispatch trigger for the reviewer's runbook-ordering point + dependabot activation caveat).
+
+---
+
+## R63 — CI trigger correction + hand-off refresh (2026-09-19)
+
+- ci.yml: workflow_dispatch trigger ADDED (with inline rationale) — the reviewer was right that the old HC-6 step ("push a no-op docs commit") could never run: the workflow fires on push-to-main/pull_request only. Corrected paths: manual dispatch OR the candidate PR. Verified the current trigger block is well-formed (branches: [main]; the historical "corrupted branches:" mention lives only in the header history comment; PyYAML one-off: all three triggers present).
+- Hand-off release notes refreshed: ledger-deferred live numbers (drift-proof), the 2026-09-19 re-verification episode recorded (2 P0 + 2 P1 → remediated in R61/R62), changelog extended through R62, corrected HC-6 ordering, BOTH Dependabot activation caveats (default-branch activation at/after merge; separate update-job capacity), runner-memory nuance (hosted 8 GB exactly vs self-hosted headroom).
+- Roadmap HC-6 step text corrected identically; the old push instruction machine-pinned as GONE.
+- Tests: NEW tests/audit/r63-ci-trigger-and-handoff.test.ts (4 pins). Debug journey (honest): two pin-string failures fixed (history-comment `branches:` mention; indentation in the caveat text).
+- Gates in CI env shape: lint clean · tsc FULL 0 · suite 963 → 967 pass / 18 skip / 0 fail (8,214 expects, 60 files).
+- Ops note (honest): the Next.js dev process was found DOWN after the heavy test runs (OOM-prone sandbox); restarted it — worker mini-service stayed up throughout (claim/tick 200s in dev.log). LIVE: app 200 · meta 200.
+- Appended: evidence doc R63-CI-Trigger-and-Handoff-Corrections, roadmap row, NEXT-TASKS block, worklogs. Committed + pushed; db/, .env, PAT never staged.
+
+Stage Summary:
+- All authorable findings from the independent re-verification are closed: 2 P0 (R61) + 2 P1 (R62) + process/INFO points (R63). Suite 894 → 967 over the program.
+- The corrected go-live path: OWNER-CI-001 → HC-6 via dispatch/PR → OWNER-GOV-001 → LAB → protected merge → fresh independent re-audit.

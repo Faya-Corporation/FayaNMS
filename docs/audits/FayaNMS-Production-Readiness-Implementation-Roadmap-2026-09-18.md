@@ -66,7 +66,7 @@ Everything here is executable inside the sandbox with no external dependency, or
 ### HC-6 — Release gate on real CI (post OWNER-CI-001)
 
 - **Why:** the gate battery has been run in the CI env shape locally since R50.8, but the CI-001 signature (no runner capacity since run #34) means no REMOTE run has ever executed the 4-job workflow end-to-end.
-- **Steps:** the moment runner capacity exists → push a no-op docs commit → verify all 4 jobs green (gate incl. `build:gate`, e2e, browser incl. the D/B journeys, scan incl. dual-lockfile osv + image SBOM) → record the run URL in NEXT-TASKS → flip README CI badge from "runner-blocked" honesty note to the live status.
+- **Steps:** the moment runner capacity exists → trigger the full 4-job battery via **`workflow_dispatch`** (added R63) or by opening the candidate PR (pull_request triggers all four jobs; a push to `z_ai_v2` alone runs NOTHING) → verify all 4 jobs green (gate incl. `build:gate`, e2e, browser incl. the D/B journeys, scan incl. dual-lockfile osv + image SBOM) → record the run URL in NEXT-TASKS → flip README CI badge from "runner-blocked" honesty note to the live status.
 - **Acceptance:** a green full-workflow run on the release SHA; `build:gate` evidence no longer OOM-caveated.
 - **Depends on:** OWNER-CI-001 (external).
 
@@ -105,5 +105,8 @@ Everything here is executable inside the sandbox with no external dependency, or
 | Phase HC completion report (R58 sweep) | ✅ R58 — `FayaNMS-Phase-HC-Completion-Report-2026-09-18.md` (gates + wire contracts + journeys re-verified on release SHA 5d71466) |
 | Operator hand-off release notes (R59) | ✅ R59 — `FayaNMS-Operator-Handoff-Release-Notes-2026-09-18.md` (single entry point for the operator runbook: OWNER-CI-001 → HC-6, OWNER-GOV-001, LAB, merge + final re-audit) |
 | R52 INFO polish notes (R60) | ✅ R60 — `FayaNMS-R60-Info-Polish-Zero-2026-09-18.md` (remaining 3 of 4 INFO notes closed: ci.yml postgres digest-pinned ×3, gitignore path explicit, README Bun floor 1.3.14; INFO list now EMPTY — audit trail carries zero open notes of any severity) |
+| R61 P0 remediations (re-verification) | ✅ R61 — `FayaNMS-R61-P0-SSH-First-Contact-and-IPv6-Canonicalization-2026-09-19.md` (credential-free SSH first contact — zero vault, zero auth, protocol-proven via a persona auth-attempt counter; canonicalization-safe IPv6 in both target-policy copies; suite 947 → 954) |
+| R62 P1 remediations (re-verification) | ✅ R62 — `FayaNMS-R62-P1-Service-Scoping-and-Read-RBAC-2026-09-19.md` (service-JWT surface isolation at the proxy; credentials GET admin-gated; snapshot texts config.download-gated with decrypt only on the privileged path; suite 954 → 963) |
+| R63 CI trigger + hand-off corrections | ✅ R63 — `FayaNMS-R63-CI-Trigger-and-Handoff-Corrections-2026-09-19.md` (workflow_dispatch added — the corrected HC-6 execution path; hand-off notes refreshed: ledger-deferred numbers, Dependabot default-branch activation caveat, corrected runbook ordering; suite 963 → 967) |
 | OWNER-CI-001 / OWNER-GOV-001 | external, config ready |
 | LAB R50-T090..T092 + CERT-HW-001-A | external, Step 0 ready (`demo:fleet`) |

@@ -66,6 +66,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # R63 — manual runs: the workflow triggers on push-to-main and PRs only,
+  # so the HC-6 release gate could not execute on the z_ai_v2 integration
+  # branch without opening the merge PR first. workflow_dispatch lets the
+  # operator run the full 4-job battery on any branch SHA from the Actions
+  # tab the moment runner capacity exists (OWNER-CI-001 → HC-6).
+  workflow_dispatch:
 
 jobs:
   gate:
