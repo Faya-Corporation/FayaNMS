@@ -41,14 +41,34 @@ export function resetServiceTokenCache(): void {
 /**
  * Read an env value from process.env first, then the repo-root .env, with
  * dotenv-style quote tolerance and escaped-\n PEM support.
+ *
+ * R64 hermeticity hardening (mirrors control-auth.ts): an EXPLICIT EMPTY
+ * process.env value is authoritative — it SUPPRESSES the .env-file
+ * fallback and reads as "unconfigured". Without this, the sandbox dev
+ * .env's key material leaks into the unit gate's in-process mint/verify
+ * round trips (false failures on a green tree); CI has no .env and was
+ * always immune. See tests/audit/r64-gate-hermeticity.test.ts.
+ *
+ * R64 (completion): the fallback FILE is knob-controlled via
+ * FAYANMS_SERVICE_ENV_FILE — an EXPLICIT EMPTY value disables the file
+ * fallback entirely (the gate env pins it empty so tests that DELETE a
+ * service variable stay unconfigured even with a dev .env on disk).
  */
 function readRootEnvValue(key: string): string | null {
   const fromProcess = process.env[key];
-  if (typeof fromProcess === "string" && fromProcess.trim()) {
-    return fromProcess.trim();
+  if (typeof fromProcess === "string") {
+    const trimmed = fromProcess.trim();
+    return trimmed ? trimmed : null; // explicit empty = deliberate unset
+  }
+  const envFile = process.env.FAYANMS_SERVICE_ENV_FILE;
+  if (typeof envFile === "string" && !envFile.trim()) {
+    return null; // explicit empty knob = fully hermetic, no file fallback
   }
   try {
-    const envPath = join(import.meta.dir, "..", "..", ".env");
+    const envPath =
+      envFile && envFile.trim()
+        ? envFile.trim()
+        : join(import.meta.dir, "..", "..", ".env");
     const text = readFileSync(envPath, "utf8");
     for (const line of text.split("\n")) {
       const match = new RegExp(`^${key}=(.+)$`).exec(line.trim());

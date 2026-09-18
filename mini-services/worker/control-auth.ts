@@ -60,14 +60,39 @@ export interface ControlVerifyResult {
  * Read an env value from process.env first, then the repo-root .env, with
  * dotenv-style quote tolerance and escaped-\n PEM support. Exported for
  * identity-boot.ts (TASK-SVC-001-A worker startup validation).
+ *
+ * R64 hermeticity hardening: an EXPLICIT EMPTY process.env value is
+ * authoritative — it SUPPRESSES the .env-file fallback and reads as
+ * "unconfigured". The file fallback exists for processes that never had
+ * the variable at all (the live worker convenience); a process that sets
+ * the variable to "" has deliberately opted out (the unit gate pins its
+ * green state in exactly this CI-shaped topology, where the sandbox dev
+ * .env must not leak key material into in-process mint/verify round
+ * trips — see tests/audit/r64-gate-hermeticity.test.ts).
+ *
+ * R64 (completion): the fallback FILE itself is knob-controlled via
+ * FAYANMS_SERVICE_ENV_FILE — unset/blank-named falls back to the repo-root
+ * .env exactly as before, a non-empty value names a different file, and an
+ * EXPLICIT EMPTY value disables the file fallback entirely. The gate env
+ * pins it empty: tests that DELETE a service variable (withServiceEnv
+ * semantics: "this process has no such config") must not have dev .env
+ * material re-supplied behind their backs.
  */
 export function readRootEnvValue(key: string): string | null {
   const fromProcess = process.env[key];
-  if (typeof fromProcess === "string" && fromProcess.trim()) {
-    return fromProcess.trim();
+  if (typeof fromProcess === "string") {
+    const trimmed = fromProcess.trim();
+    return trimmed ? trimmed : null; // explicit empty = deliberate unset
+  }
+  const envFile = process.env.FAYANMS_SERVICE_ENV_FILE;
+  if (typeof envFile === "string" && !envFile.trim()) {
+    return null; // explicit empty knob = fully hermetic, no file fallback
   }
   try {
-    const envPath = join(import.meta.dir, "..", "..", ".env");
+    const envPath =
+      envFile && envFile.trim()
+        ? envFile.trim()
+        : join(import.meta.dir, "..", "..", ".env");
     const text = readFileSync(envPath, "utf8");
     for (const line of text.split("\n")) {
       const match = new RegExp(`^${key}=(.+)$`).exec(line.trim());

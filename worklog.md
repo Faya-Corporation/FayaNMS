@@ -3451,3 +3451,22 @@ Stage Summary:
 Stage Summary:
 - All authorable findings from the independent re-verification are closed: 2 P0 (R61) + 2 P1 (R62) + process/INFO points (R63). Suite 894 → 967 over the program.
 - The corrected go-live path: OWNER-CI-001 → HC-6 via dispatch/PR → OWNER-GOV-001 → LAB → protected merge → fresh independent re-audit.
+
+---
+Task ID: R64
+Agent: Z.ai Code (orchestrator, single-session)
+Task: Independently RE-EXECUTE the R61–R63 gate verification from a cold shell (per the 2026-09-19 review's standard), investigate a 29-failure divergence from the recorded green state, remediate the root cause, re-pin, gates + LIVE, append, commit + push.
+
+Work Log:
+- Cold-shell re-execution diverged: 938/18/29 fail (bare), 938/18/29 (dev backup), 949/18/18 (CI shape), then 967/18/0 EXACT with the root .env stashed (true CI topology) — the R63 record is real; the drift was environmental.
+- Forensics: the dev .env was regenerated 22:57:14 (after R62 22:51:31, before R63's 22:58:40 commit) with a fresh EdDSA pair whose PUBLIC_KEYS omits its own public half (byte-verified); bun auto-load + the worker readers' .env-file fallback (control-auth.ts + duplicate in service-token.ts) leaked it into in-process mint/verify; tests that DELETE vars (withServiceEnv) got material re-supplied by the file channel.
+- Hardening in both reader copies: explicit-empty process.env = authoritative unset; NEW FAYANMS_SERVICE_ENV_FILE knob (unset ⇒ root .env as before, non-empty ⇒ named fixture, explicit empty ⇒ fallback disabled). Production topologies untouched (non-empty process values / unset+file fallback behavior preserved); CI immune by construction.
+- Canonical gate env documented: ci.yml's five values + three knobs pinned empty — suite green WITH .env present, no stash dance; the three knobs are a set (knob 2 alone leaves the auto-load channel open — caught and documented during verification).
+- NEW tests/audit/r64-gate-hermeticity.test.ts (5 pins A–E); one wrong premise fixed during verification (Bun.writeSync → node:fs writeFileSync).
+- Gates: lint 0 · tsc 0 · suite 967 → 972/18/0 (8,231 expects, 61 files). LIVE: app/meta 200; worker :3030 401 WORKER_UNAUTHENTICATED fail-closed.
+- Source-level invariants re-verified at all four fix sites (P0-1 zero-cred capture + enrollment-before-vault; P0-2 group-math both copies; P1-1 isMachineSurface hard-401 pre-rate-gate; P1-2 admin.credential + config.read/config.download gating) — not trusted from the ledger.
+- Appended evidence doc + roadmap row + NEXT-TASKS block + both worklogs; committed + pushed (db/, .env, PAT never staged).
+
+Stage Summary:
+- R61–R63 verification claims are now independently re-executed and hold; the suite is hermetic against dev-.env drift.
+- Authorable queue EMPTY; operator path unchanged (capacity → dispatch/candidate PR → protect main → hardware cert → merge → final independent audit).
