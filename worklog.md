@@ -3245,3 +3245,22 @@ Work Log:
 Stage Summary:
 - R52 LANDED on z_ai_v2: full end-to-end re-audit PASS (zero P1/P2), F-N1 + full hygiene set remediated with 10 new regression pins; suite 894/18/0; AI plane live-verified end-to-end; dependency surface shrunk.
 - The production-readiness path is now codified: Phase HC (authorable, HC-1 next) + OWNER-CI-001/GOV-001 (config ready) + LAB cert (Step 0 ready) + go-live definition.
+
+---
+Task ID: R52-VERIFICATION
+Agent: Z.ai orchestrator (main session)
+Task: Independent verification of the R52 increment (commit d5ebdab) — re-derive every remediation claim from the tree, reproduce all gates in the CI env shape, prove the F-N1 auth-ordering fix behaviorally on the live stack, append the verification record.
+
+Work Log:
+- Read phase: upload/ empty (no new task file; standing instruction governs); HEAD advanced to d5ebdab (R52 audit+remediation, pushed) on top of 1c6ab0c; stack healthy (app 200 / worker ok / PG up).
+- Static re-derivation (no reliance on increment prose): F-N1 hoisting verified on all three AI routes — assist :71 actor → :86 buildDeviceContext; change-draft :173 → :179 db.device.findMany; rca-draft :118 → :123 db.incident.findUnique; ai/query POST-slice ordering held (actor rel :18 → db.site.findMany rel :25); exactly-once resolveActingUser per route.
+- Hygiene re-derivation: F-N2 comments ([...nextauth]/route.ts:11 → src/proxy.ts; meta/route.ts:21-22 → alert assign/suppress picker); H1 credentials-view.tsx absent + view-router.tsx:7 mounts AdminCredentialsView only; H2 nine packages absent from BOTH dep blocks, socket.io pair at package.json:94-95 devDeps only, zero source imports of removed deps, bun.lock regenerated; H3 schema.prisma:1121 failures Json is the single non-comment Json column + :16 SINGLE SANCTIONED EXCEPTION note.
+- Pin suite inspected: tests/audit/r52-auth-ordering.test.ts = exactly 10 test blocks (3 hoisting + exactly-once + ai/query regression + dead-view + 2 dep-surface + 2 schema-discipline).
+- Gates in CI env shape (.env + worker/.env stashed → battery → restored): lint 0, tsc --noEmit FULL 0, bun test → 894 pass / 18 skip / 0 fail, 4,800 expects, 52 files (4.37 s) — EXACT match with the R52 claim.
+- Live wire proof (deployed stack): unauth POST × {assist, change-draft, rca-draft} with a NONEXISTENT device id → 401 UNAUTHENTICATED on all three (the 404-vs-401 existence oracle is CLOSED); browser-signed admin session: authed assist + nonexistent device → 404 DEVICE_NOT_FOUND; authed rca-draft + nonexistent incident → 404 INCIDENT_NOT_FOUND (bonus zod 400 INVALID_BODY on the wrong shape); authed assist + REAL device dev-br1-edge-rtr-01 → 200 full LLM answer citing live state ("CPU utilization at 39.2%", correlationId AI-Z9K8NC, contextSummary.alertsConsidered=1).
+- Browser hygiene: 31 devices listed, 0 console errors, mobile 390×844 no h-scroll (scrollWidth==clientWidth). Screenshots: agent-ctx/verify-r52ver-ai-assist-200.png, agent-ctx/verify-r52ver-mobile-390.png. Stack after teardown: app 200, worker /health ok (305 jobs, 0 failed), meta live.
+- Appended: docs/audits/FayaNMS-d5ebdab-R52-Verification-2026-09-18.md (new report), NEXT-TASKS.md TASK-R52-VERIFICATION LANDED block + header "R52 verified", this worklog + orchestrator worklog. Committed and pushed to origin/z_ai_v2; db/, .env planes, PAT never staged.
+
+Stage Summary:
+- R52 increment (d5ebdab) INDEPENDENTLY VERIFIED PASS — every gate number reproduces exactly (894/18/0, 4,800 expects, 52 files), every remediation claim re-derives at file:line precision, and F-N1 auth ordering is proven behaviorally in both directions (unauth 401 pre-lookup; authed post-auth lookup with a real-LLM positive path).
+- Chain of custody for the R50→R51→R52 program is now: audit → remediation → independent verification, all landed and pushed; the forward path remains the Phase HC queue (HC-1 per-endpoint rate budgets next) + owner-side blockers (OWNER-CI-001, OWNER-GOV-001) + lab certification.
