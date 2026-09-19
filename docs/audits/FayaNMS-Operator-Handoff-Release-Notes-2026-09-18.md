@@ -13,8 +13,9 @@ honestly NOT proven, and the exact remaining steps to go-live.
   the roadmap ledger and NEXT-TASKS — treat the LEDGER as the live numbers,
   not this snapshot.
 - The in-repo verification battery is green at HEAD: **lint 0 · tsc FULL 0 ·
-  suite 963 pass / 18 skip / 0 fail** (8,198 expects, 59 files — +59 audit
-  pins over the program, including the R61/R62 remediations below).
+  suite 986 pass / 18 skip / 0 fail** (8,306 expects, 63 files — the R61–R67
+  remediation + operator-path rounds all included; gates independently
+  re-executed per the standing standard in R64 and R65).
 - The independent production re-audit verdict is **PASS with zero open
   P1/P2/P3 findings**. (An independent re-verification of this hand-off's
   earlier snapshot on 2026-09-19 found **2 P0 + 2 P1 authorable findings** —
@@ -22,9 +23,11 @@ honestly NOT proven, and the exact remaining steps to go-live.
   JWT proxy bypass, unguarded sensitive reads. ALL FOUR are remediated and
   machine-pinned in R61/R62 on this branch; the reviewer's CI/trigger and
   Dependabot-activation points are folded into the runbook below.)
-- The authorable backlog is **EMPTY**. Go-live is blocked only by three
-  **operator-side actions** (§4): enable CI runners → execute HC-6; enable `main`
-  protection; certify real devices. Then one final fresh independent re-audit.
+- The authorable backlog is **EMPTY**. Go-live is blocked only by FOUR
+  **operator-side actions** (§4): enable CI runners → execute HC-6; **upgrade
+  the GitHub plan — R67 LIVE discovery: Free-plan private repos cannot enable
+  branch protection at all**; enable `main` protection; certify real devices.
+  Then one final fresh independent re-audit.
 
 ---
 
@@ -66,6 +69,11 @@ verified; R58 program sweep re-verified everything at the release SHA.
 | R52 INFO polish zeroed (R60) | `38c93f1` | ci.yml postgres digest-pinned ×3; gitignore path; README Bun floor 1.3.14 — INFO list EMPTY |
 | **P0 remediations (R61)** | `5ba5080` | credential-free SSH first contact (zero vault, zero auth — proven against a real SSH persona via a server-side auth-attempt counter) + canonicalization-safe IPv6 in BOTH target-policy copies |
 | **P1 remediations (R62)** | `75b0479` | service-JWT surface isolation at the proxy (machine surface only; human paths → hard 401) + sensitive read RBAC (credentials GET admin-gated; snapshot texts config.download-gated, decrypt only on the privileged path) |
+| R63 CI trigger + hand-off corrections | `b6bf443` | `workflow_dispatch` added (the old no-op-push HC-6 step could never fire); this document refreshed; two Dependabot activation caveats recorded |
+| R64 gate re-execution + hermeticity | `7cb6be4` | R61–R63 gates re-executed from a cold shell (exact reproduction); unit-gate hermeticity defect found + fixed (dev `.env` leak via bun auto-load + file fallback; 3-knob gate env contract) |
+| R65 dispatch path executed | `0d28a34` | `workflow_dispatch` EXECUTED end-to-end for the first time (run `35406875963` → gate 0-steps infra failure — trigger proven, capacity still the blocker); resume-summary drift caught again |
+| R66 required-checks shape + merge pre-flight | `d6c61da` | governance defect fixed (7 operation docs carried 2/3-check required-checks sets → ALL FOUR; under-protection would let e2e/browser failures merge); `merge-tree --write-tree` exit 0 — the protective merge is CLEAN |
+| R67 executable GOV read-back + PLAN GATE | `13a8fcf` | `scripts/gov-verify.ts` (live dual-mechanism read-back, typed exits); **LIVE discovery: GitHub Free plan-gates branch protection (403 "Upgrade to GitHub Pro…")** — runbook step 0 added; CODEOWNERS header aligned; paste-ready candidate PR package authored |
 
 ---
 
@@ -74,7 +82,15 @@ verified; R58 program sweep re-verified everything at the release SHA.
 **Proven in this sandbox (live app + CI-shaped env):** full lint/type/test
 battery; envelope + rate-limit + auth-ordering wire contracts; meta split
 contracts; EN/AR-RTL browser journeys; assign-to-picker e2e; mobile-390 layout;
-YAML config hygiene. Every claim has an evidence document (§5).
+YAML config hygiene. Every claim has an evidence document (§5). R68: the
+golden-path browser journey (sign-in → shell → devices EN/AR-RTL → sign-out
+gate, zero console/page errors) was RE-EXECUTED live against the running app.
+NOTE (R68): the full e2e/browser HARNESS suite additionally requires (a) the
+`.next/standalone` production-build artifact — absent in the current tree; a
+rebuild trips the ≥8 GB OOM caveat below — and (b) free ports (the harness
+worker collides with the session worker's :3030 — EADDRINUSE). Both
+preconditions are operator-side/LAB-side; the agent-browser live journey is
+the in-sandbox equivalent and stays green.
 
 **NOT provable here — activates operator-side:**
 - **Remote CI run:** `ci.yml` (4 jobs: gate incl. `build:gate`, e2e, browser,
@@ -83,6 +99,10 @@ YAML config hygiene. Every claim has an evidence document (§5).
   2026-09-19 re-verification): the workflow triggers on **push-to-main,
   pull_request, and `workflow_dispatch`** — a push to `z_ai_v2` alone runs
   NOTHING. HC-6 is executed via the manual dispatch run or the candidate PR.
+  R65–R68: the dispatch path was EXECUTED three times (runs `35406875963` @
+  `7cb6be4`, `35408254887` @ `0d28a34`, `35411315267` @ `13a8fcf`) — each
+  accepted (204), correctly bound, then gate-failed with **0 steps** (the
+  known infra signature): trigger PROVEN, capacity still absent.
 - **`build:gate` (production build):** needs ≥8 GB RAM; sandbox has ~2 Gi — the
   OOM caveat stands and is closed only by HC-6 on real runners. Standard
   hosted `ubuntu-latest` documents 8 GB exactly — a self-hosted runner gives

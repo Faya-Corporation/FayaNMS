@@ -3525,3 +3525,20 @@ Work Log:
 
 Stage Summary:
 - GOV-001-A acceptance is now an executable, live-verified fail-closed gate; the operator path carries TWO honest settings/billing-side prerequisites (runner capacity AND plan level) and a paste-ready PR package. Authorable backlog EMPTY.
+
+---
+
+Task ID: R68
+Agent: Z.ai Code (orchestrator, single-session)
+Task: Standing-standard re-execution for the UI layer (golden-path browser journey) + HC-6 probe #3 + hand-off numbers refresh; gates + LIVE + append + push.
+
+Work Log:
+- HC-6 probe #3: dispatch 204 → run 35411315267 @ 13a8fcf → gate failure 0 steps (browser/scan/e2e skipped 0 steps) — identical infra signature; three dispatches across three SHAs now prove the trigger path and isolate capacity as the sole blocker.
+- Browser HARNESS suite attempt: fails at HARNESS BOOT both with the 3-knob gate env and bare env (knobs ruled out). Root causes verified from /tmp/fayanms-e2e-*.log: (1) .next/standalone/server.js absent (no BUILD_ID — tree never production-built; harness app dies with Module-not-found, readiness times out 120 s) — a rebuild trips the ≥8 GB OOM caveat (4 Gi total / ~1.6 Gi available with the session stack up) and was deliberately NOT attempted; (2) harness worker EADDRINUSE :3030 (session worker owns the port). Environmental preconditions, not regressions — UI code unchanged since the R47–R58 green runs. Recorded honestly in the hand-off §3.
+- SUBSTITUTE re-execution: agent-browser golden path vs the RUNNING app, zero console/page errors end-to-end: sign-in render → admin demo → full shell → Devices EN (Inventory + 5 filters + Import CSV) → العربية (dir=rtl, lang=ar, h1 الأجهزة, ZERO horizontal scroll, chrome genuinely localized incl. تغيير اللغة — live confirmation of the R56 pins) → back to EN (ltr/en/Devices) → sign out → gate restored. Screenshots: agent-ctx/verify-r68-devices-{ar-rtl,en}.png (gitignored scratch).
+- Hand-off refreshed to R68 truth: TL;DR suite 963→986/18/0 (8,306 expects, 63 files); operator blockers 3→4 (plan upgrade named per R67 discovery); §2 changelog rows R63–R67 added with SHAs; §3 dispatch triple-probe + golden-path re-execution + harness preconditions. README CI-badge alt retired its pre-R47 "gate + scan" wording (now all four jobs + honest activation condition).
+- Gates: lint 0 · tsc 0 · suite 986/18/0. LIVE: app/meta 200 · worker /health 200 · unauth 401 fail-closed.
+- Evidence doc + roadmap row + NEXT-TASKS probe note + both worklogs; commit + push (db/, .env, PAT never staged).
+
+Stage Summary:
+- Every layer of the standing standard freshly re-executed this round: unit suite, UI golden path, wire contracts, remote trigger path. Authorable backlog EMPTY; operator prerequisites unchanged (capacity, plan, LAB) with all in-repo preparation waiting.

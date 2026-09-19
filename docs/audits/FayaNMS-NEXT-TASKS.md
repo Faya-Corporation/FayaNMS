@@ -16,6 +16,8 @@ OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (gree
   R66 UPDATE: second dispatch probe (run `35408254887` @ `0d28a34`) reproduced the same 0-steps
   signature — capacity still absent. Merge pre-flight: `git merge-tree --write-tree` exit 0 — the
   candidate PR will land CLEAN (35 commits, 198 files, +14,738/−1,973).
+  R68 UPDATE: probe #3 (run `35411315267` @ `13a8fcf`) — same 0-steps signature. Three dispatches
+  across three SHAs: trigger path triple-proven; capacity is the one and only HC-6 blocker.
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4).
   R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
   aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let
