@@ -41,6 +41,19 @@ OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (gree
   .gitleaks.toml (useDefault kept + seven-path triaged allowlist; P1-019 non-authority
   rationale) → verified "no leaks found" (exit 0, 193 commits). Iterate: dispatch #7 next —
   first full-battery green run is the HC-6 acceptance.
+  R73 UPDATE: run `35417127704` @ `feafb0d` — gate GREEN (second consecutive), **e2e GREEN FOR
+  THE FIRST TIME** (R72 seed-KEK fix proven on the wire), main browser suite first-time green
+  6/6 (B1–B5). Two last-mile first-execution findings, both fixed same round: (1) the R50.8
+  detection-journeys file failed 6/6 — its signIn filled the gate on a never-navigated
+  about:blank page (first real execution anywhere; sandbox could never run it) → signIn now
+  navigates first, byte-mirroring the proven B-file; (2) scan's gitleaks went GREEN (R72
+  proven) but trivy fs exited 1 on its ONLY finding — the committed test-only loopback SFOS
+  harness key (P1-019 non-authority) → trivy `skip-files` scoped to
+  `mini-services/worker/harness/tls/*` (mechanism verified against the pinned action source)
+  + `.dockerignore` excludes the TLS fixtures from image layers (lazy PEM reads verified);
+  machine proof with checksum-verified trivy 0.70.0 on a byte-faithful git-archive tree:
+  no skip → exit 1 single HIGH secret (byte-identical to the run); with skip → exit 0, zero
+  findings. Iterate: dispatch #7 next — the first FULL 4-job green run = HC-6 acceptance.
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4).
   R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
   aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let

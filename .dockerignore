@@ -55,3 +55,16 @@ tests
 examples
 skills
 worklog.md
+
+# test-only TLS fixture material (R73, run 35417127704) — the committed
+# self-signed loopback SFOS harness keys (harness/tls/, regen documented in
+# mini-services/worker/harness/tls/README.md) are P1-019 non-authority test
+# material and must never enter an image layer, per this file's stated goal.
+# SAFE for the worker runtime: harness/sfos-webapi.ts reads the PEMs lazily
+# inside startSfosWebApiHarness() (never at module load), so worker boot and
+# every runtime plane are unaffected; the only impacted path is the SFOS
+# certify flavor executed INSIDE the Docker runtime image, which now fails
+# typed at call time — the certify driver of record runs in the CI gate job
+# where the checkout carries the fixtures. Worker image scan (trivy,
+# HIGH/CRITICAL, exit 1) passes for the same reason the fixture is gone.
+mini-services/worker/harness/tls

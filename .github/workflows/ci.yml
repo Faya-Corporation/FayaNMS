@@ -442,6 +442,18 @@ jobs:
           scan-ref: .
           severity: HIGH,CRITICAL
           exit-code: "1"
+          # R73 triage (run 35417127704): the fs scan's ONLY finding was 1
+          # HIGH secret — mini-services/worker/harness/tls/sfos-webapi-key.pem,
+          # the committed test-only loopback SFOS harness key (self-signed
+          # CN=localhost, regen documented in harness/tls/README.md; P1-019
+          # machine-proven non-authority — production refuses these fixture
+          # values by design). Same fixture class already triaged for gitleaks
+          # in .gitleaks.toml (seven-path allowlist, R72). Scope kept NARROW:
+          # the tls fixture dir only; the default trivy ruleset stays fully
+          # active everywhere else. Widening requires a new triage note here.
+          # Mechanism (verified against the pinned action source): skip-files
+          # → TRIVY_SKIP_FILES env → trivy's native env-var configuration.
+          skip-files: mini-services/worker/harness/tls/*
 
       - name: Container scan skipped (guard — no Dockerfile in checkout)
         if: ${{ hashFiles('Dockerfile') == '' }}

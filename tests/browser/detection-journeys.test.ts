@@ -45,8 +45,14 @@
  * matrix.
  *
  * Gating: runs ONLY under FAYANMS_BROWSER_E2E=1 (the hermetic unit gate
- * never depends on a browser); CI carries a dedicated `browser` job for it
- * (execution runner-blocked today — CI-001, recorded honestly per push).
+ * never depends on a browser); CI carries a dedicated `browser` job for it.
+ * Execution history (honest): authored R50.8 but never executed green
+ * anywhere until CI bring-up unblocked the runners — FIRST real execution
+ * was run 35417127704 @ feafb0d, which failed 6/6 on a genuine defect the
+ * sandbox could never see (signIn filled #sign-in-email on a never-navigated
+ * about:blank page — the goto lived only in openAddDeviceSheet, which runs
+ * AFTER sign-in). FIXED R73: signIn navigates first, byte-mirroring the
+ * proven TASK-BROWSER-E2E flow that passed 6/6 in the same run.
  *
  * Requirements to run:
  *   FAYANMS_BROWSER_E2E=1 bun test tests/browser/detection-journeys.test.ts
@@ -73,6 +79,11 @@ let browser: Browser | null = null;
 const AUTO_DETECT_PATH = "/api/v1/devices/auto-detect";
 
 async function signIn(page: Page): Promise<void> {
+  // R73 defect fix (run 35417127704): a fresh page is at about:blank — the
+  // gate MUST be navigated to BEFORE any fill, exactly like the proven
+  // TASK-BROWSER-E2E signIn (tests/browser/browser-journeys.test.ts).
+  await page.goto(`${APP_BASE}/`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#sign-in-email", { state: "visible", timeout: 60_000 });
   await page.fill("#sign-in-email", ADMIN_EMAIL);
   await page.fill("#sign-in-password", ADMIN_PASSWORD);
   await page.click("button[type=submit]");

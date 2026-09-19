@@ -149,3 +149,35 @@ The shared harness's seed subprocess inherited `process.env` for its config KEK 
 - NEW `tests/audit/r72-seed-kek-and-gitleaks-triage.test.ts` (7 pins: useDefault kept, exactly seven allowlist paths + no regex/commits nukes, inline triage, seed-KEK env, finding records, PAT hygiene). Suite 1018 → **1025/18/0**.
 - Docs: this §8; roadmap R72 row; NEXT-TASKS R72 UPDATE; dual worklogs R71+R72.
 - Expected next (dispatch #7): gate green again; e2e/browser harness proceeds past seed into the journeys; scan goes green with the committed allowlist. Any further first-execution findings continue the same per-run remediation protocol.
+
+---
+
+## 9. R73 ADDENDUM — bring-up iteration 4: FIRST GREEN e2e + first-green browser main suite + trivy triage + the D-file missing-goto defect
+
+Push+dispatch on `feafb0d` (R72's remediations) → **run `35417127704`** (dispatch; the push twin `35417119436` agrees):
+
+| Job | Result |
+| --- | --- |
+| **gate** | ✅ **SUCCESS — second consecutive green gate** (every step, incl. Tests 1025/18/0 and production build) |
+| **e2e** | ✅ **FIRST GREEN e2e JOB in repo history** — R72's seed-KEK fix worked: production build + all release-critical HTTP journeys over the real stack (app + worker + PostgreSQL + simulator plane) |
+| browser | ❌ 6/6 failures — ALL in `tests/browser/detection-journeys.test.ts` (R50.8); the main `TASK-BROWSER-E2E` suite went **FIRST-TIME GREEN 6/6 in real CI** (B1 sign-in, B2 dashboard, B3a/B3b axe a11y, B4 keyboard, B5 RTL) |
+| scan | ❌ trivy fs step exit 1 — **gitleaks now GREEN** (R72 allowlist worked); the failure moved to the trivy plane |
+
+### 9.1 browser — a genuine defect the sandbox could never see
+
+Every D-test timed out (30 s each) `waiting for locator('#sign-in-email')`. Root cause, verified at source: the D-file's `signIn()` filled `#sign-in-email` on a **never-navigated page** (`about:blank`) — the `page.goto(APP_BASE)` existed only in `openAddDeviceSheet()`, which runs AFTER sign-in; the proven B-file flow navigates first. Git history shows the file was authored in R50.8 and never modified — its green execution was blocked in the sandbox (R68 environmental preconditions: no standalone build), so **this run was its first-ever real execution anywhere, and it exposed the defect** — exactly the class the bring-up loop exists to catch. **Fix (R73)**: `signIn()` now navigates first and waits for the gate to render, byte-mirroring the B-file flow; the header's stale "runner-blocked" claim was corrected to the execution truth.
+
+### 9.2 scan — trivy fs triage (the gitleaks twin of the same fixture)
+
+The fs scan's ONLY finding: **1 HIGH secret — `AsymmetricPrivateKey` in `mini-services/worker/harness/tls/sfos-webapi-key.pem`** (the committed test-only loopback SFOS harness key; P1-019 non-authority; already triaged for gitleaks in R72). Vulnerability plane fully clean (0 vulns in both `bun.lock`s). **Fix (R73), two planes:**
+
+1. **fs scan** — the pinned trivy-action's dedicated `skip-files` input (mechanism verified against the pinned action source: `skip-files` → `TRIVY_SKIP_FILES` env → trivy's native env-var configuration) scoped to exactly `mini-services/worker/harness/tls/*`, triage rationale inline, widening requires a new note.
+2. **runtime image** — `.dockerignore` now excludes `mini-services/worker/harness/tls` so the test-only TLS material never enters an image layer (the file's own stated goal); verified SAFE for the worker runtime because `harness/sfos-webapi.ts` reads the PEMs **lazily** inside `startSfosWebApiHarness()` (never at module load) — worker boot and every runtime plane are unaffected; the only impacted path is the SFOS certify flavor executed INSIDE the Docker runtime image, which now fails typed at call time (the certify driver of record runs in the CI gate job where the checkout carries the fixtures).
+
+**Machine proof (checksum-verified trivy 0.70.0 — the runner's exact version, upstream checksums matched):** on a byte-faithful `git archive` tree (CI's checkout): no skip → **exit 1, single HIGH secret** (replicates the run byte-identically); with `TRIVY_SKIP_FILES='mini-services/worker/harness/tls/*'` → **exit 0, zero findings**. Both directions deterministic. Honest sandbox note: the dev `.env` / `mini-services/worker/.env` (untracked, by design) each carry a real local secret that a LOCAL fs scan flags — CI's git checkout never sees them; the red line holds.
+
+### 9.3 Round record
+
+- NEW `tests/audit/r73-ci-bringup-iter4.test.ts` (pins: goto-before-fill guard, trivy skip scope + inline triage + gitleaks seven-path shape intact, dockerignore exclusion + lazy-read rationale, run record, PAT hygiene). Suite 1025 → **1032/18/0** (8,470 expects, 68 files — count verified at commit time).
+- Docs: this §9; roadmap R73 row; NEXT-TASKS OWNER-CI-001 UPDATE; dual worklogs.
+- Expected next (dispatch #7): gate green (third), e2e green again, browser green with the D-file fixed, scan green with the triage — **the first FULL 4-job green run = HC-6 acceptance**. Any further first-execution findings continue the same per-run remediation protocol.
