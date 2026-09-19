@@ -20,6 +20,13 @@ OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact 
   R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
   aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let
   e2e/browser failures merge); pinned by tests/audit/r66-gov-required-checks-shape.test.ts.
+  R67 UPDATE: TWO new facts. (1) PLAN prerequisite discovered LIVE (scripts/gov-verify.ts against
+  the real API): the private repo is on GitHub Free → branch protection/rulesets answer 403
+  "Upgrade to GitHub Pro or make this repository public" — the account plan must be upgraded (or
+  the repo made public) BEFORE any ruleset can exist. (2) Acceptance is now EXECUTABLE:
+  `bun scripts/gov-verify.ts main` must print GOV-VERIFIED(0) before any doc flips to "active";
+  the read-back covers classic protection AND rulesets, all FOUR checks, approvals, code-owner
+  review, force-push/deletion off.
 R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (needs operator-side hardware or free DevNet AAA credentials; Step 0: PUBLIC DEMO DEVICE PLANE — docs/certification/PUBLIC-DEMO-DEVICES.md + `bun run demo:fleet`)
 ```
 

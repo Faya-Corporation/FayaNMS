@@ -1,11 +1,17 @@
 # CODEOWNERS — Phase 20-B / audit P20B-006.
 #
 # Security-sensitive paths require review from the platform/security owners.
-# GitHub branch protection (settings → branches → main) must require:
+# Branch protection on `main` (Settings → Rules → Rulesets — settings-side,
+# not enforceable from a commit) must require:
 #   - pull request + 1 approval, CODEOWNERS review for the paths below,
-#   - the "CI gate" required status check, conversation resolution,
-#   - no force push, no deletion. (Settings-side action — not enforceable
-#     from a commit; see docs/ci/README or the release checklist.)
+#   - ALL FOUR required status checks: `gate`, `e2e`, `browser`, `scan`
+#     (R66 unification — matches the ci.yml jobs and the workflow header
+#     `required-checks` marker; the pre-R47 singular "CI gate" wording is
+#     obsolete),
+#   - conversation resolution, no force push, no deletion.
+# Acceptance is EXECUTABLE: bun scripts/gov-verify.ts (R67) — exits nonzero
+# unless the live API reports every invariant; flip docs to "active" ONLY on
+# its GOV-VERIFIED(0) read-back (TASK-GOV-001-A).
 
 # Authentication, authorization, session + service identity
 /src/lib/auth/            @fayafatehi

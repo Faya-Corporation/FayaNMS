@@ -3506,3 +3506,22 @@ Work Log:
 
 Stage Summary:
 - The ruleset the operator will configure is now defined ONCE, correctly (all FOUR checks), everywhere; the merge is rehearsed clean; the dispatch path re-proven. Authorable backlog EMPTY again — remaining path is the operator runbook only.
+
+---
+
+Task ID: R67
+Agent: Z.ai Code (orchestrator, single-session)
+Task: Make GOV-001-A acceptance executable (read-back script), pre-write the candidate PR package, verify the CODEOWNERS premise; gates + LIVE + append + push.
+
+Work Log:
+- Discovered `scripts/` had no governance read-back tool and CODEOWNERS header still said the pre-R47 singular "CI gate" required check.
+- NEW scripts/gov-verify.ts: reads BOTH classic branch protection AND rulesets from the live API, asserts the R66 canonical invariants (ALL FOUR checks gate/e2e/browser/scan, enforcement active, approvals >=1, code-owner review, force-push/deletion off, conversation resolution, linear-history advisory), typed exit 0/1/2, truth-first field-by-field read-back, token env-only (GOV_VERIFY_TOKEN -> GITHUB_TOKEN -> GH_TOKEN, never argv/printed), no top-level await / no target-sensitive constructs; the unit suite pins its SHAPE and never executes it.
+- LIVE one-off smoke (token via env, never persisted): the script FAILED CLOSED with exit 2 and — NEW DISCOVERY — the API's plan-gating 403: "Upgrade to GitHub Pro or make this repository public to enable this feature." The private repo runs GitHub Free: branch protection/rulesets are a PAID feature. No earlier doc recorded this; TASK-GOV-001-A was silently un-executable on the current plan. Hardened the script to classify 403-plan as typed GOV-PLAN-BLOCKER on the shared fetch path; runbook gains step 0 (plan upgrade or deliberate publicization) in hand-off Step 2, PR-package decision tree, NEXT-TASKS OWNER-GOV-001.
+- CODEOWNERS header aligned to the four-check shape + executable read-back pointer; ownership rules untouched.
+- NEW docs/audits/FayaNMS-Candidate-PR-Package-z_ai_v2-to-main-2026-09-19.md: paste-ready PR title+body (35 commits / 198 files / +14,738−1,973, pre-flight exit 0) + merge-time decision tree. Key fact recorded: opening the PR fires pull_request CI which runs ALL FOUR jobs on the merge ref — the PR is an HC-6 vehicle, not merely a merge vehicle.
+- NEW tests/audit/r67-gov-readback-and-pr-package.test.ts (8 pins A–H). Two pin premises fixed during verification (usage example carried a literal token-prefix string; one assertion quoted doc wording instead of script wording).
+- Gates: lint 0 · tsc 0 (repo tsconfig covers scripts/) · suite 978 → 986/18/0 (8,306 expects, 63 files). LIVE: app/meta 200 · worker /health 200 · unauth 401 fail-closed.
+- Evidence doc + roadmap row + NEXT-TASKS + hand-off updates + both worklogs; commit + push (db/, .env, PAT never staged).
+
+Stage Summary:
+- GOV-001-A acceptance is now an executable, live-verified fail-closed gate; the operator path carries TWO honest settings/billing-side prerequisites (runner capacity AND plan level) and a paste-ready PR package. Authorable backlog EMPTY.
