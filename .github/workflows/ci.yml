@@ -475,6 +475,19 @@ jobs:
       # the siteUrl production guard while being honestly non-routable.
       # Real deployments pass the REAL canonical origin via the compose
       # --env-file interpolation (docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md §T1).
+      # R77 (run 35423093770): the image build consumed the runner's last
+      # bytes ("Free space left: 0 MB" warning mid-build). The hosted image
+      # ships multi-GB toolchains the scan job never uses — remove the known
+      # large ones and prune docker state BEFORE building, so the build and
+      # the image scans have room.
+      - name: Free disk space (before image build)
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghc /usr/local/share/boost /usr/lib/jvm || true
+          sudo docker image prune -af || true
+          sudo docker builder prune -af || true
+          df -h /
+
       - name: Build runtime images (app + worker)
         run: |
           docker build \

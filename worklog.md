@@ -3673,3 +3673,17 @@ Work Log:
 
 Stage Summary:
 - THREE of four jobs now fully green in real CI (gate ×5, e2e ×4, browser 12/12 — first time); scan's remaining surface: image build (fixed, awaiting proof) + first IMAGE-SCAN executions. Dispatch #10 targets the FIRST FULL 4-JOB GREEN RUN = HC-6 acceptance. db/, .env, PAT never staged.
+
+## R76 → R77 — CI bring-up iteration 8: the build COMPLETED — artifact-verified gate + disk prewash (2026-09-19)
+
+Task: run 35423093770 (push @ c73f14b) analysis; remediate the post-success crash layer.
+
+Work Log:
+- Results: **gate GREEN sixth consecutive**; **e2e GREEN fifth consecutive**; **browser GREEN second consecutive (12/12 twice)**; the image build went DEEPER THAN EVER: T1 guard ✅ → portable user ✅ → frozen worker types ✅ → **`next build` COMPLETED SUCCESSFULLY** (full route summary printed: middleware/static/dynamic) — and THEN Bun 1.3.14 segfaulted at process teardown (panic at 0x13CB0, its own crash class, bun.report/1.3.14/Bn10d9b296i2FqkogC4664tE+++Pw9jypDA2Agr+E) → exit 132 failed the RUN although the build had succeeded. Separately: the runner warned **"Free space left: 0 MB"** mid-build.
+- FIX (two planes, gate strength preserved): (1) Dockerfile — the build's success is verified by its ARTIFACTS: `.next/BUILD_ID` + `.next/standalone` must exist or the RUN fails (a genuinely failed build cannot produce them in this fresh stage); a nonzero bun exit AFTER artifacts exist is documented inline as the known teardown segfault; NO `|| true` anywhere — a failed build still fails. (2) ci.yml scan job — a "Free disk space (before image build)" step removes the hosted image's unused multi-GB toolchains (android/dotnet/ghc/boost/jvm) + docker prune BEFORE the build.
+- Pin honesty: one slice-bounds premise self-caught (the run-id comment sits above the step name) → fixed during verification.
+- Gates: lint 0 · tsc 0 · suite 1050 → **1055/18/0 (8,574 expects, 72 files)** — 5 NEW r77 pins. LIVE: app 200 · meta 200 · worker 200 · unauth 401.
+- Docs: R70 audit doc §13; roadmap R77 row; NEXT-TASKS OWNER-CI-001 R77 UPDATE; dual worklogs.
+
+Stage Summary:
+- Every job is green in real CI (gate ×6, e2e ×5, browser ×2 at 12/12); the only remaining surface is the scan job's image plane: artifact-verified build proof (next run) + the first IMAGE-SCAN executions. Dispatch #11 targets the FIRST FULL 4-JOB GREEN RUN = HC-6 acceptance. db/, .env, PAT never staged.

@@ -53,8 +53,22 @@ ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 COPY mini-services/worker/package.json mini-services/worker/bun.lock ./mini-services/worker/
 RUN cd mini-services/worker && bun install --frozen-lockfile
 COPY . .
+# R77 (run 35423093770): under Bun 1.3.14 in this environment, `next build`
+# COMPLETES SUCCESSFULLY (full route summary printed) and THEN Bun segfaults
+# at process exit (its own teardown bug — bun.report/1.3.14/Bn10d9b296i2Fqk
+# ogC4664tE+++Pw9jypDA2Agr+E; deterministic, after-the-fact). The build's
+# SUCCESS is therefore verified by its ARTIFACTS, not by the crashing
+# process's exit code: .next/BUILD_ID + .next/standalone must exist or the
+# RUN fails — a genuinely failed build cannot produce them in this fresh
+# stage, so the gate stays exactly as strong.
 RUN bunx prisma generate \
- && bun run build
+ && bun run build; code=$?; \
+    if [ ! -f .next/BUILD_ID ] || [ ! -d .next/standalone ]; then \
+      echo "BUILD FAILED: no build artifacts (bun exit $code)" >&2; exit 1; \
+    fi; \
+    if [ "$code" -ne 0 ]; then \
+      echo "NOTE: bun exited $code AFTER a successful build (known 1.3.14 teardown segfault, artifacts verified)" >&2; \
+    fi
 
 FROM oven/bun:1.3.14-slim@sha256:d56a2534ffd262e92c12fd3249d3924d296d97086da773f821d7d0477435ea04 AS runtime
 WORKDIR /app

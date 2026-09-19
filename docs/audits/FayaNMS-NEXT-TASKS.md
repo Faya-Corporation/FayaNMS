@@ -85,6 +85,15 @@ OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (gree
   step) while the runtime stage stays worker-free.
   Iterate: dispatch #10 — remaining: image build completion + first IMAGE-SCAN executions
   (base-image OS vulns = the honest next unknown). Full 4-job green = HC-6 acceptance.
+  R77 UPDATE: run `35423093770` @ `c73f14b` — gate ×6 green, e2e ×5 green, browser ×2 green
+  (12/12 twice). The image build went deeper than ever: next build COMPLETED (full route
+  summary) and Bun 1.3.14 segfaulted at process EXIT (its own teardown bug; exit 132 after
+  success), with the runner at 0 MB free mid-build → build success now verified by ARTIFACTS
+  (.next/BUILD_ID + standalone; no || true — a failed build still fails) + a disk prewash step
+  before the image build.
+  Iterate: dispatch #11 — remaining: artifact-verified build proof + first IMAGE-SCAN
+  executions (base-image OS vulns). Full 4-job green = HC-6 acceptance.
+  (R77 gates verified: suite 1050 → 1055/18/0, 8,574 expects, 72 files.)
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4).
   R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
   aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let

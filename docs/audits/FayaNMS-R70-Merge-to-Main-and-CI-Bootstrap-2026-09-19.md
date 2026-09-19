@@ -260,3 +260,29 @@ The image build passed the T1 guard (R74), created the non-root user portably (R
 - NEW `tests/audit/r76-image-build-type-resolution.test.ts` (5 pins: frozen worker install precedes next build, runtime-stage purity — no worker content, CI reference shape intact, doc record, PAT hygiene). Suite 1045 → **1050/18/0**.
 - Docs: this §12; roadmap R76 row; NEXT-TASKS OWNER-CI-001 UPDATE; dual worklogs.
 - Expected next (dispatch #10): gate/e2e/browser green again (browser's job is DONE); the image build completes → the FIRST IMAGE-SCAN executions (trivy on both images — base-image OS vulns are the honest next unknown) → the FIRST FULL 4-JOB GREEN RUN = **HC-6 acceptance**.
+
+---
+
+## 13. R77 ADDENDUM — bring-up iteration 8: the build COMPLETED — artifact-verified gate + disk prewash
+
+Run **`35423093770`** (push @ `c73f14b`):
+
+| Job | Result |
+| --- | --- |
+| **gate** | ✅ **SUCCESS — sixth consecutive** |
+| **e2e** | ✅ **SUCCESS — fifth consecutive** |
+| **browser** | ✅ **SUCCESS — second consecutive 12/12** |
+| scan | ❌ image build — but the deepest result yet: **`next build` COMPLETED SUCCESSFULLY** and Bun then segfaulted at exit |
+
+### 13.1 The build succeeded; the process crashed after
+
+The full R76 chain worked: T1 guard ✅ → portable user ✅ → frozen worker types ✅ → `next build` compiled and printed the complete route summary (middleware, static, dynamic). THEN Bun 1.3.14 segfaulted at process teardown (`panic: Segmentation fault at address 0x13CB0`, its own crash class — bun.report/1.3.14/Bn10d9b296i2FqkogC4664tE+++Pw9jypDA2Agr+E) → exit 132 failed the RUN although the build had succeeded. Separately the runner warned **"Free space left: 0 MB"** mid-build. **Fix (R77), gate strength preserved:**
+
+1. **Dockerfile** — the build's success is verified by its ARTIFACTS: `.next/BUILD_ID` + `.next/standalone` must exist or the RUN fails (a genuinely failed build cannot produce them in this fresh stage); a nonzero bun exit AFTER artifacts exist is documented inline as the known teardown segfault. No `|| true`, no swallowed failures.
+2. **ci.yml scan job** — a "Free disk space (before image build)" step removes the hosted image's unused multi-GB toolchains (android/dotnet/ghc/boost/jvm) and prunes docker state before the build, so the build and the image scans have room.
+
+### 13.2 Round record
+
+- NEW `tests/audit/r77-artifact-verified-build.test.ts` (5 pins: artifact criterion + no `|| true`, segfault provenance in-file, prewash ordering + content, doc record, PAT hygiene). Suite 1050 → **1055/18/0** (8,574 expects, 72 files — count verified at commit time).
+- Docs: this §13; roadmap R77 row; NEXT-TASKS OWNER-CI-001 UPDATE; dual worklogs.
+- Expected next (dispatch #11): gate/e2e/browser green again; the image build completes with verified artifacts → the FIRST IMAGE-SCAN executions (trivy on both images — base-image OS vulns remain the honest next unknown) → the FIRST FULL 4-JOB GREEN RUN = **HC-6 acceptance**.
