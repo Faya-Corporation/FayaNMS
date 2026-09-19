@@ -3658,3 +3658,18 @@ Work Log:
 
 Stage Summary:
 - The bring-up loop keeps converting never-executed CI surface into proven surface: gate ×4, e2e ×3, browser 9/12 with every remaining failure root-caused to journey/test semantics (not app defects), scan through the whole fs plane + build-arg + one Dockerfile runtime fix. Dispatch #9 targets: browser 12/12, first IMAGE-SCAN executions (base-image OS vulns = the honest next unknown), and the FIRST FULL 4-JOB GREEN RUN = HC-6 acceptance. db/, .env, PAT never staged.
+
+## R75 → R76 — CI bring-up iteration 7: FIRST GREEN BROWSER JOB (12/12) + image build type resolution (2026-09-19)
+
+Task: run 35422501995 (push @ 6d01aeb) analysis; remediate the image-build layer.
+
+Work Log:
+- Results: **gate GREEN fifth consecutive**; **e2e GREEN fourth consecutive**; **browser GREEN — FIRST TIME in repo history, 12/12** (the B-suite + all six detection-panel journeys after four bring-up iterations: missing-goto → sidebar group → strict-mode/two-pass/invariant); scan failed one layer deeper at the image build.
+- Scan root cause: the image build passed the T1 guard (R74) and the portable user (R75), compiled successfully — then next build's type-check failed: TS2307 `Cannot find module 'ssh2'` in mini-services/worker/harness/persona-sshd.ts + ssh-transport.ts (downstream TS18046 unknowns). Root cause verified at source: the root tsconfig include covers every .ts under the repo root (the documented "src/ + worker zero-error policy"), so next build type-checks the worker too; ci.yml's "Install worker dependencies (frozen)" step provides that resolution to the gate/e2e/browser jobs, but the Docker build stage never had it (worker node_modules context-excluded by .dockerignore). A Bun 1.3.14 segfault followed AFTER the type errors (failing type-check teardown — Bun's own crash class; deterministic root cause is the resolution; the same next build is green in the gate job with worker deps present).
+- FIX: the Dockerfile build stage installs the worker deps frozen from the committed lockfile (byte-mirrors the CI jobs) BEFORE the copy + build; the runtime stage stays worker-free (standalone + prisma only) — audited image content unchanged. Honest residual: a segfault recurring on a GREEN type-check escalates to a Bun-version decision via bun.report.
+- Pin honesty: one premise self-caught (a JSDoc header containing the include-glob pattern terminated the comment mid-line via an embedded close sequence → parse error → reworded).
+- Gates: lint 0 · tsc 0 · suite 1045 → **1050/18/0 (8,550 expects, 71 files)** — 5 NEW r76 pins (tests/audit/r76-image-build-type-resolution.test.ts: frozen worker install precedes next build, runtime-stage purity, CI reference shape, doc record, PAT hygiene). LIVE: 200/200/200/401.
+- Docs: R70 audit doc §12; roadmap R76 row; NEXT-TASKS OWNER-CI-001 R76 UPDATE; dual worklogs.
+
+Stage Summary:
+- THREE of four jobs now fully green in real CI (gate ×5, e2e ×4, browser 12/12 — first time); scan's remaining surface: image build (fixed, awaiting proof) + first IMAGE-SCAN executions. Dispatch #10 targets the FIRST FULL 4-JOB GREEN RUN = HC-6 acceptance. db/, .env, PAT never staged.

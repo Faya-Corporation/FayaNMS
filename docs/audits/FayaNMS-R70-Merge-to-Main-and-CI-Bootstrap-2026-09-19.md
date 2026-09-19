@@ -237,3 +237,26 @@ The app image's runtime stage (first executed in R74's fixed build) died at `RUN
 - NEW `tests/audit/r75-journey-accuracy-and-portable-user.test.ts` (7 pins: D7 exact-match, D11 two-pass ordering, D12 invariant + single-code retirement, portable user registration + no adduser regressions + worker surface, doc record, PAT hygiene). Suite 1038 → **1045/18/0**.
 - Docs: this §11; roadmap R75 row; NEXT-TASKS OWNER-CI-001 UPDATE; dual worklogs.
 - Expected next (dispatch #9): gate/e2e green again; browser 12/12; scan through image build into the first IMAGE-SCAN executions (base-image OS vulns remain the honest next unknown). The full 4-job green run = HC-6 acceptance.
+
+---
+
+## 12. R76 ADDENDUM — bring-up iteration 7: FIRST GREEN BROWSER JOB (12/12) + the image build resolves the worker's types
+
+Run **`35422501995`** (push @ `6d01aeb`):
+
+| Job | Result |
+| --- | --- |
+| **gate** | ✅ **SUCCESS — fifth consecutive** |
+| **e2e** | ✅ **SUCCESS — fourth consecutive** |
+| **browser** | ✅ **FIRST GREEN BROWSER JOB in repo history — 12/12** (the B-suite plus all six detection-panel journeys, after four bring-up iterations) |
+| scan | ❌ image build — one layer deeper: type resolution inside the image build |
+
+### 12.1 scan — next build type-checks the whole repo, so the build stage needs the worker's types
+
+The image build passed the T1 guard (R74), created the non-root user portably (R75), compiled successfully — then `Running TypeScript` failed: `TS2307: Cannot find module 'ssh2'` in `mini-services/worker/harness/persona-sshd.ts` and `ssh-transport.ts` (+ downstream `TS18046` unknowns). Root cause, verified at source: the root `tsconfig.json` includes `**/*.ts` — the documented "src/ + worker zero-error policy" — so `next build` type-checks the worker too. ci.yml's "Install worker dependencies (frozen)" step provides exactly that resolution to the gate/e2e/browser jobs, but the Docker build stage never had it (worker `node_modules` are context-excluded by `.dockerignore`). A Bun 1.3.14 segfault followed AFTER the type errors (during the failing type-check teardown — Bun's own crash class; the deterministic root cause is the resolution, and the same next build is green in the gate job with worker deps present). **Fix (R76)**: the build stage installs the worker deps frozen from the committed lockfile BEFORE the copy + build — byte-mirroring the CI jobs — while the runtime stage stays worker-free (copies only the standalone output + prisma client/schema), so the audited image content is unchanged. Honest residual: if a segfault ever recurs on a green type-check, it escalates to a Bun-version decision via `bun.report`.
+
+### 12.2 Round record
+
+- NEW `tests/audit/r76-image-build-type-resolution.test.ts` (5 pins: frozen worker install precedes next build, runtime-stage purity — no worker content, CI reference shape intact, doc record, PAT hygiene). Suite 1045 → **1050/18/0**.
+- Docs: this §12; roadmap R76 row; NEXT-TASKS OWNER-CI-001 UPDATE; dual worklogs.
+- Expected next (dispatch #10): gate/e2e/browser green again (browser's job is DONE); the image build completes → the FIRST IMAGE-SCAN executions (trivy on both images — base-image OS vulns are the honest next unknown) → the FIRST FULL 4-JOB GREEN RUN = **HC-6 acceptance**.

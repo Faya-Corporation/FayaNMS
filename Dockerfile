@@ -41,6 +41,17 @@ RUN test -n "$NEXT_PUBLIC_SITE_URL" || { \
       echo "BUILD FAILED: pass the REAL canonical origin as the NEXT_PUBLIC_SITE_URL build arg (e.g. http://fayanms.corp.example.com — localhost and *.local are rejected in production). See docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md §T1." >&2; \
       exit 1; }
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+# R76 (run 35422501995): next build type-checks the WHOLE repo per the root
+# tsconfig (include: **/*.ts — the documented "src/ + worker zero-error
+# policy"), so the worker's TS files must resolve ssh2/@types/ssh2 inside
+# this build — exactly what ci.yml's "Install worker dependencies (frozen)"
+# step provides to the gate/e2e/browser jobs. The BUILD stage installs them
+# frozen; the runtime stage stays worker-free (it copies only the standalone
+# output + prisma client/schema — see below), so the audited image is
+# unchanged. Worker node_modules in the context are excluded by
+# .dockerignore; this installs fresh from the committed lockfile instead.
+COPY mini-services/worker/package.json mini-services/worker/bun.lock ./mini-services/worker/
+RUN cd mini-services/worker && bun install --frozen-lockfile
 COPY . .
 RUN bunx prisma generate \
  && bun run build

@@ -75,6 +75,16 @@ OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (gree
   the runtime stage) → pinned uid/gid 10001 via /etc/passwd+/etc/group appends.
   Iterate: dispatch #9 — remaining: browser 12/12, first IMAGE-SCAN executions
   (base-image OS vulns). Full 4-job green = HC-6 acceptance.
+  R76 UPDATE: run `35422501995` @ `6d01aeb` — **FIRST GREEN BROWSER JOB in repo history
+  (12/12)** after four bring-up iterations; gate GREEN fifth consecutive, e2e GREEN fourth
+  consecutive. Scan one layer deeper: the image build's next build type-checks the whole repo
+  (root tsconfig include **/*.ts — src/ + worker zero-error policy) so the worker's TS files
+  must resolve ssh2/@types/ssh2 INSIDE the build (TS2307; Bun segfaulted during the failing
+  type-check teardown — deterministic root cause is the resolution) → the build stage now
+  installs the worker deps frozen from the committed lockfile (byte-mirrors ci.yml's worker
+  step) while the runtime stage stays worker-free.
+  Iterate: dispatch #10 — remaining: image build completion + first IMAGE-SCAN executions
+  (base-image OS vulns = the honest next unknown). Full 4-job green = HC-6 acceptance.
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4).
   R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
   aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let
