@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Info, LayoutTemplate, Play } from "lucide-react";
 
 import { CHANGE_TEMPLATES, type ChangeTemplate } from "@/lib/change/templates";
@@ -27,26 +28,26 @@ const VENDOR_LABELS: Record<string, string> = {
  * runbooks.
  */
 export function ChangeTemplatesView() {
+  const t = useTranslations("changeTemplates");
   const [activeTemplate, setActiveTemplate] = useState<ChangeTemplate | null>(null);
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        description="Per-vendor starting points for common network changes"
-        title="Change Templates"
+        description={t("description")}
+        title={t("title")}
       />
 
       <p className="flex items-start gap-2 rounded-lg border border-info/25 bg-info-subtle px-3 py-2 text-xs text-info">
         <Info aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
-        Templates are starting points — edit freely in the wizard. Steps, plans and
-        titles are prefilled; the risk engine still scores the final change.
+        {t("banner")}
       </p>
 
       {CHANGE_TEMPLATES.length === 0 ? (
         <EmptyState
-          description="Templates are compiled into the app."
+          description={t("emptyDescription")}
           icon={LayoutTemplate}
-          title="No templates available"
+          title={t("emptyTitle")}
         />
       ) : (
         <div className="grid gap-4 [&>*]:min-w-0 md:grid-cols-2">
@@ -55,7 +56,7 @@ export function ChangeTemplatesView() {
               actions={
                 <Button onClick={() => setActiveTemplate(template)} size="sm">
                   <Play aria-hidden="true" />
-                  Use template
+                  {t("useTemplate")}
                 </Button>
               }
               contentClassName="flex flex-col gap-3"
@@ -67,14 +68,14 @@ export function ChangeTemplatesView() {
 
               <div className="rounded-lg border">
                 <p className="border-b px-3 py-2 text-xs font-medium text-muted-foreground">
-                  Default title
+                  {t("defaultTitle")}
                 </p>
                 <p className="px-3 py-2 text-sm">{template.defaultTitle}</p>
               </div>
 
               <div>
                 <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                  Execution steps ({template.defaultSteps.length})
+                  {t("executionSteps", { count: template.defaultSteps.length })}
                 </p>
                 <ol className="flex flex-col gap-1">
                   {template.defaultSteps.map((step, index) => {
@@ -102,9 +103,9 @@ export function ChangeTemplatesView() {
               </div>
 
               <div className="flex flex-wrap gap-1.5">
-                <Badge variant="outline">Implementation ✓</Badge>
-                <Badge variant="outline">Validation ✓</Badge>
-                <Badge variant="outline">Rollback ✓</Badge>
+                <Badge variant="outline">{t("badgeImplementation")}</Badge>
+                <Badge variant="outline">{t("badgeValidation")}</Badge>
+                <Badge variant="outline">{t("badgeRollback")}</Badge>
               </div>
             </SectionCard>
           ))}

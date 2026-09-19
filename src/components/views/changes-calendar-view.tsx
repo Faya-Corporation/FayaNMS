@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   addMonths,
   eachDayOfInterval,
@@ -40,7 +41,7 @@ import type { ChangeRow } from "@/lib/api-client";
 /** Execution-window statuses shown on the calendar (planning-relevant). */
 const CALENDAR_STATUSES = "APPROVED,SCHEDULED,EXECUTING,VALIDATING";
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
 function windowOf(change: ChangeRow): { start: Date; end: Date } | null {
   if (!change.scheduledStart) return null;
@@ -63,6 +64,7 @@ function overlaps(a: { start: Date; end: Date }, b: { start: Date; end: Date }):
  * grid's window (overlap semantics), then grouped client-side.
  */
 export function ChangesCalendarView() {
+  const t = useTranslations("changesCalendar");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
 
   const [month, setMonth] = useState<Date>(() => startOfMonth(new Date()));
@@ -124,11 +126,11 @@ export function ChangesCalendarView() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        description="Scheduled changes by day — warning ring marks overlapping windows"
+        description={t("description")}
         primaryAction={
           <div className="flex items-center gap-2">
             <Button
-              aria-label="Previous month"
+              aria-label={t("prevMonth")}
               onClick={() => setMonth((m) => subMonths(m, 1))}
               size="icon"
               variant="outline"
@@ -136,10 +138,10 @@ export function ChangesCalendarView() {
               <ChevronLeft aria-hidden="true" />
             </Button>
             <Button onClick={() => setMonth(startOfMonth(new Date()))} size="sm" variant="outline">
-              Today
+              {t("today")}
             </Button>
             <Button
-              aria-label="Next month"
+              aria-label={t("nextMonth")}
               onClick={() => setMonth((m) => addMonths(m, 1))}
               size="icon"
               variant="outline"
@@ -148,7 +150,7 @@ export function ChangesCalendarView() {
             </Button>
           </div>
         }
-        title={`Change Calendar — ${format(month, "MMMM yyyy")}`}
+        title={t("title", { month: format(month, "MMMM yyyy") })}
       />
 
       <SectionCard
@@ -160,14 +162,14 @@ export function ChangesCalendarView() {
           </div>
         }
         contentClassName="p-0"
-        title="Scheduled windows"
+        title={t("scheduledWindows")}
       >
         {isError ? (
           <div className="p-4">
             <ErrorState
               onRetry={() => void changes.refetch()}
               reason={changes.error.message}
-              title="Calendar data could not be loaded"
+              title={t("errorTitle")}
             />
           </div>
         ) : isLoading ? (
@@ -181,12 +183,12 @@ export function ChangesCalendarView() {
             <div className="min-w-[720px]">
               {/* Sticky weekday header */}
               <div className="sticky top-0 z-10 grid grid-cols-7 border-b bg-card">
-                {WEEKDAYS.map((weekday) => (
+                {WEEKDAY_KEYS.map((weekday) => (
                   <div
                     className="px-2 py-2 text-center text-xs font-medium text-muted-foreground"
                     key={weekday}
                   >
-                    {weekday}
+                    {t(`weekdays.${weekday}`)}
                   </div>
                 ))}
               </div>
@@ -248,7 +250,7 @@ export function ChangesCalendarView() {
                       })}
                       {dayChanges.length > 2 && (
                         <span className="px-1.5 text-[10px] text-muted-foreground">
-                          {dayChanges.length - 2} more…
+                          {t("more", { count: dayChanges.length - 2 })}
                         </span>
                       )}
                     </div>
@@ -295,7 +297,7 @@ export function ChangesCalendarView() {
                                   {change.scheduledEnd
                                     ? ` → ${format(new Date(change.scheduledEnd), "HH:mm")}`
                                     : ""}{" "}
-                                  · {change.site?.code ?? "no site"}
+                                  · {change.site?.code ?? t("noSite")}
                                 </span>
                               </button>
                             </li>
@@ -316,7 +318,7 @@ export function ChangesCalendarView() {
       {rows.length === 0 && !isLoading && !isError && (
         <p className="flex items-center justify-center gap-2 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
           <CalendarDays aria-hidden="true" className="size-4" />
-          No approved, scheduled or executing changes in this month.
+          {t("empty")}
         </p>
       )}
     </div>

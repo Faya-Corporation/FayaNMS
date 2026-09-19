@@ -1881,5 +1881,83 @@
       "emptyTitle": "لا توجد أحداث تدقيق بعد",
       "emptyDescription": "تظهر أحداث التدقيق عندما يتفاعل النظام الأساسي مع هذا الجهاز."
     }
+  },
+  "sites": {
+    "title": "المواقع",
+    "description": "المواقع وتوزيع الأجهزة ووضع النسخ الاحتياطي لكل موقع",
+    "errorTitle": "تعذر تحميل المواقع",
+    "emptyTitle": "لا توجد مواقع مُهيأة",
+    "emptyDescription": "ينشئ المدراء المواقع وتجمع الأجهزة حسب الموقع.",
+    "managedOfTotal": "مُدار من إجمالي {total}",
+    "deviceStatus": "حالة الأجهزة",
+    "noDevices": "لا توجد أجهزة بعد",
+    "interfaces": "{count} واجهات",
+    "criticalityClasses": "{count} فئات حرجية",
+    "backupCompliance": "الالتزام بالنسخ الاحتياطي",
+    "compliantDevices": "{compliant}/{total} أجهزة ملتزمة",
+    "viewDevices": "عرض الأجهزة"
+  },
+  "noc": {
+    "title": "NOC — لوحة العمليات",
+    "slaBreached": "{count} تجاوز SLA",
+    "exitFullscreen": "الخروج من ملء الشاشة",
+    "enterFullscreen": "ملء الشاشة",
+    "exit": "خروج",
+    "fullscreen": "ملء الشاشة",
+    "activeIncidents": "الحوادث النشطة",
+    "openCount": "— {count} مفتوحة",
+    "mttaMttr": " · MTTA {mtta}m · MTTR {mttr}m",
+    "allClear": "لا حوادث مفتوحة — الوضع آمن تماماً.",
+    "fleetHealth": "صحة الأسطول",
+    "devicesByStatus": "الأجهزة حسب الحالة",
+    "onlineOf": "{online}/{managed} متصل",
+    "activeAlerts": "التنبيهات النشطة — أعلى {count}",
+    "jobs": "المهام",
+    "activeInQueue": "في قائمة الانتظار",
+    "total": "الإجمالي {count}",
+    "backupCompliance": "الالتزام بالنسخ الاحتياطي",
+    "fleetWideWindow": "عبر الأسطول · نافذة 24 ساعة",
+    "ok": "{count} سليم",
+    "late": "{count} متأخر",
+    "bad": "{count} فاشل",
+    "footnote": "تحديث تلقائي كل 10 ثوانٍ · الساعة بالتوقيت المحلي · انقر حادثاً لفتح سجلته · اخرج من ملء الشاشة بالزر أو مفتاح Esc"
+  },
+  "changesCalendar": {
+    "title": "تقويم التغييرات — {month}",
+    "description": "التغييرات المجدولة يوماً بيوم — الحلقة التحذيرية تدل على نوافذ متداخلة",
+    "prevMonth": "الشهر السابق",
+    "nextMonth": "الشهر التالي",
+    "today": "اليوم",
+    "scheduledWindows": "النوافذ المجدولة",
+    "errorTitle": "تعذر تحميل بيانات التقويم",
+    "weekdays": {
+      "sun": "أحد",
+      "mon": "اثنين",
+      "tue": "ثلاثاء",
+      "wed": "أربعاء",
+      "thu": "خميس",
+      "fri": "جمعة",
+      "sat": "سبت"
+    },
+    "more": "{count} المزيد…",
+    "noSite": "بلا موقع",
+    "empty": "لا توجد تغييرات معتمدة أو مجدولة أو قيد التنفيذ في هذا الشهر."
+  },
+  "changeTemplates": {
+    "title": "قوالب التغيير",
+    "description": "نقاط انطلاق لكل مورد للتغييرات الشبكية الشائعة",
+    "banner": "القوالب نقاط انطلاق — عدِّلها بحرية في المعالج. الخطوات والخطط والعناوين تُملأ مسبقاً؛ ومحرك التقييم يظل يحسب خطورة التغيير النهائي.",
+    "emptyTitle": "لا توجد قوالب متاحة",
+    "emptyDescription": "القوالب مُجمَّعة داخل التطبيق.",
+    "useTemplate": "استخدام القالب",
+    "defaultTitle": "العنوان الافتراضي",
+    "executionSteps": "خطوات التنفيذ ({count})",
+    "badgeImplementation": "تنفيذ ✓",
+    "badgeValidation": "تحقق ✓",
+    "badgeRollback": "تراجع ✓"
+  },
+  "placeholder": {
+    "arrivesIn": "تصل هذه الوحدة في {phase}",
+    "description": "لا شيء هنا محاكى — تُسلَّم هذه الوحدة مع مرحلتها في خارطة الطريق. استخدم الشريط الجانبي أو لوحة ⌘K أو لوحة القيادة لمتابعة استكشاف الشريحة الحية."
   }
 }

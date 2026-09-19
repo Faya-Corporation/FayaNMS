@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { Construction } from "lucide-react";
 
 import { EmptyState } from "@/components/domain/empty-state";
@@ -19,14 +21,15 @@ interface PlaceholderViewProps {
  */
 export function PlaceholderView({ viewKey, meta }: PlaceholderViewProps) {
   void viewKey;
+  const t = useTranslations("placeholder");
   return (
     <div className="flex flex-col gap-6">
       <PageHeader description={meta.description} title={meta.title} />
       <EmptyState
         className="py-16"
-        description="Nothing here is simulated — this module ships with its roadmap phase. Use the sidebar, the ⌘K palette or the dashboard to continue exploring the live slice."
+        description={t("description")}
         icon={Construction}
-        title={`This module arrives in ${meta.phase}`}
+        title={t("arrivesIn", { phase: meta.phase })}
       />
     </div>
   );

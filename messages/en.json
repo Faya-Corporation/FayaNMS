@@ -1881,5 +1881,83 @@
       "emptyTitle": "No audit events yet",
       "emptyDescription": "Audit events appear as the platform touches this device."
     }
+  },
+  "sites": {
+    "title": "Sites",
+    "description": "Locations, device distribution and backup posture per site",
+    "errorTitle": "Sites could not be loaded",
+    "emptyTitle": "No sites configured",
+    "emptyDescription": "Sites are created by administrators and group devices by location.",
+    "managedOfTotal": "managed / {total} total",
+    "deviceStatus": "Device status",
+    "noDevices": "No devices yet",
+    "interfaces": "{count} interfaces",
+    "criticalityClasses": "{count} criticality classes",
+    "backupCompliance": "Backup compliance",
+    "compliantDevices": "{compliant}/{total} devices compliant",
+    "viewDevices": "View devices"
+  },
+  "noc": {
+    "title": "NOC — Operations Wallboard",
+    "slaBreached": "{count} SLA BREACHED",
+    "exitFullscreen": "Exit fullscreen",
+    "enterFullscreen": "Enter fullscreen",
+    "exit": "Exit",
+    "fullscreen": "Fullscreen",
+    "activeIncidents": "Active incidents",
+    "openCount": "— {count} open",
+    "mttaMttr": " · MTTA {mtta}m · MTTR {mttr}m",
+    "allClear": "No open incidents — all clear.",
+    "fleetHealth": "Fleet health",
+    "devicesByStatus": "Devices by status",
+    "onlineOf": "{online}/{managed} online",
+    "activeAlerts": "Active alerts — top {count}",
+    "jobs": "Jobs",
+    "activeInQueue": "active in the queue",
+    "total": "total {count}",
+    "backupCompliance": "Backup compliance",
+    "fleetWideWindow": "fleet-wide · 24h window",
+    "ok": "{count} ok",
+    "late": "{count} late",
+    "bad": "{count} bad",
+    "footnote": "Auto-refresh 10 s · clock local time · click an incident to open its record · exit fullscreen with the button or Esc"
+  },
+  "changesCalendar": {
+    "title": "Change Calendar — {month}",
+    "description": "Scheduled changes by day — warning ring marks overlapping windows",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "today": "Today",
+    "scheduledWindows": "Scheduled windows",
+    "errorTitle": "Calendar data could not be loaded",
+    "weekdays": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    },
+    "more": "{count} more…",
+    "noSite": "no site",
+    "empty": "No approved, scheduled or executing changes in this month."
+  },
+  "changeTemplates": {
+    "title": "Change Templates",
+    "description": "Per-vendor starting points for common network changes",
+    "banner": "Templates are starting points — edit freely in the wizard. Steps, plans and titles are prefilled; the risk engine still scores the final change.",
+    "emptyTitle": "No templates available",
+    "emptyDescription": "Templates are compiled into the app.",
+    "useTemplate": "Use template",
+    "defaultTitle": "Default title",
+    "executionSteps": "Execution steps ({count})",
+    "badgeImplementation": "Implementation ✓",
+    "badgeValidation": "Validation ✓",
+    "badgeRollback": "Rollback ✓"
+  },
+  "placeholder": {
+    "arrivesIn": "This module arrives in {phase}",
+    "description": "Nothing here is simulated — this module ships with its roadmap phase. Use the sidebar, the ⌘K palette or the dashboard to continue exploring the live slice."
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useTranslations } from "next-intl";
 import { formatDistanceToNow } from "date-fns";
 import {
   Activity,
@@ -110,6 +111,7 @@ function WallClock() {
 }
 
 export function NocView() {
+  const t = useTranslations("noc");
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const setActiveView = useNavigationStore((state) => state.setActiveView);
@@ -181,18 +183,18 @@ export function NocView() {
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h1 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300">
             <Siren aria-hidden className="size-4 text-danger" />
-            NOC — Operations Wallboard
+            {t("title")}
           </h1>
           {stats.data && stats.data.breachedCount > 0 && (
             <span className="animate-pulse rounded-full bg-danger px-2 py-0.5 text-xs font-bold text-white">
-              {stats.data.breachedCount} SLA BREACHED
+              {t("slaBreached", { count: stats.data.breachedCount })}
             </span>
           )}
         </div>
         <div className="flex items-center gap-3">
           <WallClock />
           <Button
-            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            aria-label={isFullscreen ? t("exitFullscreen") : t("enterFullscreen")}
             className="border-neutral-700 bg-neutral-900 text-neutral-200 hover:bg-neutral-800 hover:text-white"
             onClick={() => void toggleFullscreen()}
             size="sm"
@@ -203,27 +205,32 @@ export function NocView() {
             ) : (
               <Maximize aria-hidden className="size-4" />
             )}
-            {isFullscreen ? "Exit" : "Fullscreen"}
+            {isFullscreen ? t("exit") : t("fullscreen")}
           </Button>
         </div>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[1.5fr_1fr]">
         {/* Left: active incidents */}
-        <section aria-label="Active incidents" className="flex min-h-0 flex-col">
+        <section aria-label={t("activeIncidents")} className="flex min-h-0 flex-col">
           <h2 className="flex items-center gap-2 pb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400">
             <Activity aria-hidden className="size-3.5" />
-            Active incidents
+            {t("activeIncidents")}
             <span className="text-neutral-500">
-              — {stats.data?.openCount ?? openIncidents.length} open
-              {stats.data ? ` · MTTA ${stats.data.mttaMinutes ?? "—"}m · MTTR ${stats.data.mttrMinutes ?? "—"}m` : ""}
+              {t("openCount", { count: stats.data?.openCount ?? openIncidents.length })}
+              {stats.data
+                ? t("mttaMttr", {
+                    mtta: stats.data.mttaMinutes ?? "—",
+                    mttr: stats.data.mttrMinutes ?? "—",
+                  })
+                : ""}
             </span>
           </h2>
           <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
             {sortedIncidents.length === 0 ? (
               <li className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-4 text-sm text-neutral-400">
                 <CheckCircle2 aria-hidden className="size-4 text-success" />
-                No open incidents — all clear.
+                {t("allClear")}
               </li>
             ) : (
               sortedIncidents.map((incident) => (
@@ -276,11 +283,11 @@ export function NocView() {
         </section>
 
         {/* Right: fleet health summary */}
-        <section aria-label="Fleet health" className="grid min-h-0 grid-cols-1 content-start gap-3">
+        <section aria-label={t("fleetHealth")} className="grid min-h-0 grid-cols-1 content-start gap-3">
           {/* Devices by status */}
           <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
             <h2 className="pb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
-              Devices by status — {kpis ? `${kpis.online}/${kpis.managedDevices} online` : "…"}
+              {t("devicesByStatus")} — {kpis ? t("onlineOf", { online: kpis.online, managed: kpis.managedDevices }) : "…"}
             </h2>
             <div className="flex flex-wrap gap-2">
               {DEVICE_STATUS_ORDER.map((status) => {
@@ -305,7 +312,7 @@ export function NocView() {
           <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
             <h2 className="flex items-center gap-2 pb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
               <BellRing aria-hidden className="size-3.5" />
-              Active alerts — top {alertRows.length}
+              {t("activeAlerts", { count: alertRows.length })}
             </h2>
             <div className="flex flex-wrap gap-2">
               {alertsBySeverity.map((entry) => (
@@ -340,31 +347,35 @@ export function NocView() {
             <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
               <h2 className="flex items-center gap-2 pb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400">
                 <LoaderCircle aria-hidden className="size-3.5" />
-                Jobs
+                {t("jobs")}
               </h2>
               <p className="text-2xl font-semibold tabular-nums">{kpis?.activeJobs ?? "—"}</p>
-              <p className="text-xs text-neutral-500">active in the queue</p>
+              <p className="text-xs text-neutral-500">{t("activeInQueue")}</p>
               <div className="mt-2 flex items-center gap-2 text-xs text-neutral-400">
                 <span className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-0.5">
-                  total {jobsMeta?.total ?? "—"}
+                  {t("total", { count: jobsMeta?.total ?? "—" })}
                 </span>
               </div>
             </div>
             <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
               <h2 className="flex items-center gap-2 pb-1 text-xs font-semibold uppercase tracking-wider text-neutral-400">
                 <DatabaseBackup aria-hidden className="size-3.5" />
-                Backup compliance
+                {t("backupCompliance")}
               </h2>
               <p className="text-2xl font-semibold tabular-nums">{kpis?.backupCompliancePct ?? "—"}%</p>
-              <p className="text-xs text-neutral-500">fleet-wide · 24h window</p>
+              <p className="text-xs text-neutral-500">{t("fleetWideWindow")}</p>
               {dashboard.data?.backupCompliance && (
                 <div className="mt-2 flex gap-1 text-[11px] text-neutral-400">
-                  <span className="text-success">{dashboard.data.backupCompliance.compliant} ok</span>
+                  <span className="text-success">{t("ok", { count: dashboard.data.backupCompliance.compliant })}</span>
                   <span>·</span>
-                  <span className="text-warning">{dashboard.data.backupCompliance.overdue} late</span>
+                  <span className="text-warning">{t("late", { count: dashboard.data.backupCompliance.overdue })}</span>
                   <span>·</span>
                   <span className="text-danger">
-                    {dashboard.data.backupCompliance.failed + dashboard.data.backupCompliance.never} bad
+                    {t("bad", {
+                      count:
+                        dashboard.data.backupCompliance.failed +
+                        dashboard.data.backupCompliance.never,
+                    })}
                   </span>
                 </div>
               )}
@@ -372,8 +383,7 @@ export function NocView() {
           </div>
 
           <p className="pb-1 text-center text-[11px] text-neutral-600">
-            Auto-refresh 10 s · clock local time · click an incident to open its record ·
-            exit fullscreen with the button or Esc
+            {t("footnote")}
           </p>
         </section>
       </div>

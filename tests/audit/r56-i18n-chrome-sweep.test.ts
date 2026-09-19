@@ -25,6 +25,15 @@ import { join } from "node:path";
  *      it from the ledger; when the ledger is empty, flip the sweep to
  *      forbid all candidates everywhere.
  *
+ * R80 (tranche 1, 2026-09-19): SIX views keyed by hand against their
+ * full inventories (including non-swept literals such as lowercase and
+ * template-literal copy): placeholder, ztp, changes-templates, noc,
+ * changes-calendar, sites → ledger 32 → 26 entries (824 → 791
+ * candidates). ztp-view's three remaining candidates are TECHNICAL
+ * example placeholders (FAB-2026-0117 / BR2-ACC-SW-09 / C9200L-48P-4X),
+ * locale-neutral tokens governed by KEYED_SURVIVORS below — the same
+ * exact-match precedent as devices-view's LIVE chip.
+ *
  * Detection regexes (documented, deliberately shallow):
  *   - PROP_RE  : literal string props  title=/placeholder=/aria-label=/
  *                label=/description=/heading= starting with a capital.
@@ -71,11 +80,22 @@ function candidates(src: string): string[] {
 }
 
 /**
- * Pending-views debt ledger (R56 baseline). Format: file → candidate
- * ceiling (the exact count at R56; may only DECREASE). A view leaves the
- * ledger the day it is keyed; when the ledger is empty the sweep flips
- * to forbid candidates in every view. Counts use the documented shallow
- * regexes above — regenerate with the same extractors when editing.
+ * Keyed views whose remaining candidates are DOCUMENTED technical tokens
+ * (exact-match governance, same precedent as devices-view's LIVE chip):
+ * file → the exact allowed candidate list. Any addition or change to
+ * these views' literals fails the sweep.
+ */
+const KEYED_SURVIVORS: Record<string, string[]> = {
+  "ztp-view.tsx": ["FAB-2026-0117", "BR2-ACC-SW-09", "C9200L-48P-4X"],
+};
+
+/**
+ * Pending-views debt ledger (R56 baseline; R80 tranche 1 shrank it).
+ * Format: file → candidate ceiling (the exact count at R56; may only
+ * DECREASE). A view leaves the ledger the day it is keyed; when the
+ * ledger is empty the sweep flips to forbid candidates in every view.
+ * Counts use the documented shallow regexes above — regenerate with the
+ * same extractors when editing.
  */
 const PENDING_VIEWS: Record<string, number> = {
   "admin-api-clients-view.tsx": 27,
@@ -91,8 +111,6 @@ const PENDING_VIEWS: Record<string, number> = {
   "baselines-view.tsx": 20,
   "change-approvals-view.tsx": 33,
   "change-detail-view.tsx": 52,
-  "changes-calendar-view.tsx": 7,
-  "changes-templates-view.tsx": 6,
   "changes-view.tsx": 27,
   "discovery-view.tsx": 43,
   "drift-view.tsx": 30,
@@ -100,16 +118,12 @@ const PENDING_VIEWS: Record<string, number> = {
   "incident-detail-view.tsx": 43,
   "incidents-view.tsx": 22,
   "maintenance-view.tsx": 38,
-  "noc-view.tsx": 7,
   "perf-availability-view.tsx": 22,
   "perf-capacity-view.tsx": 16,
   "perf-devices-view.tsx": 20,
   "perf-interfaces-view.tsx": 18,
   "perf-overview-view.tsx": 27,
-  "placeholder-view.tsx": 1,
-  "sites-view.tsx": 9,
   "snapshots-view.tsx": 29,
-  "ztp-view.tsx": 3,
 };
 
 describe("HC-4 — dictionary parity is machine-enforced", () => {
@@ -172,10 +186,20 @@ describe("HC-4 — the documented triage is closed: the devices plane is keyed",
 });
 
 describe("HC-4 — pending-views debt ledger (ceilings may only shrink)", () => {
-  test("every view with candidates is either clean, the LIVE chip, or ledgered", () => {
+  test("keyed views carry EXACTLY their documented technical survivors", () => {
+    for (const [file, survivors] of Object.entries(KEYED_SURVIVORS)) {
+      const found = candidates(readRepo(`${VIEWS}/${file}`));
+      expect(found, `${file}: candidates drifted from the documented survivors`).toEqual(
+        survivors
+      );
+    }
+  });
+
+  test("every view with candidates is either clean, keyed, the LIVE chip, or ledgered", () => {
     const files = readdirSync(join(REPO, VIEWS)).filter((f) => f.endsWith(".tsx"));
     for (const file of files) {
       if (file === "devices-view.tsx" || file === "device-detail-view.tsx") continue;
+      if (KEYED_SURVIVORS[file]) continue;
       const count = candidates(readRepo(`${VIEWS}/${file}`)).length;
       if (count === 0) continue;
       const ceiling = PENDING_VIEWS[file];

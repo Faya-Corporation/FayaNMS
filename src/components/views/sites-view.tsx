@@ -8,6 +8,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
+import { useTranslations } from "next-intl";
+
 import { useSites } from "@/hooks/api/use-sites";
 import { useStatusLabel } from "@/hooks/use-status-label";
 import { BackupComplianceBadge } from "@/components/domain/backup-status-badge";
@@ -27,14 +29,15 @@ import { useNavigationStore } from "@/stores/navigation";
  * backup compliance — with a drill-down into the filtered device inventory.
  */
 export function SitesView() {
+  const t = useTranslations("sites");
   const sites = useSites();
   const setActiveView = useNavigationStore((state) => state.setActiveView);
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        description="Locations, device distribution and backup posture per site"
-        title="Sites"
+        description={t("description")}
+        title={t("title")}
       />
 
       {sites.isLoading ? (
@@ -47,13 +50,13 @@ export function SitesView() {
         <ErrorState
           onRetry={() => void sites.refetch()}
           reason={sites.error.message}
-          title="Sites could not be loaded"
+          title={t("errorTitle")}
         />
       ) : (sites.data?.length ?? 0) === 0 ? (
         <EmptyState
-          description="Sites are created by administrators and group devices by location."
+          description={t("emptyDescription")}
           icon={Building2}
-          title="No sites configured"
+          title={t("emptyTitle")}
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -79,6 +82,7 @@ function SiteCard({
   site: SiteSummary;
   onViewDevices: () => void;
 }) {
+  const t = useTranslations("sites");
   // Status labels resolve in the active locale (falls back to config.label).
   const resolveStatusLabel = useStatusLabel();
   const statusEntries = Object.entries(site.statusCounts).filter(
@@ -103,16 +107,16 @@ function SiteCard({
           <Boxes aria-hidden="true" className="size-4" />
           <span className="font-semibold tabular-nums text-foreground">
             {site.managedCount}
-          </span>
-          managed / {site.deviceCount} total
+          </span>{" "}
+          {t("managedOfTotal", { total: site.deviceCount })}
         </span>
       </div>
 
       {/* Device status mix */}
       <div className="flex flex-col gap-1.5">
-        <p className="text-xs font-medium text-muted-foreground">Device status</p>
+        <p className="text-xs font-medium text-muted-foreground">{t("deviceStatus")}</p>
         {statusEntries.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No devices yet</p>
+          <p className="text-sm text-muted-foreground">{t("noDevices")}</p>
         ) : (
           <ul className="flex flex-col gap-1">
             {statusEntries.map(([status, count]) => {
@@ -139,18 +143,18 @@ function SiteCard({
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <Network aria-hidden="true" className="size-3.5" />
-            {site.interfaceCount} interfaces
+            {t("interfaces", { count: site.interfaceCount })}
           </span>
           <span className="flex items-center gap-1.5">
             <MapPin aria-hidden="true" className="size-3.5" />
-            {Object.keys(site.criticalityMix).length} criticality classes
+            {t("criticalityClasses", { count: Object.keys(site.criticalityMix).length })}
           </span>
         </div>
         <div className="flex items-center justify-between gap-2">
           <div className="flex flex-col gap-0.5">
             <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <ShieldCheck aria-hidden="true" className="size-3.5" />
-              Backup compliance
+              {t("backupCompliance")}
             </span>
             <BackupComplianceBadge
               value={
@@ -164,11 +168,14 @@ function SiteCard({
               }
             />
             <span className="text-xs tabular-nums text-muted-foreground">
-              {site.compliance.compliant}/{site.compliance.total} devices compliant
+              {t("compliantDevices", {
+                compliant: site.compliance.compliant,
+                total: site.compliance.total,
+              })}
             </span>
           </div>
           <Button onClick={onViewDevices} size="sm" variant="outline">
-            View devices
+            {t("viewDevices")}
           </Button>
         </div>
       </div>
