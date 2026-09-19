@@ -326,6 +326,8 @@ Run **`35424363304`** (push @ `cf258cd`, 2026-09-19) — **SUCCESS**:
 | **browser** | ✅ SUCCESS — 12/12 rendering-layer journeys (sign-in, dashboard, axe ×2, keyboard, RTL + all six detection-panel journeys) | ~3m |
 | **scan** | ✅ SUCCESS — gitleaks, semgrep, osv-scanner ×2, SBOM, trivy fs, **both image builds (artifact-verified) + both image scans (security-channel-upgraded bases, fixable-only gate) + per-image SBOMs** | 7m58s |
 
+**Confirmation (repeatability):** the next push — run **`35425179471`** @ `d4950c6` (the R79 documentation commit itself) — **also returned SUCCESS on ALL FOUR jobs** (gate · e2e · browser · scan). The acceptance is not a single-run event: two consecutive full four-job green runs.
+
 ### 15.1 The nine-iteration bring-up journey (R70 → R78), each finding root-caused + fixed + locally proven + pinned
 
 1. **R70** — first real gate execution: migrate-before-Tests ordering (empty CI DB).

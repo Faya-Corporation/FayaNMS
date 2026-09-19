@@ -3716,3 +3716,7 @@ Work Log:
 
 Stage Summary:
 - **HC-6 ACCEPTED.** The CI program is fully operational: four hard-gated jobs green on main, image plane included. Remaining operator items are external: OWNER-GOV-001 (plan-gated ruleset) + LAB (hardware matrix). db/, .env, PAT never staged.
+
+## R79 confirmation — repeatability proven (2026-09-19)
+
+- The push of the R79 documentation commit itself triggered run `35425179471` @ `d4950c6` → **SUCCESS on ALL FOUR jobs again** (gate · e2e · browser · scan). **Two consecutive full four-job green runs** (`35424363304` @ `cf258cd` + `35425179471` @ `d4950c6`) — the HC-6 acceptance is repeatable, not a single-run event. §15 updated. db/, .env, PAT never staged.
