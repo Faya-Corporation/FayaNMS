@@ -106,8 +106,25 @@ async function createAndMigrateDatabase(): Promise<void> {
   // Demo seed (T7 path): the seed process runs NON-production with an
   // explicit FAYANMS_DEMO_MODE=true; the SERVER env stays clean (the startup
   // policy refuses demo mode in production).
+  // R72: the seed subprocess must carry the run's config KEK explicitly —
+  // the harness previously relied on the AMBIENT environment to supply
+  // FAYANMS_CONFIG_ENC_KEY (the sandbox dev env had one; CI's sparse job env
+  // does not), so the first real CI execution (run 35416148348) failed with
+  // "FAYANMS_CONFIG_ENC_KEY is missing or not 64 hex chars — refusing to
+  // encrypt/decrypt configuration at rest". The same fresh RUN_SECRET the
+  // app boots with is the correct value (seeded ciphertext must be
+  // decryptable by the server under test). Replicated deterministically:
+  // empty/invalid key → exit 1 with the exact refusing error; valid
+  // 64-hex → "Seed complete."
   const seed = Bun.spawnSync(["bun", "prisma/seed.ts"], {
-    env: { ...process.env, DATABASE_URL: e2eDbUrl, NODE_ENV: "", FAYANMS_DEMO_MODE: "true" },
+    env: {
+      ...process.env,
+      DATABASE_URL: e2eDbUrl,
+      NODE_ENV: "",
+      FAYANMS_DEMO_MODE: "true",
+      FAYANMS_CONFIG_ENC_KEY: RUN_SECRET,
+      FAYANMS_CONFIG_ENC_KEY_ID: "k1",
+    },
     stdout: "pipe",
     stderr: "pipe",
   });

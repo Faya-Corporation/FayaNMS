@@ -3581,3 +3581,31 @@ Work Log:
 
 Stage Summary:
 - main now carries the full hardened program (R2..R69 + R70) merged by explicit operator instruction with linear history intact; governance verification remains plan-gated (GOV-001, exit 2 GOV-PLAN-BLOCKER honestly re-classified on merged main). CI is UNBLOCKED and in active bring-up: the first real execution exposed + fixed the DB-bootstrap ordering defect; e2e/browser/scan first real executions pending. db/, .env, PAT never staged.
+
+## R70 → R71 — CI bring-up iteration 2: certify step lab-hatch env (2026-09-19)
+
+Task: continue the dispatch-driven CI bring-up until the 4-job green HC-6 run exists.
+
+Work Log:
+- Dispatch #5 (204 → run `35415388173` @ main/`d3136c6`) went deeper than any run in repo history: deps/lint/tsc ✅, the R70 bootstrap fix worked (migrate replay ✅), and the FULL test suite went GREEN IN REAL CI (1013/18/0, 8,388 expects — byte-identical to local).
+- Next never-executed step failed: Live SSH adapter certification crashed with `SSH_TARGET_POLICY_REFUSED: loopback` — the driver dials its own 127.0.0.1 protocol harnesses by design, and the step never presented the documented `FAYANMS_PROBE_ALLOW_SPECIAL=true` lab hatch (the driver had only ever run inside the sandbox shell that exported it — same latent env-coupling class as R70's bootstrap hole).
+- FIX: ci.yml certify step env now presents the hatch + the three R64 hermeticity knobs (explicit-empty service plane). CI-replica re-execution with the exact step env: CERT RESULT: PASSED — 134 checks, 5 flavors, protocol level, exit 0. Diagnostic honesty recorded: a sandbox-shell run WITHOUT the knobs shows spurious 401s on the HTTP-surface checks (dev-.env key-material leak into the in-process mint/verify round trip via the .env fallback); CI has no .env and was never affected.
+- NEW tests/audit/r71-certify-step-env.test.ts (5 pins). Gates: lint 0 · tsc 0 · suite 1013 → 1018/18/0. Docs: R70 audit doc §7 + roadmap R71 row + NEXT-TASKS R71 UPDATE. Commit `18c1a28` → pushed z_ai_v2 → ff main → pushed (all four refs 0/0).
+
+Stage Summary:
+- The gate is one step from green; every latent environment coupling the infra-blocked era hid is being exposed and remediated one dispatch at a time, each with local replica proof before the push.
+
+## R71 → R72 — CI bring-up iteration 3: FIRST GREEN GATE + seed-KEK fix + gitleaks triage (2026-09-19)
+
+Task: dispatch #6 after the R71 fix; remediate whatever the downstream first executions expose.
+
+Work Log:
+- Dispatch #6 (204 → run `35416148348` @ main/`18c1a28`) = **FIRST GREEN GATE JOB in repo history** (2m32s): every gate step success — deps ×2, lint, typecheck, migration replay (R70 position), Tests 1018/18/0, SSH certification (R71 env), brand ×3, prisma validate, shadow DB + drift guard, demo seed smoke, i18n parity, production build.
+- The three downstream jobs executed for the FIRST time ever — each exposed its own latent defect:
+  - e2e + browser: harness seed failed with "FAYANMS_CONFIG_ENC_KEY is missing or not 64 hex chars — refusing to encrypt/decrypt configuration at rest". Root cause: the seed subprocess inherited ambient env for the config KEK while the e2e job env carries only DATABASE_URL (the app-boot env had the key via appEnv; the seed path did not); masked locally by bun auto-load of dev .env. Replicated deterministically: explicit-empty key → exit 1 with the exact CI error; valid 64-hex → "Seed complete." FIX: seed env now carries the run's fresh RUN_SECRET (+ CONFIG_ENC_KEY_ID k1) — the same KEK the server-under-test boots with.
+  - scan: first real gitleaks run exited 2 with findings that are ALL committed throwaway fixtures (tests/** hex constants; docs/audits/ + worklog.md prose quoting them; mini-services/worker/harness/ incl. its self-signed loopback sfos-webapi-*.pem; the documented CI fixture hex in ci.yml/.env.example/docs/ci/ci-gate.yml). FIX: committed .gitleaks.toml — [extend] useDefault=true (full default ruleset stays active) + seven-path triaged allowlist with rationale inline incl. the P1-019 machine-proven non-authority argument. Verified with checksum-verified gitleaks 8.24.3 (upstream SHA256SUMS matched): baseline 10 → scoped v1 → 7 → FINAL exit 0 "no leaks found" (193 commits).
+- NEW tests/audit/r72-seed-kek-and-gitleaks-triage.test.ts (7 pins: useDefault kept, exactly seven allowlist paths + no regex/commits nukes, inline triage, seed-KEK env, finding records, PAT hygiene). Gates: lint 0 · tsc 0 · suite 1018 → 1025/18/0. Docs: R70 audit doc §8 + roadmap R72 row + NEXT-TASKS R72 UPDATE. Commit → pushed z_ai_v2 → ff main → pushed (all four refs 0/0).
+- Honest scope: local end-to-end harness re-execution remains blocked by the documented R68 environmental preconditions (no standalone build in this sandbox) — dispatch is the verifier of record for the e2e/browser journeys.
+
+Stage Summary:
+- The gate job is GREEN in real CI and every latent environment coupling the infra-blocked era hid has been exposed and remediated with local replica proof before each push: R70 DB bootstrap → R71 certify hatch → R72 seed KEK + gitleaks triage. Next dispatch targets the first FULL 4-job green run = HC-6 acceptance.

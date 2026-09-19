@@ -122,3 +122,30 @@ The certification driver IS the loopback lab: it dials in-process `127.0.0.1` pr
 - **CI-replica re-execution locally (exact step env): `CERT RESULT: PASSED` — 134 PASS checks, 5 flavors, protocol level, exit 0.** (Diagnostic note, recorded honestly: a sandbox-shell run *without* the R64 knobs shows spurious 401s on the HTTP-surface checks — the dev `.env`'s key material leaks into the in-process mint/verify round trip via the `.env` fallback; CI has no `.env` and was never affected. The knobs make the step hermetic in ANY environment.)
 - Pin suite: `tests/audit/r71-certify-step-env.test.ts` (5 pins — step env, hatch, knobs, finding record, PAT hygiene).
 - Expected next: dispatch #6 should carry the gate past certification into brand/schema/drift/i18n/build steps; `e2e`/`browser`/`scan` get their first real executions if the gate goes green.
+
+---
+
+## 8. R72 ADDENDUM — bring-up iteration 3: the FIRST GREEN GATE + downstream seed-KEK fix + gitleaks triage
+
+Dispatch #6 (run **`35416148348`** @ main/`18c1a28`) — **the FIRST GREEN GATE JOB in repo history** (2m32s):
+
+| Job | Result |
+| --- | --- |
+| **gate** | ✅ **SUCCESS — every step**: deps ×2, lint, typecheck, migration replay (R70 position), **Tests 1018/18/0**, SSH certification (R71 env), brand ×3, prisma validate, shadow DB + drift guard, demo seed smoke, i18n parity, **production build** |
+| e2e | ❌ first-ever execution — harness seed failed |
+| browser | ❌ first-ever execution — same seed failure |
+| scan | ❌ first-ever execution — gitleaks exited 2 |
+
+### 8.1 e2e + browser — the seed-KEK ambient dependency
+
+The shared harness's seed subprocess inherited `process.env` for its config KEK and only the e2e job's sparse env (`DATABASE_URL` alone) preceded it → `FAYANMS_CONFIG_ENC_KEY is missing or not 64 hex chars — refusing to encrypt/decrypt configuration at rest` (the app-boot env DID have the key via `appEnv`; the seed path did not). The sandbox never caught it because Bun auto-loads the dev `.env` (which carries a valid key) into every ambient process. Replicated deterministically: explicit-empty key → **exit 1 with the exact CI error**; valid 64-hex → **`Seed complete.`** (exit 0). **Fix**: the seed env now carries the run's fresh `RUN_SECRET` (+ `FAYANMS_CONFIG_ENC_KEY_ID: "k1"`) — the same KEK the server-under-test boots with, so seeded ciphertext decrypts on the journey path. Local end-to-end harness re-execution remains blocked by the documented R68 environmental preconditions (no standalone build in this sandbox) — dispatch is the verifier of record.
+
+### 8.2 scan — first real gitleaks run triaged into a committed allowlist
+
+`gitleaks detect` (full 193-commit history) exited 2 with findings that are ALL committed, audit-trialed throwaway fixtures: test-fixture hex constants (`tests/**`), the audit trail quoting them (`docs/audits/`, `worklog.md`), the harness's own loopback key material (`mini-services/worker/harness/` incl. its self-signed `sfos-webapi-*.pem`), the documented CI fixture hex (`ci.yml`, `.env.example`, retired `docs/ci/ci-gate.yml`). **Fix**: committed `.gitleaks.toml` — `[extend] useDefault = true` (the full default ruleset stays active everywhere) + a seven-path allowlist with the triage rationale inline, including the machine-proven non-authority argument (the P1-019 startup policy REFUSES the fixture values at production boot). Widening requires a new triage note (pinned). **Verified with checksum-verified gitleaks 8.24.3** (upstream SHA256SUMS matched): baseline 10 findings → scoped v1 → 7 → final: **exit 0, "no leaks found"**.
+
+### 8.3 Round record
+
+- NEW `tests/audit/r72-seed-kek-and-gitleaks-triage.test.ts` (7 pins: useDefault kept, exactly seven allowlist paths + no regex/commits nukes, inline triage, seed-KEK env, finding records, PAT hygiene). Suite 1018 → **1025/18/0**.
+- Docs: this §8; roadmap R72 row; NEXT-TASKS R72 UPDATE; dual worklogs R71+R72.
+- Expected next (dispatch #7): gate green again; e2e/browser harness proceeds past seed into the journeys; scan goes green with the committed allowlist. Any further first-execution findings continue the same per-run remediation protocol.

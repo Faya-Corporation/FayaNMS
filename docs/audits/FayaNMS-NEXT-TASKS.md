@@ -32,6 +32,15 @@ OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (gree
   127.0.0.1 harnesses (the step never presented the documented FAYANMS_PROBE_ALLOW_SPECIAL
   lab hatch). FIXED: step env now carries the hatch + the three R64 hermeticity knobs;
   CI-replica re-execution PASSED (134 checks, 5 flavors). Iterate: dispatch #6 next.
+  R72 UPDATE: **FIRST GREEN GATE JOB in repo history** — run `35416148348` @ `18c1a28`, gate
+  SUCCESS (every step incl. Tests 1018/18/0, SSH cert, drift guard, i18n, production build).
+  The three downstream jobs then had their FIRST executions ever: e2e/browser failed at the
+  harness seed (ambient FAYANMS_CONFIG_ENC_KEY dependency; masked locally by bun auto-load of
+  dev .env) → seed env now carries the run's fresh RUN_SECRET (deterministically replicated);
+  scan's first gitleaks run exited 2 on committed throwaway fixtures → committed
+  .gitleaks.toml (useDefault kept + seven-path triaged allowlist; P1-019 non-authority
+  rationale) → verified "no leaks found" (exit 0, 193 commits). Iterate: dispatch #7 next —
+  first full-battery green run is the HC-6 acceptance.
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4).
   R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
   aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let

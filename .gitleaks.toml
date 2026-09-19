@@ -1,0 +1,62 @@
+# FayaNMS gitleaks configuration — R72 (2026-09-19).
+#
+# Triage context: the FIRST REAL gitleaks execution in repo history (CI run
+# 35416148348, the 4-job bring-up episode) exited 2 with findings that are ALL
+# committed, audit-trialed TEST/HARNESS fixtures — throwaway values with zero
+# authority (the repo doctrine: "no real secret ever lives in this repo";
+# .env.example + ci.yml carry only well-formed hex shapes the startup policy
+# validates). This config keep the FULL default ruleset active everywhere and
+# scopes the allowlist as narrowly as the triage supports:
+#
+#   tests/                           — fixture constants by definition (their
+#                                      exact shapes are machine-pinned by the
+#                                      unit suite; renaming or splitting them
+#                                      to dodge a regex would be obfuscation,
+#                                      not security).
+#   docs/audits/ + worklog.md        — the audit trail QUOTES fixture values
+#                                      as evidence. Compensating control: the
+#                                      PAT-hygiene pins (r67/r70/r71 suites)
+#                                      grep these trees for REAL credential
+#                                      shapes (GitHub fine-grained PAT and
+#                                      classic-token prefixes, long bearer
+#                                      strings) and fail on any hit.
+#   mini-services/worker/harness/    — the in-repo protocol-harness plane: its
+#                                      throwaway webapi key constant and the
+#                                      self-signed loopback TLS keypair
+#                                      (sfos-webapi-*.pem) are REQUIRED AT
+#                                      RUNTIME by the harness itself and are
+#                                      valid only inside 127.0.0.1 journeys.
+#   .github/workflows/ci.yml,        — carry the DOCUMENTED CI fixture hex
+#   docs/ci/ci-gate.yml,               (the same 64-hex shape in workflow env
+#   .env.example                        blocks and examples). NON-AUTHORITY IS
+#                                       MACHINE-PROVEN: the production startup
+#                                       policy (P1-019 known-bad blocklist)
+#                                       REFUSES these exact values at boot —
+#                                       a leaked copy grants nothing. docs/ci/
+#                                       ci-gate.yml is the retired pointer-era
+#                                       workflow doc, kept verbatim as history.
+#
+# Everything else — src/, scripts/, prisma/, mini-services/worker/*.ts,
+# .github/ (other files), compose files, deploy templates — remains under the
+# complete default gitleaks ruleset. Widening this allowlist requires a new
+# triage note in docs/audits/ (same discipline as every other governance edit).
+
+title = "FayaNMS gitleaks allowlist (audit-trialed throwaway fixtures only)"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = """R72 triage (run 35416148348): test fixture constants, audit-trail \
+prose quoting them, the protocol harness's own loopback-only key material, and \
+the documented CI fixture hex whose non-authority is machine-proven by the \
+P1-019 production blocklist. See docs/audits/FayaNMS-R70-Merge-to-Main-and-CI-Bootstrap-2026-09-19.md §8."""
+paths = [
+  '''^tests/''',
+  '''^docs/audits/''',
+  '''^docs/ci/''',
+  '''^worklog\.md$''',
+  '''^mini-services/worker/harness/''',
+  '''^\.github/workflows/ci\.yml$''',
+  '''^\.env\.example$''',
+]
