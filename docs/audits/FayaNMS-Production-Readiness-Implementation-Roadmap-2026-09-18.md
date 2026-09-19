@@ -75,7 +75,7 @@ Everything here is executable inside the sandbox with no external dependency, or
 ## Phase OWNER — operator-side prerequisites (unchanged, exact hand-off)
 
 - **OWNER-CI-001 — GitHub Actions runner capacity.** The repo's `ci.yml` is complete, SHA-pinned, and honestly documented as runner-blocked since run #34. Action: enable hosted runners (or a self-hosted runner with ≥ 8 GB RAM for `build:gate`) on `fayafatehi/FayaNMS`; then execute HC-6. No code change required — the workflow is ready.
-- **OWNER-GOV-001 — branch protection / ruleset on `main`.** Exact config already codified in TASK-GOV-001-A + deploy note 4 (require PR + the 4 required checks, linear history, signed commits recommended). Action: Settings → Rules → Rulesets on GitHub. No code change required. NOTE: `z_ai_v2` is the working integration branch; protection is requested for `main` per the task definition — mirroring it onto `z_ai_v2` is recommended once R52+ merges.
+- **OWNER-GOV-001 — branch protection / ruleset on `main`.** Exact config already codified in TASK-GOV-001-A + deploy note 4 (require PR + the 4 required checks `gate`+`e2e`+`browser`+`scan` — R66 correction aligns every doc with the workflow header marker; linear history, signed commits recommended). Action: Settings → Rules → Rulesets on GitHub. No code change required. NOTE: `z_ai_v2` is the working integration branch; protection is requested for `main` per the task definition — mirroring it onto `z_ai_v2` is recommended once R52+ merges.
 
 ## Phase LAB — real-device certification (unchanged)
 
@@ -85,7 +85,7 @@ Everything here is executable inside the sandbox with no external dependency, or
 
 1. HC-1..HC-5 LANDED (HC-6 rides OWNER-CI-001); re-audit verdict stays PASS with zero open P1/P2/P3-authorable.
 2. OWNER-CI-001 closed: green 4-job workflow run on the release SHA (HC-6 evidence recorded).
-3. OWNER-GOV-001 closed: `main` protection active with the 4 required checks.
+3. OWNER-GOV-001 closed: `main` protection active with the 4 required checks (`gate`, `e2e`, `browser`, `scan`).
 4. LAB: R50-T090..T092 certified on at least one representative per vendor family; matrix published; LIVE-restore decision documented (certified-refused or opt-in).
 5. Final pre-go-live increment: fresh independent full re-audit on the release SHA + this checklist re-run top to bottom.
 
@@ -110,5 +110,6 @@ Everything here is executable inside the sandbox with no external dependency, or
 | R63 CI trigger + hand-off corrections | ✅ R63 — `FayaNMS-R63-CI-Trigger-and-Handoff-Corrections-2026-09-19.md` (workflow_dispatch added — the corrected HC-6 execution path; hand-off notes refreshed: ledger-deferred numbers, Dependabot default-branch activation caveat, corrected runbook ordering; suite 963 → 967) |
 | R64 gate re-execution + unit-gate hermeticity | ✅ R64 — `FayaNMS-R64-Gate-Reexecution-and-Hermeticity-2026-09-19.md` (R61–R63 gates independently RE-EXECUTED from a cold shell: recorded 967/18/0 exactly reproduced at the R63 tree; found + fixed a unit-gate hermeticity defect — the dev `.env` regenerated post-R62 leaked key material into in-process mint/verify via bun auto-load + the worker's `.env`-file fallback; explicit-empty suppression + `FAYANMS_SERVICE_ENV_FILE` knob in both reader copies; 3-knob gate env contract documented; 5 pins; suite 967 → 972) |
 | R65 session-resume verification + HC-6 dispatch executed | ✅ R65 — `FayaNMS-R65-Operator-Path-Dispatch-Verification-2026-09-19.md` (resume reconciliation: summary claimed R60/@38c93f1 "fixes not started" — repo actually at R64/`7cb6be4` pushed 0/0; gates independently RE-EXECUTED: lint 0 · tsc 0 · 972/18/0 exact reproduction under the 3-knob gate env; LIVE re-proven (meta 200 · worker /health 200 · unauth 401 fail-closed); **HC-6 `workflow_dispatch` EXECUTED end-to-end for the first time** — 204 → run `35406875963` bound to `z_ai_v2`@`7cb6be4` → gate failure with 0 steps = the known runner-infra signature (#34/#89), trigger path PROVEN, sole remaining blocker is runner capacity; `agent-ctx/` scratch dir gitignored) |
+| R66 candidate-PR rehearsal + required-checks shape unification | ✅ R66 — `FayaNMS-R66-Candidate-PR-Rehearsal-and-Required-Checks-Shape-2026-09-19.md` (merge pre-flight: `merge-tree --write-tree` exit 0 — the protective merge is CLEAN, 35 commits / 198 files / +14,738−1,973; second HC-6 dispatch probe on `0d28a34`: run `35408254887` → gate failure 0 steps, same infra signature; **governance defect fixed**: TASK-GOV-001-A + 6 more operation docs carried stale 2-check/3-check required-checks sets vs the 4-job workflow — an operator following them would let e2e/browser failures MERGE; all unified to `gate`+`e2e`+`browser`+`scan` matching the R47 header marker; 6 new pins; suite 972 → 978) |
 | OWNER-CI-001 / OWNER-GOV-001 | external, config ready |
 | LAB R50-T090..T092 + CERT-HW-001-A | external, Step 0 ready (`demo:fleet`) |

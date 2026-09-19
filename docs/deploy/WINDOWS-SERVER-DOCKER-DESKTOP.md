@@ -581,9 +581,9 @@ docker compose ps && docker compose logs -f app          # watch the startup pol
    on an isolated LAN pilot; rotate/delete seeded users before any broader exposure.
 4. **Branch protection is NOT active today** (live API read-back 2026-09-15:
    `main.protected=false`, required checks off — GOV-001, DOC-001-A reconciled). The
-   `gate`+`scan`+`e2e` jobs run on every push and are DESIGNED as the required checks;
-   enabling the ruleset is an OWNER action (GitHub settings: PRs required, gate+scan+e2e
-   required, no force-push/deletion, admin bypass scoped and recorded in
+   `gate`+`e2e`+`browser`+`scan` jobs run on every push and are DESIGNED as the required checks;
+   enabling the ruleset is an OWNER action (GitHub settings: PRs required, all FOUR
+   (gate+e2e+browser+scan) required, no force-push/deletion, admin bypass scoped and recorded in
    SOCIAL-REPOSITORY §6). Until then, pushes land with gates executed locally and CI
    state recorded honestly per commit in worklog.md (current CI runs are
    infrastructure-blocked — no runner assigned; CI-001).

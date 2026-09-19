@@ -31,8 +31,8 @@ Activation requires **both**:
    that scope — P19-10 and Phase 19-C both hit the same remote rejection; the
    earlier ready-to-push commit is preserved on the local branch
    `local/ci-workflow-activation`.
-2. **Branch protection + required status checks (`gate`, `scan`) in GitHub
-   settings** (PR required + 1 approval + CODEOWNERS review + conversation
+2. **Branch protection + required status checks (`gate`, `e2e`, `browser`,
+   `scan` — all FOUR jobs) in GitHub settings** (PR required + 1 approval + CODEOWNERS review + conversation
    resolution, no force push/delete). These are settings-side actions, tracked
    in [docs/brand/SOCIAL-REPOSITORY.md](../brand/SOCIAL-REPOSITORY.md) and the
    release checklist.

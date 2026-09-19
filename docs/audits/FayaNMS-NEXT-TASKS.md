@@ -13,7 +13,13 @@ OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (gree
   0 steps (the known runner-infra signature, #34/#89 — NOT a code regression: the same tree
   reproduces lint 0 / tsc 0 / 972-18-0 locally). The operator's HC-6 action is now exactly one
   step: resolve runner capacity → re-dispatch (or open the candidate PR; both paths triggerable).
-OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4)
+  R66 UPDATE: second dispatch probe (run `35408254887` @ `0d28a34`) reproduced the same 0-steps
+  signature — capacity still absent. Merge pre-flight: `git merge-tree --write-tree` exit 0 — the
+  candidate PR will land CLEAN (35 commits, 198 files, +14,738/−1,973).
+OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4).
+  R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
+  aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let
+  e2e/browser failures merge); pinned by tests/audit/r66-gov-required-checks-shape.test.ts.
 R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (needs operator-side hardware or free DevNet AAA credentials; Step 0: PUBLIC DEMO DEVICE PLANE — docs/certification/PUBLIC-DEMO-DEVICES.md + `bun run demo:fleet`)
 ```
 
@@ -237,7 +243,7 @@ Depends on: GOV-001-A for the flip to "active"; the corrective wording has lande
 
 TASK-GOV-001-A — Restore branch protection on `main` 👤
 
-Goal: `main.protected=true` with required `gate`+`scan`; kill the GOV-001 P0.
+Goal: `main.protected=true` with required `gate`+`e2e`+`browser`+`scan` (all FOUR ci.yml jobs — R66 correction: the pre-R47 `gate`+`scan` wording predates the e2e/browser jobs and under-protected the merge; the workflow header marker pins the same four); kill the GOV-001 P0.
 Files: GitHub settings (owner token); `ci.yml` header stamp.
 Implementation: Ruleset: PR required, ≥1 approval (+CODEOWNERS), conversation resolution, required checks, no force-push/deletion, scoped admin bypass decision recorded; verify via API read-back.
 Tests: Governance verification step asserting the read-back.

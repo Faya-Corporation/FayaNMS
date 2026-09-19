@@ -19,8 +19,8 @@ Release to "PRODUCTION READY" requires every ☐ below ticked with evidence. Do 
 
 ## B. Owner actions (blockers — required for PRODUCTION READY)
 
-- [ ] **GOV-001**: enable `main` ruleset/branch protection — PRs required, ≥1 approval (+CODEOWNERS), conversation resolution, required checks `gate` + `scan` + `e2e`, force-push + deletion forbidden, admin bypass scoped and recorded (SOCIAL-REPOSITORY §6). Verify via API read-back `protected:true`, THEN flip the docs (they currently state NOT ACTIVE — truth-first).
-- [ ] **CI-001**: restore Actions runner capacity — verify minutes/billing; re-run `gate`+`scan`+`e2e` on the release SHA from the Actions UI; if unavailability persists, add a self-hosted runner. A green OLD SHA is not release evidence.
+- [ ] **GOV-001**: enable `main` ruleset/branch protection — PRs required, ≥1 approval (+CODEOWNERS), conversation resolution, required checks `gate` + `e2e` + `browser` + `scan` (all FOUR ci.yml jobs — R66 correction: the earlier 3-check wording predates the browser job), force-push + deletion forbidden, admin bypass scoped and recorded (SOCIAL-REPOSITORY §6). Verify via API read-back `protected:true`, THEN flip the docs (they currently state NOT ACTIVE — truth-first).
+- [ ] **CI-001**: restore Actions runner capacity — verify minutes/billing; re-run the 4-job battery (`gate`+`e2e`+`browser`+`scan`) on the release SHA from the Actions UI or via workflow_dispatch; if unavailability persists, add a self-hosted runner. A green OLD SHA is not release evidence.
 
 ## C. Lab actions (blockers — required for PRODUCTION READY)
 

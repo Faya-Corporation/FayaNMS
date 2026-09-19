@@ -104,6 +104,11 @@ Keep the demo semantics visible in the one-liner; the README body carries the fu
    (`d68e47a`) and [#7](https://github.com/fayafatehi/FayaNMS/actions/runs/34540067242)
    (`3e97d3b`): both jobs `gate` and `scan` concluded `success` with zero failed steps
    (verified via the Actions API).
+   *(R66 correction: at R9 time the workflow had only `gate`+`scan`; the CURRENT
+   ci.yml has FOUR jobs and the ruleset must require all four — `gate`, `e2e`,
+   `browser`, `scan` — matching the workflow header `required-checks` marker.
+   This historical ✅ record is retained as a point-in-time fact, not the
+   current target config; the protection it describes was later lost — GOV-001.)*
 3. ✅ **Protect `main`** — task R9 (2026-09-10 23:2x UTC), via the branch-protection REST
    API with the Administration:write token: required status checks **`gate` + `scan`** ·
    pull requests required with **1 approval** + **CODEOWNERS review** · **conversation

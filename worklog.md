@@ -3488,3 +3488,21 @@ Work Log:
 Stage Summary:
 - Authorable backlog EMPTY (unchanged since R63); suite 972/18/0 reproduced, not asserted.
 - HC-6: dispatch mechanism verified working; the operator's remaining action is exactly one step — restore runner capacity → re-dispatch (or candidate PR), then the rest of the corrected operator runbook (protect main → LAB hardware cert → protective merge → independent final audit on the release SHA).
+
+---
+
+Task ID: R66
+Agent: Z.ai Code (orchestrator, single-session)
+Task: Candidate-PR rehearsal (merge pre-flight) + second HC-6 dispatch probe + required-checks shape audit; fix found drift; pins + gates + append + push.
+
+Work Log:
+- Merge pre-flight: `git merge-tree --write-tree origin/main z_ai_v2` → exit 0, tree 92222d2, zero conflicts; 35 commits / 198 files / +14,738−1,973; origin/main re-fetched, still 27e0eea. The protective merge will land CLEAN.
+- Second HC-6 dispatch probe: 204 → run 35408254887 @ 0d28a34 → gate failure with 0 steps (browser/scan/e2e skipped 0 steps) — same infra signature as #34/#89/35406875963; capacity still absent; trigger path remains proven.
+- Governance defect FOUND: required-checks shape drift — ci.yml has FOUR jobs (gate/e2e/browser/scan, check names = job ids) and the R47 header marker pins all four, but TASK-GOV-001-A (the authoritative ruleset definition) still said `gate`+`scan` (2), four other operation docs said `gate`+`scan`+`e2e` (3), and the roadmap said "the 4 required checks" unnamed. An operator following TASK-GOV-001-A would protect main with e2e/browser NOT required — their failures could then MERGE.
+- Fixed 8 surfaces to the canonical four-check shape (NEXT-TASKS TASK-GOV-001-A, ci-gate.yml, MATRIX, deploy note 4, FINAL-gate checklist GOV-001+CI-001, hand-off Step 2 "all four NOW", SOCIAL-REPOSITORY historical record + correction note, roadmap named-list ×2). Historical audit snapshots deliberately NOT rewritten (point-in-time records).
+- NEW tests/audit/r66-gov-required-checks-shape.test.ts (6 pins A–F; 2 pin premises fixed during verification — the extraction class must include digits for `e2e`, and indexOf must target the definition not a reference).
+- Gates: lint 0 · tsc 0 · suite 972 → 978/18/0 (8,260 expects, 62 files). LIVE: app/meta 200 · worker /health 200 · unauth 401 fail-closed.
+- Evidence doc + roadmap row + NEXT-TASKS OWNER updates + both worklogs; committed + pushed (db/, .env, PAT never staged).
+
+Stage Summary:
+- The ruleset the operator will configure is now defined ONCE, correctly (all FOUR checks), everywhere; the merge is rehearsed clean; the dispatch path re-proven. Authorable backlog EMPTY again — remaining path is the operator runbook only.

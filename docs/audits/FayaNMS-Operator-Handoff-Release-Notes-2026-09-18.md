@@ -114,10 +114,12 @@ runner-blocked honesty note to live status.
 **Step 2 — OWNER-GOV-001: protect `main` (exact config from TASK-GOV-001-A).**
 Settings → Rules → Rulesets on `main`: PR required, ≥1 approval + CODEOWNERS
 review for the governed paths, conversation resolution, required checks
-(`gate`, `scan` — and `e2e`, `browser` once runners exist), no force-push, no
-deletion, scoped admin-bypass decision recorded; verify via API read-back
-(`protected:true` + required checks). Recommended: mirror the ruleset onto
-`z_ai_v2` while it remains the integration branch.
+(`gate`, `e2e`, `browser`, `scan` — all FOUR jobs; R66 correction: configure
+all four NOW, not "e2e/browser once runners exist" — the jobs already exist
+and configuring only gate+scan would let e2e/browser failures merge), no
+force-push, no deletion, scoped admin-bypass decision recorded; verify via
+API read-back (`protected:true` + required checks). Recommended: mirror the
+ruleset onto `z_ai_v2` while it remains the integration branch.
 
 **Step 3 — LAB certification (R50-T090..T092 + TASK-CERT-HW-001-A).**
 Start with **Step 0, no hardware needed**: `docs/certification/PUBLIC-DEMO-DEVICES.md`
