@@ -18,6 +18,14 @@ OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (gree
   candidate PR will land CLEAN (35 commits, 198 files, +14,738/−1,973).
   R68 UPDATE: probe #3 (run `35411315267` @ `13a8fcf`) — same 0-steps signature. Three dispatches
   across three SHAs: trigger path triple-proven; capacity is the one and only HC-6 blocker.
+  R70 UPDATE: CAPACITY LIFTED — run `35414649589` @ main/`6538d46` executed for real (first
+  non-0-step run): deps/lint/tsc GREEN, Tests FAILED on the empty CI service DB ("The table
+  public.User does not exist") — latent ordering defect (migrate ran AFTER tests; masked for
+  months by the pre-migrated sandbox DB + the runner block). FIXED same round: `prisma migrate
+  deploy` moved ABOVE Tests, proven on a byte-fresh replica DB (997/18/0). The merge itself is
+  DONE (operator-authorized fast-forward `27e0eea..6538d46` pushed). Remaining: iterate dispatch
+  per push until a full 4-job GREEN run exists (HC-6 acceptance) — e2e/browser/scan have never
+  really executed yet (skipped behind gate); capacity is intermittent (re-dispatch on 0-step).
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4).
   R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
   aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let
@@ -29,6 +37,9 @@ OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact 
   `bun scripts/gov-verify.ts main` must print GOV-VERIFIED(0) before any doc flips to "active";
   the read-back covers classic protection AND rulesets, all FOUR checks, approvals, code-owner
   review, force-push/deletion off.
+  R70 UPDATE: re-confirmed ON MERGED MAIN — `bun scripts/gov-verify.ts main` → exit 2
+  GOV-PLAN-BLOCKER. The merge did NOT lift the plan gate: main is merged but NOT yet
+  governance-verified; step 0 (plan upgrade or deliberate publicization) still precedes GOV-001.
   R69 UPDATE: the ruleset plane of gov-verify is HARDENED — it now also REQUIRES the four
   protective rule types on the ACTIVE ruleset(s): `non_fast_forward` (force-push off),
   `deletion`, `required_conversation_resolution`, AND `required_linear_history` (previously
@@ -53,6 +64,12 @@ Every roadmap item re-verified at CODE level via three parallel deep-read passes
 - **R69-F4 (cosmetic)** — ci.yml governance header retired its pre-R47 "runs gate + scan (+ e2e)" narrative → names ALL FOUR jobs (marker line untouched).
 
 Recorded (honest, non-blocking): R52 auth-ordering pins are textual `indexOf`, not behavioral (runtime order manually re-verified; behavioral wire pins listed below); HC-4 sweep semantics corrected (two zero-pinned views + a 32-view shrinking-ceiling ledger of 823 candidates, parity now 1419=1419); HC-1 headroom (reports/run, devices/bulk still on the 120/min pool). Path-correction appendix added to the roadmap (rate-gate/proxy/api.ts/views actual paths). Tests: NEW `tests/audit/r69-roadmap-rereview-remediations.test.ts` (11 pins incl. a wire-level 401-before-404 on the diff handler + role-matrix holder assertions). Gates cold (3-knob env): lint 0 · tsc 0 · suite 986 → **997 pass / 18 skip / 0 fail** (8,354 expects, 64 files) · prisma valid. LIVE: meta 200 · worker /health 200 · unauth worker 401 · unauth diff 401 (proxy) + handler wire pin · HC-1 budgets re-demoed (401×10→429 ai/query, 401×5→429 csv-import). Evidence doc: `docs/audits/FayaNMS-R69-Full-Roadmap-ReReview-2026-09-19.md`.
+
+---
+
+R70 — MERGE TO MAIN EXECUTED + first real CI gate execution + DB-bootstrap fix (2026-09-19) ✅ LANDED
+
+Operator instruction ("keep going and merge all to main") executed after fresh pre-merge gates (lint 0 · tsc 0 · 997/18/0 · LIVE 200/200/200/401/401): `z_ai_v2` → `main` as a **pure fast-forward `27e0eea..6538d46`** (39 commits, 213 files, +16,377/−1,990; NO merge commit, NO squash — every commit individually addressable, as the linear-history invariant requires); post-merge all four refs identical (`main` == `z_ai_v2` == `origin/main` == `origin/z_ai_v2`) 0/0. Dispatch probe #4 → 204 → run `35414649589` @ main/`6538d46` = the **FIRST REAL gate execution** (all earlier runs died 0-step on runner capacity): deps/lint/tsc GREEN, Tests FAILED — root cause from the real runner log: "The table `public.User` does not exist" (the suite ran BEFORE the migration history was replayed onto the fresh CI service container; latent ordering defect masked for months by the pre-migrated sandbox DB + the runner-block era). FIXED: `prisma migrate deploy` moved ABOVE Tests (idempotent T7 provisioning path), the duplicate post-Tests step retired, stale "runner-blocked (CI-001)" comments corrected to R70 truth; PROVEN on a byte-fresh replica DB (`fayanms_gatecheck` → `migrate deploy` → suite 997/18/0 — no seed dependency). `gov-verify.ts main` re-classified honestly: exit 2 GOV-PLAN-BLOCKER (main is merged but NOT yet governance-verified — GOV-001 stays plan-gated). NEW `tests/audit/r70-merge-to-main-and-ci-bootstrap.test.ts` (16 pins: migrate-before-tests ordering, single bootstrap occurrence, four-job shape preservation, stale-claim retirement, record strings, PAT hygiene). Gates: lint 0 · tsc 0 · suite 997 → **1013 pass / 18 skip / 0 fail**. Evidence doc: `docs/audits/FayaNMS-R70-Merge-to-Main-and-CI-Bootstrap-2026-09-19.md`. Residual (expected): e2e/browser/scan have never really executed — bring-up continues per dispatch run until the 4-job green HC-6 run exists.
 
 OPTIONAL AUTHORABLE POLISH (P3-grade, opened by R69 — not go-live blockers):
 

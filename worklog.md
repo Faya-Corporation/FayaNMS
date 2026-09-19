@@ -3561,3 +3561,23 @@ Work Log:
 
 Stage Summary:
 - The roadmap is TRUE IN CODE: every phase re-verified at implementation level; the single substantive discovery (R69-F1) closed the last known gap in the sensitive-read RBAC surface. Full audit report written. Authorable backlog: three OPTIONAL P3 polish items opened (not go-live blockers); the operator path is unchanged: plan upgrade → runner capacity → candidate PR (pull_request checks = HC-6) → main ruleset (four checks + four protective rules) → gov-verify.ts main = GOV-VERIFIED(0) → protective merge (squash OFF) → LAB certification → release-SHA final re-audit.
+
+## R69 → R70 — Merge to main EXECUTED + first real CI gate execution + DB-bootstrap fix (2026-09-19)
+
+Task: operator instruction "keep going and merge all to main" — pre-verify, merge z_ai_v2 → main, post-merge probes, remediate whatever the first REAL CI run exposes, gates + LIVE + evidence, commit + push.
+
+Work Log:
+- Resume reconciliation (fourth summary-lag capture): the session summary claimed HEAD 13a8fcf (R67) with the roadmap re-review pending — the repo was ACTUALLY at 6538d46 with R68 AND R69 fully landed and pushed 0/0. Verified via git log + commit stats, not trusted.
+- Pre-merge gates re-executed fresh: lint 0 · tsc 0 · suite 997/18/0 (8,354 expects, 64 files) · LIVE / 200 · meta 200 · worker /health 200 · unauth devices 401 · unauth diff 401 (R69-F1 live-confirmed).
+- MERGE: local main created @ origin/main (27e0eea; merge-base identical ⇒ fast-forward safe) → `git merge --ff-only z_ai_v2` = **27e0eea..6538d46** (39 commits, 213 files, +16,377−1,990) → push exit 0 → all four refs identical (main == z_ai_v2 == origin/main == origin/z_ai_v2) 0/0; **linear history preserved** (no merge commit, no squash). PR package doc superseded with an honest addendum (retained as the rehearsed record).
+- Post-merge probe #4: dispatch {ref:main} → 204 → run **35414649589** @ 6538d46 — trigger now 4× proven across four SHAs, first time on the default branch. `bun scripts/gov-verify.ts main` → **exit 2 GOV-PLAN-BLOCKER** (plan gate persists post-merge; main honestly NOT governance-verified yet).
+- Run 35414649589 = **FIRST REAL gate execution** (prior runs all died 0-step on runner capacity): deps/lint/tsc GREEN, Tests FAILED — runner-log root cause: "The table `public.User` does not exist in the current database" (the suite ran BEFORE the migration history was replayed onto the fresh CI service container; latent ordering defect masked for months by the pre-migrated sandbox DB + the runner-block era).
+- FIX: ci.yml — "Migration history applies to a fresh PostgreSQL" (`bunx prisma migrate deploy`) moved ABOVE Tests (idempotent, T7 provisioning path); the duplicate post-Tests step retired with a pointer comment; stale CI-001 "runner-blocked / no runner assigned" comments corrected to R70 truth (header + browser job). Exactly one bootstrap occurrence remains.
+- PROOF: byte-fresh replica DB `fayanms_gatecheck` → `migrate deploy` → full suite **997/18/0** (8,353 expects) — bootstrap sufficient, NO seed dependency.
+- NEW tests/audit/r70-merge-to-main-and-ci-bootstrap.test.ts (16 pins A–F: migrate-before-tests ordering, single bootstrap occurrence, four-job shape preservation, stale-claim retirement, record strings incl. run id + root-cause line, PAT hygiene).
+- Docs: R70 audit report `docs/audits/FayaNMS-R70-Merge-to-Main-and-CI-Bootstrap-2026-09-19.md` (merge facts, first-real-run step table, root cause, replica proof, risk register, evidence index); roadmap R70 row; NEXT-TASKS OWNER-CI-001 + OWNER-GOV-001 R70 UPDATEs + R70 LANDED section; hand-off R70 UPDATE; PR-package addendum.
+- Gates: lint 0 · tsc 0 · suite 997 → **1013 pass / 18 skip / 0 fail** (numbers verified at commit time). LIVE re-proven post-fix: / 200 · meta 200 · worker /health 200 · unauth 401 ×2.
+- Post-fix dispatch #5 fired on main and polled; CI bring-up continues per run until the 4-job green HC-6 run exists (outcome recorded in the R70 audit doc + this worklog).
+
+Stage Summary:
+- main now carries the full hardened program (R2..R69 + R70) merged by explicit operator instruction with linear history intact; governance verification remains plan-gated (GOV-001, exit 2 GOV-PLAN-BLOCKER honestly re-classified on merged main). CI is UNBLOCKED and in active bring-up: the first real execution exposed + fixed the DB-bootstrap ordering defect; e2e/browser/scan first real executions pending. db/, .env, PAT never staged.

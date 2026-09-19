@@ -120,3 +120,20 @@ the runbook order is configure-then-merge (step 2 → 4).
 - Program ledger: `docs/audits/FayaNMS-Production-Readiness-Implementation-Roadmap-2026-09-18.md`
 - Re-verification episode + remediations: R61–R64 evidence docs; R65/R66 operator-path proofs
 - Full per-round detail: `worklog.md` (repo), R34–R66 entries
+
+---
+
+## 5. ADDENDUM (R70, 2026-09-19) — SUPERSEDED BY DIRECT EXECUTION
+
+The operator instructed a direct merge ("keep going and merge all to main") BEFORE this PR
+package was opened. Executed as a **pure fast-forward `27e0eea..6538d46`** (39 commits /
+213 files / +16,377−1,990) — the exact commit set this package rehearsed (`merge-tree` exit 0,
+tree `92222d2`), **linear history preserved**. This document is retained verbatim as the record
+of the rehearsed PR route; its decision tree remains valid for any FUTURE `z_ai_v2` → `main`
+integration.
+
+Honest scope note: the direct merge bypassed PR-attached `pull_request` checks (no PR existed),
+so HC-6 evidence rides the `workflow_dispatch` path (probe #4: run `35414649589` @ main — the
+first REAL gate execution) and push-triggered runs until a 4-job green run exists. GOV-001
+(plan-gated: `gov-verify.ts main` → exit 2 `GOV-PLAN-BLOCKER` re-confirmed post-merge) remains
+the enforcement path for future merges.

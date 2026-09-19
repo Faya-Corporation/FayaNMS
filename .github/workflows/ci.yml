@@ -14,8 +14,10 @@
 #                    as required status checks, no force-push/deletion, admin bypass
 #                    scoped and recorded (SOCIAL-REPOSITORY §6). Until then, direct
 #                    pushes to main run these gates from the sandbox with the results
-#                    recorded honestly per commit in worklog.md (CI-001: current
-#                    runs are infrastructure-blocked — no runner assigned).
+#                    recorded honestly per commit in worklog.md (R70 update: the
+#                    runner-capacity block lifted 2026-09-19 — run 35414649589 was
+#                    the FIRST real gate execution; CI bring-up findings are
+#                    remediated in-branch and re-proven by dispatch per push).
 # required-checks: gate, scan, e2e, browser
 # History:           the activation path (PAT workflow-scope blocker, the corrupted
 #                    `branches:` trigger, the docs/ci/ci-gate.yml pointer era,
@@ -141,6 +143,20 @@ jobs:
           bunx tsc --noEmit 2>&1 | tee tsc.log
           test ! -n "$(grep -E '^(src|scripts|mini-services)/' tsc.log)"
 
+      # R70 (2026-09-19) — DB bootstrap BEFORE tests. The unit/contract suite
+      # exercises the REAL authorization/audit planes against PostgreSQL, so the
+      # committed migration history must be replayed before `bun test`. A fresh
+      # CI service container has an EMPTY database: the old ordering (migrate
+      # AFTER tests) only ever passed locally because the long-lived sandbox
+      # database was already migrated, and the infra-blocked CI era never let a
+      # real run expose the gap. Run 35414649589 (first real gate execution)
+      # failed exactly there — `The table public.User does not exist` — and the
+      # fix was proven on a byte-fresh replica database (fayanms_gatecheck):
+      # suite 997/18/0. `migrate deploy` replays the committed history alone
+      # (the T7 provisioning path) and is idempotent.
+      - name: Migration history applies to a fresh PostgreSQL (service container)
+        run: bunx prisma migrate deploy
+
       - name: Tests (role matrix, authorization contract, service auth, crypto, audit chain)
         run: bun test tests/
 
@@ -166,11 +182,11 @@ jobs:
         run: bunx prisma validate
 
       # Phase 21 slice 2 (2026-09-13): provisioning goes through the COMMITTED
-      # migration history (prisma/migrations), not db push. This proves on every
-      # push that a fresh database reaches the current schema by replaying the
-      # history alone — exactly what the compose `provision` service does (T7).
-      - name: Migration history applies to a fresh PostgreSQL (service container)
-        run: bunx prisma migrate deploy
+      # migration history (prisma/migrations), not db push. R70 moved the
+      # migrate-deploy step ABOVE "Tests" (fresh-CI-container bootstrap — run
+      # 35414649589); the fresh-database provisioning proof itself now lives in
+      # the e2e/browser harness (creates/migrates its own fayanms_e2e database)
+      # and in the drift guard below.
 
       # Drift guard: the committed history must reproduce prisma/schema.prisma
       # EXACTLY. `migrate diff --exit-code` exits 2 on any difference (0 on
@@ -289,8 +305,8 @@ jobs:
   # authenticated dashboard), a keyboard-only sweep and an RTL (ar) sweep —
   # against the SAME real topology as the e2e job (shared harness). Runs the
   # suite with FAYANMS_BROWSER_E2E=1 so the hermetic unit gate stays
-  # browser-free. Execution is currently runner-blocked (CI-001) exactly
-  # like gate/scan/e2e — recorded honestly per push.
+  # browser-free. (R70: the CI-001 runner block lifted 2026-09-19; all four
+  # jobs now execute on dispatch and their bring-up is tracked per run.)
   browser:
     runs-on: ubuntu-latest
     needs: gate

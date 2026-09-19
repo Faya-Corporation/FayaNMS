@@ -213,3 +213,26 @@ NOT claimed by this hand-off.
 **Verdict: the branch is production-ready to the limit of what this environment
 can prove; everything beyond that limit is a named, ready-to-execute operator
 step.**
+
+---
+
+## R70 UPDATE (2026-09-19) — the merge is DONE; CI bring-up is the live front
+
+- **`z_ai_v2` → `main` EXECUTED** (operator-authorized): pure fast-forward
+  `27e0eea..6538d46` — 39 commits, 213 files, +16,377/−1,990, linear history
+  preserved, all four refs identical 0/0. Step 4 (candidate PR → merge) is
+  SUPERSEDED by the direct merge; the PR-package doc is retained as the
+  rehearsed record. `gov-verify.ts main` → exit 2 `GOV-PLAN-BLOCKER`: **main is
+  merged but NOT yet governance-verified** — Step 2 (plan upgrade → ruleset)
+  is still the open governance gate.
+- **First REAL gate execution** (run `35414649589` @ main): deps/lint/tsc green;
+  Tests failed on the empty CI service DB → **FIXED same round** (`prisma
+  migrate deploy` now runs BEFORE Tests; proven on a byte-fresh replica DB —
+  suite 997/18/0 on `fayanms_gatecheck`). `e2e`/`browser`/`scan` remain
+  never-really-executed: re-dispatch per push until the 4-job green HC-6 run
+  exists. Runner capacity is INTERMITTENT (three same-day 0-step dispatches
+  before this one) — re-dispatch is the recovery path.
+- Pre-merge evidence re-executed fresh this round: lint 0 · tsc 0 · suite
+  997/18/0 (8,354 expects, 64 files) · LIVE / 200 · meta 200 · worker /health
+  200 · unauth devices 401 · unauth diff 401 (R69-F1 live-confirmed).
+  Evidence doc: `docs/audits/FayaNMS-R70-Merge-to-Main-and-CI-Bootstrap-2026-09-19.md`.
