@@ -101,6 +101,13 @@ OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (gree
   both runtime stages now track the Debian security channel (apt-get upgrade) and both image
   scans gained ignore-unfixed (fatal for fixable HIGH/CRITICAL; unfixable reported).
   Iterate: dispatch #12 — the FIRST FULL 4-JOB GREEN RUN = HC-6 acceptance.
+  R79 UPDATE: **HC-6 ACCEPTED** — run `35424363304` @ `cf258cd` (2026-09-19) is the FIRST FULL
+  4-JOB GREEN RUN in repo history: gate ✅ 3m21s (every step) · e2e ✅ · browser ✅ 12/12 ·
+  scan ✅ 7m58s (incl. both artifact-verified image builds + both security-channel-upgraded
+  image scans + per-image SBOMs). The nine-iteration bring-up (R70–R78) closed every latent
+  coupling the infra-blocked era hid. OWNER-CI-001's execution half is CLOSED. Remaining
+  operator items: OWNER-GOV-001 (plan-gated ruleset — gov-verify exits 2 GOV-PLAN-BLOCKER
+  until the GitHub plan upgrades or the repo goes public) + LAB (hardware matrix).
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4).
   R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
   aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let

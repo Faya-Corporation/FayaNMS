@@ -3701,3 +3701,18 @@ Work Log:
 
 Stage Summary:
 - Every CI surface has now executed at least once; every failure root-caused + fixed + pinned across nine bring-up iterations (R70 DB bootstrap → R71 certify hatch → R72 seed KEK + gitleaks → R73 missing-goto + trivy fs → R74 sidebar + build-arg → R75 journeys + portable user → R76 worker types → R77 artifacts + disk → R78 OS vulns). Dispatch #12 targets the FIRST FULL 4-JOB GREEN RUN = HC-6 acceptance. db/, .env, PAT never staged.
+
+## R78 → R79 — **HC-6 ACCEPTED: the FIRST FULL 4-JOB GREEN RUN in repo history** (2026-09-19)
+
+Task: poll run #12; record the HC-6 acceptance milestone; flip the README to the green truth.
+
+Work Log:
+- **Run `35424363304` @ `cf258cd` (2026-09-19) = SUCCESS — ALL FOUR JOBS**: gate ✅ 3m21s (every step) · e2e ✅ (real-topology journeys) · browser ✅ 12/12 · scan ✅ 7m58s (gitleaks, semgrep, osv ×2, SBOM, trivy fs, both artifact-verified image builds, both security-channel-upgraded image scans, per-image SBOMs). **HC-6 = ACCEPTED** — the last item of the roadmap's authorable Phase HC, riding OWNER-CI-001's runner capacity (lifted R70).
+- The nine-iteration bring-up (R70→R78) closed every latent coupling the infra-blocked era hid, each finding root-caused + fixed + locally proven + pinned before the next push: DB bootstrap → certify hatch → seed KEK + gitleaks triage → missing-goto + trivy fs → sidebar group + build-arg → journeys + portable user → worker types → artifacts + disk → OS-vuln triage.
+- README flipped to the green truth: the CI badge alt now records the four-job green acceptance with the run id (the stale "badge turns live at the protective merge" claim retired); the limitations section names all four green jobs incl. the image plane (the stale "green gate + scan" wording retired).
+- gov-verify main re-read: **exit 2 GOV-PLAN-BLOCKER** — main remains honestly NOT governance-verified; the ruleset is plan-gated (upgrade or public repo = OWNER action before GOV-001).
+- Gates: lint 0 · tsc 0 · suite 1060 → **1064/18/0 (8,616 expects, 74 files)** — 4 NEW r79 pins (README truth lines, doc record, run id, PAT hygiene). LIVE: app 200 · meta 200 · worker 200 · unauth 401.
+- Docs: R70 audit doc §15 (the acceptance record with the run table + nine-iteration journey + remaining-operator-items section); roadmap R79 row; NEXT-TASKS OWNER-CI-001 → HC-6 LANDED; dual worklogs.
+
+Stage Summary:
+- **HC-6 ACCEPTED.** The CI program is fully operational: four hard-gated jobs green on main, image plane included. Remaining operator items are external: OWNER-GOV-001 (plan-gated ruleset) + LAB (hardware matrix). db/, .env, PAT never staged.

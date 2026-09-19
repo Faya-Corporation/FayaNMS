@@ -312,3 +312,39 @@ Exactly the predicted honest unknown: **88 findings (85 HIGH, 3 CRITICAL), ALL i
 - NEW `tests/audit/r78-image-scan-triage.test.ts` (5 pins: security-channel upgrade in both runtime stages + root-before-USER ordering, digest unchanged, `ignore-unfixed` on both image scans only, triage + widening discipline, doc record, PAT hygiene). Suite 1055 → **1060/18/0** (8,600 expects, 73 files — count verified at commit time).
 - Docs: this §14; roadmap R78 row; NEXT-TASKS OWNER-CI-001 UPDATE; dual worklogs.
 - Expected next (dispatch #12): the artifact-verified build + upgraded images + scoped image scans → **the FIRST FULL 4-JOB GREEN RUN = HC-6 acceptance**.
+
+---
+
+## 15. R79 — **HC-6 ACCEPTED: the FIRST FULL 4-JOB GREEN RUN in repo history**
+
+Run **`35424363304`** (push @ `cf258cd`, 2026-09-19) — **SUCCESS**:
+
+| Job | Result | Duration |
+| --- | --- | --- |
+| **gate** | ✅ SUCCESS — every step (lint, typecheck, migration replay, Tests, SSH certification, brand ×3, prisma validate, drift guard, seed smoke, i18n, production build) | 3m21s |
+| **e2e** | ✅ SUCCESS — release-critical HTTP journeys over the real topology | ~3m |
+| **browser** | ✅ SUCCESS — 12/12 rendering-layer journeys (sign-in, dashboard, axe ×2, keyboard, RTL + all six detection-panel journeys) | ~3m |
+| **scan** | ✅ SUCCESS — gitleaks, semgrep, osv-scanner ×2, SBOM, trivy fs, **both image builds (artifact-verified) + both image scans (security-channel-upgraded bases, fixable-only gate) + per-image SBOMs** | 7m58s |
+
+### 15.1 The nine-iteration bring-up journey (R70 → R78), each finding root-caused + fixed + locally proven + pinned
+
+1. **R70** — first real gate execution: migrate-before-Tests ordering (empty CI DB).
+2. **R71** — certify step's lab hatch env (SSH_TARGET_POLICY_REFUSED on its own loopback harnesses).
+3. **R72** — seed KEK env + the gitleaks seven-path triage (FIRST GREEN GATE).
+4. **R73** — D-file missing goto (never-executed file's first run) + trivy fs skip for the harness TLS fixture (FIRST GREEN e2e).
+5. **R74** — sidebar group expansion + image-build T1 origin build-arg.
+6. **R75** — three journey-accuracy fixes + portable non-root user (slim base lacks adduser).
+7. **R76** — worker type resolution inside the image build (FIRST GREEN BROWSER, 12/12).
+8. **R77** — the build COMPLETED and Bun segfaulted at teardown → artifact-verified gate + disk prewash.
+9. **R78** — 88 base-Debian findings → security-channel upgrades + fixable-only image-scan gate.
+
+### 15.2 What this closes — and what remains
+
+- **HC-6 = ACCEPTED** (the last landed item of the roadmap's authorable Phase HC). The README badge/prose now carry the green truth (run id recorded).
+- **OWNER-CI-001**: the EXECUTION half is closed (runner capacity lifted R70; HC-6 accepted R79). Nothing CI-side remains.
+- **Remaining operator items (external)**: OWNER-GOV-001 — ruleset/branch protection on `main` is still **plan-gated** (GOV-PLAN-BLOCKER; `bun scripts/gov-verify.ts main` → exit 2 until the GitHub plan upgrades or the repo goes public); LAB — real/virtual appliance certification matrix (CERT-HW-001-A) needs hardware access.
+
+### 15.3 Round record
+
+- NEW `tests/audit/r79-hc6-acceptance.test.ts` (4 pins: README truth lines, doc record, run id, PAT hygiene). Suite 1060 → **1064/18/0**.
+- Docs: this §15 (the acceptance record); roadmap R79 row; NEXT-TASKS OWNER-CI-001 → HC-6 LANDED; dual worklogs.

@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/Prisma-6-2D3748?style=flat-square" alt="Prisma 6">
     <img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square" alt="Tailwind CSS 4">
     <img src="https://img.shields.io/badge/next--intl-EN%20%C2%B7%20AR-475569?style=flat-square" alt="next-intl — English + Arabic">
-    <img src="https://img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml?style=flat-square&branch=main&label=CI" alt="CI — release gate: gate, e2e, browser, scan (four jobs; runs attach to the candidate PR and manual dispatch until runner capacity exists; the badge turns live at the protective merge to main)">
+    <img src="https://img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml?style=flat-square&branch=main&label=CI" alt="CI — release gate: gate, e2e, browser, scan (four jobs, ALL GREEN on main; first full four-job green run 35424363304 on 2026-09-19 — HC-6 accepted after the nine-iteration CI bring-up R70–R78)">
   </p>
 </div>
 
@@ -1093,7 +1093,7 @@ plane (the code is certified against a real-protocol harness; the wire to real h
 not); the demo dataset is never committed (rebuild via the seed above — it runs
 against any reachable PostgreSQL); the CI gate is live at `.github/workflows/ci.yml` (lint, src-zero-error
 typecheck, `bun test tests/`, LIVE_SSH certification, Prisma schema, i18n parity, production build, brand
-validators and a security scan job) with green `gate` + `scan` runs on `main`.
+validators and a security scan job incl. image builds + image scans + SBOMs) — **all four jobs (`gate`, `e2e`, `browser`, `scan`) GREEN on `main`**: the first full four-job green run `35424363304` (2026-09-19) accepted HC-6 after the nine-iteration CI bring-up (R70–R78).
 BRANCH PROTECTION — CORRECTED 2026-09-13 (external ULTRA audit P1-017): the live GitHub
 branch state is `main.protected = false` (verified by API read-back); an earlier
 settings-API activation (docs/brand/SOCIAL-REPOSITORY.md §6) has since been lost/not
