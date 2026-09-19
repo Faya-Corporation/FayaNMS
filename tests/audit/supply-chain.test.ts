@@ -91,7 +91,19 @@ describe("SUPPLY-001-A: CI builds and scans the runtime images (image-level)", (
   const ci = readRepoFile(".github/workflows/ci.yml");
 
   test("both runtime images are built in CI", () => {
-    expect(ci).toContain("docker build -t fayanms-app:ci .");
+    // R74 (run 35420764756): the app build carries the production origin
+    // build-arg — the Dockerfile's own T1 guard refuses to build without
+    // it, and CI builds SCAN-TARGET images (IETF-reserved example.com
+    // origin, never run or deployed). Shape evolved from the single-line
+    // `docker build -t fayanms-app:ci .`; the governance intent is unchanged:
+    // both images are built from the checkout and scanned as images.
+    const buildStep = ci.slice(
+      ci.indexOf("- name: Build runtime images (app + worker)"),
+      ci.indexOf("- name: Image scan — app")
+    );
+    expect(buildStep).toContain("- name: Build runtime images (app + worker)");
+    expect(buildStep).toContain("--build-arg NEXT_PUBLIC_SITE_URL=https://ci-gate.fayanms.example.com");
+    expect(buildStep).toContain("-t fayanms-app:ci .");
     expect(ci).toContain("docker build -f Dockerfile.worker -t fayanms-worker:ci .");
   });
 

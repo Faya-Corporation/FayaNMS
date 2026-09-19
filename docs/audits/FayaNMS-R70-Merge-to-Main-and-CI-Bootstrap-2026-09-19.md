@@ -181,3 +181,30 @@ The fs scan's ONLY finding: **1 HIGH secret — `AsymmetricPrivateKey` in `mini-
 - NEW `tests/audit/r73-ci-bringup-iter4.test.ts` (pins: goto-before-fill guard, trivy skip scope + inline triage + gitleaks seven-path shape intact, dockerignore exclusion + lazy-read rationale, run record, PAT hygiene). Suite 1025 → **1032/18/0** (8,470 expects, 68 files — count verified at commit time).
 - Docs: this §9; roadmap R73 row; NEXT-TASKS OWNER-CI-001 UPDATE; dual worklogs.
 - Expected next (dispatch #7): gate green (third), e2e green again, browser green with the D-file fixed, scan green with the triage — **the first FULL 4-job green run = HC-6 acceptance**. Any further first-execution findings continue the same per-run remediation protocol.
+
+---
+
+## 10. R74 ADDENDUM — bring-up iteration 5: sidebar-group journey + image build-arg
+
+Dispatch #7 (run **`35420764756`** @ main/`7a9a34f`):
+
+| Job | Result |
+| --- | --- |
+| **gate** | ✅ **SUCCESS — third consecutive green gate** |
+| **e2e** | ✅ **SUCCESS — second consecutive green** (green twice in repo history now) |
+| browser | ❌ 6/6 failures, but **one layer deeper** — the R73 signIn fix HELD (no more about:blank timeouts); every journey now waits for the **"Devices" button**, which is rendered INSIDE the collapsible "Network" sidebar group |
+| scan | ❌ one layer deeper — **trivy fs GREEN (the R73 skip-files proven on the wire)**, gitleaks green, SBOM green; the job then reached the never-executed **image-build step** and was refused |
+
+### 10.1 browser — nav items live inside collapsible groups
+
+Root cause, verified at source (`src/components/shell/sidebar-nav.tsx`): a group's items render only while the group is open, and `openGroups[group.id] ?? containsActive` means a group auto-opens ONLY while it owns the active view. After sign-in the active view is the dashboard ⇒ the "Network" group starts CLOSED ⇒ no "Devices" button exists to click. B2 passed in both runs because it asserts nav visibility, never a specific item. **Fix (R74)**: `openAddDeviceSheet()` expands the "Network" group (scoped to the sidebar nav, guarded by a visibility check) before clicking "Devices" — the same journey an operator performs. Labels verified from `messages/en.json`: `nav.items.network.devices.title` = "Devices", `nav.groups.network` = "Network".
+
+### 10.2 scan — the Dockerfile's own production guard refused the image build
+
+The app image build's FIRST execution died at the Dockerfile's T1 guard: `ARG NEXT_PUBLIC_SITE_URL` was not passed by the CI build command, and the guard's message is honest by design ("localhost and *.local are rejected in production"; `src/lib/brand/identity.ts siteUrl()` enforces http(s) + non-local hostnames in production builds). CI builds **scan-target images that are never run or deployed** — the fix passes `--build-arg NEXT_PUBLIC_SITE_URL=https://ci-gate.fayanms.example.com` (IETF-reserved example.com origin: passes the production guard, honestly non-routable), with the provenance recorded inline in ci.yml. Real deployments pass the REAL origin via compose `--env-file` interpolation, unchanged. The worker image build (no origin guard) follows the app build and now executes for the first time; the image scans will get their first executions in the same run.
+
+### 10.3 Round record
+
+- NEW `tests/audit/r74-sidebar-journey-and-image-build.test.ts` (6 pins: group-expansion ordering + nav scoping, second-iteration header record, build-arg provenance + no-runtime-leak of the CI origin, doc record, PAT hygiene). The pre-existing SUPPLY-001-A build-shape pin (tests/audit/supply-chain.test.ts) EVOLVED with recorded rationale: the single-line `docker build -t fayanms-app:ci .` literal became the build-arg-carrying shape (governance intent unchanged — both images built + scanned; the old literal could no longer match after the guard-driven fix). Suite 1032 → **1038/18/0** (8,498 expects, 69 files — count verified at commit time; includes the SUPPLY-001-A build-shape pin evolved with recorded rationale).
+- Docs: this §10; roadmap R74 row; NEXT-TASKS OWNER-CI-001 UPDATE; dual worklogs.
+- Expected next (dispatch #8): gate/e2e green again; browser D-file past the sidebar into the panel journeys; scan through image build into the first IMAGE-SCAN executions (base-image OS vulns are the honest next unknown). The full 4-job green run = HC-6 acceptance.

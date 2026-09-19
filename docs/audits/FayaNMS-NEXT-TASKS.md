@@ -54,6 +54,18 @@ OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (gree
   machine proof with checksum-verified trivy 0.70.0 on a byte-faithful git-archive tree:
   no skip → exit 1 single HIGH secret (byte-identical to the run); with skip → exit 0, zero
   findings. Iterate: dispatch #7 next — the first FULL 4-job green run = HC-6 acceptance.
+  R74 UPDATE: dispatch #7 (run `35420764756` @ `7a9a34f`) — gate GREEN third consecutive, e2e
+  GREEN second consecutive, trivy fs GREEN (R73 skip-files proven on the wire). Two deeper
+  first-execution layers exposed, both fixed same round: (1) browser — the R73 signIn fix held;
+  the D-file then waited on the "Devices" button which lives INSIDE the collapsible "Network"
+  sidebar group (auto-opens only while it owns the active view — dashboard after sign-in ⇒
+  closed) → openAddDeviceSheet now expands the group (nav-scoped, visibility-guarded) before
+  clicking the item; (2) scan — the image-build step's FIRST execution was refused by the
+  Dockerfile's own T1 production guard (NEXT_PUBLIC_SITE_URL mandatory; localhost/*.local
+  rejected by siteUrl()) → CI passes an IETF-reserved example.com origin for the SCAN-TARGET
+  images (never run or deployed; real deployments keep the real origin via compose --env-file).
+  Iterate: dispatch #8 next — remaining unknowns are the panel journeys past the sidebar and
+  the first IMAGE-SCAN executions (base-image OS vulns). Full 4-job green = HC-6 acceptance.
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4).
   R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
   aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let

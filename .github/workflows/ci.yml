@@ -466,9 +466,20 @@ jobs:
       # IMAGES (OS packages inside the bases included), with per-image SBOMs
       # retained as artifacts. Base images are digest-pinned in the
       # Dockerfiles/compose files (immutable inputs; bump procedure inline).
+      # R74 record (run 35420764756): the build step's FIRST execution was
+      # refused by the Dockerfile's own T1 guard — the production
+      # NEXT_PUBLIC_SITE_URL build-arg is mandatory (localhost/127.0.0.1/
+      # 0.0.0.0/*.local are rejected by src/lib/brand/identity.ts siteUrl()
+      # in the production build). CI builds SCAN-TARGET images that are
+      # never run or deployed: the IETF-reserved example.com origin passes
+      # the siteUrl production guard while being honestly non-routable.
+      # Real deployments pass the REAL canonical origin via the compose
+      # --env-file interpolation (docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md §T1).
       - name: Build runtime images (app + worker)
         run: |
-          docker build -t fayanms-app:ci .
+          docker build \
+            --build-arg NEXT_PUBLIC_SITE_URL=https://ci-gate.fayanms.example.com \
+            -t fayanms-app:ci .
           docker build -f Dockerfile.worker -t fayanms-worker:ci .
 
       - name: Image scan — app (trivy, HIGH/CRITICAL fail)

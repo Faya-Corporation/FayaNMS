@@ -3627,3 +3627,19 @@ Work Log:
 
 Stage Summary:
 - 3 of 4 CI jobs have now been green in real CI at least once (gate ×2, e2e, browser main suite; scan's gitleaks half green) and every first-execution failure has been root-caused + fixed + locally proven before the next push: R70 DB bootstrap → R71 certify hatch → R72 seed KEK + gitleaks triage → R73 missing-goto + trivy triage + image hygiene. Dispatch #7 targets the FIRST FULL 4-JOB GREEN RUN = HC-6 acceptance. db/, .env, PAT never staged.
+
+## R73 → R74 — CI bring-up iteration 5: sidebar-group journey + image build-arg (2026-09-19)
+
+Task: dispatch #7 (run 35420764756 @ 7a9a34f) analysis; remediate the next layer of first executions.
+
+Work Log:
+- Run 35420764756 results: **gate GREEN third consecutive**; **e2e GREEN second consecutive**; **trivy fs GREEN — the R73 skip-files proven on the wire** (gitleaks + semgrep + osv + SBOM all green too); browser failed one layer deeper (the R73 signIn fix HELD — no more about:blank timeouts; all six D-journeys then waited for the "Devices" button); scan failed one layer deeper at the never-executed image-build step.
+- Browser root cause (verified at source, src/components/shell/sidebar-nav.tsx): nav items render inside collapsible groups; `openGroups[group.id] ?? containsActive` auto-opens a group ONLY while it owns the active view. After sign-in the active view is the dashboard ⇒ "Network" group closed ⇒ no "Devices" button. B2 passed in both runs because it never clicks a specific item. Labels verified from messages/en.json (nav.items.network.devices.title = "Devices"; nav.groups.network = "Network"). FIX: openAddDeviceSheet expands the group (scoped to the sidebar nav, visibility-guarded) before clicking "Devices" — the operator's own journey; header records the second iteration.
+- Scan root cause (runner log): the app image build's FIRST execution was refused by the Dockerfile's own T1 guard — NEXT_PUBLIC_SITE_URL build-arg mandatory (siteUrl() in src/lib/brand/identity.ts rejects localhost/127.0.0.1/0.0.0.0/*.local in production builds). FIX: CI passes --build-arg NEXT_PUBLIC_SITE_URL=https://ci-gate.fayanms.example.com — an IETF-reserved example.com origin for SCAN-TARGET images that are never run or deployed (passes the production guard, honestly non-routable); provenance recorded inline in ci.yml §13; real deployments keep the real origin via compose --env-file. Worker image build (no origin guard) now executes for the first time next run; image scans follow.
+- Governance pin evolution with rationale: tests/audit/supply-chain.test.ts "both runtime images are built in CI" pinned the single-line literal `docker build -t fayanms-app:ci .` — evolved to the build-arg-carrying shape (intent unchanged: both images built + scanned as images); caught by the suite itself, exactly what the pins are for.
+- Gates: lint 0 · tsc 0 · suite 1032 → **1038/18/0 (8,498 expects, 69 files)** — includes 6 NEW r74 pins (tests/audit/r74-sidebar-journey-and-image-build.test.ts) + the evolved SUPPLY-001-A pin. ci.yml YAML valid.
+- LIVE (after dev-server restart — the app process had died mid-round; worker unaffected): app / 200 · /api/v1/meta 200 · worker /health 200 · unauth devices 401 · unauth worker 401 WORKER_UNAUTHENTICATED.
+- Docs: R70 audit doc §10; roadmap R74 row; NEXT-TASKS OWNER-CI-001 R74 UPDATE; dual worklogs.
+
+Stage Summary:
+- Every CI job has now been pushed one layer deeper by remediation: gate ×3 green, e2e ×2 green, scan through the whole fs plane green (gitleaks+semgrep+osv+SBOM+trivy fs), browser main suite green 6/6 twice. Remaining unknowns: the D-journeys past the sidebar (Add sheet + auto-detect panel) and the first IMAGE builds/scans. Dispatch #8 targets the first FULL 4-job green run = HC-6 acceptance. db/, .env, PAT never staged.

@@ -54,6 +54,12 @@
  * AFTER sign-in). FIXED R73: signIn navigates first, byte-mirroring the
  * proven TASK-BROWSER-E2E flow that passed 6/6 in the same run.
  *
+ * Second iteration (run 35420764756): the fix held — sign-in succeeded —
+ * and the failure moved one step deeper, which is WHY the sidebar journey
+ * in openAddDeviceSheet expands the "Network" group before clicking
+ * "Devices": nav items live inside collapsible groups that auto-open only
+ * while they own the active view (dashboard after sign-in ⇒ closed).
+ *
  * Requirements to run:
  *   FAYANMS_BROWSER_E2E=1 bun test tests/browser/detection-journeys.test.ts
  *   # after `bun run build:gate` (shared harness rules apply)
@@ -94,8 +100,19 @@ async function signIn(page: Page): Promise<void> {
 async function openAddDeviceSheet(page: Page): Promise<void> {
   await page.goto(`${APP_BASE}/`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#sign-in-title", { state: "detached", timeout: 60_000 });
-  await page.getByRole("button", { name: "Devices", exact: true }).first().click();
-  await page.getByRole("button", { name: "Add Device" }).click();
+  // R74 iteration (run 35420764756): "Devices" lives INSIDE the collapsible
+  // "Network" sidebar group, which auto-opens only while it owns the active
+  // view (sidebar-nav.tsx: `openGroups[group.id] ?? containsActive`). After
+  // sign-in the active view is the dashboard, so the group starts CLOSED and
+  // the item is not rendered — the same discovery an operator makes. Expand
+  // the group (scoped to the sidebar nav), then click the item.
+  const nav = page.locator("nav").first();
+  const devices = nav.getByRole("button", { name: "Devices", exact: true });
+  if (!(await devices.isVisible().catch(() => false))) {
+    await nav.getByRole("button", { name: "Network", exact: true }).first().click();
+  }
+  await devices.first().click();
+  await page.getByRole("button", { name: "Add Device" }).first().click();
   await page.waitForSelector("#device-hostname", { state: "visible", timeout: 30_000 });
 }
 
