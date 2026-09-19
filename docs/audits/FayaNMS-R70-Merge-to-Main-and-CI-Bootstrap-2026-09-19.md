@@ -97,3 +97,28 @@ This reproduces CI's exact "fresh container + migrate deploy, no seed" state and
 - Pre-merge gates + LIVE: §1 table.
 - Pin suite: `tests/audit/r70-merge-to-main-and-ci-bootstrap.test.ts` (A–H) — asserts the migrate-before-tests ordering, single `migrate deploy` occurrence, four-job shape, merge/run/plan-blocker record strings, PAT hygiene.
 - Ledger rows: roadmap R70; NEXT-TASKS (OWNER-CI-002 CI bring-up; OWNER-GOV-001 unchanged); hand-off §merge; dual worklogs R70.
+
+---
+
+## 7. R71 ADDENDUM — bring-up iteration 2: the certify step's lab-hatch env
+
+With the DB bootstrap fixed, dispatch #5 (run **`35415388173`** @ main/`d3136c6`) executed the gate **one step deeper than any run in repo history**:
+
+| Step (run `35415388173`) | Conclusion |
+| --- | --- |
+| Set up job → containers → checkout → setup-bun → both installs | ✅ |
+| Lint / Typecheck | ✅ |
+| **Migration history applies to a fresh PostgreSQL** (the R70 fix, new position) | ✅ |
+| **Tests (the FULL 1031-test suite)** | ✅ **GREEN IN REAL CI — `1013 pass / 18 skip / 0 fail` (8,388 expects, 65 files), byte-identical to local** |
+| Live SSH adapter certification | ❌ `SSH_TARGET_POLICY_REFUSED: loopback` |
+
+### Root cause
+
+The certification driver IS the loopback lab: it dials in-process `127.0.0.1` protocol harnesses **by design**, and the R50 target-policy honors the documented caller-provided hatch `FAYANMS_PROBE_ALLOW_SPECIAL=true`. The step never set the hatch because the driver had only ever been executed inside the sandbox shell that exported it — the same class of latent environment-coupling defect as R70's bootstrap hole, in the next never-executed step.
+
+### Fix + proof (R71, same protocol)
+
+- The ci.yml certify step now presents `FAYANMS_PROBE_ALLOW_SPECIAL: "true"` **plus the three R64 hermeticity knobs** (`FAYANMS_SERVICE_PRIVATE_KEY=""`, `FAYANMS_SERVICE_PUBLIC_KEYS=""`, `FAYANMS_SERVICE_ENV_FILE=""`) — the exact env of the CI replica.
+- **CI-replica re-execution locally (exact step env): `CERT RESULT: PASSED` — 134 PASS checks, 5 flavors, protocol level, exit 0.** (Diagnostic note, recorded honestly: a sandbox-shell run *without* the R64 knobs shows spurious 401s on the HTTP-surface checks — the dev `.env`'s key material leaks into the in-process mint/verify round trip via the `.env` fallback; CI has no `.env` and was never affected. The knobs make the step hermetic in ANY environment.)
+- Pin suite: `tests/audit/r71-certify-step-env.test.ts` (5 pins — step env, hatch, knobs, finding record, PAT hygiene).
+- Expected next: dispatch #6 should carry the gate past certification into brand/schema/drift/i18n/build steps; `e2e`/`browser`/`scan` get their first real executions if the gate goes green.

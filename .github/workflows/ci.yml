@@ -165,6 +165,23 @@ jobs:
       # routing, transport, command mapping, normalization AND every typed
       # failure path. Self-contained (ephemeral port, throwaway secrets).
       - name: Live SSH adapter certification (Phase 22 slice 1)
+        env:
+          # R71 — the certification IS the loopback lab: the driver dials the
+          # in-process protocol harnesses on 127.0.0.1, so the documented
+          # FAYANMS_PROBE_ALLOW_SPECIAL lab hatch (R50 target-policy) must be
+          # presented by the caller. Run 35414649589 — the first real gate
+          # execution — failed exactly here (SSH_TARGET_POLICY_REFUSED:
+          # loopback, before any credential/connection work) because the step
+          # never set it and the driver had never run outside the sandbox
+          # shell that exported the hatch. The R64 knobs pin the service
+          # trust plane to the legacy throwaway (hermetic in-process
+          # mint/verify) — belt-and-braces on a runner that can never carry
+          # a dev .env; the CI-replica re-execution with exactly this env
+          # PASSED (134 checks, 5 flavors, protocol level).
+          FAYANMS_PROBE_ALLOW_SPECIAL: "true"
+          FAYANMS_SERVICE_PRIVATE_KEY: ""
+          FAYANMS_SERVICE_PUBLIC_KEYS: ""
+          FAYANMS_SERVICE_ENV_FILE: ""
         run: bun mini-services/worker/certify.ts
 
       # Phase B3 / re-audit BR-C2 — brand/icon governance gates (see

@@ -26,6 +26,12 @@ OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (gree
   DONE (operator-authorized fast-forward `27e0eea..6538d46` pushed). Remaining: iterate dispatch
   per push until a full 4-job GREEN run exists (HC-6 acceptance) — e2e/browser/scan have never
   really executed yet (skipped behind gate); capacity is intermittent (re-dispatch on 0-step).
+  R71 UPDATE: run `35415388173` (@ `d3136c6`) went deeper than any run in history — the FULL
+  test suite GREEN IN REAL CI (1013/18/0, byte-identical to local; R70 bootstrap fix live) —
+  then failed at the next never-executed step: Live SSH certification refused its own
+  127.0.0.1 harnesses (the step never presented the documented FAYANMS_PROBE_ALLOW_SPECIAL
+  lab hatch). FIXED: step env now carries the hatch + the three R64 hermeticity knobs;
+  CI-replica re-execution PASSED (134 checks, 5 flavors). Iterate: dispatch #6 next.
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4).
   R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
   aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let
