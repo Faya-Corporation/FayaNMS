@@ -34,6 +34,19 @@ import { join } from "node:path";
  * locale-neutral tokens governed by KEYED_SURVIVORS below — the same
  * exact-match precedent as devices-view's LIVE chip.
  *
+ * R81 (tranche 2, 2026-09-19): THREE views keyed by hand —
+ * admin-drivers (new `drivers` namespace), perf-capacity (chrome added
+ * to the EXISTING `capacity` namespace: KPI/status/chip/metric/legend
+ * copy incl. the module-level metricLabel helper and template
+ * aria-labels) and admin-system (new `systemSettings` namespace incl.
+ * the colon-syntax GROUPS block and the unsaved-changes ICU plural) →
+ * ledger 26 → 23 entries (791 → 749 candidates). Documented survivors:
+ * capacity's ConfidenceBadge renders the API's HIGH/MEDIUM/LOW token
+ * as-is (data-plane, LIVE-chip precedent); admin-system's setting.label
+ * rows are Setting-table DB content (like hostnames); admin-drivers'
+ * registry manifests (vendorLabel/cap.label/configFlavor/notes) are
+ * data-plane (VENDOR_LABELS precedent).
+ *
  * Detection regexes (documented, deliberately shallow):
  *   - PROP_RE  : literal string props  title=/placeholder=/aria-label=/
  *                label=/description=/heading= starting with a capital.
@@ -90,9 +103,9 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
 };
 
 /**
- * Pending-views debt ledger (R56 baseline; R80 tranche 1 shrank it).
- * Format: file → candidate ceiling (the exact count at R56; may only
- * DECREASE). A view leaves the ledger the day it is keyed; when the
+ * Pending-views debt ledger (R56 baseline; R80 tranche 1 + R81 tranche 2
+ * shrank it). Format: file → candidate ceiling (the count at R56; may
+ * only DECREASE). A view leaves the ledger the day it is keyed; when the
  * ledger is empty the sweep flips to forbid candidates in every view.
  * Counts use the documented shallow regexes above — regenerate with the
  * same extractors when editing.
@@ -101,9 +114,7 @@ const PENDING_VIEWS: Record<string, number> = {
   "admin-api-clients-view.tsx": 27,
   "admin-collectors-view.tsx": 19,
   "admin-credentials-view.tsx": 26,
-  "admin-drivers-view.tsx": 10,
   "admin-integrations-view.tsx": 47,
-  "admin-system-view.tsx": 16,
   "admin-users-view.tsx": 51,
   "alerts-view.tsx": 36,
   "backup-compliance-view.tsx": 30,
@@ -119,7 +130,6 @@ const PENDING_VIEWS: Record<string, number> = {
   "incidents-view.tsx": 22,
   "maintenance-view.tsx": 38,
   "perf-availability-view.tsx": 22,
-  "perf-capacity-view.tsx": 16,
   "perf-devices-view.tsx": 20,
   "perf-interfaces-view.tsx": 18,
   "perf-overview-view.tsx": 27,

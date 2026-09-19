@@ -53,20 +53,23 @@ import { PerfRangeChips, fmtPct, perfRangeLabel } from "./perf-overview-view";
 const HORIZON_PCT = 80;
 const HORIZON_DAYS = 90;
 
-function metricLabel(metric: string): string {
+/** Structural type for next-intl's t — keeps module-level label helpers portable. */
+type TranslateFn = (key: string, values?: Record<string, string | number>) => string;
+
+function metricLabel(metric: string, t: TranslateFn): string {
   switch (metric) {
     case "CPU":
-      return "CPU";
+      return t("chrome.metric.cpu");
     case "MEMORY":
-      return "Memory";
+      return t("chrome.metric.memory");
     case "LATENCY_MS":
-      return "Latency";
+      return t("chrome.metric.latency");
     case "PACKET_LOSS":
-      return "Packet loss";
+      return t("chrome.metric.packetLoss");
     case "UTILIZATION_IN":
-      return "Utilization (in)";
+      return t("chrome.metric.utilIn");
     case "UTILIZATION_OUT":
-      return "Utilization (out)";
+      return t("chrome.metric.utilOut");
     default:
       return metric;
   }
@@ -123,44 +126,44 @@ export function PerfCapacityView() {
       <PageHeader
         description={t("methodNote")}
         primaryAction={<PerfRangeChips onChange={(next) => { setRange(next); setSelectedKey(null); }} value={range} />}
-        title="Capacity"
+        title={t("chrome.pageTitle")}
       />
 
       {/* Summary chips */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard
           className={cn(summary && summary.atRisk30d > 0 && "border-danger/40")}
-          description="Cross the 80% horizon within a month"
+          description={t("chrome.kpi.risk30Desc")}
           icon={ShieldAlert}
-          label="At risk ≤ 30 days"
+          label={t("chrome.kpi.risk30")}
           loading={!data}
           status={
             summary === undefined
               ? undefined
               : summary.atRisk30d > 0
-                ? { label: "action needed", token: "danger" }
-                : { label: "clear", token: "success" }
+                ? { label: t("chrome.status.actionNeeded"), token: "danger" }
+                : { label: t("chrome.status.clear"), token: "success" }
           }
           value={summary?.atRisk30d ?? "—"}
         />
         <KpiCard
-          description="Cross the 80% horizon within a quarter"
+          description={t("chrome.kpi.risk90Desc")}
           icon={TriangleAlert}
-          label="At risk ≤ 90 days"
+          label={t("chrome.kpi.risk90")}
           loading={!data}
           status={
             summary === undefined
               ? undefined
               : summary.atRisk90d > 0
-                ? { label: "watch", token: "warning" }
-                : { label: "clear", token: "success" }
+                ? { label: t("chrome.status.watch"), token: "warning" }
+                : { label: t("chrome.status.clear"), token: "success" }
           }
           value={summary?.atRisk90d ?? "—"}
         />
         <KpiCard
-          description="No threshold crossing forecast in 90 days"
+          description={t("chrome.kpi.healthyDesc")}
           icon={CircleCheck}
-          label="Healthy"
+          label={t("chrome.kpi.healthy")}
           loading={!data}
           value={summary?.noRisk ?? "—"}
         />
@@ -170,7 +173,7 @@ export function PerfCapacityView() {
         <ErrorState
           onRetry={() => void capacity.refetch()}
           reason={capacity.error.message}
-          title="Capacity forecast could not be loaded"
+          title={t("chrome.error.title")}
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
@@ -178,8 +181,8 @@ export function PerfCapacityView() {
           <SectionCard
             className="xl:col-span-7"
             contentClassName="p-0"
-            description={`Sorted by days-to-threshold ascending — ${risks.length} tracked series`}
-            title="Capacity Risks"
+            description={t("chrome.risks.sortedBy", { count: risks.length })}
+            title={t("chrome.risks.title")}
           >
             {capacity.isLoading ? (
               <div className="p-4">
@@ -189,26 +192,29 @@ export function PerfCapacityView() {
               <div className="p-4">
                 <EmptyState
                   className="border-none bg-transparent py-8"
-                  description="No tracked series is forecast to cross the 80% horizon within 90 days."
+                  description={t("chrome.risks.emptyDescription")}
                   icon={CircleCheck}
-                  title="No capacity risks"
+                  title={t("chrome.risks.emptyTitle")}
                 />
               </div>
             ) : (
               <div className="max-h-[560px] overflow-auto">
                 <table
-                  aria-label={`Capacity risks — days to cross the ${HORIZON_PCT} percent horizon, ${risks.length} tracked series`}
+                  aria-label={t("chrome.risks.tableLabel", {
+                    horizon: HORIZON_PCT,
+                    count: risks.length,
+                  })}
                   className="w-full min-w-[640px] text-sm"
                 >
                   <thead className="sticky top-0 z-10 bg-card">
                     <tr className="border-b text-xs text-muted-foreground">
-                      <th className="px-4 py-2 text-start font-medium" scope="col">Device / Metric</th>
-                      <th className="px-4 py-2 text-end font-medium" scope="col">Current</th>
-                      <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">Slope</th>
-                      <th className="px-4 py-2 text-end font-medium" scope="col">Horizon</th>
-                      <th className="hidden px-4 py-2 text-end font-medium md:table-cell" scope="col">Confidence</th>
+                      <th className="px-4 py-2 text-start font-medium" scope="col">{t("chrome.risks.deviceMetric")}</th>
+                      <th className="px-4 py-2 text-end font-medium" scope="col">{t("chrome.risks.current")}</th>
+                      <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">{t("chrome.risks.slope")}</th>
+                      <th className="px-4 py-2 text-end font-medium" scope="col">{t("chrome.risks.horizon")}</th>
+                      <th className="hidden px-4 py-2 text-end font-medium md:table-cell" scope="col">{t("chrome.risks.confidence")}</th>
                       <th className="w-10 px-2 py-2">
-                        <span className="sr-only">Inspect forecast</span>
+                        <span className="sr-only">{t("chrome.risks.inspect")}</span>
                       </th>
                     </tr>
                   </thead>
@@ -250,10 +256,10 @@ export function PerfCapacityView() {
                               {risk.hostname}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {risk.siteCode} · {metricLabel(risk.metric)}
+                              {risk.siteCode} · {metricLabel(risk.metric, t)}
                             </span>
                           </button>
-                          <span className="sr-only"> — open device detail</span>
+                          <span className="sr-only">{t("chrome.risks.openDeviceDetail")}</span>
                         </td>
                         <td className="px-4 py-2 text-end font-medium tabular-nums">
                           {fmtCurrent(risk.metric, risk.current)}
@@ -269,7 +275,10 @@ export function PerfCapacityView() {
                         </td>
                         <td className="px-2 py-2 text-end">
                           <button
-                            aria-label={`Inspect forecast for ${risk.hostname} ${metricLabel(risk.metric)}`}
+                            aria-label={t("chrome.risks.inspectFor", {
+                              hostname: risk.hostname,
+                              metric: metricLabel(risk.metric, t),
+                            })}
                             className={cn(
                               "rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
                               selectedKey === riskKey(risk) && "text-primary"
@@ -297,7 +306,10 @@ export function PerfCapacityView() {
             contentClassName="pt-4"
             description={
               selected
-                ? `${selected.hostname} · ${metricLabel(selected.metric)}`
+                ? t("chrome.risks.selectedSeries", {
+                    hostname: selected.hostname,
+                    metric: metricLabel(selected.metric, t),
+                  })
                 : t("forecast.selectPrompt")
             }
             title={t("forecast.title")}
@@ -321,7 +333,10 @@ export function PerfCapacityView() {
         contentClassName="p-4"
         description={
           selected
-            ? `${selected.hostname} · ${metricLabel(selected.metric)}`
+            ? t("chrome.risks.selectedSeries", {
+                hostname: selected.hostname,
+                metric: metricLabel(selected.metric, t),
+              })
             : t("model.selectHint")
         }
         title={t("model.title")}
@@ -356,10 +371,11 @@ export function PerfCapacityView() {
 }
 
 function DaysToThresholdChip({ days }: { days: number | null }) {
+  const t = useTranslations("capacity");
   if (days === null) {
     return (
       <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-        stable
+        {t("chrome.chip.stable")}
       </span>
     );
   }
@@ -374,12 +390,14 @@ function DaysToThresholdChip({ days }: { days: number | null }) {
     <span
       className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums", tone)}
     >
-      {rounded} d
+      {t("chrome.chip.days", { days: rounded })}
     </span>
   );
 }
 
 function ConfidenceBadge({ confidence }: { confidence: string }) {
+  // Renders the API's confidence token (HIGH/MEDIUM/LOW) as-is — documented
+  // data-plane survivor (same precedent as the LIVE chip / MTTA acronyms).
   const tone =
     confidence === "HIGH"
       ? "bg-success-subtle text-success"
@@ -554,7 +572,7 @@ function computeForecastV2(
  *  and hides the raw stacked band helper series from the default payload. */
 function forecastTooltipContent(
   risk: CapacityRiskRow,
-  labels: { forecast: string; band: string }
+  labels: { forecast: string; band: string; metric: string }
 ) {
   return function renderForecastTooltip(props: TooltipProps<number, string>) {
     const { active, payload, label } = props;
@@ -568,7 +586,7 @@ function forecastTooltipContent(
         </p>
         {row.value !== null && (
           <p className="mt-1 text-muted-foreground">
-            {metricLabel(risk.metric)}:{" "}
+            {labels.metric}:{" "}
             <span className="font-medium tabular-nums text-foreground">
               {fmtCurrent(risk.metric, row.value)}
             </span>
@@ -634,6 +652,7 @@ function ForecastChart({
       forecastTooltipContent(risk, {
         forecast: t("forecastLegend"),
         band: t("bandLegend"),
+        metric: metricLabel(risk.metric, t),
       }),
     [risk, t]
   );
@@ -645,7 +664,7 @@ function ForecastChart({
       <ChartSummary
         aria-label={t("forecast.chartLabel", {
           hostname: risk.hostname,
-          metric: metricLabel(risk.metric),
+          metric: metricLabel(risk.metric, t),
           current: fmtCurrent(risk.metric, risk.current),
           crossing:
             risk.daysToThreshold === null
@@ -694,7 +713,7 @@ function ForecastChart({
                 fill: colors.danger,
                 fontSize: 10,
                 position: "insideTopRight",
-                value: `Horizon ${horizonPct}%`,
+                value: t("chrome.horizonLine", { horizon: horizonPct }),
               }}
             />
             {/* 80% confidence band: invisible lower bound + stacked span. */}
@@ -747,7 +766,7 @@ function ForecastChart({
             className="h-0.5 w-4 rounded-full"
             style={{ backgroundColor: colors.primary }}
           />
-          History (1D rollups)
+          {t("chrome.historyLegend")}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span

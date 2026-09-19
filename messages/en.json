@@ -528,6 +528,55 @@
       "weightWeekend": "Weekend",
       "skipTooShort": "This series has {points} daily points — ridge-v3 needs at least {required} for a training/backtest split, so no metrics are fabricated.",
       "engineTag": "ridge-v3 point forecast · v2-derived band"
+    },
+    "chrome": {
+      "pageTitle": "Capacity",
+      "kpi": {
+        "risk30": "At risk ≤ 30 days",
+        "risk30Desc": "Cross the 80% horizon within a month",
+        "risk90": "At risk ≤ 90 days",
+        "risk90Desc": "Cross the 80% horizon within a quarter",
+        "healthy": "Healthy",
+        "healthyDesc": "No threshold crossing forecast in 90 days"
+      },
+      "status": {
+        "actionNeeded": "action needed",
+        "watch": "watch",
+        "clear": "clear"
+      },
+      "error": {
+        "title": "Capacity forecast could not be loaded"
+      },
+      "risks": {
+        "title": "Capacity Risks",
+        "sortedBy": "Sorted by days-to-threshold ascending — {count} tracked series",
+        "tableLabel": "Capacity risks — days to cross the {horizon} percent horizon, {count} tracked series",
+        "deviceMetric": "Device / Metric",
+        "current": "Current",
+        "slope": "Slope",
+        "horizon": "Horizon",
+        "confidence": "Confidence",
+        "inspect": "Inspect forecast",
+        "inspectFor": "Inspect forecast for {hostname} {metric}",
+        "selectedSeries": "{hostname} · {metric}",
+        "openDeviceDetail": "— open device detail",
+        "emptyTitle": "No capacity risks",
+        "emptyDescription": "No tracked series is forecast to cross the 80% horizon within 90 days."
+      },
+      "metric": {
+        "cpu": "CPU",
+        "memory": "Memory",
+        "latency": "Latency",
+        "packetLoss": "Packet loss",
+        "utilIn": "Utilization (in)",
+        "utilOut": "Utilization (out)"
+      },
+      "chip": {
+        "stable": "stable",
+        "days": "{days} d"
+      },
+      "horizonLine": "Horizon {horizon}%",
+      "historyLegend": "History (1D rollups)"
     }
   },
   "reports": {
@@ -1959,5 +2008,80 @@
   "placeholder": {
     "arrivesIn": "This module arrives in {phase}",
     "description": "Nothing here is simulated — this module ships with its roadmap phase. Use the sidebar, the ⌘K palette or the dashboard to continue exploring the live slice."
+  },
+  "drivers": {
+    "title": "Device Drivers",
+    "description": "Vendor adapter catalog and capabilities used by backup, diff and change engines",
+    "kpi": {
+      "adapters": "Adapters",
+      "capabilities": "Distinct capabilities",
+      "configFlavors": "Config flavors"
+    },
+    "catalog": {
+      "title": "Catalog",
+      "description": "Every adapter is reachable through the change engine's apply path"
+    },
+    "error": {
+      "title": "Could not load drivers",
+      "reason": "Try again."
+    },
+    "empty": {
+      "title": "No drivers registered",
+      "description": "Vendor adapters appear here once defined in the drivers registry."
+    },
+    "flavorPrefix": "flavor {flavor}",
+    "caps": "{count} caps"
+  },
+  "systemSettings": {
+    "title": "System Settings",
+    "description": "Platform configuration and audit-chain integrity",
+    "save": "Save",
+    "saveWithCount": "Save ({count})",
+    "saveNow": "Save now",
+    "kpi": {
+      "settings": "Settings",
+      "auditChain": "Audit chain",
+      "chainEvents": "Chain events checked"
+    },
+    "chain": {
+      "validValue": "valid",
+      "brokenValue": "broken",
+      "title": "Audit hash chain",
+      "description": "Every AuditEvent is stamped sha256(prev → row); the verifier walks the whole chain",
+      "runBackfill": "Run backfill",
+      "verify": "Verify chain",
+      "errorTitle": "Could not verify chain",
+      "errorReason": "Try again.",
+      "validBadge": "Valid — {count} events chained",
+      "brokenBadge": "Broken at index {index}",
+      "inconsistencyPrefix": "First inconsistency at event",
+      "inconsistencyTail": ": {reason}. Run the backfill to repair unhashed rows.",
+      "autoChainNote": "New events chain automatically via the db extension. The backfill hashes pre-chain rows oldest→newest (capped per run — repeat until remaining is 0)."
+    },
+    "tiers": {
+      "title": "Metrics tier retention",
+      "description": "Raw / 5M / 1H / 1D tier policies live on the Performance Overview",
+      "editorNote": "The per-tier retention editor (raw, 5-minute, 1-hour, 1-day rollups with enable toggles and prune-now) is embedded in",
+      "overviewLink": "Performance → Performance Overview",
+      "managedElsewhere": "managed elsewhere"
+    },
+    "error": {
+      "title": "Could not load settings",
+      "reason": "Try again."
+    },
+    "empty": {
+      "title": "No settings found",
+      "description": "Whitelisted settings appear here once present in the Setting table."
+    },
+    "group": {
+      "system": { "title": "General", "description": "Platform identity" },
+      "backup": { "title": "Backups", "description": "Retention and encryption posture" },
+      "drift": { "title": "Drift", "description": "Drift detection cadence" },
+      "alert": { "title": "Alerts", "description": "Suppression behavior" },
+      "metrics": { "title": "Metrics", "description": "Rollup retention (legacy scalar)" },
+      "performance": { "title": "Performance", "description": "Availability SLA target" }
+    },
+    "updated": "updated {date}",
+    "unsavedChanges": "{count, plural, one {1 unsaved change} other {# unsaved changes}}"
   }
 }

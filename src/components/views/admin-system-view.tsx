@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import {
   useAdminSettings,
@@ -37,15 +38,22 @@ import { useCanWrite } from "@/stores/permissions";
  * Whitelisted platform settings (Setting table) + audit hash-chain
  * integrity. The metrics *tier* retention policy has its own UI on the
  * Performance Overview view — a pointer card links there.
+ *
+ * i18n (R81 tranche 2): all chrome keyed through the `systemSettings`
+ * namespace — including the colon-syntax GROUPS block (never matched by
+ * the shallow sweep; keyed by hand via `group.${prefix}.*` keys) and the
+ * unsaved-changes ICU plural. Documented data-plane survivors: rows'
+ * setting.label / aria-label (rendered from the Setting table — DB
+ * content, like hostnames) and the "—" em-dash placeholders.
  */
 
-const GROUPS: { prefix: string; title: string; description: string }[] = [
-  { prefix: "system", title: "General", description: "Platform identity" },
-  { prefix: "backup", title: "Backups", description: "Retention and encryption posture" },
-  { prefix: "drift", title: "Drift", description: "Drift detection cadence" },
-  { prefix: "alert", title: "Alerts", description: "Suppression behavior" },
-  { prefix: "metrics", title: "Metrics", description: "Rollup retention (legacy scalar)" },
-  { prefix: "performance", title: "Performance", description: "Availability SLA target" },
+const GROUPS: { prefix: string }[] = [
+  { prefix: "system" },
+  { prefix: "backup" },
+  { prefix: "drift" },
+  { prefix: "alert" },
+  { prefix: "metrics" },
+  { prefix: "performance" },
 ];
 
 function groupOf(key: string): string {
@@ -53,6 +61,7 @@ function groupOf(key: string): string {
 }
 
 export function AdminSystemView() {
+  const t = useTranslations("systemSettings");
   const canWrite = useCanWrite();
 
   const settingsQuery = useAdminSettings();
@@ -132,8 +141,8 @@ export function AdminSystemView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="System Settings"
-        description="Platform configuration and audit-chain integrity"
+        title={t("title")}
+        description={t("description")}
         actions={
           canWrite ? (
             <Button size="sm" onClick={() => void save()} disabled={dirty.length === 0 || updateSettings.isPending}>
@@ -142,21 +151,21 @@ export function AdminSystemView() {
               ) : (
                 <Save className="mr-2 size-4" />
               )}
-              Save {dirty.length > 0 ? `(${dirty.length})` : ""}
+              {dirty.length > 0 ? t("saveWithCount", { count: dirty.length }) : t("save")}
             </Button>
           ) : undefined
         }
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <KpiCard label="Settings" value={String(settings.length)} icon={SlidersHorizontal} />
+        <KpiCard label={t("kpi.settings")} value={String(settings.length)} icon={SlidersHorizontal} />
         <KpiCard
-          label="Audit chain"
-          value={chain ? (chain.valid ? "valid" : "broken") : "—"}
+          label={t("kpi.auditChain")}
+          value={chain ? (chain.valid ? t("chain.validValue") : t("chain.brokenValue")) : "—"}
           icon={chain?.valid ? CheckCircle2 : AlertTriangle}
         />
         <KpiCard
-          label="Chain events checked"
+          label={t("kpi.chainEvents")}
           value={chain ? chain.checked.toLocaleString() : "—"}
           icon={Link2}
         />
@@ -164,8 +173,8 @@ export function AdminSystemView() {
 
       {/* Audit hash chain integrity */}
       <SectionCard
-        title="Audit hash chain"
-        description="Every AuditEvent is stamped sha256(prev → row); the verifier walks the whole chain"
+        title={t("chain.title")}
+        description={t("chain.description")}
         actions={
           <div className="flex gap-2">
             {canWrite && (
@@ -180,11 +189,11 @@ export function AdminSystemView() {
                 ) : (
                   <Database className="mr-1 size-3" />
                 )}
-                Run backfill
+                {t("chain.runBackfill")}
               </Button>
             )}
             <Button variant="outline" size="sm" onClick={() => void auditChainQuery.refetch()} disabled={auditChainQuery.isFetching}>
-              <ShieldCheck className="mr-1 size-3" /> Verify chain
+              <ShieldCheck className="mr-1 size-3" /> {t("chain.verify")}
             </Button>
           </div>
         }
@@ -194,8 +203,8 @@ export function AdminSystemView() {
             <div className="h-12 animate-pulse rounded bg-muted" />
           ) : auditChainQuery.isError ? (
             <ErrorState
-              title="Could not verify chain"
-              reason="Try again."
+              title={t("chain.errorTitle")}
+              reason={t("chain.errorReason")}
               onRetry={() => void auditChainQuery.refetch()}
             />
           ) : chain ? (
@@ -203,23 +212,23 @@ export function AdminSystemView() {
               <div className="flex items-center gap-2">
                 {chain.valid ? (
                   <Badge className="bg-success/10 text-success">
-                    <CheckCircle2 className="mr-1 size-3" /> Valid — {chain.checked} events chained
+                    <CheckCircle2 className="mr-1 size-3" /> {t("chain.validBadge", { count: chain.checked })}
                   </Badge>
                 ) : (
                   <Badge className="bg-danger-orange/10 text-danger-orange">
-                    <AlertTriangle className="mr-1 size-3" /> Broken at index {chain.brokenAt?.index}
+                    <AlertTriangle className="mr-1 size-3" /> {t("chain.brokenBadge", { index: chain.brokenAt?.index ?? "—" })}
                   </Badge>
                 )}
               </div>
               {!chain.valid && chain.brokenAt && (
                 <p className="text-sm text-muted-foreground">
-                  First inconsistency at event <code className="font-mono text-xs">{chain.brokenAt.id}</code>:{" "}
-                  {chain.brokenAt.reason}. Run the backfill to repair unhashed rows.
+                  {t("chain.inconsistencyPrefix")}{" "}
+                  <code className="font-mono text-xs">{chain.brokenAt.id}</code>
+                  {t("chain.inconsistencyTail", { reason: chain.brokenAt.reason })}
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                New events chain automatically via the db extension. The backfill hashes
-                pre-chain rows oldest→newest (capped per run — repeat until remaining is 0).
+                {t("chain.autoChainNote")}
               </p>
             </div>
           ) : null}
@@ -227,14 +236,13 @@ export function AdminSystemView() {
       </SectionCard>
 
       {/* Tier retention pointer */}
-      <SectionCard title="Metrics tier retention" description="Raw / 5M / 1H / 1D tier policies live on the Performance Overview">
+      <SectionCard title={t("tiers.title")} description={t("tiers.description")}>
         <div className="flex items-center justify-between gap-4 p-4">
           <p className="text-sm text-muted-foreground">
-            The per-tier retention editor (raw, 5-minute, 1-hour, 1-day rollups with
-            enable toggles and prune-now) is embedded in{" "}
-            <strong className="text-foreground">Performance → Performance Overview</strong>.
+            {t("tiers.editorNote")}{" "}
+            <strong className="text-foreground">{t("tiers.overviewLink")}</strong>.
           </p>
-          <Badge variant="secondary">managed elsewhere</Badge>
+          <Badge variant="secondary">{t("tiers.managedElsewhere")}</Badge>
         </div>
       </SectionCard>
 
@@ -247,19 +255,23 @@ export function AdminSystemView() {
         </div>
       ) : settingsQuery.isError ? (
         <ErrorState
-          title="Could not load settings"
-          reason="Try again."
+          title={t("error.title")}
+          reason={t("error.reason")}
           onRetry={() => void settingsQuery.refetch()}
         />
       ) : settings.length === 0 ? (
         <EmptyState
           icon={SlidersHorizontal}
-          title="No settings found"
-          description="Whitelisted settings appear here once present in the Setting table."
+          title={t("empty.title")}
+          description={t("empty.description")}
         />
       ) : (
         grouped.map((group) => (
-          <SectionCard key={group.prefix} title={group.title} description={group.description}>
+          <SectionCard
+            key={group.prefix}
+            title={t(`group.${group.prefix}.title`)}
+            description={t(`group.${group.prefix}.description`)}
+          >
             <div className="divide-y">
               {group.settings.map((setting) => (
                 <div key={setting.key} className="flex flex-col gap-1.5 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -270,7 +282,7 @@ export function AdminSystemView() {
                   <div className="flex items-center gap-3">
                     {setting.updatedAt && (
                       <span className="text-xs text-muted-foreground">
-                        updated {new Date(setting.updatedAt).toLocaleDateString()}
+                        {t("updated", { date: new Date(setting.updatedAt).toLocaleDateString() })}
                       </span>
                     )}
                     {renderControl(setting)}
@@ -285,11 +297,9 @@ export function AdminSystemView() {
       {/* Unsaved-changes guard toast */}
       {dirty.length > 0 && canWrite && (
         <div className="sticky bottom-4 flex items-center justify-between gap-3 rounded-lg border bg-background/95 p-3 shadow-sm backdrop-blur">
-          <span className="text-sm">
-            {dirty.length} unsaved change{dirty.length > 1 ? "s" : ""}
-          </span>
+          <span className="text-sm">{t("unsavedChanges", { count: dirty.length })}</span>
           <Button size="sm" onClick={() => void save()} disabled={updateSettings.isPending}>
-            <Save className="mr-2 size-4" /> Save now
+            <Save className="mr-2 size-4" /> {t("saveNow")}
           </Button>
         </div>
       )}

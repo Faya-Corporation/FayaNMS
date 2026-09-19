@@ -1,6 +1,7 @@
 "use client";
 
 import { Plug, Puzzle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { DeviceVendorIcon, FayanmsIcon } from "@/components/icons";
 
@@ -18,9 +19,16 @@ import { SectionCard } from "@/components/domain/section-card";
  * Vendor adapter catalog derived from src/lib/vendors — the same manifests
  * the config backup + change apply engines dispatch through. Static
  * surface: the adapters ARE the drivers.
+ *
+ * i18n (R81 tranche 2): all chrome keyed through the `drivers` namespace.
+ * Documented data-plane survivors (registry manifests, rendered as-is in
+ * both locales — same precedent as the VENDOR_LABELS product names):
+ * driver.vendorLabel, driver.adapter, cap.label, driver.configFlavor and
+ * driver.notes all come from the drivers registry (src/lib/vendors).
  */
 
 export function AdminDriversView() {
+  const t = useTranslations("drivers");
   const driversQuery = useDrivers();
   const drivers = driversQuery.data?.drivers ?? [];
 
@@ -30,26 +38,23 @@ export function AdminDriversView() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Device Drivers"
-        description="Vendor adapter catalog and capabilities used by backup, diff and change engines"
-      />
+      <PageHeader title={t("title")} description={t("description")} />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <KpiCard label="Adapters" value={String(drivers.length)} icon={Plug} />
+        <KpiCard label={t("kpi.adapters")} value={String(drivers.length)} icon={Plug} />
         <KpiCard
-          label="Distinct capabilities"
+          label={t("kpi.capabilities")}
           value={String(capabilityCount)}
           icon={Puzzle}
         />
         <KpiCard
-          label="Config flavors"
+          label={t("kpi.configFlavors")}
           value={String(new Set(drivers.map((d) => d.configFlavor)).size)}
           icon={Plug}
         />
       </div>
 
-      <SectionCard title="Catalog" description="Every adapter is reachable through the change engine's apply path">
+      <SectionCard title={t("catalog.title")} description={t("catalog.description")}>
         {driversQuery.isLoading ? (
           <div className="grid gap-3 p-4 sm:grid-cols-2">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -58,15 +63,15 @@ export function AdminDriversView() {
           </div>
         ) : driversQuery.isError ? (
           <ErrorState
-            title="Could not load drivers"
-            reason="Try again."
+            title={t("error.title")}
+            reason={t("error.reason")}
             onRetry={() => void driversQuery.refetch()}
           />
         ) : drivers.length === 0 ? (
           <EmptyState
             icon={Plug}
-            title="No drivers registered"
-            description="Vendor adapters appear here once defined in the drivers registry."
+            title={t("empty.title")}
+            description={t("empty.description")}
           />
         ) : (
           <div className="grid gap-3 p-4 sm:grid-cols-2">
@@ -88,13 +93,13 @@ export function AdminDriversView() {
                       <span className="flex items-center gap-1">
                         {/* Config-flavor prefix (decorative — flavor text adjacent). xs=14px is the documented glyph minimum (B2-022). */}
                         <FayanmsIcon name="configuration" size="xs" />
-                        <span>
-                          flavor {driver.configFlavor}
-                        </span>
+                        <span>{t("flavorPrefix", { flavor: driver.configFlavor })}</span>
                       </span>
                     </div>
                   </div>
-                  <Badge variant="secondary">{driver.capabilities.length} caps</Badge>
+                  <Badge variant="secondary">
+                    {t("caps", { count: driver.capabilities.length })}
+                  </Badge>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1">
                   {driver.capabilities.map((cap) => (
