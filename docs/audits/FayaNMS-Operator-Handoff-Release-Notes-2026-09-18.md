@@ -13,9 +13,10 @@ honestly NOT proven, and the exact remaining steps to go-live.
   the roadmap ledger and NEXT-TASKS — treat the LEDGER as the live numbers,
   not this snapshot.
 - The in-repo verification battery is green at HEAD: **lint 0 · tsc FULL 0 ·
-  suite 986 pass / 18 skip / 0 fail** (8,306 expects, 63 files — the R61–R67
-  remediation + operator-path rounds all included; gates independently
-  re-executed per the standing standard in R64 and R65).
+  suite 997 pass / 18 skip / 0 fail** (8,354 expects, 64 files — the R61–R69
+  remediation + operator-path + re-review rounds all included; gates
+  independently re-executed per the standing standard in R64/R65 and re-run
+  post-remediation in R69).
 - The independent production re-audit verdict is **PASS with zero open
   P1/P2/P3 findings**. (An independent re-verification of this hand-off's
   earlier snapshot on 2026-09-19 found **2 P0 + 2 P1 authorable findings** —
@@ -23,6 +24,14 @@ honestly NOT proven, and the exact remaining steps to go-live.
   JWT proxy bypass, unguarded sensitive reads. ALL FOUR are remediated and
   machine-pinned in R61/R62 on this branch; the reviewer's CI/trigger and
   Dependabot-activation points are folded into the runbook below.)
+- **R69 full roadmap re-review (2026-09-19):** every roadmap item re-verified
+  at CODE level by a senior independent pass — all substantive claims HELD;
+  four findings remediated same-round (R69-F1 **P1**: the snapshots/diff
+  route returned decrypted config text with no permission gate → now
+  config.download-gated + denial-audited, viewer/auditor fail-closed by
+  design; R69-F2 meta/users email-fallback; R69-F3 gov-verify ruleset-plane
+  blind spots; R69-F4 ci.yml header wording). Evidence:
+  `docs/audits/FayaNMS-R69-Full-Roadmap-ReReview-2026-09-19.md`.
 - The authorable backlog is **EMPTY**. Go-live is blocked only by FOUR
   **operator-side actions** (§4): enable CI runners → execute HC-6; **upgrade
   the GitHub plan — R67 LIVE discovery: Free-plan private repos cannot enable
@@ -74,6 +83,8 @@ verified; R58 program sweep re-verified everything at the release SHA.
 | R65 dispatch path executed | `0d28a34` | `workflow_dispatch` EXECUTED end-to-end for the first time (run `35406875963` → gate 0-steps infra failure — trigger proven, capacity still the blocker); resume-summary drift caught again |
 | R66 required-checks shape + merge pre-flight | `d6c61da` | governance defect fixed (7 operation docs carried 2/3-check required-checks sets → ALL FOUR; under-protection would let e2e/browser failures merge); `merge-tree --write-tree` exit 0 — the protective merge is CLEAN |
 | R67 executable GOV read-back + PLAN GATE | `13a8fcf` | `scripts/gov-verify.ts` (live dual-mechanism read-back, typed exits); **LIVE discovery: GitHub Free plan-gates branch protection (403 "Upgrade to GitHub Pro…")** — runbook step 0 added; CODEOWNERS header aligned; paste-ready candidate PR package authored |
+| R68 browser re-execution + hand-off refresh | `91d3f97` | HC-6 probe #3 (run `35411315267` @ `13a8fcf` — trigger TRIPLE-proven); golden-path browser journey re-executed live (EN → AR/RTL → sign-out, ZERO console/page errors); honest harness-precondition finding recorded; README badge alt fixed |
+| **R69 full roadmap re-review + remediations** | this commit | EVERY roadmap item re-verified at code level (3 parallel deep-read passes) — claims HELD; **R69-F1 (P1) snapshots/diff RBAC gap closed** (config.download gate + CONFIG_DIFF_DENIED audit; viewer/auditor fail-closed) + meta/users email fallback + gov-verify ruleset-plane hardening (four protective rule types) + ci.yml header wording; suite 986 → 997 |
 
 ---
 
@@ -85,6 +96,13 @@ contracts; EN/AR-RTL browser journeys; assign-to-picker e2e; mobile-390 layout;
 YAML config hygiene. Every claim has an evidence document (§5). R68: the
 golden-path browser journey (sign-in → shell → devices EN/AR-RTL → sign-out
 gate, zero console/page errors) was RE-EXECUTED live against the running app.
+R69: unauth meta 200 / worker /health 200 / unauth worker 401 fail-closed;
+unauth snapshots/diff 401 at the proxy AND 401-before-404 at the handler
+(wire pin); HC-1 named budgets re-demoed on the wire (401×10 → 429 ai/query,
+401×5 → 429 csv-import). BEHAVIOR CHANGE (R69-F1, intentional): viewer and
+auditor sessions now receive 403 on the snapshot-diff dialogs — the response
+is decrypted configuration text and the boundary is the server, matching how
+the raw download route already treats them.
 NOTE (R68): the full e2e/browser HARNESS suite additionally requires (a) the
 `.next/standalone` production-build artifact — absent in the current tree; a
 rebuild trips the ≥8 GB OOM caveat below — and (b) free ports (the harness

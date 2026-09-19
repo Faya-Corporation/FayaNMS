@@ -1,7 +1,8 @@
 # FayaNMS — ACTIVE CI gate (.github/workflows/ci.yml · task R2-c · re-audit finding B0-002).
 #
 # ── GOVERNANCE STATUS (reconciled with LIVE GitHub state, DOC-001-A 2026-09-15) ──
-# Workflow:          ACTIVE — this workflow runs gate + scan (+ e2e) on every push.
+# Workflow:          ACTIVE — this workflow runs ALL FOUR jobs (gate + e2e +
+#                    browser + scan) on every push and pull_request.
 # Branch protection: NOT ACTIVE. Live API read-back 2026-09-15:
 #                    branches/main → protected:false, protection.enabled:false,
 #                    required status checks enforcement_level:off, zero contexts.

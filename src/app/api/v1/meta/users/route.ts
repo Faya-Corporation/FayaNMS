@@ -47,7 +47,11 @@ export async function GET(request: Request) {
   return ok({
     users: users.map((user) => ({
       id: user.id,
-      name: user.name ?? user.email,
+      // R69 re-review remediation: the fallback is the email LOCAL-PART —
+      // a bare `?? user.email` here would expose the FULL email address of
+      // any active user whose name is null, contradicting this route's own
+      // "no emails beyond the local-part" contract.
+      name: user.name ?? user.email.split("@")[0] ?? user.id,
       username: user.email.split("@")[0] ?? user.id,
       roleLabel: ROLE_LABELS[user.role] ?? user.role,
     })),

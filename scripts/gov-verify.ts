@@ -14,8 +14,12 @@
  * Supports BOTH protection mechanisms:
  *   1. classic branch protection  — GET /repos/{owner}/{repo}/branches/{branch}/protection
  *   2. rulesets                   — GET /repos/{owner}/{repo}/rulesets (branch target)
- * The first source that reports an ACTIVE enforcement wins; if both exist the
- * script verifies BOTH and every one must satisfy the invariants.
+ * BOTH mechanisms are verified and BOTH are REQUIRED: each present mechanism
+ * must satisfy its full invariant set, and a missing mechanism is itself a
+ * FAIL (classic.protection-present / rulesets.present). A ruleset-only or
+ * classic-only setup does not pass — the go-live definition (roadmap §Go-live
+ * #3) names classic protection while TASK-GOV-001-A instructs configuring the
+ * ruleset; the operator runbook treats them as one governance posture.
  *
  * Usage:
  *   GOV_VERIFY_TOKEN=<token-with-admin:read> bun scripts/gov-verify.ts [branch]
@@ -171,7 +175,7 @@ function evaluateClassic(p: ClassicProtection): CheckResult[] {
     observed: String(p.required_conversation_resolution?.enabled ?? "unset"),
   });
   results.push({
-    name: "classic.required_linear_history enabled (advisory — record-only)",
+    name: "classic.required_linear_history enabled",
     ok: p.required_linear_history?.enabled === true,
     observed: String(p.required_linear_history?.enabled ?? "unset"),
   });
@@ -197,6 +201,15 @@ function evaluateRulesets(all: Ruleset[], branch: string): CheckResult[] {
   const checksSeen = new Set<string>();
   let maxApprovals = 0;
   let codeOwnerReview = false;
+  // R69 re-review remediation — the ruleset plane previously verified ONLY
+  // required_status_checks + pull_request approvals. The four protective
+  // rule types below close the same guarantees the classic plane asserts
+  // (force-push off, deletion off, conversation resolution, linear history);
+  // a ruleset without them would silently pass where classic would fail.
+  let blocksNonFastForward = false;
+  let blocksDeletion = false;
+  let requiresConversationResolution = false;
+  let requiresLinearHistory = false;
   for (const rs of applicable) {
     for (const rule of rs.rules ?? []) {
       if (rule.type === "required_status_checks") {
@@ -212,6 +225,14 @@ function evaluateRulesets(all: Ruleset[], branch: string): CheckResult[] {
         codeOwnerReview =
           codeOwnerReview ||
           rule.parameters?.require_code_owner_review === true;
+      }
+      if (rule.type === "non_fast_forward") blocksNonFastForward = true;
+      if (rule.type === "deletion") blocksDeletion = true;
+      if (rule.type === "required_conversation_resolution") {
+        requiresConversationResolution = true;
+      }
+      if (rule.type === "required_linear_history") {
+        requiresLinearHistory = true;
       }
     }
   }
@@ -233,6 +254,26 @@ function evaluateRulesets(all: Ruleset[], branch: string): CheckResult[] {
     name: "rulesets.pull_request require_code_owner_review",
     ok: codeOwnerReview,
     observed: String(codeOwnerReview),
+  });
+  results.push({
+    name: "rulesets.non_fast_forward rule present (force-push blocked)",
+    ok: blocksNonFastForward,
+    observed: String(blocksNonFastForward),
+  });
+  results.push({
+    name: "rulesets.deletion rule present (branch deletion blocked)",
+    ok: blocksDeletion,
+    observed: String(blocksDeletion),
+  });
+  results.push({
+    name: "rulesets.required_conversation_resolution rule present",
+    ok: requiresConversationResolution,
+    observed: String(requiresConversationResolution),
+  });
+  results.push({
+    name: "rulesets.required_linear_history rule present",
+    ok: requiresLinearHistory,
+    observed: String(requiresLinearHistory),
   });
   return results;
 }

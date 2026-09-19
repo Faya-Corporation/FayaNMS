@@ -29,10 +29,36 @@ OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact 
   `bun scripts/gov-verify.ts main` must print GOV-VERIFIED(0) before any doc flips to "active";
   the read-back covers classic protection AND rulesets, all FOUR checks, approvals, code-owner
   review, force-push/deletion off.
+  R69 UPDATE: the ruleset plane of gov-verify is HARDENED — it now also REQUIRES the four
+  protective rule types on the ACTIVE ruleset(s): `non_fast_forward` (force-push off),
+  `deletion`, `required_conversation_resolution`, AND `required_linear_history` (previously
+  only "recommended" — now a hard invariant on BOTH planes, matching classic behavior). The
+  header now honestly states BOTH mechanisms are required (classic-only or ruleset-only fails).
+  Configure the ruleset with ALL of: PR required, ≥1 approval, CODEOWNERS review, conversation
+  resolution, required_linear_history, non_fast_forward, deletion, the FOUR status checks.
 R50-T090..T092 / LAB-FUNC-001 / LAB-CERT-HW-001 — real-device certification (needs operator-side hardware or free DevNet AAA credentials; Step 0: PUBLIC DEMO DEVICE PLANE — docs/certification/PUBLIC-DEMO-DEVICES.md + `bun run demo:fleet`)
 ```
 
 The remediation authoring backlog remains EMPTY for the R34–R47, R50 and R51 programs; the R52 full end-to-end re-audit found zero P1/P2 and its single P3 (F-N1 auth ordering on the AI routes) + the hygiene set were remediated IN the R52 increment.
+
+---
+
+R69 — FULL ROADMAP RE-REVIEW (senior independent full-stack audit, 2026-09-19) ✅ LANDED
+
+Every roadmap item re-verified at CODE level via three parallel deep-read passes (R52 · HC-1 · HC-2 · HC-3 · HC-4 · HC-5 · R61 P0s · R62 P1s · gov-verify/ci.yml shape) — all substantive claims HELD, each pin suite re-executed green, plus fresh live wire probes. FOUR findings remediated in the same round:
+
+- **R69-F1 (P1) — `GET /api/v1/devices/[id]/snapshots/diff` had NO handler-level authorization** (the R62 invariant did not cover this sibling route): it decrypted BOTH snapshots and returned full configuration text (raw or normalized) to ANY authenticated session (viewer/auditor included). FIXED: `requirePermission(request, "config.download")` BEFORE any DB work (401/403, never a 404 oracle), denials audited `CONFIG_DIFF_DENIED` (mirroring the download route). INTENTIONAL behavior change: viewer/auditor now 403 on diff dialogs (fail-closed, server is the boundary).
+- **R69-F2 (P3)** — `/api/v1/meta/users` name fallback `?? user.email` would expose a full email for null-name users → now the email local-part (matches the route's own contract).
+- **R69-F3 (P3)** — `scripts/gov-verify.ts` ruleset plane blind spots closed (asserts `non_fast_forward`/`deletion`/`required_conversation_resolution`/`required_linear_history`); header reconciled (BOTH mechanisms required); linear-history "advisory" mislabel removed.
+- **R69-F4 (cosmetic)** — ci.yml governance header retired its pre-R47 "runs gate + scan (+ e2e)" narrative → names ALL FOUR jobs (marker line untouched).
+
+Recorded (honest, non-blocking): R52 auth-ordering pins are textual `indexOf`, not behavioral (runtime order manually re-verified; behavioral wire pins listed below); HC-4 sweep semantics corrected (two zero-pinned views + a 32-view shrinking-ceiling ledger of 823 candidates, parity now 1419=1419); HC-1 headroom (reports/run, devices/bulk still on the 120/min pool). Path-correction appendix added to the roadmap (rate-gate/proxy/api.ts/views actual paths). Tests: NEW `tests/audit/r69-roadmap-rereview-remediations.test.ts` (11 pins incl. a wire-level 401-before-404 on the diff handler + role-matrix holder assertions). Gates cold (3-knob env): lint 0 · tsc 0 · suite 986 → **997 pass / 18 skip / 0 fail** (8,354 expects, 64 files) · prisma valid. LIVE: meta 200 · worker /health 200 · unauth worker 401 · unauth diff 401 (proxy) + handler wire pin · HC-1 budgets re-demoed (401×10→429 ai/query, 401×5→429 csv-import). Evidence doc: `docs/audits/FayaNMS-R69-Full-Roadmap-ReReview-2026-09-19.md`.
+
+OPTIONAL AUTHORABLE POLISH (P3-grade, opened by R69 — not go-live blockers):
+
+- TASK-R69-POLISH-A — UI permission-aware diff affordances: gate the four ConfigDiff trigger points (device-config-tab, snapshots-view, drift-view, baselines-view) on `config.download` so viewer/auditor see the control disabled with a rationale instead of a 403 error state. Server boundary is DONE; this is presentation polish only.
+- TASK-R69-POLISH-B — Behavioral auth-ordering wire pins for the three AI routes (assist/change-draft/rca-draft): unauth POST with a nonexistent resource id must answer 401 (never 404) — complements the textual R52 pins with runtime evidence.
+- TASK-R69-POLISH-C — `useMetaUsers()` explicit `enabled:` gate (fails closed today via component placement; make the invariant explicit).
 
 ---
 

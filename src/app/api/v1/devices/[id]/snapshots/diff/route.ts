@@ -1,8 +1,14 @@
 import { db } from "@/lib/db";
 import { decryptSnapshotTexts } from "@/lib/config/crypto";
-import { fail, firstIssueMessage, ok } from "../../../../_lib/api";
+import {
+  fail,
+  firstIssueMessage,
+  newCorrelationId,
+  ok,
+} from "../../../../_lib/api";
 import { diffLines, diffStats } from "@/lib/config/diff";
 import { normalizeConfig } from "@/lib/config/normalize";
+import { requirePermission, authErrorToFail } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +24,18 @@ export const dynamic = "force-dynamic";
  * computed on the fly (flagged via `normalized.from/to`) and NEVER written
  * back in a GET. Identical configs (same sha256) short-circuit to empty rows
  * so phantom diffs are impossible.
+ *
+ * AUTHORIZATION (R69 re-review remediation — closes the R62 invariant gap):
+ * EVERY row of this response is built from DECRYPTED snapshot text (raw or
+ * normalized), so the route is a derived config-text export and is gated
+ * behind the SAME explicit "config.download" permission as the dedicated
+ * download route — the proxy session check alone is NOT sufficient and
+ * React masking is not an authorization boundary (P19 / audit SEC-005).
+ * BEFORE this fix the handler had NO actor resolution and decrypted BOTH
+ * snapshots for ANY authenticated session (viewer/auditor included).
+ * Permission gate runs BEFORE any DB work (R52-F-N1 ordering — 401/403,
+ * never a pre-auth existence oracle); rejected attempts are audited as
+ * CONFIG_DIFF_DENIED (best-effort, mirroring CONFIG_DOWNLOAD_DENIED).
  */
 
 const querySchema = z.object({
@@ -95,6 +113,37 @@ export async function GET(
   if (!id || id.length > 64) {
     return fail("INVALID_ID", "Invalid device id", 400);
   }
+
+  // Permission gate FIRST (before any DB work) — the diff rows are decrypted
+  // configuration text, so this surface is download-privileged (R69).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "config.download");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    // Audit the rejected attempt (best-effort — the denial response wins).
+    try {
+      await db.auditEvent.create({
+        data: {
+          actorName: "unknown",
+          action: "CONFIG_DIFF_DENIED",
+          resourceType: "ConfigSnapshot",
+          resourceId: id,
+          resourceLabel: "snapshots/diff",
+          result: "DENIED",
+          correlationId: newCorrelationId("DF"),
+          afterJson: JSON.stringify({
+            reason: error instanceof Error ? error.message : "auth failure",
+          }),
+        },
+      });
+    } catch {
+      /* audit best-effort */
+    }
+    return authFail;
+  }
+  void actor; // authorization boundary; per-row attribution rides X-Request-Id
 
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
