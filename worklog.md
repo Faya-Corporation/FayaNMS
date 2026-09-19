@@ -3687,3 +3687,17 @@ Work Log:
 
 Stage Summary:
 - Every job is green in real CI (gate ×6, e2e ×5, browser ×2 at 12/12); the only remaining surface is the scan job's image plane: artifact-verified build proof (next run) + the first IMAGE-SCAN executions. Dispatch #11 targets the FIRST FULL 4-JOB GREEN RUN = HC-6 acceptance. db/, .env, PAT never staged.
+
+## R77 → R78 — CI bring-up iteration 9: artifact-verified build PROVED itself — first image scan triaged (2026-09-19)
+
+Task: run 35423693016 (push @ 819feb1) analysis; remediate the first image-scan layer.
+
+Work Log:
+- Results: gate/e2e/browser GREEN again (browser third consecutive 12/12); **the image build PASSED with the artifact-verified gate — BUILD_ID + standalone produced, the Bun teardown segfault only a documented note**; the job then failed at the FIRST IMAGE-SCAN execution.
+- First image scan: **88 HIGH/CRITICAL (85+3) — ALL base-image Debian trixie packages** (util-linux/bsdutils, perl-base, …), fixes published to the Debian security channel AFTER the base was built. The pinned digest IS the current tag resolution — verified against the registry (no bump exists).
+- FIX two planes: (1) both runtime stages track the Debian security channel (apt-get update + upgrade -y + lists dropped; root before the non-root USER; forward-compatible within the release — Debian security patches never break ABI, so the build↔runtime glibc/openssl consistency note holds); (2) both image scans gain ignore-unfixed: true (mechanism verified against the pinned action source) — fatal for every fixable HIGH/CRITICAL; a vuln with NO fix anywhere has no operator remediation path and is reported instead; the fs scan untouched (narrowness); widening requires a new triage note.
+- Gates: lint 0 · tsc 0 · suite 1055 → **1060/18/0 (8,600 expects, 73 files)** — 5 NEW r78 pins. LIVE: app 200 · meta 200 · worker 200 · unauth 401.
+- Docs: R70 audit doc §14; roadmap R78 row; NEXT-TASKS OWNER-CI-001 R78 UPDATE; dual worklogs.
+
+Stage Summary:
+- Every CI surface has now executed at least once; every failure root-caused + fixed + pinned across nine bring-up iterations (R70 DB bootstrap → R71 certify hatch → R72 seed KEK + gitleaks → R73 missing-goto + trivy fs → R74 sidebar + build-arg → R75 journeys + portable user → R76 worker types → R77 artifacts + disk → R78 OS vulns). Dispatch #12 targets the FIRST FULL 4-JOB GREEN RUN = HC-6 acceptance. db/, .env, PAT never staged.

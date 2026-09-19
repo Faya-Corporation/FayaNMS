@@ -76,6 +76,19 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
+# R78 (run 35423693016): the FIRST image scan found 88 HIGH/CRITICAL
+# findings — ALL in the base's Debian packages, with fixes published to the
+# Debian security channel AFTER the base image was built (the pinned digest
+# IS the current tag resolution, verified against the registry — no bump
+# exists). Pull the security channel at build time and drop the package
+# lists: the digest pin still governs the SDK/base binaries, while the OS
+# packages track Debian's security channel (forward-compatible within the
+# same release — Debian security patches never break ABI, so the glibc/
+# openssl consistency with the build stage holds).
+RUN apt-get update \
+ && apt-get upgrade -y \
+ && rm -rf /var/lib/apt/lists/*
+
 # Non-root runtime user with a pinned uid (see header note).
 # R75 (run 35421797082): the digest-pinned oven/bun slim base ships neither
 # adduser nor addgroup — the runtime stage's FIRST-ever execution died here

@@ -286,3 +286,29 @@ The full R76 chain worked: T1 guard ✅ → portable user ✅ → frozen worker 
 - NEW `tests/audit/r77-artifact-verified-build.test.ts` (5 pins: artifact criterion + no `|| true`, segfault provenance in-file, prewash ordering + content, doc record, PAT hygiene). Suite 1050 → **1055/18/0** (8,574 expects, 72 files — count verified at commit time).
 - Docs: this §13; roadmap R77 row; NEXT-TASKS OWNER-CI-001 UPDATE; dual worklogs.
 - Expected next (dispatch #11): gate/e2e/browser green again; the image build completes with verified artifacts → the FIRST IMAGE-SCAN executions (trivy on both images — base-image OS vulns remain the honest next unknown) → the FIRST FULL 4-JOB GREEN RUN = **HC-6 acceptance**.
+
+---
+
+## 14. R78 ADDENDUM — bring-up iteration 9: the artifact-verified build PROVED itself — first image scan triaged (base OS vulns)
+
+Run **`35423693016`** (push @ `819feb1`):
+
+| Job | Result |
+| --- | --- |
+| **gate** | ✅ SUCCESS |
+| **e2e** | ✅ SUCCESS |
+| **browser** | ✅ SUCCESS (third consecutive 12/12) |
+| **scan** | ✅ **"Build runtime images" PASSED — the artifact-verified gate proved itself (BUILD_ID + standalone produced; the Bun teardown segfault survived only as the documented note)** → ❌ at the FIRST IMAGE-SCAN execution |
+
+### 14.1 The first image scan: 88 HIGH/CRITICAL — all base Debian packages
+
+Exactly the predicted honest unknown: **88 findings (85 HIGH, 3 CRITICAL), ALL in the base image's Debian trixie packages** (util-linux/bsdutils, perl-base, …), with fixes published to the Debian security channel AFTER the base image was built. The pinned digest IS the current tag resolution — verified against the registry (no bump exists). **Fix (R78), two planes:**
+
+1. **Runtime stages track the Debian security channel** (`apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*` in BOTH Dockerfiles, before the non-root USER): every finding WITH a published fix is patched at build time. Forward-compatible within the release — Debian security patches never break ABI, so the Dockerfile's glibc/openssl build↔runtime consistency note holds. The digest pin still governs the SDK/base binaries.
+2. **The image scans gain `ignore-unfixed: true`** (mechanism verified against the pinned action source: `ignore-unfixed` → `TRIVY_IGNORE_UNFIXED`): the gate stays fatal for every HIGH/CRITICAL WITH a published fix; a vulnerability with NO fix released anywhere has no operator remediation path and is reported (visible in the log) rather than fatal. The fs scan is untouched (narrowness). Widening requires a new triage note.
+
+### 14.2 Round record
+
+- NEW `tests/audit/r78-image-scan-triage.test.ts` (5 pins: security-channel upgrade in both runtime stages + root-before-USER ordering, digest unchanged, `ignore-unfixed` on both image scans only, triage + widening discipline, doc record, PAT hygiene). Suite 1055 → **1060/18/0** (8,600 expects, 73 files — count verified at commit time).
+- Docs: this §14; roadmap R78 row; NEXT-TASKS OWNER-CI-001 UPDATE; dual worklogs.
+- Expected next (dispatch #12): the artifact-verified build + upgraded images + scoped image scans → **the FIRST FULL 4-JOB GREEN RUN = HC-6 acceptance**.

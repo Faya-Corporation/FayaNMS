@@ -94,6 +94,13 @@ OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (gree
   Iterate: dispatch #11 — remaining: artifact-verified build proof + first IMAGE-SCAN
   executions (base-image OS vulns). Full 4-job green = HC-6 acceptance.
   (R77 gates verified: suite 1050 → 1055/18/0, 8,574 expects, 72 files.)
+  R78 UPDATE: run `35423693016` @ `819feb1` — the artifact-verified build PROVED itself
+  (BUILD_ID + standalone produced; the Bun teardown segfault only a documented note); the
+  FIRST image scan found 88 HIGH/CRITICAL — ALL base Debian packages (fixes published after
+  the base was built; the pinned digest is the current tag resolution, registry-verified) →
+  both runtime stages now track the Debian security channel (apt-get upgrade) and both image
+  scans gained ignore-unfixed (fatal for fixable HIGH/CRITICAL; unfixable reported).
+  Iterate: dispatch #12 — the FIRST FULL 4-JOB GREEN RUN = HC-6 acceptance.
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4).
   R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
   aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let
