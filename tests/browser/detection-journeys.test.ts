@@ -60,6 +60,18 @@
  * "Devices": nav items live inside collapsible groups that auto-open only
  * while they own the active view (dashboard after sign-in ⇒ closed).
  *
+ * Third iteration (run 35421797082): 9/12 green (D6, D8+D9, D10 joined the
+ * B-suite). The three remaining failures were JOURNEY bugs, fixed here:
+ * D7's toast wait used substring matching (strict mode: the live-region
+ * wrapper's text contains the title — two resolves) → exact match; D11
+ * assumed one chip survives both buttons (using either resolves the
+ * conflict) → two passes, Use then Keep-mine; D12 asserted the
+ * sandbox-specific CREDENTIAL_UNRESOLVED code, but the CI harness wires
+ * the worker to the app's resolver so the probe proceeds and the
+ * target-policy plane refuses the loopback dial → the journey now asserts
+ * the topology-honest INVARIANT (typed code from the R50 catalog, never a
+ * raw stack).
+ *
  * Requirements to run:
  *   FAYANMS_BROWSER_E2E=1 bun test tests/browser/detection-journeys.test.ts
  *   # after `bun run build:gate` (shared harness rules apply)
@@ -170,8 +182,14 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
         await page
           .getByText("Skipped — no credential profile selected")
           .waitFor({ state: "visible", timeout: 10_000 });
-        // The success toast names what RAN.
-        await page.getByText("Hostname resolved").waitFor({ state: "visible", timeout: 10_000 });
+        // The success toast names what RAN. (R75: exact match — the toast
+        // title div also sits inside a live-region wrapper whose text
+        // CONTAINS the title, so substring matching resolves two elements
+        // and Playwright strict mode rightly refuses.)
+        await page.getByText("Hostname resolved", { exact: true }).waitFor({
+          state: "visible",
+          timeout: 10_000,
+        });
         // T062: an EMPTY field auto-applies the detected value (only a
         // field the operator typed gets the explicit Use / Keep-mine chip).
         expect(await page.inputValue("#device-mgmt-ip")).toBe("127.0.0.1");
@@ -241,7 +259,7 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
   );
 
   browserTest(
-    "D11: field conflict (T062) — Keep-mine holds the operator's value",
+    "D11: field conflict (T062) — Use applies, Keep-mine holds the operator's value",
     async () => {
       const page = await browser!.newPage({ viewport: { width: 1440, height: 900 } });
       try {
@@ -251,14 +269,20 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
         await page.fill("#device-mgmt-ip", "10.99.99.99");
         await detectButton(page).click();
         // The detected value must NOT silently overwrite the typed one —
-        // the explicit pick chip appears instead.
+        // the explicit pick chip appears instead. ONE chip carries BOTH
+        // buttons and using either resolves the conflict (the chip goes
+        // away), so the two T062 semantics are exercised in two passes:
+        // first Use applies the staged value…
         const chip = page.getByText("Detected Management IP:", { exact: false });
         await chip.waitFor({ state: "visible", timeout: 30_000 });
-        await page.getByRole("button", { name: "Keep mine" }).click();
-        expect(await page.inputValue("#device-mgmt-ip")).toBe("10.99.99.99");
-        // And the explicit Use applies the staged value (T062 semantics).
         await page.getByRole("button", { name: "Use", exact: true }).click();
         expect(await page.inputValue("#device-mgmt-ip")).toBe("127.0.0.1");
+        // …then Keep-mine holds the operator's value.
+        await page.fill("#device-mgmt-ip", "10.99.99.99");
+        await detectButton(page).click();
+        await chip.waitFor({ state: "visible", timeout: 30_000 });
+        await page.getByRole("button", { name: "Keep mine", exact: true }).click();
+        expect(await page.inputValue("#device-mgmt-ip")).toBe("10.99.99.99");
       } finally {
         await page.close();
       }
@@ -284,8 +308,18 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
           state: "visible",
           timeout: 30_000,
         });
+        // Vendor row: the failure leads with a TYPED code. WHICH stable code
+        // is topology-honest (R75, run 35421797082): the sandbox premise
+        // (CREDENTIAL_UNRESOLVED — the worker cannot resolve the vault
+        // secret) holds only where the worker is walled off from resolution;
+        // the CI harness wires the worker to the app's resolver, so the
+        // probe proceeds and the TARGET-POLICY plane refuses the loopback
+        // dial (no lab hatch in CI, by design). Both are stable codes from
+        // the R50 catalog — the journey asserts the INVARIANT (typed
+        // refusal, never a raw stack), not one sandbox-specific code.
         await page
-          .getByText("CREDENTIAL_UNRESOLVED", { exact: false })
+          .locator('div[role="status"][aria-live="polite"]')
+          .getByText(/(CREDENTIAL_UNRESOLVED|SSH_TARGET_POLICY_REFUSED|SSH_UNREACHABLE)/)
           .first()
           .waitFor({ state: "visible", timeout: 10_000 });
         // T061 partial success: the OTHER stage's truth is still visible.

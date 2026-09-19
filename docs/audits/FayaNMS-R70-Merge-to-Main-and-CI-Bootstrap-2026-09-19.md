@@ -208,3 +208,32 @@ The app image build's FIRST execution died at the Dockerfile's T1 guard: `ARG NE
 - NEW `tests/audit/r74-sidebar-journey-and-image-build.test.ts` (6 pins: group-expansion ordering + nav scoping, second-iteration header record, build-arg provenance + no-runtime-leak of the CI origin, doc record, PAT hygiene). The pre-existing SUPPLY-001-A build-shape pin (tests/audit/supply-chain.test.ts) EVOLVED with recorded rationale: the single-line `docker build -t fayanms-app:ci .` literal became the build-arg-carrying shape (governance intent unchanged — both images built + scanned; the old literal could no longer match after the guard-driven fix). Suite 1032 → **1038/18/0** (8,498 expects, 69 files — count verified at commit time; includes the SUPPLY-001-A build-shape pin evolved with recorded rationale).
 - Docs: this §10; roadmap R74 row; NEXT-TASKS OWNER-CI-001 UPDATE; dual worklogs.
 - Expected next (dispatch #8): gate/e2e green again; browser D-file past the sidebar into the panel journeys; scan through image build into the first IMAGE-SCAN executions (base-image OS vulns are the honest next unknown). The full 4-job green run = HC-6 acceptance.
+
+---
+
+## 11. R75 ADDENDUM — bring-up iteration 6: journey-accurate D-tests + portable non-root user
+
+Run **`35421797082`** (push @ `af91847`):
+
+| Job | Result |
+| --- | --- |
+| **gate** | ✅ **SUCCESS — fourth consecutive** |
+| **e2e** | ✅ **SUCCESS — third consecutive** |
+| browser | **9/12 GREEN** — D6, D8+D9, D10 joined the green B-suite; 3 failures, all JOURNEY bugs (below) |
+| scan | ❌ image build — `addgroup: not found` (exit 127), the runtime stage's first-ever execution |
+
+### 11.1 browser — three journey bugs, none of them app defects
+
+- **D7** (strict-mode refusal): the toast-title wait used substring matching — the live-region wrapper's text CONTAINS the title, so `getByText('Hostname resolved')` resolved TWO elements and Playwright rightly refused. The app rendered exactly the expected toast. **Fix**: `{ exact: true }` on the title.
+- **D11** (impossible chip sequence): one conflict chip carries BOTH buttons and using either resolves the conflict (the chip goes away) — "Keep mine then Use" on one chip cannot exist. **Fix**: two passes — Use applies the staged value; re-type + re-detect; Keep-mine holds the operator's value. Both T062 semantics preserved.
+- **D12** (sandbox-specific premise): asserted `CREDENTIAL_UNRESOLVED`, which holds only where the worker is walled off from the vault resolver; the CI harness wires the worker to the app's resolver, so the probe proceeds and the TARGET-POLICY plane refuses the loopback dial (no lab hatch in CI, by design). **Fix**: assert the topology-honest INVARIANT — a typed code from the R50 catalog (`CREDENTIAL_UNRESOLVED|SSH_TARGET_POLICY_REFUSED|SSH_UNREACHABLE`), never a raw stack — and keep the T061 partial-success assertion (`Management address — 127.0.0.1`).
+
+### 11.2 scan — the slim base has no adduser/addgroup
+
+The app image's runtime stage (first executed in R74's fixed build) died at `RUN addgroup --system faya && adduser ...` — the digest-pinned `oven/bun:1.3.14-slim` ships neither binary (exit 127). **Fix (R75)**: register the pinned uid/gid directly — `/etc/passwd` and `/etc/group` appends (`faya:x:10001:…`, shell `/bin/false`), the standard portable pattern for stripped bases: same non-root result (pinned uid 10001, no login shell), no added packages, no network in the build. `COPY --chown=faya:faya` and `USER faya` unchanged. The worker image needs no registration (it runs as the base's own `bun` user).
+
+### 11.3 Round record
+
+- NEW `tests/audit/r75-journey-accuracy-and-portable-user.test.ts` (7 pins: D7 exact-match, D11 two-pass ordering, D12 invariant + single-code retirement, portable user registration + no adduser regressions + worker surface, doc record, PAT hygiene). Suite 1038 → **1045/18/0**.
+- Docs: this §11; roadmap R75 row; NEXT-TASKS OWNER-CI-001 UPDATE; dual worklogs.
+- Expected next (dispatch #9): gate/e2e green again; browser 12/12; scan through image build into the first IMAGE-SCAN executions (base-image OS vulns remain the honest next unknown). The full 4-job green run = HC-6 acceptance.

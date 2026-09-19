@@ -66,6 +66,15 @@ OWNER-CI-001 — restore GitHub Actions runner capacity, then execute HC-6 (gree
   images (never run or deployed; real deployments keep the real origin via compose --env-file).
   Iterate: dispatch #8 next — remaining unknowns are the panel journeys past the sidebar and
   the first IMAGE-SCAN executions (base-image OS vulns). Full 4-job green = HC-6 acceptance.
+  R75 UPDATE: run `35421797082` @ `af91847` — gate GREEN fourth consecutive, e2e GREEN third
+  consecutive, browser 9/12 (D6, D8+D9, D10 green). Three JOURNEY bugs fixed (app behaved
+  correctly in all three): D7 strict-mode substring→exact toast match; D11 one-chip-two-buttons
+  is impossible by design→two passes (Use applies, Keep-mine holds); D12 sandbox-specific
+  CREDENTIAL_UNRESOLVED premise→topology-honest typed-code invariant. Scan image build died
+  `addgroup: not found` (oven/bun slim ships neither adduser nor addgroup; first execution of
+  the runtime stage) → pinned uid/gid 10001 via /etc/passwd+/etc/group appends.
+  Iterate: dispatch #9 — remaining: browser 12/12, first IMAGE-SCAN executions
+  (base-image OS vulns). Full 4-job green = HC-6 acceptance.
 OWNER-GOV-001 — Enable required main protection/ruleset (settings-side; exact config in TASK-GOV-001-A + deploy note 4).
   R66 UPDATE: the required-checks set is ALL FOUR jobs — `gate`+`e2e`+`browser`+`scan` — now
   aligned across every operation doc (the pre-R47 `gate`+`scan` wording would have let

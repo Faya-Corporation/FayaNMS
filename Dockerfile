@@ -52,8 +52,13 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0
 
 # Non-root runtime user with a pinned uid (see header note).
-RUN addgroup --system faya \
- && adduser --system --uid 10001 --ingroup faya faya
+# R75 (run 35421797082): the digest-pinned oven/bun slim base ships neither
+# adduser nor addgroup — the runtime stage's FIRST-ever execution died here
+# (exit 127). Register the pinned uid/gid directly: same non-root result
+# (passwd + group lines, no login shell, no home dir needed beyond WORKDIR),
+# no extra packages, no network in the build.
+RUN echo "faya:x:10001:10001::/app:/bin/false" >> /etc/passwd \
+ && echo "faya:x:10001:" >> /etc/group
 
 COPY --from=build --chown=faya:faya /app/.next/standalone ./
 # Prisma client + query engine: explicit copy as a standalone-tracing safety
