@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { formatDistanceToNow } from "date-fns";
 import {
   FileDiff,
@@ -53,6 +54,7 @@ import { ConfigDiff } from "@/components/device/config-diff";
  * baseline-less devices so gaps are visible at a glance.
  */
 export function BaselinesView() {
+  const t = useTranslations("baselines");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
 
   const baselines = useBaselines();
@@ -67,14 +69,14 @@ export function BaselinesView() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        description="Approved golden configurations — the reference the drift engine compares running configs against. Approve new baselines from a device's Config tab."
-        title="Baselines"
+        description={t("description")}
+        title={t("title")}
       />
 
       <SectionCard
         contentClassName="p-0"
-        description="The latest approval per device wins — older approvals stay in the audit trail"
-        title="Approved baselines"
+        description={t("card.description")}
+        title={t("card.title")}
       >
         {baselines.isError ? (
           <div className="p-4">
@@ -83,9 +85,9 @@ export function BaselinesView() {
               reason={
                 baselines.error instanceof Error
                   ? baselines.error.message
-                  : "Unknown error"
+                  : t("error.unknown")
               }
-              title="Baselines could not be loaded"
+              title={t("error.title")}
             />
           </div>
         ) : baselines.isLoading ? (
@@ -97,33 +99,33 @@ export function BaselinesView() {
         ) : rows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="Open a device → Config tab → version actions → “Approve as baseline”. The approved snapshot becomes the golden reference for drift detection."
+              description={t("empty.description")}
               icon={ShieldCheck}
-              title="No baselines approved yet"
+              title={t("empty.title")}
             />
           </div>
         ) : (
           <div className="max-h-[560px] overflow-y-auto">
             <div className="min-w-[980px]">
-              <Table aria-label="Approved baselines — device, approved version, approval time and open drift count">
+              <Table aria-label={t("table.ariaLabel")}>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Device</TableHead>
+                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("table.col.device")}</TableHead>
                     <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) md:table-cell">
-                      Site
+                      {t("table.col.site")}
                     </TableHead>
                     <TableHead className="h-(--density-row-h) px-(--density-cell-x)">
-                      Baseline
+                      {t("table.col.baseline")}
                     </TableHead>
                     <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) lg:table-cell">
-                      Approved
+                      {t("table.col.approved")}
                     </TableHead>
                     <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) xl:table-cell">
-                      Note
+                      {t("table.col.note")}
                     </TableHead>
-                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Drift</TableHead>
+                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("table.col.drift")}</TableHead>
                     <TableHead className="h-(--density-row-h) px-(--density-cell-x) text-end">
-                      Actions
+                      {t("table.col.actions")}
                     </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -132,7 +134,7 @@ export function BaselinesView() {
                     <TableRow key={row.id}>
                       <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
                         <button
-                          aria-label={`Open ${row.hostname} device detail`}
+                          aria-label={t("row.openDeviceAria", { hostname: row.hostname })}
                           className="text-sm font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
                           onClick={() =>
                             setActiveView("network.device-detail", { deviceId: row.deviceId })
@@ -162,7 +164,7 @@ export function BaselinesView() {
                         {formatDistanceToNow(new Date(row.approvedAt), {
                           addSuffix: true,
                         })}
-                        {row.approvedBy ? ` · by ${row.approvedBy}` : ""}
+                        {row.approvedBy ? t("row.approvedBy", { by: row.approvedBy }) : ""}
                       </TableCell>
                       <TableCell className="hidden h-(--density-row-h) max-w-0 px-(--density-cell-x) xl:table-cell">
                         <p
@@ -177,23 +179,23 @@ export function BaselinesView() {
                           <button
                             className="inline-flex items-center gap-1.5 rounded-full border border-warning/25 bg-warning-subtle px-2 py-0.5 text-xs font-medium text-warning transition-colors hover:bg-warning-subtle/70"
                             onClick={() => setActiveView("config.drift")}
-                            title={`${row.openDriftCount} open drift record(s) — open the Drift view`}
+                            title={t("row.driftTitle", { count: row.openDriftCount })}
                             type="button"
                           >
                             <TriangleAlert aria-hidden="true" className="size-3" />
-                            {row.openDriftCount} open
+                            {t("row.driftOpen", { count: row.openDriftCount })}
                           </button>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 rounded-full border border-success/25 bg-success-subtle px-2 py-0.5 text-xs font-medium text-success">
                             <ShieldCheck aria-hidden="true" className="size-3" />
-                            Clean
+                            {t("row.clean")}
                           </span>
                         )}
                       </TableCell>
                       <TableCell className="h-(--density-row-h) px-(--density-cell-x) text-end">
                         <div className="flex items-center justify-end gap-1">
                           <Button
-                            aria-label={`Diff baseline vs running config for ${row.hostname}`}
+                            aria-label={t("row.diffAria", { hostname: row.hostname })}
                             disabled={!row.current}
                             onClick={() => setDiffBaseline(row)}
                             size="sm"
@@ -201,17 +203,17 @@ export function BaselinesView() {
                           >
                             <FileDiff aria-hidden="true" />
                             {row.current
-                              ? `vs running (v${row.current.version})`
-                              : "vs running"}
+                              ? t("row.vsRunningVersion", { version: row.current.version })
+                              : t("row.vsRunning")}
                           </Button>
                           <Button
-                            aria-label={`Revoke baseline for ${row.hostname}`}
+                            aria-label={t("row.revokeAria", { hostname: row.hostname })}
                             disabled={revoke.isPending && revoke.variables === row.id}
                             onClick={() => setRevokeTarget(row)}
                             size="sm"
                             variant="ghost"
                           >
-                            Revoke
+                            {t("row.revoke")}
                           </Button>
                         </div>
                       </TableCell>
@@ -227,8 +229,8 @@ export function BaselinesView() {
       {/* Devices without a baseline — cheap strip from the baselines meta */}
       {meta && meta.devicesWithoutBaseline > 0 && (
         <SectionCard
-          description="These managed devices have no approved reference — drift cannot be evaluated until one is approved"
-          title={`Devices without a baseline — ${meta.devicesWithoutBaseline}`}
+          description={t("missing.description")}
+          title={t("missing.title", { count: meta.devicesWithoutBaseline })}
         >
           <ul className="flex flex-wrap gap-2">
             {meta.withoutBaselineDevices.map((device) => (
@@ -241,13 +243,15 @@ export function BaselinesView() {
                   type="button"
                 >
                   <span className="font-tech ltr-technical">{device.hostname}</span>
-                  <span className="text-muted-foreground">· open device</span>
+                  <span className="text-muted-foreground">{t("missing.openDevice")}</span>
                 </button>
               </li>
             ))}
             {meta.devicesWithoutBaseline > meta.withoutBaselineDevices.length && (
               <li className="flex items-center text-xs text-muted-foreground">
-                +{meta.devicesWithoutBaseline - meta.withoutBaselineDevices.length} more
+                {t("missing.more", {
+                  count: meta.devicesWithoutBaseline - meta.withoutBaselineDevices.length,
+                })}
               </li>
             )}
           </ul>
@@ -264,12 +268,14 @@ export function BaselinesView() {
         <DialogContent className="flex max-h-[90vh] flex-col gap-0 sm:max-w-[min(95vw,1100px)]">
           <DialogHeader className="border-b">
             <DialogTitle className="font-tech ltr-technical">
-              Baseline vs running — {diffBaseline?.hostname} v{diffBaseline?.version} → v
-              {diffBaseline?.current?.version}
+              {t("diff.title", {
+                hostname: diffBaseline?.hostname ?? "",
+                from: diffBaseline?.version ?? 0,
+                to: diffBaseline?.current?.version ?? 0,
+              })}
             </DialogTitle>
             <DialogDescription>
-              Any visible difference here is exactly what a drift check would
-              flag. Secrets are masked.
+              {t("diff.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -296,18 +302,16 @@ export function BaselinesView() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Revoke baseline of {revokeTarget?.hostname}?
+              {t("revoke.title", { hostname: revokeTarget?.hostname ?? "" })}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              The approval row is deleted and{" "}
+              {t("revoke.descriptionStart")}{" "}
               <span className="font-tech ltr-technical">v{revokeTarget?.version}</span>{" "}
-              returns to Historical (unless another approval still references
-              it). The drift engine stops comparing this device until a new
-              baseline is approved. Audit-recorded.
+              {t("revoke.descriptionEnd")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("revoke.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className={cn("bg-danger text-white hover:bg-danger/90")}
               onClick={() => {
@@ -316,7 +320,7 @@ export function BaselinesView() {
                 setRevokeTarget(null);
               }}
             >
-              Revoke baseline
+              {t("revoke.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -2131,5 +2131,118 @@
       "critical": " — critical",
       "high": " — high"
     }
+  },
+  "perfDevices": {
+    "title": "Device Performance",
+    "description": "Per-device {metric} across the fleet — {range}",
+    "metric": {
+      "cpu": "CPU",
+      "memory": "Memory",
+      "latency": "Latency",
+      "packetLoss": "Packet loss",
+      "utilization": "Utilization"
+    },
+    "metricGroupAria": "Metric",
+    "toolbar": {
+      "searchSr": "Search devices",
+      "searchPlaceholder": "Search hostname…",
+      "siteAria": "Site",
+      "anySite": "Any site",
+      "reset": "Reset"
+    },
+    "table": {
+      "cardTitle": "Devices",
+      "cardTitleCounted": "Devices — {total}",
+      "ariaLabel": "Device performance — {metric} per device for {range}",
+      "col": {
+        "device": "Device",
+        "site": "Site",
+        "status": "Status",
+        "trend": "Trend",
+        "latest": "Latest",
+        "avg": "Avg",
+        "max": "Max",
+        "p95": "P95",
+        "delta": "Δ Window"
+      }
+    },
+    "pagination": {
+      "summary": "Page {page} of {totalPages} · {total} devices",
+      "prev": "Previous",
+      "next": "Next"
+    },
+    "error": {
+      "title": "Device performance could not be loaded"
+    },
+    "empty": {
+      "title": "No performance rows to show",
+      "description": "No devices match the current filters, or no samples cover this window."
+    },
+    "row": {
+      "openDevice": "open device detail",
+      "trendTitle": "{count} buckets · oldest to newest"
+    },
+    "sr": {
+      "worsening": " worsening",
+      "improving": " improving",
+      "flat": " flat"
+    }
+  },
+  "baselines": {
+    "title": "Baselines",
+    "description": "Approved golden configurations — the reference the drift engine compares running configs against. Approve new baselines from a device's Config tab.",
+    "card": {
+      "title": "Approved baselines",
+      "description": "The latest approval per device wins — older approvals stay in the audit trail"
+    },
+    "error": {
+      "title": "Baselines could not be loaded",
+      "unknown": "Unknown error"
+    },
+    "empty": {
+      "title": "No baselines approved yet",
+      "description": "Open a device → Config tab → version actions → “Approve as baseline”. The approved snapshot becomes the golden reference for drift detection."
+    },
+    "table": {
+      "ariaLabel": "Approved baselines — device, approved version, approval time and open drift count",
+      "col": {
+        "device": "Device",
+        "site": "Site",
+        "baseline": "Baseline",
+        "approved": "Approved",
+        "note": "Note",
+        "drift": "Drift",
+        "actions": "Actions"
+      }
+    },
+    "row": {
+      "openDeviceAria": "Open {hostname} device detail",
+      "approvedBy": "· by {by}",
+      "driftTitle": "{count} open drift record(s) — open the Drift view",
+      "driftOpen": "{count} open",
+      "clean": "Clean",
+      "diffAria": "Diff baseline vs running config for {hostname}",
+      "vsRunning": "vs running",
+      "vsRunningVersion": "vs running (v{version})",
+      "revokeAria": "Revoke baseline for {hostname}",
+      "revoke": "Revoke"
+    },
+    "missing": {
+      "title": "Devices without a baseline — {count}",
+      "description": "These managed devices have no approved reference — drift cannot be evaluated until one is approved",
+      "openDevice": "· open device",
+      "more": "+{count} more"
+    },
+    "diff": {
+      "title": "Baseline vs running — {hostname} v{from} → v{to}",
+      "description": "Any visible difference here is exactly what a drift check would flag. Secrets are masked."
+    },
+    "revoke": {
+      "title": "Revoke baseline of {hostname}?",
+      "descriptionStart": "The approval row is deleted and",
+      "descriptionEnd": "returns to Historical (unless another approval still references it). The drift engine stops comparing this device until a new baseline is approved. Audit-recorded.",
+      "cancel": "Cancel",
+      "confirm": "Revoke baseline"
+    }
   }
 }

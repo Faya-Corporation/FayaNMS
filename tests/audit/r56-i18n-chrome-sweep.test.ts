@@ -63,6 +63,22 @@ import { join } from "node:path";
  * keys it; its file remains ledgered. fmtSpeed units (Gb/s / Mb/s) and
  * "—" placeholders are locale-neutral technical tokens.
  *
+ * R83 (tranche 4, 2026-09-20): TWO views keyed by hand — perf-devices
+ * (new `perfDevices` namespace, 36 leaves: METRIC_CHIPS module labels
+ * resolved via t(`metric.${labelKey}`) at render, the {metric} + {range}
+ * description/table-aria templates preserving the original
+ * lowercase-in-prose EN shape, SectionCard conditional counted title,
+ * the sparkline title template and the delta sr-only ternary suffixes)
+ * and baselines (new `baselines` namespace, 37 leaves: row aria-label
+ * templates, the drift-chip title/label pair, diff dialog title with
+ * v{from} → v{to}, and the revoke dialog description split AROUND the
+ * styled v{version} token so the font-tech span survives) → ledger
+ * 22 → 20 entries (730 → 690 candidates). Documented survivors:
+ * date-fns formatDistanceToNow relative time stays English (no date-fns
+ * ar locale is wired anywhere in the app — same precedent as the keyed
+ * device-config-tab), data-plane titles (hostname/sha256/note),
+ * fmtMetric's "—" placeholder, and the technical v{version} tokens.
+ *
  * Detection regexes (documented, deliberately shallow):
  *   - PROP_RE  : literal string props  title=/placeholder=/aria-label=/
  *                label=/description=/heading= starting with a capital.
@@ -120,7 +136,7 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
 
 /**
  * Pending-views debt ledger (R56 baseline; R80 tranche 1 + R81 tranche 2
- * + R82 tranche 3 shrank it). Format: file → candidate ceiling (the count
+ * + R82 tranche 3 + R83 tranche 4 shrank it). Format: file → candidate ceiling (the count
  * at R56; may only DECREASE). A view leaves the ledger the day it is
  * keyed; when the ledger is empty the sweep flips to forbid candidates in
  * every view. Counts use the documented shallow regexes above —
@@ -135,7 +151,6 @@ const PENDING_VIEWS: Record<string, number> = {
   "alerts-view.tsx": 36,
   "backup-compliance-view.tsx": 30,
   "backups-view.tsx": 61,
-  "baselines-view.tsx": 20,
   "change-approvals-view.tsx": 33,
   "change-detail-view.tsx": 52,
   "changes-view.tsx": 27,
@@ -146,7 +161,6 @@ const PENDING_VIEWS: Record<string, number> = {
   "incidents-view.tsx": 22,
   "maintenance-view.tsx": 38,
   "perf-availability-view.tsx": 22,
-  "perf-devices-view.tsx": 20,
   "perf-overview-view.tsx": 27,
   "snapshots-view.tsx": 29,
 };

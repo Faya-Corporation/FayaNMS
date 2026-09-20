@@ -20,9 +20,11 @@ import { join } from "node:path";
  *      (title, sort chips, toolbar, empty state, pagination summary,
  *      sr-only ternary — each individually asserted absent).
  *   E. Ledger governance: the r56 sweep no longer ledger
- *      perf-interfaces-view.tsx, the numeric ledger carries EXACTLY 22
- *      entries, and the LIVE candidate sum over the ledgered files is
- *      EXACTLY 730 (computed from the tree, not quoted).
+ *      perf-interfaces-view.tsx, the numeric ledger carried EXACTLY 22
+ *      entries at R82 HEAD (20 since R83's tranche 4 — the pins below
+ *      track HEAD truth), and the LIVE candidate sum over the ledgered
+ *      files was EXACTLY 730 at R82 HEAD (690 since R83 — computed from
+ *      the tree, not quoted).
  *   F. Documented cross-view survivor: the shared perf chrome
  *      (PerfRangeChips + perfRangeLabel) is still imported from
  *      perf-overview-view.tsx — it stays English until the
@@ -205,14 +207,14 @@ describe("R82 — ledger governance", () => {
     expect(/"perf-interfaces-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 22 entries", () => {
+  test("E: the numeric ledger carries EXACTLY 20 entries (22 − 2, R83)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(22);
+    expect(entries.length).toBe(20);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 730", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 690 (730 − 40, R83)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -220,7 +222,7 @@ describe("R82 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-    expect(sum).toBe(730);
+    expect(sum).toBe(690);
   });
 });
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowDownRight, ArrowUpRight, Cpu, Minus, Search } from "lucide-react";
 
@@ -29,12 +30,14 @@ import type {
 import { useNavigationStore } from "@/stores/navigation";
 import { PerfRangeChips, fmtMs, fmtPct, perfRangeLabel } from "./perf-overview-view";
 
-const METRIC_CHIPS: { value: PerfDeviceMetric; label: string }[] = [
-  { value: "CPU", label: "CPU" },
-  { value: "MEMORY", label: "Memory" },
-  { value: "LATENCY_MS", label: "Latency" },
-  { value: "PACKET_LOSS", label: "Packet loss" },
-  { value: "UTILIZATION", label: "Utilization" },
+// Chip labels are i18n keys resolved at render (t(`metric.${labelKey}`)) —
+// the same dynamic-key shape as perf-interfaces' SORT_CHIPS block.
+const METRIC_CHIPS: { value: PerfDeviceMetric; labelKey: string }[] = [
+  { value: "CPU", labelKey: "cpu" },
+  { value: "MEMORY", labelKey: "memory" },
+  { value: "LATENCY_MS", labelKey: "latency" },
+  { value: "PACKET_LOSS", labelKey: "packetLoss" },
+  { value: "UTILIZATION", labelKey: "utilization" },
 ];
 
 function fmtMetric(metric: PerfDeviceMetric, value: number | null | undefined): string {
@@ -48,6 +51,7 @@ function fmtMetric(metric: PerfDeviceMetric, value: number | null | undefined): 
  * same frozen /performance/devices contract.
  */
 export function PerfDevicesView() {
+  const t = useTranslations("perfDevices");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
 
   const [metric, setMetric] = useState<PerfDeviceMetric>("CPU");
@@ -88,16 +92,24 @@ export function PerfDevicesView() {
   };
   const hasFilters = siteCode !== "ALL" || q !== "";
 
+  // Metric labels resolve in the active locale; the description keeps the
+  // original lowercase-in-prose shape (no-op in Arabic — no case).
+  const metricKey = METRIC_CHIPS.find((chip) => chip.value === metric)?.labelKey ?? "cpu";
+  const metricLabel = t(`metric.${metricKey}`);
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        description={`Per-device ${METRIC_CHIPS.find((chip) => chip.value === metric)?.label.toLowerCase() ?? ""} across the fleet — ${perfRangeLabel(range)}`}
+        description={t("description", {
+          metric: metricLabel.toLowerCase(),
+          range: perfRangeLabel(range),
+        })}
         primaryAction={<PerfRangeChips onChange={(next) => { setRange(next); setPage(1); }} value={range} />}
-        title="Device Performance"
+        title={t("title")}
       />
 
       {/* Metric facet chips */}
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Metric">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("metricGroupAria")}>
         {METRIC_CHIPS.map((chip) => (
           <button
             className={cn(
@@ -113,7 +125,7 @@ export function PerfDevicesView() {
             }}
             type="button"
           >
-            {chip.label}
+            {t(`metric.${chip.labelKey}`)}
           </button>
         ))}
       </div>
@@ -121,7 +133,7 @@ export function PerfDevicesView() {
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative">
-          <span className="sr-only">Search devices</span>
+          <span className="sr-only">{t("toolbar.searchSr")}</span>
           <Search
             aria-hidden
             className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -129,7 +141,7 @@ export function PerfDevicesView() {
           <Input
             className="w-full ps-8 sm:w-64"
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search hostname…"
+            placeholder={t("toolbar.searchPlaceholder")}
             value={searchInput}
           />
         </label>
@@ -140,11 +152,11 @@ export function PerfDevicesView() {
           }}
           value={siteCode}
         >
-          <SelectTrigger aria-label="Site" className="w-[150px]">
+          <SelectTrigger aria-label={t("toolbar.siteAria")} className="w-[150px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">Any site</SelectItem>
+            <SelectItem value="ALL">{t("toolbar.anySite")}</SelectItem>
             {sites.map((site) => (
               <SelectItem key={site.id} value={site.code}>
                 {site.code}
@@ -154,21 +166,25 @@ export function PerfDevicesView() {
         </Select>
         {hasFilters && (
           <Button onClick={resetFilters} size="sm" variant="ghost">
-            Reset
+            {t("toolbar.reset")}
           </Button>
         )}
       </div>
 
       <SectionCard
         contentClassName="p-0"
-        title={`Devices${listMeta ? ` — ${listMeta.total}` : ""}`}
+        title={
+          listMeta
+            ? t("table.cardTitleCounted", { total: listMeta.total })
+            : t("table.cardTitle")
+        }
       >
         {devices.isError ? (
           <div className="p-4">
             <ErrorState
               onRetry={() => void devices.refetch()}
               reason={devices.error.message}
-              title="Device performance could not be loaded"
+              title={t("error.title")}
             />
           </div>
         ) : devices.isLoading ? (
@@ -180,28 +196,31 @@ export function PerfDevicesView() {
         ) : rows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="No devices match the current filters, or no samples cover this window."
+              description={t("empty.description")}
               icon={Cpu}
-              title="No performance rows to show"
+              title={t("empty.title")}
             />
           </div>
         ) : (
           <div className="max-h-[600px] overflow-auto">
             <table
-              aria-label={`Device performance — ${metric.toLowerCase()} per device for ${perfRangeLabel(range)}`}
+              aria-label={t("table.ariaLabel", {
+                metric: metricLabel.toLowerCase(),
+                range: perfRangeLabel(range),
+              })}
               className="w-full min-w-[760px] text-sm"
             >
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b text-xs text-muted-foreground">
-                  <th className="px-4 py-2 text-start font-medium" scope="col">Device</th>
-                  <th className="px-4 py-2 text-start font-medium" scope="col">Site</th>
-                  <th className="px-4 py-2 text-start font-medium" scope="col">Status</th>
-                  <th className="px-4 py-2 text-start font-medium" scope="col">Trend</th>
-                  <th className="px-4 py-2 text-end font-medium" scope="col">Latest</th>
-                  <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">Avg</th>
-                  <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">Max</th>
-                  <th className="hidden px-4 py-2 text-end font-medium md:table-cell" scope="col">P95</th>
-                  <th className="px-4 py-2 text-end font-medium" scope="col">Δ Window</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">{t("table.col.device")}</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">{t("table.col.site")}</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">{t("table.col.status")}</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">{t("table.col.trend")}</th>
+                  <th className="px-4 py-2 text-end font-medium" scope="col">{t("table.col.latest")}</th>
+                  <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">{t("table.col.avg")}</th>
+                  <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">{t("table.col.max")}</th>
+                  <th className="hidden px-4 py-2 text-end font-medium md:table-cell" scope="col">{t("table.col.p95")}</th>
+                  <th className="px-4 py-2 text-end font-medium" scope="col">{t("table.col.delta")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -222,7 +241,11 @@ export function PerfDevicesView() {
         {listMeta && listMeta.totalPages > 1 && (
           <div className="flex items-center justify-between border-t px-4 py-2 text-xs text-muted-foreground">
             <span>
-              Page {listMeta.page} of {listMeta.totalPages} · {listMeta.total} devices
+              {t("pagination.summary", {
+                page: listMeta.page,
+                totalPages: listMeta.totalPages,
+                total: listMeta.total,
+              })}
             </span>
             <div className="flex gap-2">
               <Button
@@ -231,7 +254,7 @@ export function PerfDevicesView() {
                 size="sm"
                 variant="outline"
               >
-                Previous
+                {t("pagination.prev")}
               </Button>
               <Button
                 disabled={listMeta.page >= listMeta.totalPages}
@@ -239,7 +262,7 @@ export function PerfDevicesView() {
                 size="sm"
                 variant="outline"
               >
-                Next
+                {t("pagination.next")}
               </Button>
             </div>
           </div>
@@ -258,6 +281,7 @@ function DeviceRow({
   onOpen: (deviceId: string) => void;
   row: PerfDeviceRow;
 }) {
+  const t = useTranslations("perfDevices");
   const deltaRising = row.deltaPct > 0.05;
   const deltaFalling = row.deltaPct < -0.05;
   const DeltaIcon = deltaRising ? ArrowUpRight : deltaFalling ? ArrowDownRight : Minus;
@@ -273,7 +297,7 @@ function DeviceRow({
         >
           {row.hostname}
         </button>
-        <span className="sr-only"> — open device detail</span>
+        <span className="sr-only"> — {t("row.openDevice")}</span>
       </td>
       <td className="px-4 py-2 text-xs text-muted-foreground">{row.siteCode}</td>
       <td className="px-4 py-2">
@@ -284,7 +308,7 @@ function DeviceRow({
           className={
             deltaRising ? "text-danger" : deltaFalling ? "text-success" : "text-accent"
           }
-          title={`${row.trend.length} buckets · oldest to newest`}
+          title={t("row.trendTitle", { count: row.trend.length })}
           values={row.trend}
         />
       </td>
@@ -315,7 +339,7 @@ function DeviceRow({
           {row.deltaPct > 0 ? "+" : ""}
           {row.deltaPct.toFixed(1)}%
           <span className="sr-only">
-            {deltaRising ? " worsening" : deltaFalling ? " improving" : " flat"}
+            {deltaRising ? t("sr.worsening") : deltaFalling ? t("sr.improving") : t("sr.flat")}
           </span>
         </span>
       </td>
