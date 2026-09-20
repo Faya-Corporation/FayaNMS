@@ -79,6 +79,28 @@ import { join } from "node:path";
  * device-config-tab), data-plane titles (hostname/sha256/note),
  * fmtMetric's "—" placeholder, and the technical v{version} tokens.
  *
+ * R84 (tranche 5, 2026-09-20): TWO views keyed by hand — incidents
+ * (new `incidents` namespace, 38 leaves: STATUS_GROUPS module labels
+ * resolved via t(`group.${key}`) at render — the R82 SORT_CHIPS /
+ * admin-system GROUPS dynamic-key precedent, five KPI labels + the
+ * keyed KPI "live" status chip + the {count}/{samples}/{days}
+ * KPI description templates, severity/site/sort toolbars, the
+ * SectionCard conditional counted title, the row.counts ICU plural
+ * (en one/other; ar zero/one/two/few/many/other) for the
+ * "{devices} dev · {alerts} alert{s}" strip and the pagination summary)
+ * and perf-availability (new `perfAvailability` namespace, 28 leaves:
+ * the {range} description via the shared perfRangeLabel survivor, the
+ * OverallCard target chip + progress aria + meets/below ternary pair,
+ * and both table scopes — site 5 cols / device 4 cols — with the
+ * " — open device detail" sr-only) → ledger 20 → 18 entries (690 →
+ * 646 candidates). Documented survivors: date-fns formatDistanceToNow
+ * (incidents rows — no ar locale wired), the openBySeverity KPI
+ * description (static config SEV tokens split from " — ", data-plane
+ * ConfidenceBadge precedent), fmtMinutes/fmtDowntime unit tokens
+ * ("min"/"h"/"d") and "—" placeholders (NOC "MTTA {m}m" precedent),
+ * the numeric chip count separators, and the shared perf chrome import
+ * from perf-overview-view.tsx (English until the perf-overview tranche).
+ *
  * Detection regexes (documented, deliberately shallow):
  *   - PROP_RE  : literal string props  title=/placeholder=/aria-label=/
  *                label=/description=/heading= starting with a capital.
@@ -136,7 +158,7 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
 
 /**
  * Pending-views debt ledger (R56 baseline; R80 tranche 1 + R81 tranche 2
- * + R82 tranche 3 + R83 tranche 4 shrank it). Format: file → candidate ceiling (the count
+ * + R82 tranche 3 + R83 tranche 4 + R84 tranche 5 shrank it). Format: file → candidate ceiling (the count
  * at R56; may only DECREASE). A view leaves the ledger the day it is
  * keyed; when the ledger is empty the sweep flips to forbid candidates in
  * every view. Counts use the documented shallow regexes above —
@@ -158,9 +180,7 @@ const PENDING_VIEWS: Record<string, number> = {
   "drift-view.tsx": 30,
   "events-view.tsx": 27,
   "incident-detail-view.tsx": 43,
-  "incidents-view.tsx": 22,
   "maintenance-view.tsx": 38,
-  "perf-availability-view.tsx": 22,
   "perf-overview-view.tsx": 27,
   "snapshots-view.tsx": 29,
 };

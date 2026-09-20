@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { formatDistanceToNow } from "date-fns";
 import {
   GitPullRequest,
@@ -38,12 +39,15 @@ import { useNavigationStore } from "@/stores/navigation";
 
 const SEVERITY_FILTERS = ["ALL", "SEV1", "SEV2", "SEV3", "SEV4"] as const;
 
-/** Status groups (chips) mapped onto the lifecycle vocabulary. */
-const STATUS_GROUPS: { key: string; label: string; statuses?: string[] }[] = [
-  { key: "ALL", label: "All" },
+/**
+ * Status groups (chips) mapped onto the lifecycle vocabulary. Labels are
+ * i18n keys resolved at render (t(`group.${key}`)) — the R82 SORT_CHIPS
+ * module-level-labels precedent.
+ */
+const STATUS_GROUPS: { key: string; statuses?: string[] }[] = [
+  { key: "ALL" },
   {
     key: "ACTIVE",
-    label: "Active",
     statuses: [
       "NEW",
       "ACKNOWLEDGED",
@@ -53,9 +57,9 @@ const STATUS_GROUPS: { key: string; label: string; statuses?: string[] }[] = [
       "MONITORING",
     ],
   },
-  { key: "RESOLVED", label: "Resolved", statuses: ["RESOLVED"] },
-  { key: "POST_INCIDENT_REVIEW", label: "In review", statuses: ["POST_INCIDENT_REVIEW"] },
-  { key: "CLOSED", label: "Closed", statuses: ["CLOSED"] },
+  { key: "RESOLVED", statuses: ["RESOLVED"] },
+  { key: "POST_INCIDENT_REVIEW", statuses: ["POST_INCIDENT_REVIEW"] },
+  { key: "CLOSED", statuses: ["CLOSED"] },
 ];
 
 function fmtMinutes(minutes: number | null): string {
@@ -71,6 +75,7 @@ function fmtMinutes(minutes: number | null): string {
  * Row click opens the full detail view (ops.incident-detail).
  */
 export function IncidentsView() {
+  const t = useTranslations("incidents");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
 
   const [statusGroup, setStatusGroup] = useState<string>("ALL");
@@ -143,52 +148,59 @@ export function IncidentsView() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        description="Incident lifecycle with SLA timers, timelines and post-incident reviews"
-        title="Incidents"
-      />
+      <PageHeader description={t("description")} title={t("title")} />
 
       {/* KPI row (stats endpoint) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard
           description={openBySeverity}
           icon={Siren}
-          label="Open incidents"
+          label={t("kpi.open")}
           loading={stats.isLoading}
-          status={{ label: "live", token: "info", pulse: true }}
+          status={{ label: t("kpi.live"), token: "info", pulse: true }}
           value={statsData?.openCount ?? "—"}
         />
         <KpiCard
           description={
-            statsData ? `${statsData.breachedCount} past their SLA target` : undefined
+            statsData ? t("kpi.breachedDesc", { count: statsData.breachedCount }) : undefined
           }
           icon={TimerReset}
-          label="SLA breached"
+          label={t("kpi.breached")}
           loading={stats.isLoading}
           value={statsData?.breachedCount ?? "—"}
         />
         <KpiCard
-          description={`Mean time to acknowledge · ${statsData?.mttaSamples ?? 0} samples / ${statsData?.window.mttaMttrDays ?? 30}d`}
+          description={t("kpi.mttaDesc", {
+            samples: statsData?.mttaSamples ?? 0,
+            days: statsData?.window.mttaMttrDays ?? 30,
+          })}
           icon={Timer}
-          label="MTTA"
+          label={t("kpi.mtta")}
           loading={stats.isLoading}
           value={fmtMinutes(statsData?.mttaMinutes ?? null)}
         />
         <KpiCard
-          description={`Mean time to resolve · ${statsData?.mttrSamples ?? 0} samples / ${statsData?.window.mttaMttrDays ?? 30}d`}
+          description={t("kpi.mttrDesc", {
+            samples: statsData?.mttrSamples ?? 0,
+            days: statsData?.window.mttaMttrDays ?? 30,
+          })}
           icon={statsData && statsData.mttrMinutes !== null && statsData.mttrMinutes > 120 ? TrendingUp : TrendingDown}
-          label="MTTR"
+          label={t("kpi.mttr")}
           loading={stats.isLoading}
           value={fmtMinutes(statsData?.mttrMinutes ?? null)}
         />
         <KpiCard
           description={
             statsData
-              ? `${statsData.slaMetTotal}/${statsData.slaResolvedTotal} resolved within SLA / ${statsData.window.mttaMttrDays}d`
+              ? t("kpi.slaDesc", {
+                  met: statsData.slaMetTotal,
+                  total: statsData.slaResolvedTotal,
+                  days: statsData.window.mttaMttrDays,
+                })
               : undefined
           }
           icon={Timer}
-          label="SLA compliance"
+          label={t("kpi.sla")}
           loading={stats.isLoading}
           value={statsData?.slaCompliancePct !== null && statsData ? `${statsData.slaCompliancePct}%` : "—"}
         />
@@ -211,7 +223,7 @@ export function IncidentsView() {
             }}
             type="button"
           >
-            {entry.label}
+            {t(`group.${entry.key}`)}
             {entry.key === "ACTIVE" && statsData ? ` · ${statsData.openCount}` : null}
           </button>
         ))}
@@ -228,7 +240,7 @@ export function IncidentsView() {
           }}
           type="button"
         >
-          SLA breached
+          {t("group.slaBreached")}
           {statsData?.breachedCount ? ` · ${statsData.breachedCount}` : ""}
         </button>
       </div>
@@ -236,7 +248,7 @@ export function IncidentsView() {
       {/* Toolbar: severity, site, search, sort */}
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative">
-          <span className="sr-only">Search incidents</span>
+          <span className="sr-only">{t("toolbar.searchSr")}</span>
           <Search
             aria-hidden
             className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -244,7 +256,7 @@ export function IncidentsView() {
           <Input
             className="w-full ps-8 sm:w-64"
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search title or number…"
+            placeholder={t("toolbar.searchPlaceholder")}
             value={searchInput}
           />
         </label>
@@ -255,11 +267,11 @@ export function IncidentsView() {
           }}
           value={severity}
         >
-          <SelectTrigger aria-label="Severity" className="w-[130px]">
+          <SelectTrigger aria-label={t("toolbar.severityAria")} className="w-[130px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">Any severity</SelectItem>
+            <SelectItem value="ALL">{t("toolbar.anySeverity")}</SelectItem>
             {(["SEV1", "SEV2", "SEV3", "SEV4"] as const).map((sev) => (
               <SelectItem key={sev} value={sev}>
                 {sev}
@@ -274,11 +286,11 @@ export function IncidentsView() {
           }}
           value={siteCode}
         >
-          <SelectTrigger aria-label="Site" className="w-[150px]">
+          <SelectTrigger aria-label={t("toolbar.siteAria")} className="w-[150px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">Any site</SelectItem>
+            <SelectItem value="ALL">{t("toolbar.anySite")}</SelectItem>
             {sites.map((site) => (
               <SelectItem key={site.id} value={site.code}>
                 {site.code}
@@ -293,32 +305,36 @@ export function IncidentsView() {
           }}
           value={sort}
         >
-          <SelectTrigger aria-label="Sort" className="w-[170px]">
+          <SelectTrigger aria-label={t("toolbar.sortAria")} className="w-[170px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="createdAt">Newest first</SelectItem>
-            <SelectItem value="severity">Severity (SEV1 first)</SelectItem>
-            <SelectItem value="slaDueAt">SLA due soonest</SelectItem>
+            <SelectItem value="createdAt">{t("sort.createdAt")}</SelectItem>
+            <SelectItem value="severity">{t("sort.severity")}</SelectItem>
+            <SelectItem value="slaDueAt">{t("sort.slaDueAt")}</SelectItem>
           </SelectContent>
         </Select>
         {hasFilters && (
           <Button onClick={resetFilters} size="sm" variant="ghost">
-            Reset
+            {t("toolbar.reset")}
           </Button>
         )}
       </div>
 
       <SectionCard
         contentClassName="p-0"
-        title={`Incidents${listMeta ? ` — ${listMeta.total}` : ""}`}
+        title={
+          listMeta
+            ? t("table.cardTitleCounted", { total: listMeta.total })
+            : t("table.cardTitle")
+        }
       >
         {incidents.isError ? (
           <div className="p-4">
             <ErrorState
               onRetry={() => void incidents.refetch()}
               reason={incidents.error.message}
-              title="Incidents could not be loaded"
+              title={t("error.title")}
             />
           </div>
         ) : incidents.isLoading ? (
@@ -330,9 +346,9 @@ export function IncidentsView() {
         ) : rows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="No incidents match the current filter."
+              description={t("empty.description")}
               icon={Siren}
-              title="No incidents to show"
+              title={t("empty.title")}
             />
           </div>
         ) : (
@@ -365,8 +381,10 @@ export function IncidentsView() {
                     </span>
                   )}
                   <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-                    {incident._count.devices} dev · {incident._count.alerts} alert
-                    {incident._count.alerts === 1 ? "" : "s"}
+                    {t("row.counts", {
+                      devices: incident._count.devices,
+                      alerts: incident._count.alerts,
+                    })}
                   </span>
                   <SlaChip className="shrink-0" sla={incident.sla} />
                   <StatusBadge
@@ -390,7 +408,11 @@ export function IncidentsView() {
         {listMeta && listMeta.totalPages > 1 && (
           <div className="flex items-center justify-between border-t px-4 py-2 text-xs text-muted-foreground">
             <span>
-              Page {listMeta.page} of {listMeta.totalPages} · {listMeta.total} incidents
+              {t("pagination.summary", {
+                page: listMeta.page,
+                totalPages: listMeta.totalPages,
+                total: listMeta.total,
+              })}
             </span>
             <div className="flex gap-2">
               <Button
@@ -399,7 +421,7 @@ export function IncidentsView() {
                 size="sm"
                 variant="outline"
               >
-                Previous
+                {t("pagination.prev")}
               </Button>
               <Button
                 disabled={listMeta.page >= listMeta.totalPages}
@@ -407,7 +429,7 @@ export function IncidentsView() {
                 size="sm"
                 variant="outline"
               >
-                Next
+                {t("pagination.next")}
               </Button>
             </div>
           </div>

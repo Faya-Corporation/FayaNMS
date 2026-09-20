@@ -2245,4 +2245,107 @@
       "confirm": "إبطال الخط الأساسي"
     }
   }
+,
+  "incidents":   {
+    "title": "الحوادث",
+    "description": "دورة حياة الحوادث مع مؤقتات SLA والجداول الزمنية ومراجعات ما بعد الحادث",
+    "group": {
+      "ALL": "الكل",
+      "ACTIVE": "نشطة",
+      "RESOLVED": "تمت المعالجة",
+      "POST_INCIDENT_REVIEW": "قيد المراجعة",
+      "CLOSED": "مغلق",
+      "slaBreached": "تجاوز SLA"
+    },
+    "kpi": {
+      "open": "الحوادث المفتوحة",
+      "live": "مباشر",
+      "breached": "تجاوز SLA",
+      "breachedDesc": "{count} تجاوزت هدف SLA",
+      "mtta": "MTTA",
+      "mttaDesc": "متوسط وقت الإقرار · {samples} عينة / {days}d",
+      "mttr": "MTTR",
+      "mttrDesc": "متوسط وقت الحل · {samples} عينة / {days}d",
+      "sla": "الالتزام بـ SLA",
+      "slaDesc": "{met}/{total} تمت معالجتها ضمن SLA / {days}d"
+    },
+    "toolbar": {
+      "searchSr": "البحث في الحوادث",
+      "searchPlaceholder": "ابحث بالعنوان أو الرقم…",
+      "severityAria": "الخطورة",
+      "anySeverity": "أي خطورة",
+      "siteAria": "الموقع",
+      "anySite": "أي موقع",
+      "sortAria": "الترتيب حسب",
+      "reset": "إعادة تعيين"
+    },
+    "sort": {
+      "createdAt": "الأحدث أولاً",
+      "severity": "الخطورة (SEV1 أولاً)",
+      "slaDueAt": "استحقاق SLA الأقرب"
+    },
+    "table": {
+      "cardTitle": "الحوادث",
+      "cardTitleCounted": "الحوادث — {total}"
+    },
+    "error": {
+      "title": "تعذّر تحميل الحوادث"
+    },
+    "empty": {
+      "title": "لا حوادث للعرض",
+      "description": "لا توجد حوادث تطابق عامل التصفية الحالي."
+    },
+    "row": {
+      "counts": "{devices} جهاز · {alerts, plural, zero {# تنبيهات} one {تنبيه واحد} two {تنبيهان} few {# تنبيهات} many {# تنبيهًا} other {# تنبيه}}"
+    },
+    "pagination": {
+      "summary": "صفحة {page} من {totalPages} · {total} حادث",
+      "prev": "السابق",
+      "next": "التالي"
+    }
+  },
+  "perfAvailability":   {
+    "title": "الإتاحة",
+    "description": "مدة التشغيل وبلوغ SLA — {range}",
+    "error": {
+      "title": "تعذّر تحميل بيانات الإتاحة"
+    },
+    "overall": {
+      "cardTitle": "إتاحة الأسطول",
+      "target": "الهدف {pct}",
+      "progressAria": "إتاحة الأسطول {pct} مقابل الهدف {target}",
+      "meets": "يلبي هدف SLA لهذه النافذة.",
+      "below": "أقل من الهدف بمقدار {delta} نقطة مئوية."
+    },
+    "site": {
+      "cardTitle": "حسب الموقع",
+      "cardDescription": "الموقع الأسوأ أولاً",
+      "emptyTitle": "لا توجد بيانات مواقع",
+      "emptyDescription": "لا توجد مواقع بعينات إتاحة في هذه النافذة.",
+      "ariaLabel": "الإتاحة حسب الموقع — مدة التشغيل مقابل هدف SLA، المواقع الأسوأ أولاً",
+      "col": {
+        "site": "الموقع",
+        "uptime": "مدة التشغيل",
+        "degraded": "التدهور",
+        "downtime": "مدة التوقف",
+        "devices": "الأجهزة"
+      }
+    },
+    "device": {
+      "cardTitle": "حسب الجهاز — الأسوأ 25",
+      "cardDescription": "أسوأ 25 جهازاً في النافذة المحددة",
+      "emptyTitle": "لا توجد بيانات أجهزة",
+      "emptyDescription": "لا توجد عينات إتاحة للأجهزة في هذه النافذة.",
+      "ariaLabel": "الإتاحة حسب الجهاز — مدة التشغيل مقابل هدف SLA، الأجهزة الأسوأ أولاً",
+      "col": {
+        "device": "الجهاز",
+        "site": "الموقع",
+        "uptime": "مدة التشغيل",
+        "downtime": "مدة التوقف"
+      }
+    },
+    "row": {
+      "openDevice": "فتح تفاصيل الجهاز"
+    }
+  }
 }

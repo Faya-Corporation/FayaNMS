@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { HeartPulse, Target } from "lucide-react";
 
 import { usePerformanceAvailability } from "@/hooks/api/use-performance";
@@ -34,6 +35,7 @@ function fmtDowntime(minutes: number): string {
  * /performance/availability contract.
  */
 export function PerfAvailabilityView() {
+  const t = useTranslations("perfAvailability");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   const [range, setRange] = useState<PerfRange>("24H");
 
@@ -44,16 +46,16 @@ export function PerfAvailabilityView() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        description={`Uptime and SLA attainment — ${perfRangeLabel(range)}`}
+        description={t("description", { range: perfRangeLabel(range) })}
         primaryAction={<PerfRangeChips onChange={setRange} value={range} />}
-        title="Availability"
+        title={t("title")}
       />
 
       {availability.isError ? (
         <ErrorState
           onRetry={() => void availability.refetch()}
           reason={availability.error.message}
-          title="Availability data could not be loaded"
+          title={t("error.title")}
         />
       ) : (
         <div className="flex flex-col gap-4">
@@ -96,10 +98,11 @@ function OverallCard({
   overallPct: number | undefined;
   target: number;
 }) {
+  const t = useTranslations("perfAvailability");
   const meetsTarget = overallPct !== undefined && overallPct >= target;
 
   return (
-    <SectionCard className={className} title="Fleet Availability">
+    <SectionCard className={className} title={t("overall.cardTitle")}>
       {loading || overallPct === undefined ? (
         <div className="flex h-[168px] flex-col justify-center">
           <WidgetSkeleton rows={3} />
@@ -119,11 +122,14 @@ function OverallCard({
               )}
             >
               <Target aria-hidden="true" className="size-3" />
-              Target {fmtPct(target, 2)}
+              {t("overall.target", { pct: fmtPct(target, 2) })}
             </span>
           </div>
           <Progress
-            aria-label={`Fleet availability ${fmtPct(overallPct, 2)} against target ${fmtPct(target, 2)}`}
+            aria-label={t("overall.progressAria", {
+              pct: fmtPct(overallPct, 2),
+              target: fmtPct(target, 2),
+            })}
             value={Math.max(0, Math.min(100, overallPct))}
           />
           <p
@@ -133,8 +139,8 @@ function OverallCard({
             )}
           >
             {meetsTarget
-              ? "Meeting the SLA target for this window."
-              : `Below target by ${(target - overallPct).toFixed(2)} percentage points.`}
+              ? t("overall.meets")
+              : t("overall.below", { delta: (target - overallPct).toFixed(2) })}
           </p>
         </div>
       )}
@@ -153,12 +159,13 @@ function SiteTable({
   sites: PerfAvailabilitySite[];
   target: number;
 }) {
+  const t = useTranslations("perfAvailability");
   return (
     <SectionCard
       className={className}
       contentClassName="p-0"
-      description="Worst site first"
-      title="By Site"
+      description={t("site.cardDescription")}
+      title={t("site.cardTitle")}
     >
       {loading ? (
         <div className="p-4">
@@ -168,24 +175,24 @@ function SiteTable({
         <div className="p-4">
           <EmptyState
             className="border-none bg-transparent py-8"
-            description="No sites have availability samples in this window."
+            description={t("site.emptyDescription")}
             icon={HeartPulse}
-            title="No site data"
+            title={t("site.emptyTitle")}
           />
         </div>
       ) : (
         <div className="max-h-80 overflow-y-auto">
           <table
-            aria-label="Availability by site — uptime vs the SLA target, worst sites first"
+            aria-label={t("site.ariaLabel")}
             className="w-full text-sm"
           >
             <thead className="sticky top-0 z-10 bg-card">
               <tr className="border-b text-xs text-muted-foreground">
-                <th className="px-4 py-2 text-start font-medium" scope="col">Site</th>
-                <th className="px-4 py-2 text-end font-medium" scope="col">Uptime</th>
-                <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">Degraded</th>
-                <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">Downtime</th>
-                <th className="px-4 py-2 text-end font-medium" scope="col">Devices</th>
+                <th className="px-4 py-2 text-start font-medium" scope="col">{t("site.col.site")}</th>
+                <th className="px-4 py-2 text-end font-medium" scope="col">{t("site.col.uptime")}</th>
+                <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">{t("site.col.degraded")}</th>
+                <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">{t("site.col.downtime")}</th>
+                <th className="px-4 py-2 text-end font-medium" scope="col">{t("site.col.devices")}</th>
               </tr>
             </thead>
             <tbody>
@@ -238,11 +245,12 @@ function DeviceTable({
   onOpenDevice: (deviceId: string) => void;
   target: number;
 }) {
+  const t = useTranslations("perfAvailability");
   return (
     <SectionCard
       contentClassName="p-0"
-      description="Worst 25 devices in the selected window"
-      title="By Device — worst 25"
+      description={t("device.cardDescription")}
+      title={t("device.cardTitle")}
     >
       {loading ? (
         <div className="p-4">
@@ -252,23 +260,23 @@ function DeviceTable({
         <div className="p-4">
           <EmptyState
             className="border-none bg-transparent py-8"
-            description="No device availability samples in this window."
+            description={t("device.emptyDescription")}
             icon={HeartPulse}
-            title="No device data"
+            title={t("device.emptyTitle")}
           />
         </div>
       ) : (
         <div tabIndex={0} className="max-h-96 overflow-y-auto">
           <table
-            aria-label="Availability by device — uptime vs the SLA target, worst devices first"
+            aria-label={t("device.ariaLabel")}
             className="w-full text-sm"
           >
             <thead className="sticky top-0 z-10 bg-card">
               <tr className="border-b text-xs text-muted-foreground">
-                <th className="px-4 py-2 text-start font-medium" scope="col">Device</th>
-                <th className="px-4 py-2 text-start font-medium" scope="col">Site</th>
-                <th className="px-4 py-2 text-end font-medium" scope="col">Uptime</th>
-                <th className="px-4 py-2 text-end font-medium" scope="col">Downtime</th>
+                <th className="px-4 py-2 text-start font-medium" scope="col">{t("device.col.device")}</th>
+                <th className="px-4 py-2 text-start font-medium" scope="col">{t("device.col.site")}</th>
+                <th className="px-4 py-2 text-end font-medium" scope="col">{t("device.col.uptime")}</th>
+                <th className="px-4 py-2 text-end font-medium" scope="col">{t("device.col.downtime")}</th>
               </tr>
             </thead>
             <tbody>
@@ -286,7 +294,7 @@ function DeviceTable({
                     >
                       {device.hostname}
                     </button>
-                    <span className="sr-only"> — open device detail</span>
+                    <span className="sr-only"> — {t("row.openDevice")}</span>
                   </td>
                   <td className="px-4 py-2 text-xs text-muted-foreground">{device.siteCode}</td>
                   <td

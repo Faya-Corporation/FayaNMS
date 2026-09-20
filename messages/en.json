@@ -2245,4 +2245,107 @@
       "confirm": "Revoke baseline"
     }
   }
+,
+  "incidents":   {
+    "title": "Incidents",
+    "description": "Incident lifecycle with SLA timers, timelines and post-incident reviews",
+    "group": {
+      "ALL": "All",
+      "ACTIVE": "Active",
+      "RESOLVED": "Resolved",
+      "POST_INCIDENT_REVIEW": "In review",
+      "CLOSED": "Closed",
+      "slaBreached": "SLA breached"
+    },
+    "kpi": {
+      "open": "Open incidents",
+      "live": "live",
+      "breached": "SLA breached",
+      "breachedDesc": "{count} past their SLA target",
+      "mtta": "MTTA",
+      "mttaDesc": "Mean time to acknowledge · {samples} samples / {days}d",
+      "mttr": "MTTR",
+      "mttrDesc": "Mean time to resolve · {samples} samples / {days}d",
+      "sla": "SLA compliance",
+      "slaDesc": "{met}/{total} resolved within SLA / {days}d"
+    },
+    "toolbar": {
+      "searchSr": "Search incidents",
+      "searchPlaceholder": "Search title or number…",
+      "severityAria": "Severity",
+      "anySeverity": "Any severity",
+      "siteAria": "Site",
+      "anySite": "Any site",
+      "sortAria": "Sort",
+      "reset": "Reset"
+    },
+    "sort": {
+      "createdAt": "Newest first",
+      "severity": "Severity (SEV1 first)",
+      "slaDueAt": "SLA due soonest"
+    },
+    "table": {
+      "cardTitle": "Incidents",
+      "cardTitleCounted": "Incidents — {total}"
+    },
+    "error": {
+      "title": "Incidents could not be loaded"
+    },
+    "empty": {
+      "title": "No incidents to show",
+      "description": "No incidents match the current filter."
+    },
+    "row": {
+      "counts": "{devices} dev · {alerts, plural, one {# alert} other {# alerts}}"
+    },
+    "pagination": {
+      "summary": "Page {page} of {totalPages} · {total} incidents",
+      "prev": "Previous",
+      "next": "Next"
+    }
+  },
+  "perfAvailability":   {
+    "title": "Availability",
+    "description": "Uptime and SLA attainment — {range}",
+    "error": {
+      "title": "Availability data could not be loaded"
+    },
+    "overall": {
+      "cardTitle": "Fleet Availability",
+      "target": "Target {pct}",
+      "progressAria": "Fleet availability {pct} against target {target}",
+      "meets": "Meeting the SLA target for this window.",
+      "below": "Below target by {delta} percentage points."
+    },
+    "site": {
+      "cardTitle": "By Site",
+      "cardDescription": "Worst site first",
+      "emptyTitle": "No site data",
+      "emptyDescription": "No sites have availability samples in this window.",
+      "ariaLabel": "Availability by site — uptime vs the SLA target, worst sites first",
+      "col": {
+        "site": "Site",
+        "uptime": "Uptime",
+        "degraded": "Degraded",
+        "downtime": "Downtime",
+        "devices": "Devices"
+      }
+    },
+    "device": {
+      "cardTitle": "By Device — worst 25",
+      "cardDescription": "Worst 25 devices in the selected window",
+      "emptyTitle": "No device data",
+      "emptyDescription": "No device availability samples in this window.",
+      "ariaLabel": "Availability by device — uptime vs the SLA target, worst devices first",
+      "col": {
+        "device": "Device",
+        "site": "Site",
+        "uptime": "Uptime",
+        "downtime": "Downtime"
+      }
+    },
+    "row": {
+      "openDevice": "open device detail"
+    }
+  }
 }
