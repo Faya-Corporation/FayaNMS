@@ -22,8 +22,9 @@ import { join } from "node:path";
  *      the ErrorState `reason` prop which the shallow regexes never
  *      matched).
  *   E. Ledger governance: the r56 sweep no longer ledgered the three
- *      files, the numeric ledger carries EXACTLY 23 entries, and the
- *      ICU plurals exist in both locales (en one/other; ar full
+ *      files, the numeric ledger carried EXACTLY 23 entries at R81 HEAD
+ *      (22 since R82's tranche 3 — the pin below tracks HEAD truth), and
+ *      the ICU plurals exist in both locales (en one/other; ar full
  *      one/two/few/many/other set).
  *
  * Documented technical survivors (unchanged policy): ConfidenceBadge's
@@ -164,11 +165,11 @@ describe("R81 — sweep governance moved with the tranche", () => {
     }
   });
 
-  test("E: the numeric ledger carries EXACTLY 23 entries (26 − 3)", () => {
+  test("E: the numeric ledger carries EXACTLY 22 entries (23 − 1, R82)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"[a-z-]+-view\.tsx":\s*\d/g));
-    expect(entries.length).toBe(23);
+    expect(entries.length).toBe(22);
   });
 
   test("E: the unsaved-changes ICU plural exists with locale-appropriate categories", () => {

@@ -40,12 +40,28 @@ import { join } from "node:path";
  * copy incl. the module-level metricLabel helper and template
  * aria-labels) and admin-system (new `systemSettings` namespace incl.
  * the colon-syntax GROUPS block and the unsaved-changes ICU plural) →
- * ledger 26 → 23 entries (791 → 749 candidates). Documented survivors:
+ * ledger 26 → 23 entries. Documented survivors:
  * capacity's ConfidenceBadge renders the API's HIGH/MEDIUM/LOW token
  * as-is (data-plane, LIVE-chip precedent); admin-system's setting.label
  * rows are Setting-table DB content (like hostnames); admin-drivers'
  * registry manifests (vendorLabel/cap.label/configFlavor/notes) are
  * data-plane (VENDOR_LABELS precedent).
+ *
+ * R82 (tranche 3, 2026-09-20): perf-interfaces keyed by hand (new
+ * `perfInterfaces` namespace, 30 leaves) — full inventory cleaned incl.
+ * non-swept literals: the SORT_CHIPS module-level labels (resolved via
+ * t(`sort.${labelKey}`) at render), the PageHeader/table template
+ * literals ({range} via the shared perfRangeLabel helper), the SectionCard
+ * conditional title (cardTitle / cardTitleCounted), the pagination
+ * summary template and the UtilBar sr-only ternary suffixes
+ * (sr.utilization + sr.critical/sr.high) → ledger 23 → 22 entries
+ * (748 → 730 candidates). CORRECTION: R81's prose quoted 749; the exact
+ * ledger sum at R81 HEAD was 748 (re-derived live — ceilings and live
+ * counts agree on every entry). Documented cross-view survivor: the
+ * shared perf chrome (PerfRangeChips + perfRangeLabel, exported from
+ * perf-overview-view.tsx) stays English until the perf-overview tranche
+ * keys it; its file remains ledgered. fmtSpeed units (Gb/s / Mb/s) and
+ * "—" placeholders are locale-neutral technical tokens.
  *
  * Detection regexes (documented, deliberately shallow):
  *   - PROP_RE  : literal string props  title=/placeholder=/aria-label=/
@@ -104,11 +120,11 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
 
 /**
  * Pending-views debt ledger (R56 baseline; R80 tranche 1 + R81 tranche 2
- * shrank it). Format: file → candidate ceiling (the count at R56; may
- * only DECREASE). A view leaves the ledger the day it is keyed; when the
- * ledger is empty the sweep flips to forbid candidates in every view.
- * Counts use the documented shallow regexes above — regenerate with the
- * same extractors when editing.
+ * + R82 tranche 3 shrank it). Format: file → candidate ceiling (the count
+ * at R56; may only DECREASE). A view leaves the ledger the day it is
+ * keyed; when the ledger is empty the sweep flips to forbid candidates in
+ * every view. Counts use the documented shallow regexes above —
+ * regenerate with the same extractors when editing.
  */
 const PENDING_VIEWS: Record<string, number> = {
   "admin-api-clients-view.tsx": 27,
@@ -131,7 +147,6 @@ const PENDING_VIEWS: Record<string, number> = {
   "maintenance-view.tsx": 38,
   "perf-availability-view.tsx": 22,
   "perf-devices-view.tsx": 20,
-  "perf-interfaces-view.tsx": 18,
   "perf-overview-view.tsx": 27,
   "snapshots-view.tsx": 29,
 };

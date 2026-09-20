@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Activity, Search } from "lucide-react";
 
 import { usePerformanceInterfaces } from "@/hooks/api/use-performance";
@@ -25,9 +26,14 @@ import type { PerfInterfaceRow, PerfRange } from "@/lib/api-client";
 import { useNavigationStore } from "@/stores/navigation";
 import { PerfRangeChips, fmtPct, perfRangeLabel } from "./perf-overview-view";
 
-const SORT_CHIPS: { value: "UTIL" | "PACKET_LOSS"; label: string }[] = [
-  { value: "UTIL", label: "Utilization" },
-  { value: "PACKET_LOSS", label: "Packet loss" },
+// Chip labels are i18n keys resolved at render (t(`sort.${labelKey}`)) —
+// the same dynamic-key shape as admin-system's group.${prefix} block.
+const SORT_CHIPS: {
+  value: "UTIL" | "PACKET_LOSS";
+  labelKey: "utilization" | "packetLoss";
+}[] = [
+  { value: "UTIL", labelKey: "utilization" },
+  { value: "PACKET_LOSS", labelKey: "packetLoss" },
 ];
 
 function fmtSpeed(speedMbps: number): string {
@@ -49,9 +55,13 @@ function utilBarClass(pct: number): string {
  * utilization or packet loss.
  */
 export function PerfInterfacesView() {
+  const t = useTranslations("perfInterfaces");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   // Status labels resolve in the active locale (falls back to config.label).
   const resolveStatusLabel = useStatusLabel();
+  // Shared perf chrome — PerfRangeChips and perfRangeLabel live in
+  // perf-overview-view.tsx and stay English until the perf-overview tranche
+  // keys them (documented cross-view dependency; its file is ledgered).
 
   const [range, setRange] = useState<PerfRange>("24H");
   const [sort, setSort] = useState<"UTIL" | "PACKET_LOSS">("UTIL");
@@ -97,14 +107,14 @@ export function PerfInterfacesView() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        description={`Per-interface in/out utilization and loss — ${perfRangeLabel(range)}, worst first`}
+        description={t("description", { range: perfRangeLabel(range) })}
         primaryAction={<PerfRangeChips onChange={(next) => { setRange(next); setPage(1); }} value={range} />}
-        title="Interface Utilization"
+        title={t("title")}
       />
 
       {/* Sort chips + oper-status facet counts */}
       <div className="flex flex-wrap items-center gap-2">
-        <div aria-label="Sort by" className="flex flex-wrap items-center gap-2" role="group">
+        <div aria-label={t("sort.groupAria")} className="flex flex-wrap items-center gap-2" role="group">
           {SORT_CHIPS.map((chip) => (
             <button
               className={cn(
@@ -120,7 +130,7 @@ export function PerfInterfacesView() {
               }}
               type="button"
             >
-              {chip.label}
+              {t(`sort.${chip.labelKey}`)}
             </button>
           ))}
         </div>
@@ -143,7 +153,7 @@ export function PerfInterfacesView() {
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative">
-          <span className="sr-only">Search interfaces</span>
+          <span className="sr-only">{t("toolbar.searchSr")}</span>
           <Search
             aria-hidden
             className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -151,7 +161,7 @@ export function PerfInterfacesView() {
           <Input
             className="w-full ps-8 sm:w-64"
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search host or ifName…"
+            placeholder={t("toolbar.searchPlaceholder")}
             value={searchInput}
           />
         </label>
@@ -162,11 +172,11 @@ export function PerfInterfacesView() {
           }}
           value={siteCode}
         >
-          <SelectTrigger aria-label="Site" className="w-[150px]">
+          <SelectTrigger aria-label={t("toolbar.siteAria")} className="w-[150px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">Any site</SelectItem>
+            <SelectItem value="ALL">{t("toolbar.anySite")}</SelectItem>
             {sites.map((site) => (
               <SelectItem key={site.id} value={site.code}>
                 {site.code}
@@ -176,21 +186,25 @@ export function PerfInterfacesView() {
         </Select>
         {hasFilters && (
           <Button onClick={resetFilters} size="sm" variant="ghost">
-            Reset
+            {t("toolbar.reset")}
           </Button>
         )}
       </div>
 
       <SectionCard
         contentClassName="p-0"
-        title={`Interfaces${listMeta ? ` — ${listMeta.total}` : ""}`}
+        title={
+          listMeta
+            ? t("table.cardTitleCounted", { total: listMeta.total })
+            : t("table.cardTitle")
+        }
       >
         {interfaces.isError ? (
           <div className="p-4">
             <ErrorState
               onRetry={() => void interfaces.refetch()}
               reason={interfaces.error.message}
-              title="Interface performance could not be loaded"
+              title={t("error.title")}
             />
           </div>
         ) : interfaces.isLoading ? (
@@ -202,26 +216,26 @@ export function PerfInterfacesView() {
         ) : rows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="No interfaces match the current filters, or no samples cover this window."
+              description={t("table.emptyDescription")}
               icon={Activity}
-              title="No interface rows to show"
+              title={t("table.emptyTitle")}
             />
           </div>
         ) : (
           <div className="max-h-[600px] overflow-auto">
             <table
-              aria-label={`Interface performance — utilization in/out, peak and loss for ${perfRangeLabel(range)}`}
+              aria-label={t("table.ariaLabel", { range: perfRangeLabel(range) })}
               className="w-full min-w-[720px] text-sm"
             >
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b text-xs text-muted-foreground">
-                  <th className="px-4 py-2 text-start font-medium" scope="col">Interface</th>
-                  <th className="px-4 py-2 text-start font-medium" scope="col">Oper</th>
-                  <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">Speed</th>
-                  <th className="px-4 py-2 text-start font-medium" scope="col">In</th>
-                  <th className="px-4 py-2 text-start font-medium" scope="col">Out</th>
-                  <th className="px-4 py-2 text-end font-medium" scope="col">Peak</th>
-                  <th className="px-4 py-2 text-end font-medium" scope="col">Loss</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">{t("table.col.interface")}</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">{t("table.col.oper")}</th>
+                  <th className="hidden px-4 py-2 text-end font-medium sm:table-cell" scope="col">{t("table.col.speed")}</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">{t("table.col.in")}</th>
+                  <th className="px-4 py-2 text-start font-medium" scope="col">{t("table.col.out")}</th>
+                  <th className="px-4 py-2 text-end font-medium" scope="col">{t("table.col.peak")}</th>
+                  <th className="px-4 py-2 text-end font-medium" scope="col">{t("table.col.loss")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -241,7 +255,11 @@ export function PerfInterfacesView() {
         {listMeta && listMeta.totalPages > 1 && (
           <div className="flex items-center justify-between border-t px-4 py-2 text-xs text-muted-foreground">
             <span>
-              Page {listMeta.page} of {listMeta.totalPages} · {listMeta.total} interfaces
+              {t("pagination.summary", {
+                page: listMeta.page,
+                totalPages: listMeta.totalPages,
+                total: listMeta.total,
+              })}
             </span>
             <div className="flex gap-2">
               <Button
@@ -250,7 +268,7 @@ export function PerfInterfacesView() {
                 size="sm"
                 variant="outline"
               >
-                Previous
+                {t("pagination.prev")}
               </Button>
               <Button
                 disabled={listMeta.page >= listMeta.totalPages}
@@ -258,7 +276,7 @@ export function PerfInterfacesView() {
                 size="sm"
                 variant="outline"
               >
-                Next
+                {t("pagination.next")}
               </Button>
             </div>
           </div>
@@ -275,6 +293,7 @@ function InterfaceRow({
   onOpen: (deviceId: string) => void;
   row: PerfInterfaceRow;
 }) {
+  const t = useTranslations("perfInterfaces");
   const operConfig = getStatusConfig(INTERFACE_OPER_STATUS, row.operStatus);
   // Oper-status labels resolve in the active locale (falls back to config.label).
   const resolveStatusLabel = useStatusLabel();
@@ -297,7 +316,7 @@ function InterfaceRow({
             {row.ifName}
           </span>
         </button>
-        <span className="sr-only"> — open device detail</span>
+        <span className="sr-only"> — {t("row.openDevice")}</span>
       </td>
       <td className="px-4 py-2">
         <span className="inline-flex items-center gap-1.5 text-xs">
@@ -340,6 +359,7 @@ function InterfaceRow({
 
 /** Thin utilization meter with a % label; >80% red, >60% amber. */
 function UtilBar({ pct }: { pct: number }) {
+  const t = useTranslations("perfInterfaces");
   const clamped = Math.max(0, Math.min(100, pct));
   return (
     <span className="flex min-w-[96px] items-center gap-2">
@@ -354,7 +374,8 @@ function UtilBar({ pct }: { pct: number }) {
       </span>
       <span className="w-12 text-end text-xs tabular-nums">{fmtPct(pct)}</span>
       <span className="sr-only">
-        {fmtPct(pct)} utilization{pct > 80 ? " — critical" : pct > 60 ? " — high" : ""}
+        {t("sr.utilization", { pct: fmtPct(pct) })}
+        {pct > 80 ? t("sr.critical") : pct > 60 ? t("sr.high") : ""}
       </span>
     </span>
   );

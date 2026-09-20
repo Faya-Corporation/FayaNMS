@@ -2083,5 +2083,53 @@
     },
     "updated": "حُدّث {date}",
     "unsavedChanges": "{count, plural, one {تغيير واحد غير محفوظ} two {تغييران غير محفوظان} few {# تغييرات غير محفوظة} many {# تغييرًا غير محفوظ} other {# تغيير غير محفوظ}}"
+  },
+  "perfInterfaces": {
+    "title": "استخدام الواجهات",
+    "description": "الاستخدام داخل/خارج وفقد الحزم لكل واجهة — {range}، الأسوأ أولاً",
+    "sort": {
+      "utilization": "الاستخدام",
+      "packetLoss": "فقد الحزم",
+      "groupAria": "الترتيب حسب"
+    },
+    "toolbar": {
+      "searchSr": "البحث في الواجهات",
+      "searchPlaceholder": "ابحث باسم المضيف أو الواجهة…",
+      "siteAria": "الموقع",
+      "anySite": "أي موقع",
+      "reset": "إعادة تعيين"
+    },
+    "table": {
+      "cardTitle": "الواجهات",
+      "cardTitleCounted": "الواجهات — {total}",
+      "emptyTitle": "لا توجد صفوف واجهات للعرض",
+      "emptyDescription": "لا توجد واجهات تطابق عوامل التصفية الحالية، أو لا تغطي العينات هذه النافذة.",
+      "ariaLabel": "أداء الواجهات — الاستخدام داخل/خارج والذروة والفقد لـ {range}",
+      "col": {
+        "interface": "الواجهة",
+        "oper": "التشغيل",
+        "speed": "السرعة",
+        "in": "داخل",
+        "out": "خارج",
+        "peak": "الذروة",
+        "loss": "الفقد"
+      }
+    },
+    "pagination": {
+      "summary": "صفحة {page} من {totalPages} · {total} واجهة",
+      "prev": "السابق",
+      "next": "التالي"
+    },
+    "error": {
+      "title": "تعذّر تحميل أداء الواجهات"
+    },
+    "row": {
+      "openDevice": "فتح تفاصيل الجهاز"
+    },
+    "sr": {
+      "utilization": "الاستخدام {pct}",
+      "critical": " — حرج",
+      "high": " — مرتفع"
+    }
   }
 }

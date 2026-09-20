@@ -2083,5 +2083,53 @@
     },
     "updated": "updated {date}",
     "unsavedChanges": "{count, plural, one {1 unsaved change} other {# unsaved changes}}"
+  },
+  "perfInterfaces": {
+    "title": "Interface Utilization",
+    "description": "Per-interface in/out utilization and loss — {range}, worst first",
+    "sort": {
+      "utilization": "Utilization",
+      "packetLoss": "Packet loss",
+      "groupAria": "Sort by"
+    },
+    "toolbar": {
+      "searchSr": "Search interfaces",
+      "searchPlaceholder": "Search host or ifName…",
+      "siteAria": "Site",
+      "anySite": "Any site",
+      "reset": "Reset"
+    },
+    "table": {
+      "cardTitle": "Interfaces",
+      "cardTitleCounted": "Interfaces — {total}",
+      "emptyTitle": "No interface rows to show",
+      "emptyDescription": "No interfaces match the current filters, or no samples cover this window.",
+      "ariaLabel": "Interface performance — utilization in/out, peak and loss for {range}",
+      "col": {
+        "interface": "Interface",
+        "oper": "Oper",
+        "speed": "Speed",
+        "in": "In",
+        "out": "Out",
+        "peak": "Peak",
+        "loss": "Loss"
+      }
+    },
+    "pagination": {
+      "summary": "Page {page} of {totalPages} · {total} interfaces",
+      "prev": "Previous",
+      "next": "Next"
+    },
+    "error": {
+      "title": "Interface performance could not be loaded"
+    },
+    "row": {
+      "openDevice": "open device detail"
+    },
+    "sr": {
+      "utilization": "{pct} utilization",
+      "critical": " — critical",
+      "high": " — high"
+    }
   }
 }
