@@ -42,7 +42,9 @@ import { join } from "node:path";
  *      from " — ", data-plane ConfidenceBadge precedent), fmtMinutes/
  *      fmtDowntime unit tokens ("min"/"h"/"d") and "—" placeholders (NOC
  *      "MTTA {m}m" precedent), and the shared perf chrome import from
- *      perf-overview-view.tsx (English until the perf-overview tranche).
+ *      perf-overview-view.tsx (keyed by the perf-overview tranche, R85 —
+ *      the chrome now renders in the active locale via a perfOverview
+ *      tRange hook).
  */
 
 const REPO = join(import.meta.dir, "..", "..");
@@ -322,7 +324,7 @@ describe("R84 — perf-availability is keyed", () => {
     const src = readRepo(`${VIEWS}/${PERF_AVAIL}`);
     for (const key of [
       't("title")',
-      't("description", { range: perfRangeLabel(range) })',
+      't("description", { range: perfRangeLabel(range, tRange) })',
       't("error.title")',
       't("overall.cardTitle")',
       't("overall.target", { pct: fmtPct(target, 2) })',
@@ -362,14 +364,14 @@ describe("R84 — ledger governance", () => {
     expect(/"perf-availability-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 18 entries (20 − 2)", () => {
+  test("E: the numeric ledger carries EXACTLY 17 entries (20 − 3 at HEAD: −2 R84, −1 R85)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(18);
+    expect(entries.length).toBe(17);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 646", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 619 (646 − 27, R85)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -377,7 +379,7 @@ describe("R84 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-    expect(sum).toBe(646);
+    expect(sum).toBe(619);
   });
 });
 
@@ -409,7 +411,7 @@ describe("R84 — documented technical survivors", () => {
     expect(avail).toContain('return "—";');
   });
 
-  test("G: shared perf chrome import intact (English until perf-overview tranche)", () => {
+  test("G: shared perf chrome import intact (keyed by the perf-overview tranche, R85)", () => {
     const src = readRepo(`${VIEWS}/${PERF_AVAIL}`);
     expect(src).toContain(
       'import { PerfRangeChips, fmtPct, perfRangeLabel } from "./perf-overview-view";'

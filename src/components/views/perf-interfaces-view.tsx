@@ -56,12 +56,14 @@ function utilBarClass(pct: number): string {
  */
 export function PerfInterfacesView() {
   const t = useTranslations("perfInterfaces");
+  // Shared perf chrome translator — perfRangeLabel lives in
+  // perf-overview-view.tsx and is keyed there by the perf-overview tranche
+  // (R85): it now takes this perfOverview translator so {range} renders
+  // in the active locale.
+  const tRange = useTranslations("perfOverview");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   // Status labels resolve in the active locale (falls back to config.label).
   const resolveStatusLabel = useStatusLabel();
-  // Shared perf chrome — PerfRangeChips and perfRangeLabel live in
-  // perf-overview-view.tsx and stay English until the perf-overview tranche
-  // keys them (documented cross-view dependency; its file is ledgered).
 
   const [range, setRange] = useState<PerfRange>("24H");
   const [sort, setSort] = useState<"UTIL" | "PACKET_LOSS">("UTIL");
@@ -107,7 +109,7 @@ export function PerfInterfacesView() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        description={t("description", { range: perfRangeLabel(range) })}
+        description={t("description", { range: perfRangeLabel(range, tRange) })}
         primaryAction={<PerfRangeChips onChange={(next) => { setRange(next); setPage(1); }} value={range} />}
         title={t("title")}
       />
@@ -224,7 +226,7 @@ export function PerfInterfacesView() {
         ) : (
           <div className="max-h-[600px] overflow-auto">
             <table
-              aria-label={t("table.ariaLabel", { range: perfRangeLabel(range) })}
+              aria-label={t("table.ariaLabel", { range: perfRangeLabel(range, tRange) })}
               className="w-full min-w-[720px] text-sm"
             >
               <thead className="sticky top-0 z-10 bg-card">

@@ -101,6 +101,23 @@ import { join } from "node:path";
  * the numeric chip count separators, and the shared perf chrome import
  * from perf-overview-view.tsx (English until the perf-overview tranche).
  *
+ * R85 (tranche 6a, 2026-09-20): perf-overview keyed by hand (new
+ * `perfOverview` namespace, 76 leaves) — AND the shared perf chrome is
+ * now keyed, resolving the cross-view survivor documented by R82/R83/R84:
+ * PerfRangeChips' "Time range" aria-label resolves through the
+ * namespace, and perfRangeLabel(range, t) / granularityLabel(g, t) take
+ * a structural TranslateFn (R81 metricLabel precedent), so the already
+ * keyed perf views (perf-interfaces / perf-devices / perf-availability)
+ * now render their {range} placeholders in the active locale — the
+ * previously documented "English range label inside the Arabic
+ * sentence" state is gone. Ledger 18 → 17 entries (646 → 619
+ * candidates). Documented survivors: PERF_RANGES chip tokens
+ * (1H/24H/7D/30D — locale-neutral range tokens, v{version} precedent),
+ * fmtPct/fmtMs units + em-dash placeholders, date-fns tick/label
+ * formats and formatDistanceToNow (no ar locale wired anywhere),
+ * data-plane hostnames/siteCodes, chart dataKey/name props and gradient
+ * ids, and the defensive code-side em-dash fallbacks.
+ *
  * Detection regexes (documented, deliberately shallow):
  *   - PROP_RE  : literal string props  title=/placeholder=/aria-label=/
  *                label=/description=/heading= starting with a capital.
@@ -158,7 +175,7 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
 
 /**
  * Pending-views debt ledger (R56 baseline; R80 tranche 1 + R81 tranche 2
- * + R82 tranche 3 + R83 tranche 4 + R84 tranche 5 shrank it). Format: file → candidate ceiling (the count
+ * + R82 tranche 3 + R83 tranche 4 + R84 tranche 5 + R85 tranche 6a shrank it). Format: file → candidate ceiling (the count
  * at R56; may only DECREASE). A view leaves the ledger the day it is
  * keyed; when the ledger is empty the sweep flips to forbid candidates in
  * every view. Counts use the documented shallow regexes above —
@@ -181,7 +198,6 @@ const PENDING_VIEWS: Record<string, number> = {
   "events-view.tsx": 27,
   "incident-detail-view.tsx": 43,
   "maintenance-view.tsx": 38,
-  "perf-overview-view.tsx": 27,
   "snapshots-view.tsx": 29,
 };
 

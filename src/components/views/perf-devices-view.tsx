@@ -52,6 +52,9 @@ function fmtMetric(metric: PerfDeviceMetric, value: number | null | undefined): 
  */
 export function PerfDevicesView() {
   const t = useTranslations("perfDevices");
+  // Shared perf chrome translator — perfRangeLabel is keyed in the
+  // perf-overview tranche (R85) and takes this perfOverview translator.
+  const tRange = useTranslations("perfOverview");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
 
   const [metric, setMetric] = useState<PerfDeviceMetric>("CPU");
@@ -102,7 +105,7 @@ export function PerfDevicesView() {
       <PageHeader
         description={t("description", {
           metric: metricLabel.toLowerCase(),
-          range: perfRangeLabel(range),
+          range: perfRangeLabel(range, tRange),
         })}
         primaryAction={<PerfRangeChips onChange={(next) => { setRange(next); setPage(1); }} value={range} />}
         title={t("title")}
@@ -206,7 +209,7 @@ export function PerfDevicesView() {
             <table
               aria-label={t("table.ariaLabel", {
                 metric: metricLabel.toLowerCase(),
-                range: perfRangeLabel(range),
+                range: perfRangeLabel(range, tRange),
               })}
               className="w-full min-w-[760px] text-sm"
             >

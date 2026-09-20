@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   Activity,
@@ -72,6 +73,17 @@ import { useTokenColors } from "@/components/dashboard/use-token-colors";
 /* Shared perf helpers (used by the sibling performance views)         */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Structural translator type for the shared keyed helpers (R81
+ * metricLabel precedent). Callers pass their `useTranslations()
+ * ("perfOverview")` translator; sibling views keep a `tRange` hook for
+ * exactly this purpose.
+ */
+type TranslateFn = (key: string, values?: Record<string, string | number>) => string;
+
+// Chip labels are locale-neutral technical range tokens (1H/24H/7D/30D
+// — the v{version} precedent); the localized long forms live under
+// perfOverview.range.* via perfRangeLabel below.
 export const PERF_RANGES: { value: PerfRange; label: string }[] = [
   { value: "1H", label: "1H" },
   { value: "24H", label: "24H" },
@@ -89,9 +101,10 @@ export function PerfRangeChips({
   onChange: (range: PerfRange) => void;
   className?: string;
 }) {
+  const t = useTranslations("perfOverview");
   return (
     <div
-      aria-label="Time range"
+      aria-label={t("chips.ariaLabel")}
       className={cn("flex items-center gap-1 rounded-lg border bg-card p-1", className)}
       role="group"
     >
@@ -115,7 +128,9 @@ export function PerfRangeChips({
   );
 }
 
-/** Percent formatting with a trailing % and stable decimals. */
+/** Percent formatting with a trailing % and stable decimals.
+ * Survivors: the % unit and the em-dash empty placeholder are
+ * locale-neutral technical tokens (fmtSpeed/fmtMetric precedent). */
 export function fmtPct(value: number | null | undefined, digits = 1): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   return `${value.toFixed(digits)}%`;
@@ -127,19 +142,21 @@ export function fmtMs(value: number | null | undefined): string {
   return `${Math.round(value)} ms`;
 }
 
-/** Human label for the rollup granularity reported in meta. */
-export function granularityLabel(granularity: string | undefined): string {
+/** Human label for the rollup granularity reported in meta (keyed R85). */
+export function granularityLabel(granularity: string | undefined, t: TranslateFn): string {
   switch (granularity) {
     case "5M":
-      return "5-minute rollups";
+      return t("granularity.5M");
     case "1H":
-      return "hourly rollups";
+      return t("granularity.1H");
     case "1D":
-      return "daily rollups";
+      return t("granularity.1D");
     case "RAW":
-      return "raw samples";
+      return t("granularity.RAW");
     default:
-      return granularity ? `${granularity.toLowerCase()} buckets` : "rollups";
+      return granularity
+        ? t("granularity.buckets", { unit: granularity.toLowerCase() })
+        : t("granularity.fallback");
   }
 }
 
@@ -172,6 +189,7 @@ const TOOLTIP_STYLE = {
  * panel (tier windows + manual prune) required by the Phase 6 gate.
  */
 export function PerfOverviewView() {
+  const t = useTranslations("perfOverview");
   const [range, setRange] = useState<PerfRange>("24H");
   const overview = usePerformanceOverview(range);
   const data = overview.data?.data;
@@ -187,77 +205,81 @@ export function PerfOverviewView() {
               aria-hidden="true"
               className="size-1.5 animate-pulse rounded-full bg-success"
             />
-            Updated{" "}
+            {t("updated")}{" "}
             {overview.dataUpdatedAt
               ? format(overview.dataUpdatedAt, "HH:mm:ss")
               : "—"}
           </span>
         }
-        description="Fleet-wide performance at a glance — availability, latency, utilization"
+        description={t("description")}
         primaryAction={
           <PerfRangeChips onChange={setRange} value={range} />
         }
-        title="Performance Overview"
+        title={t("title")}
       />
 
       {overview.isError ? (
         <ErrorState
           onRetry={() => void overview.refetch()}
           reason={overview.error.message}
-          title="Performance data could not be loaded"
+          title={t("error.title")}
         />
       ) : (
         <div className="flex flex-col gap-4">
           {/* KPI row */}
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
             <KpiCard
-              description={`Availability across managed devices · ${meta ? granularityLabel(meta.granularity) : "rollups"}`}
+              description={t("kpi.availability.description", {
+                granularity: meta
+                  ? granularityLabel(meta.granularity, t)
+                  : t("granularity.fallback"),
+              })}
               icon={HeartPulse}
-              label="Avg Availability"
+              label={t("kpi.availability.label")}
               loading={!data}
               status={
                 kpis === undefined
                   ? undefined
                   : kpis.avgAvailabilityPct >= 99.9
-                    ? { label: "on target", token: "success" }
+                    ? { label: t("kpi.status.onTarget"), token: "success" }
                     : kpis.avgAvailabilityPct >= 99
-                      ? { label: "watch", token: "warning" }
-                      : { label: "below target", token: "danger" }
+                      ? { label: t("kpi.status.watch"), token: "warning" }
+                      : { label: t("kpi.status.below"), token: "danger" }
               }
               value={fmtPct(kpis?.avgAvailabilityPct)}
             />
             <KpiCard
-              description="95th percentile of device latency"
+              description={t("kpi.latency.description")}
               icon={Timer}
-              label="Latency p95"
+              label={t("kpi.latency.label")}
               loading={!data}
               value={fmtMs(kpis?.p95LatencyMs)}
             />
             <KpiCard
-              description="Fleet average CPU"
+              description={t("kpi.cpu.description")}
               icon={Cpu}
-              label="CPU Avg"
+              label={t("kpi.cpu.label")}
               loading={!data}
               value={fmtPct(kpis?.avgCpuPct)}
             />
             <KpiCard
-              description="Fleet average memory"
+              description={t("kpi.memory.description")}
               icon={MemoryStick}
-              label="Memory Avg"
+              label={t("kpi.memory.label")}
               loading={!data}
               value={fmtPct(kpis?.avgMemoryPct)}
             />
             <KpiCard
-              description="Interface in + out average"
+              description={t("kpi.utilization.description")}
               icon={Activity}
-              label="Avg Utilization"
+              label={t("kpi.utilization.label")}
               loading={!data}
               value={fmtPct(kpis?.avgUtilizationPct)}
             />
             <KpiCard
-              description="Fleet-wide packet loss"
+              description={t("kpi.packetLoss.description")}
               icon={ArrowDownUp}
-              label="Packet Loss"
+              label={t("kpi.packetLoss.label")}
               loading={!data}
               value={fmtPct(kpis?.packetLossPct, 2)}
             />
@@ -314,17 +336,28 @@ function AvailabilityCard({
   range: PerfRange;
   series: PerfOverviewPoint[];
 }) {
+  const t = useTranslations("perfOverview");
   const colors = useTokenColors();
   const points = series.filter((p) => p.availabilityPct !== undefined);
   const values = points.map((p) => p.availabilityPct as number);
   const min = values.length > 0 ? Math.min(...values) : 0;
   const domainMin = Math.max(0, Math.floor(min) - 2);
+  // Chart stats are computed once; the defensive "—" empty fallback stays
+  // a code-side locale-neutral token (fmtPct precedent) — this branch only
+  // renders when points.length > 0.
+  const avg =
+    values.length > 0
+      ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(2)
+      : "—";
+  const lowest = values.length > 0 ? Math.min(...values).toFixed(2) : "—";
+  const highest = values.length > 0 ? Math.max(...values).toFixed(2) : "—";
+  const rangeLabel = perfRangeLabel(range, t);
 
   return (
     <SectionCard
       contentClassName="pt-4"
-      title="Availability"
-      description={`Share of managed devices reachable — ${perfRangeLabel(range)}`}
+      title={t("availability.title")}
+      description={t("availability.description", { range: rangeLabel })}
     >
       {loading ? (
         <WidgetSkeleton className="h-[260px]" rows={6} />
@@ -332,8 +365,13 @@ function AvailabilityCard({
         <ChartEmpty range={range} />
       ) : (
         <ChartSummary
-          aria-label={`Availability trend, averaged ${values.length > 0 ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(2) : "—"} percent over ${perfRangeLabel(range)}.`}
-          summary={`Area chart of ${points.length} samples over ${perfRangeLabel(range)}; lowest ${values.length > 0 ? Math.min(...values).toFixed(2) : "—"} percent, highest ${values.length > 0 ? Math.max(...values).toFixed(2) : "—"} percent.`}
+          aria-label={t("availability.chartAria", { avg, range: rangeLabel })}
+          summary={t("availability.chartSummary", {
+            count: points.length,
+            range: rangeLabel,
+            lowest,
+            highest,
+          })}
         >
           <ResponsiveContainer height={260} width="100%">
             <AreaChart
@@ -369,7 +407,7 @@ function AvailabilityCard({
               />
               <Tooltip
                 contentStyle={TOOLTIP_STYLE}
-                formatter={(value: number | string) => [`${Number(value).toFixed(2)}%`, "Availability"]}
+                formatter={(value: number | string) => [`${Number(value).toFixed(2)}%`, t("availability.tooltip")]}
                 labelFormatter={(ts: string) => format(new Date(ts), "EEE, MMM d — HH:mm")}
               />
               <Area
@@ -399,15 +437,19 @@ function LatencyCard({
   range: PerfRange;
   series: PerfOverviewPoint[];
 }) {
+  const t = useTranslations("perfOverview");
   const colors = useTokenColors();
   const points = series.filter((p) => p.latencyP95 !== undefined);
   const values = points.map((p) => p.latencyP95 as number);
+  const peak = values.length > 0 ? Math.round(Math.max(...values)) : 0;
+  const highest = values.length > 0 ? Math.round(Math.max(...values)) : 0;
+  const rangeLabel = perfRangeLabel(range, t);
 
   return (
     <SectionCard
       contentClassName="pt-4"
-      title="Latency p95"
-      description={`95th-percentile round-trip latency — ${perfRangeLabel(range)}`}
+      title={t("latency.title")}
+      description={t("latency.description", { range: rangeLabel })}
     >
       {loading ? (
         <WidgetSkeleton className="h-[260px]" rows={6} />
@@ -415,8 +457,12 @@ function LatencyCard({
         <ChartEmpty range={range} />
       ) : (
         <ChartSummary
-          aria-label={`Latency p95 trend, peaking at ${values.length > 0 ? Math.round(Math.max(...values)) : 0} milliseconds over ${perfRangeLabel(range)}.`}
-          summary={`Line chart of ${points.length} samples of the 95th-percentile round-trip latency over ${perfRangeLabel(range)}; highest ${values.length > 0 ? Math.round(Math.max(...values)) : 0} ms.`}
+          aria-label={t("latency.chartAria", { peak, range: rangeLabel })}
+          summary={t("latency.chartSummary", {
+            count: points.length,
+            range: rangeLabel,
+            highest,
+          })}
         >
           <ResponsiveContainer height={260} width="100%">
             <LineChart
@@ -445,7 +491,7 @@ function LatencyCard({
               />
               <Tooltip
                 contentStyle={TOOLTIP_STYLE}
-                formatter={(value: number | string) => [`${Math.round(Number(value))} ms`, "Latency p95"]}
+                formatter={(value: number | string) => [`${Math.round(Number(value))} ms`, t("latency.tooltip")]}
                 labelFormatter={(ts: string) => format(new Date(ts), "EEE, MMM d — HH:mm")}
               />
               <Line
@@ -466,30 +512,27 @@ function LatencyCard({
 }
 
 function ChartEmpty({ range }: { range: PerfRange }) {
+  const t = useTranslations("perfOverview");
   return (
     <EmptyState
       className="border-none bg-transparent py-8"
-      description={
-        range === "1H"
-          ? "Raw samples are still being collected — try a longer range."
-          : "No rollups cover this window yet. Longer ranges fill in as the retention engine aggregates."
-      }
+      description={range === "1H" ? t("empty.raw") : t("empty.rollups")}
       icon={Gauge}
-      title={`No data for the last ${perfRangeLabel(range)}`}
+      title={t("empty.title", { range: perfRangeLabel(range, t) })}
     />
   );
 }
 
-export function perfRangeLabel(range: PerfRange): string {
+export function perfRangeLabel(range: PerfRange, t: TranslateFn): string {
   switch (range) {
     case "1H":
-      return "last hour";
+      return t("range.1H");
     case "24H":
-      return "last 24 hours";
+      return t("range.24H");
     case "7D":
-      return "last 7 days";
+      return t("range.7D");
     case "30D":
-      return "last 30 days";
+      return t("range.30D");
   }
 }
 
@@ -507,13 +550,14 @@ function TopUtilizersCard({
   utilizers: PerfOverviewResult["data"]["topUtilizers"];
 }) {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
+  const t = useTranslations("perfOverview");
 
   return (
     <SectionCard
       className={className}
       contentClassName="p-0"
-      description="Interfaces with the highest average utilization — click a device to inspect"
-      title="Top Utilizers"
+      description={t("utilizers.description")}
+      title={t("utilizers.title")}
     >
       {loading ? (
         <div className="p-4">
@@ -523,9 +567,9 @@ function TopUtilizersCard({
         <div className="p-4">
           <EmptyState
             className="border-none bg-transparent py-8"
-            description="No interface utilization rollups for this window yet."
+            description={t("utilizers.emptyDescription")}
             icon={Activity}
-            title="No utilization data"
+            title={t("utilizers.emptyTitle")}
           />
         </div>
       ) : (
@@ -609,30 +653,12 @@ function HealthSliceCard({
 /* Retention panel                                                     */
 /* ------------------------------------------------------------------ */
 
-const TIER_ROWS: { key: RetentionTierKey; label: string; hint: string }[] = [
-  {
-    key: "raw",
-    label: "Raw samples",
-    hint: "Collector-resolution MetricSample rows",
-  },
-  {
-    key: "rollup5M",
-    label: "5-minute rollups",
-    hint: "Fine-grained aggregates powering 1H/24H views",
-  },
-  {
-    key: "rollup1H",
-    label: "Hourly rollups",
-    hint: "Powers 7-day dashboards",
-  },
-  {
-    key: "rollup1D",
-    label: "Daily rollups",
-    hint: "Powers 30-day views and capacity forecasts",
-  },
-];
+// Tier keys double as dictionary keys (R81 GROUPS dynamic-key precedent):
+// labels/hints resolve via t(`retention.tier.${key}.label|.hint`) at render.
+const TIER_KEYS: RetentionTierKey[] = ["raw", "rollup5M", "rollup1H", "rollup1D"];
 
 function RetentionPanel() {
+  const t = useTranslations("perfOverview");
   const retention = useMetricsRetention();
   const save = useSaveMetricsRetention();
   const prune = usePruneMetricsRetention();
@@ -647,7 +673,7 @@ function RetentionPanel() {
 
   const dirty =
     server !== undefined &&
-    TIER_ROWS.some(({ key }) => {
+    TIER_KEYS.some((key) => {
       const override = overrides[key];
       return (
         override !== undefined &&
@@ -678,8 +704,8 @@ function RetentionPanel() {
   return (
     <SectionCard
       contentClassName="p-0"
-      description="How long raw samples and rollups are kept before the pruning job deletes them"
-      title="Metrics Retention"
+      description={t("retention.description")}
+      title={t("retention.title")}
       actions={
         <>
           {dirty && (
@@ -689,7 +715,7 @@ function RetentionPanel() {
               variant="ghost"
             >
               <RotateCcw aria-hidden="true" />
-              Reset
+              {t("retention.reset")}
             </Button>
           )}
           <Button
@@ -698,7 +724,7 @@ function RetentionPanel() {
             size="sm"
           >
             <Save aria-hidden="true" />
-            {save.isPending ? "Saving…" : "Save"}
+            {save.isPending ? t("retention.saving") : t("retention.save")}
           </Button>
           <Button
             onClick={() => setPruneOpen(true)}
@@ -706,7 +732,7 @@ function RetentionPanel() {
             variant="outline"
           >
             <Trash2 aria-hidden="true" />
-            Prune now
+            {t("retention.pruneNow")}
           </Button>
         </>
       }
@@ -716,38 +742,39 @@ function RetentionPanel() {
           <ErrorState
             onRetry={() => void retention.refetch()}
             reason={retention.error.message}
-            title="Retention settings could not be loaded"
+            title={t("retention.error.title")}
           />
         </div>
       ) : retention.isLoading || !server ? (
         <div className="flex flex-col gap-2 p-4">
-          {TIER_ROWS.map((tier) => (
+          {TIER_KEYS.map((key) => (
             <div
               className="h-11 animate-pulse rounded-md bg-muted/60"
-              key={tier.key}
+              key={key}
             />
           ))}
         </div>
       ) : (
         <div tabIndex={0} className="max-h-96 overflow-y-auto">
           <ul role="list">
-            {TIER_ROWS.map(({ key, label, hint }) => {
+            {TIER_KEYS.map((key) => {
               const value = getValue(key);
+              const tierLabel = t(`retention.tier.${key}.label`);
               return (
                 <li
                   className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-3 last:border-0"
                   key={key}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">{label}</p>
-                    <p className="text-xs text-muted-foreground">{hint}</p>
+                    <p className="text-sm font-medium text-foreground">{tierLabel}</p>
+                    <p className="text-xs text-muted-foreground">{t(`retention.tier.${key}.hint`)}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Label
                       className="sr-only"
                       htmlFor={`retention-days-${key}`}
                     >
-                      {label} retention in days
+                      {t("retention.daysAria", { tier: tierLabel })}
                     </Label>
                     <Input
                       className="h-8 w-24 tabular-nums"
@@ -766,11 +793,16 @@ function RetentionPanel() {
                       type="number"
                       value={value.days}
                     />
-                    <span className="text-xs text-muted-foreground">days</span>
+                    <span className="text-xs text-muted-foreground">{t("retention.daysUnit")}</span>
                   </div>
                   <div className="flex w-28 items-center justify-end gap-2">
                     <Switch
-                      aria-label={`${label} retention ${value.enabled ? "enabled" : "disabled"}`}
+                      aria-label={t("retention.switchAria", {
+                        tier: tierLabel,
+                        state: value.enabled
+                          ? t("retention.state.enabled")
+                          : t("retention.state.disabled"),
+                      })}
                       checked={value.enabled}
                       onCheckedChange={(checked) =>
                         setOverride(key, { enabled: checked })
@@ -782,7 +814,7 @@ function RetentionPanel() {
                         value.enabled ? "text-success" : "text-muted-foreground"
                       )}
                     >
-                      {value.enabled ? "Active" : "Paused"}
+                      {value.enabled ? t("retention.active") : t("retention.paused")}
                     </span>
                   </div>
                 </li>
@@ -796,38 +828,44 @@ function RetentionPanel() {
       <AlertDialog onOpenChange={setPruneOpen} open={pruneOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Prune expired metrics now?</AlertDialogTitle>
+            <AlertDialogTitle>{t("retention.pruneTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Deletes raw samples and rollups older than their retention
-              windows. Pruning is permanent — the deleted history cannot be
-              recovered. A re-run within 60 seconds is rejected.
+              {t("retention.pruneDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {server?.lastPrunedAt && (
             <p className="text-xs text-muted-foreground">
-              Last prune ran{" "}
+              {t("retention.lastRan")}{" "}
               <span className="font-medium text-foreground">
+                {/* date-fns English relative time — no ar locale wired anywhere
+                    (device-config-tab / R83 / R84 precedent, documented survivor). */}
                 {formatDistanceToNow(new Date(server.lastPrunedAt), {
                   addSuffix: true,
                 })}
               </span>
               {lastPrune
-                ? ` — deleted ${lastPrune.metricSamplesDeleted.toLocaleString()} samples, ${lastPrune.rollup5MDeleted.toLocaleString()} 5-min, ${lastPrune.rollup1HDeleted.toLocaleString()} 1-hour and ${lastPrune.rollup1DDeleted.toLocaleString()} 1-day rollups in ${(lastPrune.durationMs / 1000).toFixed(1)} s`
+                ? t("retention.lastRunStats", {
+                    samples: lastPrune.metricSamplesDeleted.toLocaleString(),
+                    m5: lastPrune.rollup5MDeleted.toLocaleString(),
+                    h1: lastPrune.rollup1HDeleted.toLocaleString(),
+                    d1: lastPrune.rollup1DDeleted.toLocaleString(),
+                    seconds: (lastPrune.durationMs / 1000).toFixed(1),
+                  })
                 : ""}
             </p>
           )}
           {!server?.lastPrunedAt && (
             <p className="text-xs text-muted-foreground">
-              Pruning has not run yet.
+              {t("retention.neverRan")}
             </p>
           )}
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("retention.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={prune.isPending}
               onClick={() => prune.mutate()}
             >
-              {prune.isPending ? "Pruning…" : "Prune now"}
+              {prune.isPending ? t("retention.pruning") : t("retention.pruneNow")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

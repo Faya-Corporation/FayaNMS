@@ -2347,5 +2347,131 @@
     "row": {
       "openDevice": "open device detail"
     }
+  },
+  "perfOverview": {
+    "chips": {
+      "ariaLabel": "Time range"
+    },
+    "range": {
+      "1H": "last hour",
+      "24H": "last 24 hours",
+      "7D": "last 7 days",
+      "30D": "last 30 days"
+    },
+    "granularity": {
+      "5M": "5-minute rollups",
+      "1H": "hourly rollups",
+      "1D": "daily rollups",
+      "RAW": "raw samples",
+      "buckets": "{unit} buckets",
+      "fallback": "rollups"
+    },
+    "title": "Performance Overview",
+    "description": "Fleet-wide performance at a glance — availability, latency, utilization",
+    "updated": "Updated",
+    "error": {
+      "title": "Performance data could not be loaded"
+    },
+    "kpi": {
+      "availability": {
+        "label": "Avg Availability",
+        "description": "Availability across managed devices · {granularity}"
+      },
+      "status": {
+        "onTarget": "on target",
+        "watch": "watch",
+        "below": "below target"
+      },
+      "latency": {
+        "label": "Latency p95",
+        "description": "95th percentile of device latency"
+      },
+      "cpu": {
+        "label": "CPU Avg",
+        "description": "Fleet average CPU"
+      },
+      "memory": {
+        "label": "Memory Avg",
+        "description": "Fleet average memory"
+      },
+      "utilization": {
+        "label": "Avg Utilization",
+        "description": "Interface in + out average"
+      },
+      "packetLoss": {
+        "label": "Packet Loss",
+        "description": "Fleet-wide packet loss"
+      }
+    },
+    "availability": {
+      "title": "Availability",
+      "description": "Share of managed devices reachable — {range}",
+      "chartAria": "Availability trend, averaged {avg} percent over {range}.",
+      "chartSummary": "Area chart of {count} samples over {range}; lowest {lowest} percent, highest {highest} percent.",
+      "tooltip": "Availability"
+    },
+    "latency": {
+      "title": "Latency p95",
+      "description": "95th-percentile round-trip latency — {range}",
+      "chartAria": "Latency p95 trend, peaking at {peak} milliseconds over {range}.",
+      "chartSummary": "Line chart of {count} samples of the 95th-percentile round-trip latency over {range}; highest {highest} ms.",
+      "tooltip": "Latency p95"
+    },
+    "empty": {
+      "title": "No data for the last {range}",
+      "raw": "Raw samples are still being collected — try a longer range.",
+      "rollups": "No rollups cover this window yet. Longer ranges fill in as the retention engine aggregates."
+    },
+    "utilizers": {
+      "title": "Top Utilizers",
+      "description": "Interfaces with the highest average utilization — click a device to inspect",
+      "emptyTitle": "No utilization data",
+      "emptyDescription": "No interface utilization rollups for this window yet."
+    },
+    "retention": {
+      "title": "Metrics Retention",
+      "description": "How long raw samples and rollups are kept before the pruning job deletes them",
+      "tier": {
+        "raw": {
+          "label": "Raw samples",
+          "hint": "Collector-resolution MetricSample rows"
+        },
+        "rollup5M": {
+          "label": "5-minute rollups",
+          "hint": "Fine-grained aggregates powering 1H/24H views"
+        },
+        "rollup1H": {
+          "label": "Hourly rollups",
+          "hint": "Powers 7-day dashboards"
+        },
+        "rollup1D": {
+          "label": "Daily rollups",
+          "hint": "Powers 30-day views and capacity forecasts"
+        }
+      },
+      "reset": "Reset",
+      "saving": "Saving…",
+      "save": "Save",
+      "pruneNow": "Prune now",
+      "pruning": "Pruning…",
+      "error": {
+        "title": "Retention settings could not be loaded"
+      },
+      "daysAria": "{tier} retention in days",
+      "daysUnit": "days",
+      "switchAria": "{tier} retention {state}",
+      "state": {
+        "enabled": "enabled",
+        "disabled": "disabled"
+      },
+      "active": "Active",
+      "paused": "Paused",
+      "pruneTitle": "Prune expired metrics now?",
+      "pruneDescription": "Deletes raw samples and rollups older than their retention windows. Pruning is permanent — the deleted history cannot be recovered. A re-run within 60 seconds is rejected.",
+      "lastRan": "Last prune ran",
+      "lastRunStats": " — deleted {samples} samples, {m5} 5-min, {h1} 1-hour and {d1} 1-day rollups in {seconds} s",
+      "neverRan": "Pruning has not run yet.",
+      "cancel": "Cancel"
+    }
   }
 }

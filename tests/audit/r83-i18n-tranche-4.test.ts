@@ -36,8 +36,9 @@ import { join } from "node:path";
  *      locale wired anywhere — device-config-tab precedent), data-plane
  *      titles (hostname/sha256/note/siteCode), fmtMetric's "—"
  *      placeholder, the technical v{version} font-tech spans, and the
- *      shared perf chrome import from perf-overview-view.tsx (English
- *      until the perf-overview tranche).
+ *      shared perf chrome import from perf-overview-view.tsx (keyed by
+ *      the perf-overview tranche, R85 — the chrome now renders in the
+ *      active locale via a perfOverview tRange hook).
  */
 
 const REPO = join(import.meta.dir, "..", "..");
@@ -351,14 +352,14 @@ describe("R83 — ledger governance", () => {
     expect(/"baselines-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 18 entries (20 − 2, R84)", () => {
+  test("E: the numeric ledger carries EXACTLY 17 entries (20 − 3 at HEAD: −2 R84, −1 R85)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(18);
+    expect(entries.length).toBe(17);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 646 (690 − 44, R84)", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 619 (690 − 71 at HEAD: −44 R84, −27 R85)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -366,7 +367,7 @@ describe("R83 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-    expect(sum).toBe(646);
+    expect(sum).toBe(619);
   });
 });
 
@@ -386,7 +387,7 @@ describe("R83 — documented technical survivors", () => {
     expect(src).toContain("v{row.version}");
   });
 
-  test("G: fmtMetric's em-dash placeholder survives; shared perf chrome import intact", () => {
+  test("G: fmtMetric's em-dash placeholder survives; shared perf chrome import intact (keyed by R85)", () => {
     const src = readRepo(`${VIEWS}/${PERF_DEVICES}`);
     expect(src).toContain('return "—";');
     expect(src).toContain(

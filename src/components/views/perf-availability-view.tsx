@@ -36,6 +36,9 @@ function fmtDowntime(minutes: number): string {
  */
 export function PerfAvailabilityView() {
   const t = useTranslations("perfAvailability");
+  // Shared perf chrome translator — perfRangeLabel is keyed in the
+  // perf-overview tranche (R85) and takes this perfOverview translator.
+  const tRange = useTranslations("perfOverview");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   const [range, setRange] = useState<PerfRange>("24H");
 
@@ -46,7 +49,7 @@ export function PerfAvailabilityView() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        description={t("description", { range: perfRangeLabel(range) })}
+        description={t("description", { range: perfRangeLabel(range, tRange) })}
         primaryAction={<PerfRangeChips onChange={setRange} value={range} />}
         title={t("title")}
       />

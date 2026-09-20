@@ -167,7 +167,7 @@ describe("R82 — perf-interfaces is keyed", () => {
     const src = readRepo(`${VIEWS}/${VIEW}`);
     for (const key of [
       't("title")',
-      't("description", { range: perfRangeLabel(range) })',
+      't("description", { range: perfRangeLabel(range, tRange) })',
       't("sort.groupAria")',
       "t(`sort.${chip.labelKey}`)",
       't("toolbar.searchSr")',
@@ -180,7 +180,7 @@ describe("R82 — perf-interfaces is keyed", () => {
       't("error.title")',
       't("table.emptyDescription")',
       't("table.emptyTitle")',
-      't("table.ariaLabel", { range: perfRangeLabel(range) })',
+      't("table.ariaLabel", { range: perfRangeLabel(range, tRange) })',
       't("table.col.interface")',
       't("table.col.oper")',
       't("table.col.speed")',
@@ -207,14 +207,14 @@ describe("R82 — ledger governance", () => {
     expect(/"perf-interfaces-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 18 entries (22 − 2 R83 − 2 R84)", () => {
+  test("E: the numeric ledger carries EXACTLY 17 entries (22 − 5 at HEAD: −2 R83, −2 R84, −1 R85)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(18);
+    expect(entries.length).toBe(17);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 646 (730 − 40 R83 − 44 R84)", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 619 (730 − 111 at HEAD: −40 R83, −44 R84, −27 R85)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -222,17 +222,19 @@ describe("R82 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-    expect(sum).toBe(646);
+    expect(sum).toBe(619);
   });
 });
 
 describe("R82 — documented cross-view survivor", () => {
-  test("F: the shared perf chrome import is intact (English until perf-overview tranche)", () => {
+  test("F: the shared perf chrome import is intact (chrome keyed by the perf-overview tranche, R85)", () => {
     const src = readRepo(`${VIEWS}/${VIEW}`);
     expect(src).toContain(
       'import { PerfRangeChips, fmtPct, perfRangeLabel } from "./perf-overview-view";'
     );
     expect(src).toContain("perf-overview tranche");
+    expect(src).toContain("const tRange = useTranslations(\"perfOverview\")");
+    expect(src).toContain("perfRangeLabel(range, tRange)");
   });
 
   test("F: locale-neutral technical tokens survive (fmtSpeed units, em-dash placeholders)", () => {
