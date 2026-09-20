@@ -118,6 +118,27 @@ import { join } from "node:path";
  * data-plane hostnames/siteCodes, chart dataKey/name props and gradient
  * ids, and the defensive code-side em-dash fallbacks.
  *
+ * R86 (tranche 6b, 2026-09-20): admin-collectors keyed by hand (the
+ * registry half — the Phase 15-b distribution section was already keyed
+ * through `collectors.distribution`). The existing `collectors`
+ * namespace grows `kind` / `status` / `registry` (29 leaves): the 19
+ * swept literals (PageHeader, three KPI labels, the Registry card pair,
+ * error title + the non-swept `reason="Try again."` prop — PROP_RE never
+ * matched `reason=` —, empty pair, table aria + seven column headers,
+ * Refresh) plus the non-swept plane: KIND_LABELS module labels now
+ * resolved via t(`kind.${key}`) with raw-token fallback (the API
+ * contract is an open string — R82 SORT_CHIPS / R84 STATUS_GROUPS
+ * dynamic-key precedent), the raw status-token render via
+ * t(`status.${key}`), the reachable/unreachable KPI value ternary, and
+ * the "never" last-seen fallback. Ledger 17 → 16 entries (619 → 600
+ * candidates). Documented survivors: the online/total ratio +
+ * toLocaleString numerals + em-dash placeholders, the font-mono
+ * capability tokens (drivers-registry vendorLabel/adapter precedent),
+ * data-plane hostnames, date-fns formatDistanceToNow (no ar locale
+ * wired anywhere — device-config-tab / R83-R85 precedent), the OFFLINE
+ * technical token inside the card-description prose, and v{agent
+ * .version} in the already-keyed distribution section.
+ *
  * Detection regexes (documented, deliberately shallow):
  *   - PROP_RE  : literal string props  title=/placeholder=/aria-label=/
  *                label=/description=/heading= starting with a capital.
@@ -175,7 +196,7 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
 
 /**
  * Pending-views debt ledger (R56 baseline; R80 tranche 1 + R81 tranche 2
- * + R82 tranche 3 + R83 tranche 4 + R84 tranche 5 + R85 tranche 6a shrank it). Format: file → candidate ceiling (the count
+ * + R82 tranche 3 + R83 tranche 4 + R84 tranche 5 + R85 tranche 6a + R86 tranche 6b shrank it). Format: file → candidate ceiling (the count
  * at R56; may only DECREASE). A view leaves the ledger the day it is
  * keyed; when the ledger is empty the sweep flips to forbid candidates in
  * every view. Counts use the documented shallow regexes above —
@@ -183,7 +204,6 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
  */
 const PENDING_VIEWS: Record<string, number> = {
   "admin-api-clients-view.tsx": 27,
-  "admin-collectors-view.tsx": 19,
   "admin-credentials-view.tsx": 26,
   "admin-integrations-view.tsx": 47,
   "admin-users-view.tsx": 51,

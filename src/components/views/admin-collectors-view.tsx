@@ -48,14 +48,24 @@ import { cn } from "@/lib/utils";
  * refreshes every 10 s.
  */
 
-const KIND_LABELS: Record<string, string> = {
-  POLLER: "Poller",
-  CONFIG_COLLECTOR: "Config collector",
-  ALERT_ENGINE: "Alert engine",
-  RETENTION: "Retention engine",
+// Kind/status labels resolve in the active locale at render (the R82
+// SORT_CHIPS / R81 GROUPS / R84 STATUS_GROUPS dynamic-key precedent).
+// The API contract is an open string (CollectorRow.kind/status), so
+// unknown tokens fall back to the raw value.
+const KIND_KEYS: Record<string, string> = {
+  POLLER: "poller",
+  CONFIG_COLLECTOR: "configCollector",
+  ALERT_ENGINE: "alertEngine",
+  RETENTION: "retention",
+};
+
+const STATUS_KEYS: Record<string, string> = {
+  ONLINE: "online",
+  OFFLINE: "offline",
 };
 
 export function AdminCollectorsView() {
+  const t = useTranslations("collectors");
   const collectorsQuery = useCollectors();
   const collectors = collectorsQuery.data?.collectors ?? [];
   const workerReachable = collectorsQuery.data?.workerReachable ?? false;
@@ -68,8 +78,8 @@ export function AdminCollectorsView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Collectors"
-        description="Poller and collector registry — probed live from the worker service"
+        title={t("registry.title")}
+        description={t("registry.description")}
         actions={
           <Button
             variant="outline"
@@ -78,22 +88,25 @@ export function AdminCollectorsView() {
             disabled={collectorsQuery.isFetching}
           >
             <RefreshCcw className={cn("mr-2 size-4", collectorsQuery.isFetching && "animate-spin")} />
-            Refresh
+            {t("registry.refresh")}
           </Button>
         }
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <KpiCard label="Online" value={`${online}/${collectors.length || "—"}`} icon={Server} />
+        {/* The online/total ratio and the toLocaleString numerals are
+            data-plane values; the em-dash empty placeholders stay code-side
+            locale-neutral tokens (numeric chip + fmtMetric precedent). */}
+        <KpiCard label={t("registry.kpi.online")} value={`${online}/${collectors.length || "—"}`} icon={Server} />
         <KpiCard
-          label="Worker service"
-          value={workerReachable ? "reachable" : "unreachable"}
+          label={t("registry.kpi.worker")}
+          value={workerReachable ? t("registry.kpi.reachable") : t("registry.kpi.unreachable")}
           icon={HeartPulse}
         />
-        <KpiCard label="Jobs completed" value={jobsCompleted ? jobsCompleted.toLocaleString() : "—"} icon={Zap} />
+        <KpiCard label={t("registry.kpi.jobsCompleted")} value={jobsCompleted ? jobsCompleted.toLocaleString() : "—"} icon={Zap} />
       </div>
 
-      <SectionCard title="Registry" description="Rows persist the last known state — OFFLINE keeps history">
+      <SectionCard title={t("registry.card.title")} description={t("registry.card.description")}>
         {collectorsQuery.isLoading ? (
           <div className="space-y-2 p-4">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -102,35 +115,40 @@ export function AdminCollectorsView() {
           </div>
         ) : collectorsQuery.isError ? (
           <ErrorState
-            title="Could not load collectors"
-            reason="Try again."
+            title={t("registry.error.title")}
+            reason={t("registry.error.reason")}
             onRetry={() => void collectorsQuery.refetch()}
           />
         ) : collectors.length === 0 ? (
           <EmptyState
             icon={Cpu}
-            title="No collectors registered"
-            description="Collectors appear here once the worker service reports its first health probe."
+            title={t("registry.empty.title")}
+            description={t("registry.empty.description")}
           />
         ) : (
-          <Table aria-label="Collector registry — collector, endpoint, capabilities and last-seen health">
+          <Table aria-label={t("registry.table.ariaLabel")}>
             <TableHeader>
               <TableRow>
-                <TableHead>Collector</TableHead>
-                <TableHead>Kind</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Capabilities</TableHead>
-                <TableHead>Host</TableHead>
-                <TableHead>Last seen</TableHead>
-                <TableHead className="text-right">Jobs</TableHead>
+                <TableHead>{t("registry.table.col.collector")}</TableHead>
+                <TableHead>{t("registry.table.col.kind")}</TableHead>
+                <TableHead>{t("registry.table.col.status")}</TableHead>
+                <TableHead>{t("registry.table.col.capabilities")}</TableHead>
+                <TableHead>{t("registry.table.col.host")}</TableHead>
+                <TableHead>{t("registry.table.col.lastSeen")}</TableHead>
+                <TableHead className="text-right">{t("registry.table.col.jobs")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {collectors.map((collector) => (
+              {collectors.map((collector) => {
+                const kindKey = KIND_KEYS[collector.kind];
+                const statusKey = STATUS_KEYS[collector.status];
+                return (
                 <TableRow key={collector.id}>
                   <TableCell className="font-medium">{collector.name}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{KIND_LABELS[collector.kind] ?? collector.kind}</Badge>
+                    <Badge variant="secondary">
+                      {kindKey ? t(`kind.${kindKey}`) : collector.kind}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex items-center gap-1.5">
@@ -148,11 +166,13 @@ export function AdminCollectorsView() {
                           collector.status === "ONLINE" ? "text-success" : "text-danger-orange"
                         }
                       >
-                        {collector.status}
+                        {statusKey ? t(`status.${statusKey}`) : collector.status}
                       </span>
                     </span>
                   </TableCell>
                   <TableCell>
+                    {/* Capabilities are data-plane tokens (font-mono badges —
+                        the drivers-registry vendorLabel/adapter precedent). */}
                     <div className="flex max-w-56 flex-wrap gap-1">
                       {collector.capabilities.map((cap) => (
                         <Badge key={cap} variant="outline" className="font-mono text-[10px]">
@@ -165,15 +185,19 @@ export function AdminCollectorsView() {
                     {collector.host ?? "—"}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
+                    {/* date-fns English relative time — no ar locale wired
+                        anywhere (device-config-tab / R83-R85 precedent,
+                        documented survivor). */}
                     {collector.lastSeenAt
                       ? formatDistanceToNow(parseISO(collector.lastSeenAt), { addSuffix: true })
-                      : "never"}
+                      : t("registry.row.never")}
                   </TableCell>
                   <TableCell className="text-right font-mono text-xs">
                     {String(collector.stats.jobsCompleted ?? "—")}
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         )}

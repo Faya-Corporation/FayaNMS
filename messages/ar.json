@@ -847,6 +847,55 @@
         "successBody": "{moves} نقل/نقلات خلال {seconds} ثانية · مرجع {correlationId}",
         "viewEvents": "فتح سجل الأحداث"
       }
+    },
+    "kind": {
+      "poller": "المجمّع الدوري",
+      "configCollector": "مجمّع التكوين",
+      "alertEngine": "محرك التنبيهات",
+      "retention": "محرك الاحتفاظ"
+    },
+    "status": {
+      "online": "متصل",
+      "offline": "غير متصل"
+    },
+    "registry": {
+      "title": "المجمّعات",
+      "description": "سجل المجمّعات — يُفحص مباشرةً من خدمة العامل",
+      "refresh": "تحديث",
+      "kpi": {
+        "online": "متصل",
+        "worker": "خدمة العامل",
+        "reachable": "قابلة للوصول",
+        "unreachable": "غير قابلة للوصول",
+        "jobsCompleted": "المهام المكتملة"
+      },
+      "card": {
+        "title": "السجل",
+        "description": "تحتفظ الصفوف بآخر حالة معروفة — يُبقي OFFLINE التاريخ"
+      },
+      "error": {
+        "title": "تعذّر تحميل المجمّعات",
+        "reason": "حاول مجددًا."
+      },
+      "empty": {
+        "title": "لا مجموعّات مسجّلة",
+        "description": "تظهر المجمّعات هنا بعد أن تُبلّغ خدمة العامل عن أول فحص صحة."
+      },
+      "table": {
+        "ariaLabel": "سجل المجمّعات — المجمّع والنقطة النهائية والقدرات وآخر ظهور",
+        "col": {
+          "collector": "المجمّع",
+          "kind": "النوع",
+          "status": "الحالة",
+          "capabilities": "القدرات",
+          "host": "المضيف",
+          "lastSeen": "آخر ظهور",
+          "jobs": "المهام"
+        }
+      },
+      "row": {
+        "never": "أبدًا"
+      }
     }
   },
   "cmdb": {

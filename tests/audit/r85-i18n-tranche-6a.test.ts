@@ -10,7 +10,8 @@ import { join } from "node:path";
  *   A. The NEW `perfOverview` namespace exists in BOTH dictionaries with
  *      EXACTLY 76 leaves, deep parity (identical leaf-path sets both
  *      directions) and non-empty string values everywhere; dictionary
- *      totals move 1,746 → 1,822 = 1,822.
+ *      totals move 1,746 → 1,822 = 1,822 (1,851 = 1,851 at HEAD
+ *      after R86's +29 collectors leaves).
  *   B. The view consumes its namespace in ALL SEVEN component scopes
  *      (PerfOverviewView, PerfRangeChips, AvailabilityCard, LatencyCard,
  *      ChartEmpty, TopUtilizersCard, RetentionPanel) and the three
@@ -29,9 +30,9 @@ import { join } from "node:path";
  *      (each individually asserted absent), and the keyed signatures
  *      perfRangeLabel(range, t) / granularityLabel(g, t) are IN.
  *   E. Ledger governance: the r56 sweep no longer ledgers
- *      perf-overview-view, the numeric ledger carries EXACTLY 17
+ *      perf-overview-view, the numeric ledger carries EXACTLY 16
  *      entries, and the LIVE candidate sum over the ledgered files is
- *      EXACTLY 619 (computed from the tree, not quoted).
+ *      EXACTLY 600 (computed from the tree, not quoted).
  *   F. Interpolation shape: the dictionary values carry the placeholders
  *      the views pass ({range}, {granularity}, {unit}, {avg}, {lowest},
  *      {highest}, {peak}, {count}, {tier}, {state}, {samples}, {m5},
@@ -95,11 +96,11 @@ describe("R85 — tranche 6a namespace exists and is balanced", () => {
     expect(leaves(ar.perfOverview).length).toBe(76);
   });
 
-  test("A: dictionary totals are 1,822 = 1,822 (1,746 + 76)", () => {
+  test("A: dictionary totals are 1,851 = 1,851 at HEAD (1,822 + 29 R86)", () => {
     const en = readJson("messages/en.json");
     const ar = readJson("messages/ar.json");
-    expect(leaves(en).length).toBe(1822);
-    expect(leaves(ar).length).toBe(1822);
+    expect(leaves(en).length).toBe(1851);
+    expect(leaves(ar).length).toBe(1851);
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {
@@ -318,14 +319,14 @@ describe("R85 — ledger governance", () => {
     expect(/"perf-overview-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 17 entries (18 − 1, R85)", () => {
+  test("E: the numeric ledger carries EXACTLY 16 entries (18 − 2 at HEAD: −1 R85, −1 R86)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(17);
+    expect(entries.length).toBe(16);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 619 (646 − 27, R85)", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 600 (646 − 46 at HEAD: −27 R85, −19 R86)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -333,7 +334,7 @@ describe("R85 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-    expect(sum).toBe(619);
+    expect(sum).toBe(600);
   });
 });
 

@@ -847,6 +847,55 @@
         "successBody": "{moves} move(s) staged in {seconds}s · correlation {correlationId}",
         "viewEvents": "Open Event Stream"
       }
+    },
+    "kind": {
+      "poller": "Poller",
+      "configCollector": "Config collector",
+      "alertEngine": "Alert engine",
+      "retention": "Retention engine"
+    },
+    "status": {
+      "online": "Online",
+      "offline": "Offline"
+    },
+    "registry": {
+      "title": "Collectors",
+      "description": "Poller and collector registry — probed live from the worker service",
+      "refresh": "Refresh",
+      "kpi": {
+        "online": "Online",
+        "worker": "Worker service",
+        "reachable": "reachable",
+        "unreachable": "unreachable",
+        "jobsCompleted": "Jobs completed"
+      },
+      "card": {
+        "title": "Registry",
+        "description": "Rows persist the last known state — OFFLINE keeps history"
+      },
+      "error": {
+        "title": "Could not load collectors",
+        "reason": "Try again."
+      },
+      "empty": {
+        "title": "No collectors registered",
+        "description": "Collectors appear here once the worker service reports its first health probe."
+      },
+      "table": {
+        "ariaLabel": "Collector registry — collector, endpoint, capabilities and last-seen health",
+        "col": {
+          "collector": "Collector",
+          "kind": "Kind",
+          "status": "Status",
+          "capabilities": "Capabilities",
+          "host": "Host",
+          "lastSeen": "Last seen",
+          "jobs": "Jobs"
+        }
+      },
+      "row": {
+        "never": "never"
+      }
     }
   },
   "cmdb": {
