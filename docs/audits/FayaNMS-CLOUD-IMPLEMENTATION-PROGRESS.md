@@ -4,7 +4,7 @@
 **Execution branch:** `codex/fayanms-cloud-platform`  
 **Initial main SHA:** `7aef0a330dc8f965fb496b735eb8a97b8d2c5149`  
 **Current main readback:** `3ab5c7eb3118b9b37c6286058de99b41bb67cac0`  
-**Current implementation HEAD:** `6db797c1c57d2de0c763d31d912a1b89fdae6279`  
+**Current implementation HEAD:** `53dcf95989f785cfbb567f919d0eff1362137`  
 **Execution date:** 2026-09-21  
 **Authoritative inputs:** Cloud Development/CICD/OCI Implementation Plan, Executive Production Review, Full Independent Production Audit, Production Remediation Roadmap, Competitive Benchmark, Production Gap Register.
 
@@ -18,12 +18,12 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 
 | Item | Evidence |
 |---|---|
-| Current branch | Remote `codex/fayanms-cloud-platform` at `6db797c1c57d2de0c763d31d912a1b89fdae6279`; no local checkout was available in the execution workspace |
+| Current branch | Remote `codex/fayanms-cloud-platform` at `53dcf95989f785cfbb567f919d0eff1362137`; no local checkout was available in the execution workspace |
 | `main` HEAD | `7aef0a330dc8f965fb496b735eb8a97b8d2c5149` |
 | Remote protection | Live branch readback: `protected:false`, `protection.enabled:false`, required checks enforcement `off` |
-| Latest CI | Run `35572398823` on exact HEAD `6db797c1`: gate, scan, e2e, and browser all PASS; protocol fixture suite included in the gate |
-| Browser evidence | Run `35572398823` browser job `106247419684` PASS; prior first-attempt B5 diagnostics remain retained as an intermittent-risk record. |
-| ARM64 container | Run `35572398820` on exact HEAD `6db797c1`: app/worker/migrator ARM64 builds, Prisma CLI smoke, architecture/runtime checks, and strict Trivy scans all PASS; GHCR publish skipped for pull request |
+| Latest CI | Run `35575582829` on exact HEAD `53dcf959`: gate, scan, e2e, and browser all PASS; SNMPv3 authPriv loopback suite included in the gate |
+| Browser evidence | Run `35575582829` browser job `106257462989` PASS; prior first-attempt B5 diagnostics remain retained as an intermittent-risk record. |
+| ARM64 container | Run `35575582812` on exact HEAD `53dcf959`: app/worker/migrator ARM64 builds, Prisma CLI smoke, architecture/runtime checks, and strict Trivy scans all PASS; GHCR publish skipped for pull request |
 | Open PRs | Draft PR #12: `codex/fayanms-cloud-platform` → `main` |
 | Repository access | GitHub connector has authenticated repository read/write access; plain Git clone is unavailable in this execution container |
 | Security note | Prior audit reports an exposed PAT; rotation/revocation remains an owner action and no token is copied into this repository |
@@ -45,7 +45,7 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 | CLOUD-08 | Automated staging deploy | P0 | BLOCKED — EXTERNAL | CLOUD-07 | Codex + owner | Exact-SHA protected-environment SSH workflow committed | Owner configures staging secrets/approval and runs deployment |
 | CLOUD-09 | Health/smoke gate | P0 | BLOCKED — EXTERNAL | CLOUD-08 | Codex | Fail-closed health script and release evidence runbook committed; no staging endpoint exists here | Run against OCI staging and retain smoke evidence |
 | CLOUD-10 | Observability | P1 | IN PROGRESS | CLOUD-09 | Codex | App /api/metrics and worker /api/metrics contracts are implemented with token gating; Prometheus/OTel configs and internal profile committed; staging alert proof and profile image digest review remain open | Certify current worker metrics slice, resolve profile digests, then run a controlled alert test in staging |
-| CLOUD-11 | Network protocol lab | P1 | IN PROGRESS | CLOUD-10 | Codex | Isolated lab bootstrap plus CI-certified packet fixtures now cover RFC3164/5424 syslog, SNMPv1/v2c traps, NetFlow v5/v9 templates, IPFIX, and sFlow with loopback UDP proof; SNMPv3 authPriv agent, real receivers, and continuous discovery remain unimplemented | Add/verify the next real protocol collector or safe agent; keep telemetry ports closed |
+| CLOUD-11 | Network protocol lab | P1 | IN PROGRESS | CLOUD-10 | Codex | Isolated lab bootstrap plus CI-certified packet fixtures and a disposable SNMPv3 authPriv loopback agent now have real UDP/protocol-harness evidence; production SNMP/trap/syslog/flow receivers and continuous discovery remain unimplemented | Implement/verify the next real product collector; keep telemetry ports closed |
 | CLOUD-12 | Controlled telemetry ports | P1 | BLOCKED — EXTERNAL | CLOUD-11 | Codex + owner | Least-privilege port policy committed; no listeners should be opened yet | Apply only after receiver implementation and owner NSG/firewall review |
 | CLOUD-13 | VPN/physical device lab | P1 | BLOCKED — EXTERNAL | CLOUD-12 | Codex + owner | Hardware certification matrix and isolated-lab runbook committed | Owner supplies lab VPN/devices and executes matrix |
 | CLOUD-14 | Database backup/DR | P1 | BLOCKED — EXTERNAL | CLOUD-13 | Codex + owner | Encrypted backup and isolated restore-drill scripts/runbook committed; no off-host target/key exists here | Configure object storage/key custody and run restore drill |
@@ -139,6 +139,20 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 - Blockers: telemetry ports remain intentionally closed until authenticated/restricted receivers exist; OCI staging, VPN, physical hardware, and owner-controlled GHCR publication remain BLOCKED — EXTERNAL.
 - Remaining risks: the protocol fixture suite does not establish staging or physical-hardware proof, and the optional monitoring profile still has unresolved immutable image digests and no staging alert proof.
 - Next task: continue CLOUD-11 repository implementation with an authenticated SNMPv3 test-agent/collector path or a precise technical blocker, then update the runbook and evidence ledger before moving to controlled telemetry ports.
+
+
+### Round 6 — SNMPv3 authPriv loopback certification
+
+- Completed: added a disposable loopback-only SNMPv3 authPriv agent and client fixture with RFC-style USM key localization, HMAC-SHA1-96 authentication, AES-128-CFB privacy, BER GET/response parsing, fail-closed malformed/auth failure handling, and a random-per-run test secret. Updated lab/runbook documentation.
+- Files changed: scripts/protocol-lab/snmpv3.ts; tests/snmpv3-lab.test.ts; deploy/lab/README.md; docs/runbooks/network-lab.md; this ledger.
+- Tests: initial commit 1894bfa1 timed out because of two BER traversal defects; fix commits a47575d and 3b5fe90 exposed diagnostics and corrected varbind/header sequence levels. Final CI run 35575582829 on exact head 53dcf959 passed gate job 106256592147, E2E job 106257462958, browser job 106257462989, and scan job 106257463015. Final ARM64 container run 35575582812 job 106256718384 passed all image builds, direct Prisma CLI smoke, architecture/runtime verification, and strict app/worker/migrator scans.
+- Validation results: the final test performs a real encrypted/authenticated SNMPv3 GET over loopback UDP and verifies the returned sysName OID/value. Safe rejection diagnostics contain only an error class/message; no packet bytes, passphrase, community, or private key is logged.
+- Commit SHA: final parser correction 53dcf95989f785cfbb567f919d0eff1362137; prior red/fix commits are preserved in published history.
+- CI status: current-head CI and ARM64 certification are green. GHCR publication remains skipped because this is a draft pull request rather than an authorized main push.
+- Newly discovered findings: the real protocol harness caught BER-level parser defects that unit-only packet construction would not detect; production SNMP/trap/syslog/flow collectors, device association, alerting, and continuous discovery remain separate implementation work.
+- Blockers: telemetry ports remain intentionally closed until authenticated/restricted product receivers exist; OCI staging, VPN, physical hardware, and owner-controlled GHCR publication remain BLOCKED — EXTERNAL.
+- Remaining risks: the disposable agent is loopback-only and does not establish staging, vendor, or physical-device support; optional monitoring profile digests and staging alert proof remain open.
+- Next task: continue CLOUD-11 with repository-side real collector/device-association work where executable; keep CLOUD-12 listener exposure blocked until those receivers are implemented and reviewed.
 
 ## Evidence-state vocabulary
 
