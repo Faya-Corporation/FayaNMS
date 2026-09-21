@@ -1,27 +1,10 @@
 /**
- * R78 — CI bring-up iteration 9: base-image OS vulns triaged (security
- * channel + fixable-only gate).
+ * R78 — image-scan triage history plus the current strict runtime contract.
  *
- * Context (docs/audits/FayaNMS-R70-Merge-to-Main-and-CI-Bootstrap-2026-09-19.md §14):
- * run 35423693016 @ 819feb1 — gate/e2e/browser GREEN again, AND the image
- * build PASSED with the artifact verification (BUILD_ID + standalone proven;
- * the Bun teardown segfault survived only as the documented note). The
- * failure moved to the FIRST IMAGE-SCAN execution: 88 HIGH/CRITICAL
- * findings, ALL in the base's Debian packages (trixie), with fixes published
- * to the Debian security channel AFTER the base was built. The pinned
- * digest IS the current tag resolution (verified against the registry — no
- * bump exists), so the remediation is:
- *   - both runtime stages track the Debian security channel (apt-get
- *     upgrade; lists dropped) — every fixable finding is patched at build
- *     time; forward-compatible within the release (Debian security patches
- *     never break ABI, so the glibc/openssl consistency note holds);
- *   - the image scans gain `ignore-unfixed: true` — the gate stays fatal
- *     for every HIGH/CRITICAL WITH a published fix; a vulnerability with NO
- *     fix anywhere has no operator remediation path and is reported instead.
- *     The fs scan is untouched (narrowness). Widening requires a new note.
- *
- * These pins freeze the security-channel upgrades and the gate scope.
- * They never execute docker or a scanner.
+ * The historical addendum remains frozen below. Current image assertions
+ * verify the follow-up remediation: digest-pinned distroless runtime stages
+ * remove the Debian package-manager/utility surface, so image scans remain
+ * fatal for every HIGH/CRITICAL result, including unfixed findings.
  */
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -35,31 +18,38 @@ const WORKER = read("Dockerfile.worker");
 const CI = read(".github/workflows/ci.yml");
 const DOC = read("docs/audits/FayaNMS-R70-Merge-to-Main-and-CI-Bootstrap-2026-09-19.md");
 
-describe("R78-A: both runtime images track the Debian security channel", () => {
-  test("the app runtime stage upgrades and drops the package lists", () => {
-    const runtime = DOCKERFILE.slice(DOCKERFILE.indexOf("FROM oven/bun:1.3.14-slim"));
-    expect(runtime).toContain("RUN apt-get update");
-    expect(runtime).toContain("apt-get upgrade -y");
-    expect(runtime).toContain("rm -rf /var/lib/apt/lists/*");
-    expect(runtime).toContain("35423693016");
-    // upgrade happens as root BEFORE the non-root user is set
-    const aptAt = runtime.indexOf("RUN apt-get update");
-    const userAt = runtime.indexOf("USER faya");
-    expect(aptAt < userAt, "upgrade before USER faya").toBeTrue();
+describe("R78-A: both runtime images use the hardened distroless base", () => {
+  test("the app runtime has no package-manager or utility surface", () => {
+    const runtime = DOCKERFILE.slice(
+      DOCKERFILE.indexOf("FROM oven/bun:1.3.14-distroless")
+    );
+    expect(runtime).toContain(
+      "oven/bun:1.3.14-distroless@sha256:c28c51287af70bab8e0b66fc4b6a30cfb92a727ebc88045223adc9f4c9d09307"
+    );
+    expect(runtime).toContain("USER 10001");
+    expect(runtime).toContain('ENTRYPOINT ["/usr/local/bin/bun"]');
+    expect(runtime).not.toContain("apt-get");
+    expect(runtime).not.toContain("apk");
+    expect(runtime).not.toContain("adduser");
+    expect(runtime).not.toContain("addgroup");
   });
 
-  test("the worker runtime stage upgrades too (same base)", () => {
-    expect(WORKER).toContain("RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*");
-    expect(WORKER).toContain("35423693016");
-    // the pinned digest is unchanged — the SDK/base binaries stay immutable
-    expect(WORKER).toContain(
-      "oven/bun:1.3.14-slim@sha256:d56a2534ffd262e92c12fd3249d3924d296d97086da773f821d7d0477435ea04"
+  test("the worker runtime has the same hardened contract", () => {
+    const runtime = WORKER.slice(
+      WORKER.indexOf("FROM oven/bun:1.3.14-distroless")
     );
+    expect(runtime).toContain(
+      "oven/bun:1.3.14-distroless@sha256:c28c51287af70bab8e0b66fc4b6a30cfb92a727ebc88045223adc9f4c9d09307"
+    );
+    expect(runtime).toContain("USER 10001");
+    expect(runtime).toContain('ENTRYPOINT ["/usr/local/bin/bun"]');
+    expect(runtime).not.toContain("apt-get");
+    expect(runtime).not.toContain("apk");
   });
 });
 
-describe("R78-B: the image-scan gate is scoped to fixable findings", () => {
-  test("both image scans carry ignore-unfixed; the fs scan does not", () => {
+describe("R78-B: the image-scan gate is strict", () => {
+  test("both image scans fail on every HIGH/CRITICAL result", () => {
     const appScan = CI.slice(
       CI.indexOf("- name: Image scan — app"),
       CI.indexOf("- name: Image scan — worker")
@@ -68,11 +58,11 @@ describe("R78-B: the image-scan gate is scoped to fixable findings", () => {
       CI.indexOf("- name: Image scan — worker"),
       CI.indexOf("- name: Image SBOMs")
     );
-    expect(appScan).toContain("ignore-unfixed: true");
-    expect(workerScan).toContain("ignore-unfixed: true");
-    expect(appScan).toContain("35423693016");
-    expect(appScan).toContain("Widening requires a new");
-    // the fs scan stays untouched
+    expect(appScan).toContain("ignore-unfixed: false");
+    expect(workerScan).toContain("ignore-unfixed: false");
+    expect(appScan).toContain("exit-code: \"1\"");
+    expect(workerScan).toContain("exit-code: \"1\"");
+    // The filesystem scan remains a separate, fully active scan.
     const fsScan = CI.slice(
       CI.indexOf("- name: Container scan (trivy)"),
       CI.indexOf("- name: Container scan skipped")
