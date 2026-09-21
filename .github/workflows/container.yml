@@ -18,6 +18,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_run:
+    workflows: ["CI gate"]
+    types: [completed]:
 
 concurrency:
   group: container-${{ github.ref }}
@@ -28,12 +31,15 @@ permissions:
 
 jobs:
   arm64:
+    if: github.event_name != 'workflow_run'
     name: ARM64 build and runtime smoke
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
@@ -63,8 +69,10 @@ jobs:
   publish:
     name: Publish immutable GHCR image
     if: >-
-      github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: arm64
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -93,11 +101,11 @@ jobs:
         with:
           images: ghcr.io/fayafatehi/fayanms
           tags: |
-            type=raw,value=${{ github.sha }}
-            type=raw,value=sha-${{ github.sha }}
+            type=raw,value=${{ github.event.workflow_run.head_sha }}
+            type=raw,value=sha-${{ github.event.workflow_run.head_sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/fayafatehi/FayaNMS
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
 
       - name: Build and push immutable multi-architecture image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
@@ -115,7 +123,7 @@ jobs:
       - name: Scan published image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ghcr.io/fayafatehi/fayanms:${{ github.sha }}
+          image-ref: ghcr.io/fayafatehi/fayanms:${{ github.event.workflow_run.head_sha }}
           format: sarif
           output: trivy-ghcr.sarif
           severity: CRITICAL,HIGH
