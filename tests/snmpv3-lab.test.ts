@@ -3,8 +3,10 @@ import { createSocket } from "node:dgram";
 import { describe, expect, test } from "bun:test";
 import {
   buildSnmpV3GetRequest,
+  buildSnmpV3Trap,
   createSnmpV3Agent,
   decodeSnmpV3GetResponse,
+  decodeSnmpV3Trap,
 } from "../scripts/protocol-lab/snmpv3";
 
 function receive(socket: ReturnType<typeof createSocket>): Promise<Uint8Array> {
@@ -73,3 +75,74 @@ describe("CLOUD-11 SNMPv3 authPriv disposable agent", () => {
     }
   });
 });
+
+  
+  test("builds and verifies an encrypted/authenticated trap with typed varbinds", () => {
+    const secret = randomBytes(24).toString("hex");
+    const engineId = Uint8Array.from([
+      0x80,
+      0x00,
+      0x1f,
+      0x88,
+      0x80,
+      ...randomBytes(6),
+    ]);
+    const config = {
+      engineId,
+      username: "trap-user",
+      secret,
+      boots: 3,
+      time: 17,
+    };
+    const packet = buildSnmpV3Trap({
+      ...config,
+      requestId: 77,
+      messageId: 78,
+      contextName: "lab-context",
+      notificationOid: "1.3.6.1.6.3.1.1.5.3",
+      varBinds: [
+        {
+          oid: "1.3.6.1.2.1.1.3.0",
+          value: 1234,
+          valueType: "timeticks",
+        },
+        {
+          oid: "1.3.6.1.2.1.1.1.0",
+          value: "FayaNMS trap fixture",
+        },
+      ],
+    });
+    const decoded = decodeSnmpV3Trap(packet, config);
+    expect(decoded.requestId).toBe(77);
+    expect(decoded.username).toBe("trap-user");
+    expect(decoded.contextName).toBe("lab-context");
+    expect(decoded.varBinds).toEqual([
+      {
+        oid: "1.3.6.1.6.3.1.1.4.1.0",
+        value: "1.3.6.1.6.3.1.1.5.3",
+      },
+      { oid: "1.3.6.1.2.1.1.3.0", value: 1234 },
+      { oid: "1.3.6.1.2.1.1.1.0", value: "FayaNMS trap fixture" },
+    ]);
+  });
+
+  test("rejects a tampered trap and a wrong secret before decryption", () => {
+    const config = {
+      engineId: Uint8Array.from([0x80, 0x00, 0x1f, 0x88, 0x80, 1, 2, 3, 4, 5, 6]),
+      username: "trap-user",
+      secret: randomBytes(24).toString("hex"),
+    };
+    const packet = buildSnmpV3Trap({
+      ...config,
+      varBinds: [{ oid: "1.3.6.1.2.1.1.5.0", value: "tamper-check" }],
+    });
+    const tampered = new Uint8Array(packet);
+    tampered[tampered.length - 1] ^= 0x01;
+    expect(() => decodeSnmpV3Trap(tampered, config)).toThrow(
+      "SNMPv3 USM authentication failed",
+    );
+    expect(() =>
+      decodeSnmpV3Trap(packet, { ...config, secret: randomBytes(24).toString("hex") }),
+    ).toThrow("SNMPv3 USM authentication failed");
+  });
+\n

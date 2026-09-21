@@ -103,6 +103,51 @@ function nullValue(): Uint8Array {
   return tlv(0x05, new Uint8Array());
 }
 
+export type SnmpV3TrapVarBind = {
+  oid: string;
+  value: string | number | null;
+  valueType?: "octets" | "oid" | "integer" | "timeticks";
+};
+
+function trapValue(value: SnmpV3TrapVarBind): Uint8Array {
+  if (value.valueType === "oid") {
+    if (typeof value.value !== "string") throw new Error("SNMPv3 OID values must be strings");
+    return oid(value.value);
+  }
+  if (value.valueType === "timeticks") {
+    if (
+      typeof value.value !== "number" ||
+      !Number.isSafeInteger(value.value) ||
+      value.value < 0 ||
+      value.value > 0xffffffff
+    ) {
+      throw new Error("SNMPv3 timeticks must be unsigned 32-bit integers");
+    }
+    return tlv(0x43, u32(value.value));
+  }
+  if (value.value === null) return nullValue();
+  if (typeof value.value === "number") return integer(value.value);
+  return octets(value.value);
+}
+
+function decodeSnmpValue(packet: Uint8Array, value: ParsedTlv): string | number | null {
+  switch (value.tag) {
+    case 0x04:
+      return decodeText(packet, value);
+    case 0x05:
+      return null;
+    case 0x06:
+      return decodeOid(packet, value);
+    case 0x02:
+    case 0x41:
+    case 0x42:
+    case 0x43:
+      return decodeInteger(packet, value);
+    default:
+      return Buffer.from(bytes(packet, value)).toString("hex");
+  }
+}
+
 type ParsedTlv = {
   tag: number;
   valueStart: number;
@@ -321,6 +366,43 @@ function buildScopedGet(options: {
   return sequence(octets(options.engineId), octets(options.contextName), pdu);
 }
 
+function buildScopedTrap(options: {
+  engineId: Uint8Array;
+  contextName: string;
+  requestId: number;
+  notificationOid?: string;
+  varBinds: readonly SnmpV3TrapVarBind[];
+}): Uint8Array {
+  const varBinds = options.notificationOid
+    ? [
+        {
+          oid: "1.3.6.1.6.3.1.1.4.1.0",
+          value: options.notificationOid,
+          valueType: "oid" as const,
+        },
+        ...options.varBinds,
+      ]
+    : options.varBinds;
+  const pdu = tlv(
+    0xa7,
+    concat(
+      integer(options.requestId),
+      integer(0),
+      integer(0),
+      sequence(
+        ...varBinds.map((varBind) =>
+          sequence(oid(varBind.oid), trapValue(varBind)),
+        ),
+      ),
+    ),
+  );
+  return sequence(
+    octets(options.engineId),
+    octets(options.contextName),
+    pdu,
+  );
+}
+
 function buildMessage(options: {
   engineId: Uint8Array;
   boots: number;
@@ -363,6 +445,37 @@ export type SnmpV3Config = {
   boots?: number;
   time?: number;
 };
+
+export function buildSnmpV3Trap(
+  options: SnmpV3Config & {
+    requestId?: number;
+    messageId?: number;
+    contextName?: string;
+    notificationOid?: string;
+    varBinds: readonly SnmpV3TrapVarBind[];
+  },
+): Uint8Array {
+  const boots = options.boots ?? 1;
+  const time = options.time ?? 1;
+  const requestId = options.requestId ?? 1;
+  const key = localizedKey(options.secret, options.engineId);
+  return buildMessage({
+    engineId: options.engineId,
+    boots,
+    time,
+    username: options.username,
+    messageId: options.messageId ?? requestId,
+    scopedPdu: buildScopedTrap({
+      engineId: options.engineId,
+      contextName: options.contextName ?? "",
+      requestId,
+      notificationOid: options.notificationOid,
+      varBinds: options.varBinds,
+    }),
+    key,
+    salt: Uint8Array.from(randomBytes(8)),
+  });
+}
 
 export function buildSnmpV3GetRequest(
   options: SnmpV3Config & {
@@ -439,6 +552,8 @@ function parseAuthenticatedRequest(
   requestedOid: string;
   contextName: string;
   key: Uint8Array;
+  pduTag: number;
+  varBinds: SnmpV3TrapVarBind[];
 } {
   const top = readTlv(packet, 0);
   const topChildren = children(packet, top);
@@ -469,8 +584,16 @@ function parseAuthenticatedRequest(
   const scopedChildren = children(scoped, scopedTop);
   const pdu = scopedChildren[2];
   const pduChildren = children(scoped, pdu);
-  const varBind = children(scoped, pduChildren[3])[0];
+  const varBindList = children(scoped, pduChildren[3]);
+  const varBind = varBindList[0];
   const varBindChildren = children(scoped, varBind);
+  const varBinds = varBindList.map((currentVarBind) => {
+    const currentChildren = children(scoped, currentVarBind);
+    return {
+      oid: decodeOid(scoped, currentChildren[0]),
+      value: decodeSnmpValue(scoped, currentChildren[1]),
+    };
+  });
   return {
     engineId,
     boots,
@@ -481,6 +604,35 @@ function parseAuthenticatedRequest(
     requestedOid: decodeOid(scoped, varBindChildren[0]),
     contextName: decodeText(scoped, scopedChildren[1]),
     key,
+    pduTag: pdu.tag,
+    varBinds,
+  };
+}
+
+export function decodeSnmpV3Trap(
+  packet: Uint8Array,
+  options: SnmpV3Config,
+): {
+  requestId: number;
+  username: string;
+  engineId: Uint8Array;
+  boots: number;
+  time: number;
+  contextName: string;
+  varBinds: SnmpV3TrapVarBind[];
+} {
+  const parsed = parseAuthenticatedRequest(packet, options);
+  if (parsed.pduTag !== 0xa7) {
+    throw new Error("SNMPv3 trap PDU is required");
+  }
+  return {
+    requestId: parsed.requestId,
+    username: parsed.username,
+    engineId: new Uint8Array(parsed.engineId),
+    boots: parsed.boots,
+    time: parsed.time,
+    contextName: parsed.contextName,
+    varBinds: parsed.varBinds,
   };
 }
 
