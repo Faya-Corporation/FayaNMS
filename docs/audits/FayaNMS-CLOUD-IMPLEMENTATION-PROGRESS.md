@@ -97,6 +97,20 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 - Ruling: ARM64 Trivy remains ignore-unfixed: false and hard-fail. Cost if wrong: CLOUD-03/04 stay blocked until upstream/base packages are remediated, but no high-severity base finding is hidden.
 - Next task: remediate the ARM64 base vulnerability set or select a demonstrably clean, digest-pinned runtime base; then certify current-head CI/ARM64 again before enabling GHCR publication work.
 
+
+### Round 3 — distroless remediation and real SSH harness repair
+
+- Completed: updated the stale R75/R76/R78 and supply-chain audit contracts for the digest-pinned Bun distroless runtime; made the main CI image scans strict (ignore-unfixed: false); replaced the Bun/ssh2-incompatible in-process Ed25519 conversion with an ephemeral runner-generated OpenSSH key that is deleted after harness startup.
+- Files changed: Dockerfile; Dockerfile.worker; Dockerfile.migrator; compose migration command; tests/audit/r75-journey-accuracy-and-portable-user.test.ts; tests/audit/r76-image-build-type-resolution.test.ts; tests/audit/supply-chain.test.ts; tests/audit/r78-image-scan-triage.test.ts; .github/workflows/ci.yml; mini-services/worker/harness/persona-sshd.ts.
+- Tests: CI run 35563788099 on head 73d7409 passed lint, TypeScript, migrations, and 1199 consolidated tests before the live-SSH harness failed on a malformed generated key. CI run 35564113841 on head 7a58720 reached the live-SSH tests; two R61 protocol cases failed because the direct PKCS#8 normalization was not an OpenSSH key. That intermediate approach was replaced by the current ephemeral ssh-keygen implementation.
+- Validation results: the previous contract failures are resolved in the test source; no image or scan result is claimed from the current head until the fresh workflow completes. No private key is stored in the repository; the harness key exists only in a temporary runner directory and is removed in a finally block.
+- Commit SHAs: audit-contract/scan repair 73d7409; direct key normalization 7a58720; current ephemeral OpenSSH harness repair 8dfddce.
+- CI status: current head 8dfddce awaits a fresh gate and ARM64 certification run; prior CI runs are not green evidence for this head.
+- Newly discovered findings: the repository's real SSH harness depended on a Bun-incompatible key conversion path; the failure was caught by protocol-harness tests rather than hidden. The distroless runtime also required explicit Bun entrypoints in smoke and migration commands.
+- Blockers: CLOUD-03/04 remain BLOCKED — TECHNICAL until the strict ARM64 vulnerability scan is green and a current-head CI certification completes. PAT rotation, branch protection/ruleset, Codespaces proof, OCI tenancy/VM/DNS/SSH, staging approval, VPN, off-host backup key/target, and physical hardware remain BLOCKED — EXTERNAL.
+- Remaining risks: current-head ARM64 build/runtime/Trivy evidence is pending; GHCR publication cannot be claimed from a draft PR; optional monitoring profile image digests remain unresolved; real SNMP/syslog/flow/discovery receivers and staging alert proof remain outstanding.
+- Next task: certify head 8dfddce; fix any new repository-actionable failure; update this ledger with exact gate/ARM64 evidence before proceeding to GHCR/OCI waves.
+
 ## Evidence-state vocabulary
 
 For each capability, record separately where applicable: implemented; unit tested; integration tested; protocol-harness tested; Docker tested; CI certified; staging tested; physical-hardware tested; production proven.
