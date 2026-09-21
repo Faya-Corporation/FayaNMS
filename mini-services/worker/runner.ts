@@ -98,6 +98,7 @@ import {
 } from "./adapter-router";
 import { nextPost, selfPost, log } from "./next-client";
 import { scanDiscoverySubnet, enumerateDiscoveryTargets, MAX_DISCOVERY_TARGETS } from "./discovery";
+import { pollSnmpV3, type SnmpV3PollProfileReference } from "./snmpv3-poller";
 
 const CLAIM_INTERVAL_MS = 3_000;
 /** Claim-loop exponential backoff cap (Task 10-a) — 5 minutes. */
@@ -950,12 +951,111 @@ async function runReportJob(job: ClaimedJob): Promise<void> {
   );
 }
 
+
+/* ───────────────────── SNMP_POLL data-plane execution ─────────────────── */
+
+interface SnmpPollProfileResponse {
+  profile?: SnmpV3PollProfileReference;
+}
+
+/** SNMP_POLL execution — credentials resolve only inside the worker. */
+async function runSnmpPollJob(job: ClaimedJob): Promise<void> {
+  const payload = job.payload ?? {};
+  const deviceId = typeof payload.deviceId === "string" ? payload.deviceId : job.targetId;
+  if (!deviceId) throw new Error("Invalid SNMP_POLL payload: deviceId is missing");
+
+  const profileResult = (await nextPost(
+    "/api/v1/ingest/protocol/snmpv3-profile/poll",
+    {
+      deviceId,
+      ...(typeof payload.credentialProfileId === "string"
+        ? { credentialProfileId: payload.credentialProfileId }
+        : {}),
+    },
+    10_000,
+  )) as SnmpPollProfileResponse;
+  const profile = profileResult.profile;
+  if (!profile) throw new Error("SNMPv3 polling profile lookup returned no profile");
+
+  const hostname = profile.hostname;
+  await reportProgress(job.id, 5, "Resolved enrolled SNMPv3 profile for " + hostname);
+  const rawIndexes = payload.interfaceIndexes;
+  if (
+    rawIndexes !== undefined &&
+    (!Array.isArray(rawIndexes) ||
+      rawIndexes.some((index) => typeof index !== "number" || !Number.isSafeInteger(index)))
+  ) {
+    throw new Error("Invalid SNMP_POLL payload: interfaceIndexes must be integer[]");
+  }
+  const rawMax = payload.maxInterfaces;
+  if (
+    rawMax !== undefined &&
+    (typeof rawMax !== "number" || !Number.isSafeInteger(rawMax) || rawMax < 1 || rawMax > 32)
+  ) {
+    throw new Error("Invalid SNMP_POLL payload: maxInterfaces must be 1..32");
+  }
+
+  await reportProgress(job.id, 10, "Polling sysName, sysDescr, uptime, and bounded IF-MIB data");
+  const result = await pollSnmpV3(profile, {
+    maxInterfaces: rawMax as number | undefined,
+    interfaceIndexes: rawIndexes as number[] | undefined,
+    timeoutMs: 1_500,
+    retries: 2,
+    retryBackoffMs: 150,
+    jitterMs: 100,
+  });
+  await reportProgress(
+    job.id,
+    78,
+    "Verified " + result.interfaces.length + " interface(s) and " + result.attempts + " request attempt(s)",
+  );
+
+  await nextPost(
+    "/api/v1/ingest/protocol/snmpv3-profile/accept",
+    {
+      sourceIp: profile.mgmtIp,
+      username: profile.username,
+      credentialProfileId: profile.credentialProfileId,
+      engineIdHex: result.engine.engineIdHex,
+      boots: result.engine.boots,
+      time: result.engine.time,
+    },
+    10_000,
+  );
+
+  const completion = (await nextPost(
+    "/api/v1/worker/snmpv3-poll/complete",
+    { jobId: job.id, result },
+    15_000,
+  )) as { status?: string; interfaces?: number };
+  counters.completed += 1;
+  counters.completedByType.SNMP_POLL = (counters.completedByType.SNMP_POLL ?? 0) + 1;
+  await log(
+    "job " +
+      job.id +
+      " [" +
+      job.correlationId +
+      "] " +
+      (completion.status ?? "SUCCEEDED") +
+      ": SNMPv3 poll " +
+      hostname +
+      " interfaces=" +
+      (completion.interfaces ?? result.interfaces.length) +
+      " attempts=" +
+      result.attempts +
+      " optionalFailures=" +
+      result.optionalFailures,
+  );
+}
+
 async function executeJob(job: ClaimedJob): Promise<void> {
   try {
     if (job.type === "CONFIG_BACKUP") {
       await raceTimeout(runBackupJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "DISCOVERY") {
       await raceTimeout(runDiscoveryJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "SNMP_POLL") {
+      await raceTimeout(runSnmpPollJob(job), 120_000, `job ${job.id}`);
     } else if (job.type === "DRIFT_CHECK") {
       await raceTimeout(runDriftCheckJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "CHANGE_EXECUTE") {
@@ -1009,7 +1109,7 @@ async function claimTick(): Promise<"ok" | "failed" | "busy"> {
     try {
       jobs = (await nextPost(
         "/api/v1/worker/claim",
-        { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION", "REPORT_RUN", "FIRMWARE_UPGRADE", "ZTP_PROVISION"], limit: Math.min(CLAIM_BATCH, free) },
+        { types: ["CONFIG_BACKUP", "DISCOVERY", "SNMP_POLL", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION", "REPORT_RUN", "FIRMWARE_UPGRADE", "ZTP_PROVISION"], limit: Math.min(CLAIM_BATCH, free) },
         10_000
       )) as ClaimedJob[];
     } catch (e) {

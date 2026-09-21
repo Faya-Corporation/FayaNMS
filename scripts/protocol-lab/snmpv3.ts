@@ -69,6 +69,22 @@ function integer(value: number): Uint8Array {
   return tlv(0x02, Uint8Array.from(bytes));
 }
 
+
+function counter64(value: number | bigint): Uint8Array {
+  const numeric = typeof value === "bigint" ? value : BigInt(value);
+  if (numeric < BigInt(0) || numeric > BigInt("18446744073709551615")) {
+    throw new Error("SNMPv3 fixture Counter64 values must be unsigned 64-bit integers");
+  }
+  if (numeric === BigInt(0)) return tlv(0x46, u8(0));
+  const bytes: number[] = [];
+  let remaining = numeric;
+  while (remaining > BigInt(0)) {
+    bytes.unshift(Number(remaining % BigInt(256)));
+    remaining /= BigInt(256);
+  }
+  return tlv(0x46, Uint8Array.from(bytes));
+}
+
 function octets(value: Uint8Array | string): Uint8Array {
   return tlv(0x04, typeof value === "string" ? encoder.encode(value) : value);
 }
@@ -143,6 +159,8 @@ function decodeSnmpValue(packet: Uint8Array, value: ParsedTlv): string | number 
     case 0x42:
     case 0x43:
       return decodeInteger(packet, value);
+    case 0x46:
+      return decodeCounter64(packet, value);
     default:
       return Buffer.from(bytes(packet, value)).toString("hex");
   }
@@ -199,6 +217,14 @@ function decodeInteger(packet: Uint8Array, value: ParsedTlv): number {
     result = result * 256 + octet;
   }
   return result;
+}
+
+function decodeCounter64(packet: Uint8Array, value: ParsedTlv): string {
+  let result = BigInt(0);
+  for (const octet of bytes(packet, value)) {
+    result = result * BigInt(256) + BigInt(octet);
+  }
+  return result.toString();
 }
 
 function decodeText(packet: Uint8Array, value: ParsedTlv): string {
@@ -512,6 +538,16 @@ function responseValue(requestedOid: string): Uint8Array {
       return octets("fayanms-lab-agent");
     case "1.3.6.1.2.1.1.3.0":
       return tlv(0x43, u32(1234));
+    case "1.3.6.1.2.1.2.1.0":
+      return integer(1);
+    case "1.3.6.1.2.1.2.2.1.2.1":
+      return octets("lo");
+    case "1.3.6.1.2.1.2.2.1.8.1":
+      return integer(1);
+    case "1.3.6.1.2.1.31.1.1.1.6.1":
+      return counter64(123456);
+    case "1.3.6.1.2.1.31.1.1.1.10.1":
+      return counter64(654321);
     default:
       return tlv(0x80, new Uint8Array());
   }
@@ -658,30 +694,17 @@ export function decodeSnmpV3Trap(
 export function decodeSnmpV3GetResponse(
   packet: Uint8Array,
   options: SnmpV3Config,
-): { requestId: number; oid: string; value: string } {
+): { requestId: number; oid: string; value: string | number | null } {
   const parsed = parseAuthenticatedRequest(packet, options);
-  const top = readTlv(packet, 0);
-  const topChildren = children(packet, top);
-  const securityOctets = topChildren[2];
-  const usm = readTlv(packet, securityOctets.valueStart);
-  const usmChildren = children(packet, usm);
-  const salt = bytes(packet, usmChildren[5]);
-  const scoped = decryptScoped(
-    bytes(packet, topChildren[3]),
-    parsed.key,
-    parsed.boots,
-    parsed.time,
-    salt,
-  );
-  const scopedTop = readTlv(scoped, 0);
-  const scopedChildren = children(scoped, scopedTop);
-  const pduChildren = children(scoped, scopedChildren[2]);
-  const responseBind = children(scoped, pduChildren[3])[0];
-  const responseBindChildren = children(scoped, responseBind);
+  if (parsed.pduTag !== 0xa2) {
+    throw new Error("SNMPv3 get-response PDU is required");
+  }
+  const first = parsed.varBinds[0];
+  if (!first) throw new Error("SNMPv3 get-response has no varbind");
   return {
-    requestId: decodeInteger(scoped, pduChildren[0]),
-    oid: decodeOid(scoped, responseBindChildren[0]),
-    value: decodeText(scoped, responseBindChildren[1]),
+    requestId: parsed.requestId,
+    oid: first.oid,
+    value: first.value,
   };
 }
 
@@ -713,8 +736,8 @@ export function createSnmpV3Agent(
       const request = parseAuthenticatedRequest(packet, config);
       const response = buildMessage({
         engineId: config.engineId,
-        boots: request.boots,
-        time: request.time,
+        boots: config.boots ?? request.boots,
+        time: Math.min(0xffffffff, Math.max(config.time ?? 0, request.time + 1)),
         username: config.username,
         messageId: request.requestId,
         scopedPdu: buildScopedResponse({

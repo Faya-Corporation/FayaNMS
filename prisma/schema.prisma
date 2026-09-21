@@ -761,7 +761,7 @@ model Notification {
 
 model JobExecution {
   id            String    @id @default(cuid())
-  // type: DISCOVERY | CONFIG_BACKUP | CONFIG_RESTORE | CONFIG_APPLY | VALIDATION |
+  // type: DISCOVERY | CONFIG_BACKUP | CONFIG_RESTORE | CONFIG_APPLY | SNMP_POLL | VALIDATION |
   //       INVENTORY_POLL | METRIC_POLL | REPORT_GENERATION | NOTIFICATION |
   //       DRIFT_CHECK | CHANGE_EXECUTE | ALERT_EVALUATION
   type          String
