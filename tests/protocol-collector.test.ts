@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { decodeProtocolPacket } from "../mini-services/worker/protocol-collector";
+import {
+  decodeProtocolPacket,
+  decodeVerifiedSnmpV3Trap,
+} from "../mini-services/worker/protocol-collector";
+import { randomBytes } from "node:crypto";
+import { buildSnmpV3Trap } from "../scripts/protocol-lab/snmpv3";
 
 test("protocol collector parses RFC5424 syslog without retaining raw packet bytes", () => {
   const event = decodeProtocolPacket(
@@ -36,4 +41,49 @@ test("generic SNMP trap framing is explicitly untrusted until authPriv verificat
   );
   expect(event?.securityLevel).toBe("unknown");
   expect(event?.deviceHint).toBeUndefined();
+});
+
+test("worker verifies SNMPv3 authPriv with a vault-resolved profile and emits bounded metadata", async () => {
+  const previousProvider = process.env.FAYANMS_VAULT_PROVIDER;
+  const previousSecret = process.env.FAYANMS_VAULT_SNMP_TRAP_PROFILE;
+  const secret = randomBytes(24).toString("hex");
+  process.env.FAYANMS_VAULT_PROVIDER = "env";
+  process.env.FAYANMS_VAULT_SNMP_TRAP_PROFILE = secret;
+  try {
+    const engineId = Uint8Array.from([0x80, 0x00, 0x1f, 0x88, 0x80, 9, 8, 7, 6, 5, 4]);
+    const packet = Buffer.from(buildSnmpV3Trap({
+      engineId,
+      username: "trap-user",
+      secret,
+      notificationOid: "1.3.6.1.6.3.1.1.5.3",
+      varBinds: [{ oid: "1.3.6.1.2.1.1.1.0", value: "verified" }],
+    }));
+    const event = await decodeVerifiedSnmpV3Trap(
+      packet,
+      { address: "192.0.2.16", port: 1162 },
+      {
+        credentialProfileId: "profile-a",
+        hostname: "router-a",
+        username: "trap-user",
+        secretRef: "vault://snmp/trap-profile",
+      },
+    );
+    expect(event.securityLevel).toBe("authPriv");
+    expect(event.deviceHint).toEqual({
+      hostname: "router-a",
+      credentialProfileId: "profile-a",
+    });
+    expect(event.attributes).toEqual({
+      requestId: 1,
+      engineId: "80001f8880090807060504",
+      varBindCount: 2,
+      notificationOid: "1.3.6.1.6.3.1.1.5.3",
+    });
+    expect(JSON.stringify(event)).not.toContain(secret);
+  } finally {
+    if (previousProvider === undefined) delete process.env.FAYANMS_VAULT_PROVIDER;
+    else process.env.FAYANMS_VAULT_PROVIDER = previousProvider;
+    if (previousSecret === undefined) delete process.env.FAYANMS_VAULT_SNMP_TRAP_PROFILE;
+    else process.env.FAYANMS_VAULT_SNMP_TRAP_PROFILE = previousSecret;
+  }
 });

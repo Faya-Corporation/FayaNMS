@@ -1,5 +1,10 @@
 import { createSocket, type RemoteInfo, type Socket } from "node:dgram";
 import { nextPost, log } from "./next-client";
+import { resolveVaultSecret } from "./vault";
+import {
+  decodeSnmpV3Trap,
+  readSnmpV3UsmIdentity,
+} from "../../scripts/protocol-lab/snmpv3";
 import { PROTOCOLS, type ProtocolName } from "../../src/lib/protocol/ingest";
 
 const DEFAULT_PORTS: Record<ProtocolName, number> = {
@@ -32,6 +37,14 @@ let metrics: ProtocolCollectorMetrics = {
   relayFailures: 0,
 };
 let activeRelays = 0;
+let activeVerifications = 0;
+
+export interface SnmpV3ProfileReference {
+  credentialProfileId: string;
+  hostname: string;
+  username: string;
+  secretRef: string;
+}
 
 interface DecodedProtocolPayload {
   eventType: string;
@@ -127,6 +140,52 @@ export function decodeProtocolPacket(
   };
 }
 
+export async function decodeVerifiedSnmpV3Trap(
+  packet: Buffer,
+  remote: Pick<RemoteInfo, "address" | "port">,
+  profile: SnmpV3ProfileReference,
+) {
+  const identity = readSnmpV3UsmIdentity(new Uint8Array(packet));
+  if (identity.username !== profile.username) {
+    throw new Error("SNMPv3 profile username mismatch");
+  }
+  const secret = await resolveVaultSecret(profile.secretRef);
+  const decoded = decodeSnmpV3Trap(
+    new Uint8Array(packet),
+    {
+      engineId: identity.engineId,
+      username: profile.username,
+      secret,
+    },
+  );
+  const notification = decoded.varBinds.find(
+    (varBind) => varBind.oid === "1.3.6.1.6.3.1.1.4.1.0",
+  );
+  return {
+    collectorId: process.env.FAYANMS_PROTOCOL_COLLECTOR_ID?.trim() || "worker-1",
+    protocol: "snmp-trap" as const,
+    sourceIp: remote.address,
+    sourcePort: remote.port,
+    receivedAt: new Date().toISOString(),
+    eventType: "SNMP_TRAP",
+    severity: "INFO",
+    message: "Verified SNMPv3 authPriv trap",
+    protocolVersion: "SNMPV3_USM_AUTHPRIV",
+    securityLevel: "authPriv" as const,
+    deviceHint: {
+      hostname: profile.hostname,
+      credentialProfileId: profile.credentialProfileId,
+    },
+    attributes: {
+      requestId: decoded.requestId,
+      engineId: Buffer.from(decoded.engineId).toString("hex").slice(0, 64),
+      varBindCount: decoded.varBinds.length,
+      notificationOid:
+        typeof notification?.value === "string" ? notification.value : null,
+    },
+  };
+}
+
 export function getProtocolCollectorMetrics(): ProtocolCollectorMetrics {
   return { ...metrics };
 }
@@ -143,7 +202,7 @@ export function startProtocolCollector(): { stop: () => void } | null {
   metrics = { ...metrics, enabled: true, sockets: 0 };
 
   const relay = (event: Record<string, unknown>) => {
-    if (activeRelays >= MAX_IN_FLIGHT) {
+    if (activeRelays + activeVerifications >= MAX_IN_FLIGHT) {
       metrics.queueDrops += 1;
       return;
     }
@@ -154,10 +213,64 @@ export function startProtocolCollector(): { stop: () => void } | null {
       .finally(() => { activeRelays -= 1; });
   };
 
+  const verifyAndRelaySnmpTrap = async (packet: Buffer, remote: RemoteInfo) => {
+    if (activeRelays + activeVerifications >= MAX_IN_FLIGHT) {
+      metrics.queueDrops += 1;
+      return;
+    }
+    activeVerifications += 1;
+    try {
+      const identity = readSnmpV3UsmIdentity(new Uint8Array(packet));
+      const profileResult = await nextPost(
+        "/api/v1/ingest/protocol/snmpv3-profile",
+        {
+          sourceIp: remote.address,
+          username: identity.username,
+          engineId: Buffer.from(identity.engineId).toString("hex"),
+        },
+        5_000,
+      );
+      if (
+        !profileResult ||
+        typeof profileResult !== "object" ||
+        !("profile" in profileResult) ||
+        !profileResult.profile ||
+        typeof profileResult.profile !== "object"
+      ) {
+        throw new Error("SNMPv3 profile lookup returned no profile");
+      }
+      const profile = profileResult.profile as Partial<SnmpV3ProfileReference>;
+      if (
+        typeof profile.credentialProfileId !== "string" ||
+        typeof profile.hostname !== "string" ||
+        typeof profile.username !== "string" ||
+        typeof profile.secretRef !== "string"
+      ) {
+        throw new Error("SNMPv3 profile lookup returned an invalid profile");
+      }
+      const event = await decodeVerifiedSnmpV3Trap(packet, remote, {
+        credentialProfileId: profile.credentialProfileId,
+        hostname: profile.hostname,
+        username: profile.username,
+        secretRef: profile.secretRef,
+      });
+      relay(event);
+    } catch {
+      // Fail closed. Error messages never include packet bytes or secrets.
+      metrics.packetsRejected += 1;
+    } finally {
+      activeVerifications -= 1;
+    }
+  };
+
   for (const protocol of protocols) {
     const socket = createSocket("udp4");
     socket.on("message", (packet, remote) => {
       metrics.packetsReceived += 1;
+      if (protocol === "snmp-trap") {
+        void verifyAndRelaySnmpTrap(packet, remote);
+        return;
+      }
       const event = decodeProtocolPacket(protocol, packet, remote);
       if (!event) {
         metrics.packetsRejected += 1;

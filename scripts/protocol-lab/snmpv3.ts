@@ -539,6 +539,23 @@ function buildScopedResponse(options: {
   return sequence(octets(options.engineId), octets(options.contextName), pdu);
 }
 
+export function readSnmpV3UsmIdentity(
+  packet: Uint8Array,
+): { engineId: Uint8Array; username: string } {
+  const top = readTlv(packet, 0);
+  const topChildren = children(packet, top);
+  if (decodeInteger(packet, topChildren[0]) !== 3) {
+    throw new Error("SNMPv3 version 3 is required");
+  }
+  const securityOctets = topChildren[2];
+  const usm = readTlv(packet, securityOctets.valueStart);
+  const usmChildren = children(packet, usm);
+  return {
+    engineId: new Uint8Array(bytes(packet, usmChildren[0])),
+    username: decodeText(packet, usmChildren[3]),
+  };
+}
+
 function parseAuthenticatedRequest(
   packet: Uint8Array,
   config: SnmpV3Config,
