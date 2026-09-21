@@ -56,17 +56,17 @@ jobs:
       - name: Build ARM64 worker image
         run: |
           docker buildx build --platform linux/arm64 --load --file Dockerfile.worker --tag fayanms-worker:arm64-${CANDIDATE_SHA} .
-          docker run --rm fayanms-worker:arm64-${CANDIDATE_SHA} bun --version
+          docker run --rm fayanms-worker:arm64-${CANDIDATE_SHA} --version
 
       - name: Build ARM64 migration image
         run: |
           docker buildx build --platform linux/arm64 --load --file Dockerfile.migrator --tag fayanms-migrator:arm64-${CANDIDATE_SHA} .
-          docker run --rm fayanms-migrator:arm64-${CANDIDATE_SHA} bunx prisma --version
+          docker run --rm fayanms-migrator:arm64-${CANDIDATE_SHA} x prisma --version
 
       - name: Verify image architecture and runtime
         run: |
           test "$(docker image inspect fayanms:arm64-${CANDIDATE_SHA} --format '{{.Architecture}}')" = "arm64"
-          docker run --rm fayanms:arm64-${CANDIDATE_SHA} bun --version
+          docker run --rm fayanms:arm64-${CANDIDATE_SHA} --version
           IMAGE=fayanms:arm64-${CANDIDATE_SHA} bash scripts/ci/arm64-runtime-smoke.sh
           test "$(docker image inspect fayanms-worker:arm64-${CANDIDATE_SHA} --format '{{.Architecture}}')" = "arm64"
           test "$(docker image inspect fayanms-migrator:arm64-${CANDIDATE_SHA} --format '{{.Architecture}}')" = "arm64"
