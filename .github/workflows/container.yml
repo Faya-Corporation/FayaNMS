@@ -38,7 +38,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
@@ -69,7 +69,7 @@ jobs:
           test "$(docker image inspect fayanms-migrator:arm64-${GITHUB_SHA} --format '{{.Architecture}}')" = "arm64"
 
       - name: Scan ARM64 image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           image-ref: fayanms:arm64-${{ github.sha }}
           format: table
@@ -109,7 +109,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout exact candidate
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
@@ -200,7 +200,7 @@ jobs:
           provenance: mode=max
 
       - name: Scan published image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           image-ref: ghcr.io/fayafatehi/fayanms:${{ github.event.workflow_run.head_sha }}
           format: sarif
