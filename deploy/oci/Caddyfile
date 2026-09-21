@@ -1,7 +1,3 @@
-{
-  email {$FAYANMS_ACME_EMAIL}
-}
-
 {$FAYANMS_TLS_DOMAIN} {
   encode zstd gzip
 
