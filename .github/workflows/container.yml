@@ -32,13 +32,16 @@ permissions:
 
 jobs:
   arm64:
-    if: github.event_name != 'workflow_run'
     name: ARM64 build and runtime smoke
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
@@ -48,30 +51,30 @@ jobs:
 
       - name: Build ARM64 application image
         run: |
-          docker buildx build             --platform linux/arm64             --load             --tag fayanms:arm64-${GITHUB_SHA}             --build-arg NEXT_PUBLIC_SITE_URL=https://fayanms.invalid             --label org.opencontainers.image.revision=${GITHUB_SHA}             --label org.opencontainers.image.source=https://github.com/fayafatehi/FayaNMS             --provenance=false             .
+          docker buildx build             --platform linux/arm64             --load             --tag fayanms:arm64-${CANDIDATE_SHA}             --build-arg NEXT_PUBLIC_SITE_URL=https://fayanms.invalid             --label org.opencontainers.image.revision=${GITHUB_SHA}             --label org.opencontainers.image.source=https://github.com/fayafatehi/FayaNMS             --provenance=false             .
 
       - name: Build ARM64 worker image
         run: |
-          docker buildx build --platform linux/arm64 --load --file Dockerfile.worker --tag fayanms-worker:arm64-${GITHUB_SHA} .
-          docker run --rm fayanms-worker:arm64-${GITHUB_SHA} bun --version
+          docker buildx build --platform linux/arm64 --load --file Dockerfile.worker --tag fayanms-worker:arm64-${CANDIDATE_SHA} .
+          docker run --rm fayanms-worker:arm64-${CANDIDATE_SHA} bun --version
 
       - name: Build ARM64 migration image
         run: |
-          docker buildx build --platform linux/arm64 --load --file Dockerfile.migrator --tag fayanms-migrator:arm64-${GITHUB_SHA} .
-          docker run --rm fayanms-migrator:arm64-${GITHUB_SHA} bunx prisma --version
+          docker buildx build --platform linux/arm64 --load --file Dockerfile.migrator --tag fayanms-migrator:arm64-${CANDIDATE_SHA} .
+          docker run --rm fayanms-migrator:arm64-${CANDIDATE_SHA} bunx prisma --version
 
       - name: Verify image architecture and runtime
         run: |
-          test "$(docker image inspect fayanms:arm64-${GITHUB_SHA} --format '{{.Architecture}}')" = "arm64"
-          docker run --rm fayanms:arm64-${GITHUB_SHA} bun --version
-          IMAGE=fayanms:arm64-${GITHUB_SHA} bash scripts/ci/arm64-runtime-smoke.sh
-          test "$(docker image inspect fayanms-worker:arm64-${GITHUB_SHA} --format '{{.Architecture}}')" = "arm64"
-          test "$(docker image inspect fayanms-migrator:arm64-${GITHUB_SHA} --format '{{.Architecture}}')" = "arm64"
+          test "$(docker image inspect fayanms:arm64-${CANDIDATE_SHA} --format '{{.Architecture}}')" = "arm64"
+          docker run --rm fayanms:arm64-${CANDIDATE_SHA} bun --version
+          IMAGE=fayanms:arm64-${CANDIDATE_SHA} bash scripts/ci/arm64-runtime-smoke.sh
+          test "$(docker image inspect fayanms-worker:arm64-${CANDIDATE_SHA} --format '{{.Architecture}}')" = "arm64"
+          test "$(docker image inspect fayanms-migrator:arm64-${CANDIDATE_SHA} --format '{{.Architecture}}')" = "arm64"
 
       - name: Scan ARM64 image
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          image-ref: fayanms:arm64-${{ github.sha }}
+          image-ref: fayanms:arm64-${{ github.event.workflow_run.head_sha || github.sha }}
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: false
@@ -80,7 +83,7 @@ jobs:
       - name: Scan ARM64 worker image
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          image-ref: fayanms-worker:arm64-${{ github.sha }}
+          image-ref: fayanms-worker:arm64-${{ github.event.workflow_run.head_sha || github.sha }}
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: false
@@ -89,7 +92,7 @@ jobs:
       - name: Scan ARM64 migration image
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          image-ref: fayanms-migrator:arm64-${{ github.sha }}
+          image-ref: fayanms-migrator:arm64-${{ github.event.workflow_run.head_sha || github.sha }}
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: false
@@ -97,6 +100,7 @@ jobs:
 
   publish:
     name: Publish immutable GHCR image
+    needs: arm64
     if: >-
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion == 'success' &&
