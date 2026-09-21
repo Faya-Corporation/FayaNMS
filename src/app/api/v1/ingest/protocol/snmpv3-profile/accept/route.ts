@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { newCorrelationId, fail, ok } from "../../../_lib/api";
+import { newCorrelationId, fail, ok } from "../../../../_lib/api";
 import { authenticateServiceRequest } from "@/lib/auth/service-auth";
 import { evaluateSnmpV3EngineObservation, normalizeEngineIdHex } from "@/lib/protocol/snmpv3-policy";
 import { z } from "zod";

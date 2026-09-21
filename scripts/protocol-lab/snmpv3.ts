@@ -541,7 +541,7 @@ function buildScopedResponse(options: {
 
 export function readSnmpV3UsmIdentity(
   packet: Uint8Array,
-): { engineId: Uint8Array; username: string } {
+): { engineId: Uint8Array; boots: number; time: number; username: string } {
   const top = readTlv(packet, 0);
   const topChildren = children(packet, top);
   if (decodeInteger(packet, topChildren[0]) !== 3) {
