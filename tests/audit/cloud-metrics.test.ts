@@ -39,3 +39,28 @@ test("metrics endpoint requires the configured scrape token", async () => {
   );
   expect(allowed.status).toBe(200);
 });
+
+
+test("worker metrics endpoint exposes safe counters and honors the scrape token", async () => {
+  process.env.FAYANMS_METRICS_TOKEN = "";
+  const { handle } = await import("../../mini-services/worker/index.ts");
+  const response = await handle(new Request("http://localhost:3030/api/metrics"));
+  const body = await response.text();
+
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toContain("text/plain");
+  expect(body).toContain("fayanms_worker_jobs_total");
+  expect(body).toContain("fayanms_worker_scheduler_up");
+  expect(body).not.toContain("DATABASE_URL");
+  expect(body).not.toContain("FAYANMS_SERVICE_SECRET");
+
+  process.env.FAYANMS_METRICS_TOKEN = "worker-metrics-token";
+  const denied = await handle(new Request("http://localhost:3030/api/metrics"));
+  expect(denied.status).toBe(401);
+  const allowed = await handle(
+    new Request("http://localhost:3030/api/metrics", {
+      headers: { authorization: "Bearer worker-metrics-token" },
+    })
+  );
+  expect(allowed.status).toBe(200);
+});
