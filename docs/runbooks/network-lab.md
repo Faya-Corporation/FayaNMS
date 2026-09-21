@@ -42,4 +42,6 @@ Device association is advisory and ordered: exact hostname hint first, exact man
 
 The ingestion boundary is fail-closed for SNMP traps: the generic worker BER-framing path marks securityLevel=unknown and is rejected. Accepted SNMP traps must carry a server-side verified authPriv result, an explicit credentialProfileId, an exact associated device, and a CredentialProfile of type SNMPV3 bound to that device. The profile contains only the vault secret reference; the passphrase is never sent in the event or stored in audit JSON. The disposable scripts/protocol-lab/snmpv3.ts harness now proves authPriv trap verification and tamper rejection, but it does not constitute device or staging evidence.
 
+SNMPv3 engine IDs are operator-enrolled on the Device record through the authenticated device PATCH contract (snmpEngineIdHex). Enrollment resets boots/time state. The worker-side profile lookup refuses unenrolled devices; after authPriv verification, the acceptance route atomically advances the pinned engine boots/time and rejects older or equal observations. This is a replay/timeliness control, not physical-device or staging proof.
+
 Continuous discovery, collector HA, staging scrape evidence, and physical-device proof remain open.

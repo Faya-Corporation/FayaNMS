@@ -123,6 +123,13 @@ model Device {
   id                  String             @id @default(cuid())
   hostname            String             @unique
   mgmtIp              String
+  // SNMPv3 engine identity/state is operator-enrolled per device. The worker
+  // rejects traps until the engine ID is pinned; boots/time advance only
+  // after authenticated packet verification.
+  snmpEngineIdHex     String?  @unique
+  snmpEngineBoots     Int?
+  snmpEngineTime      Int?
+  snmpEngineLastSeenAt DateTime?
   displayName         String?
   vendorId            String
   vendor              Vendor             @relation(fields: [vendorId], references: [id], onDelete: Restrict)

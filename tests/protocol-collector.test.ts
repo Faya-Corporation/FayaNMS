@@ -66,6 +66,7 @@ test("worker verifies SNMPv3 authPriv with a vault-resolved profile and emits bo
         hostname: "router-a",
         username: "trap-user",
         secretRef: "vault://snmp/trap-profile",
+        engineIdHex: "80001f8880090807060504",
       },
     );
     expect(event.securityLevel).toBe("authPriv");
@@ -80,6 +81,19 @@ test("worker verifies SNMPv3 authPriv with a vault-resolved profile and emits bo
       notificationOid: "1.3.6.1.6.3.1.1.5.3",
     });
     expect(JSON.stringify(event)).not.toContain(secret);
+    await expect(
+      decodeVerifiedSnmpV3Trap(
+        packet,
+        { address: "192.0.2.16", port: 1162 },
+        {
+          credentialProfileId: "profile-a",
+          hostname: "router-a",
+          username: "trap-user",
+          secretRef: "vault://snmp/trap-profile",
+          engineIdHex: "00000000000000000000",
+        },
+      ),
+    ).rejects.toThrow("engine ID mismatch");
   } finally {
     if (previousProvider === undefined) delete process.env.FAYANMS_VAULT_PROVIDER;
     else process.env.FAYANMS_VAULT_PROVIDER = previousProvider;

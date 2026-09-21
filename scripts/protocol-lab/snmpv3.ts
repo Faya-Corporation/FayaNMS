@@ -552,6 +552,8 @@ export function readSnmpV3UsmIdentity(
   const usmChildren = children(packet, usm);
   return {
     engineId: new Uint8Array(bytes(packet, usmChildren[0])),
+    boots: decodeInteger(packet, usmChildren[1]),
+    time: decodeInteger(packet, usmChildren[2]),
     username: decodeText(packet, usmChildren[3]),
   };
 }

@@ -5,6 +5,7 @@ import {
   decodeSnmpV3Trap,
   readSnmpV3UsmIdentity,
 } from "../../scripts/protocol-lab/snmpv3";
+import { normalizeEngineIdHex } from "../../src/lib/protocol/snmpv3-policy";
 import { PROTOCOLS, type ProtocolName } from "../../src/lib/protocol/ingest";
 
 const DEFAULT_PORTS: Record<ProtocolName, number> = {
@@ -44,6 +45,7 @@ export interface SnmpV3ProfileReference {
   hostname: string;
   username: string;
   secretRef: string;
+  engineIdHex: string;
 }
 
 interface DecodedProtocolPayload {
@@ -149,6 +151,9 @@ export async function decodeVerifiedSnmpV3Trap(
   if (identity.username !== profile.username) {
     throw new Error("SNMPv3 profile username mismatch");
   }
+  if (normalizeEngineIdHex(identity.engineId) !== profile.engineIdHex.toLowerCase()) {
+    throw new Error("SNMPv3 profile engine ID mismatch");
+  }
   const secret = await resolveVaultSecret(profile.secretRef);
   const decoded = decodeSnmpV3Trap(
     new Uint8Array(packet),
@@ -244,7 +249,8 @@ export function startProtocolCollector(): { stop: () => void } | null {
         typeof profile.credentialProfileId !== "string" ||
         typeof profile.hostname !== "string" ||
         typeof profile.username !== "string" ||
-        typeof profile.secretRef !== "string"
+        typeof profile.secretRef !== "string" ||
+        typeof profile.engineIdHex !== "string"
       ) {
         throw new Error("SNMPv3 profile lookup returned an invalid profile");
       }
@@ -253,7 +259,20 @@ export function startProtocolCollector(): { stop: () => void } | null {
         hostname: profile.hostname,
         username: profile.username,
         secretRef: profile.secretRef,
+        engineIdHex: profile.engineIdHex.toLowerCase(),
       });
+      await nextPost(
+        "/api/v1/ingest/protocol/snmpv3-profile/accept",
+        {
+          sourceIp: remote.address,
+          username: identity.username,
+          credentialProfileId: profile.credentialProfileId,
+          engineIdHex: Buffer.from(identity.engineId).toString("hex"),
+          boots: identity.boots,
+          time: identity.time,
+        },
+        5_000,
+      );
       relay(event);
     } catch {
       // Fail closed. Error messages never include packet bytes or secrets.

@@ -45,6 +45,12 @@ test("ingestion route requires telemetry scope and stores no raw packet field", 
   expect(profileRoute).toContain('authenticateServiceRequest(request, "telemetry")');
   expect(profileRoute).toContain("secretRef");
   expect(profileRoute).not.toContain("secretValue");
+  const deviceRoute = readFileSync("src/app/api/v1/devices/[id]/route.ts", "utf8");
+  expect(deviceRoute).toContain("snmpEngineIdHex");
+  expect(deviceRoute).toContain("snmpEngineBoots = null");
+  const acceptRoute = readFileSync("src/app/api/v1/ingest/protocol/snmpv3-profile/accept/route.ts", "utf8");
+  expect(acceptRoute).toContain('authenticateServiceRequest(request, "telemetry")');
+  expect(acceptRoute).toContain("SNMP_REPLAY_RACE");
 });
 
 test("SNMP policy requires verified authPriv and a device-bound SNMPV3 profile", () => {
