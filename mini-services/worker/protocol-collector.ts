@@ -33,6 +33,16 @@ let metrics: ProtocolCollectorMetrics = {
 };
 let activeRelays = 0;
 
+interface DecodedProtocolPayload {
+  eventType: string;
+  severity: string;
+  message: string;
+  protocolVersion: string;
+  deviceHint?: { hostname: string };
+  attributes: Record<string, string | number | boolean | null>;
+}
+
+
 function envKey(protocol: ProtocolName, suffix: string): string {
   return "FAYANMS_" + protocol.toUpperCase().replace(/-/g, "_") + suffix;
 }
@@ -51,7 +61,7 @@ function severityFromSyslog(priority: number): string {
   return ["EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG"][priority % 8] ?? "INFO";
 }
 
-function parseSyslog(packet: Buffer) {
+function parseSyslog(packet: Buffer): DecodedProtocolPayload {
   const text = packet.toString("utf8", 0, Math.min(packet.length, 8192));
   const priorityMatch = /^<([0-9]{1,3})>/.exec(text);
   const priority = priorityMatch ? Number(priorityMatch[1]) : 14;
@@ -73,7 +83,7 @@ function readVersion(packet: Buffer): number | null {
   return packet.length >= 4 ? packet.readUInt32BE(0) : null;
 }
 
-function parseBinary(protocol: ProtocolName, packet: Buffer) {
+function parseBinary(protocol: ProtocolName, packet: Buffer): DecodedProtocolPayload | null {
   if (protocol === "snmp-trap") {
     if (packet.length < 2 || packet[0] !== 0x30) return null;
     return {
