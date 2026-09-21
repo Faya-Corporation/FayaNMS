@@ -469,8 +469,7 @@ function parseAuthenticatedRequest(
   const scopedChildren = children(scoped, scopedTop);
   const pdu = scopedChildren[2];
   const pduChildren = children(scoped, pdu);
-  const varBinds = readTlv(scoped, pduChildren[3].valueStart);
-  const varBind = children(scoped, varBinds)[0];
+  const varBind = children(scoped, pduChildren[3])[0];
   const varBindChildren = children(scoped, varBind);
   return {
     engineId,
@@ -506,8 +505,7 @@ export function decodeSnmpV3GetResponse(
   const scopedTop = readTlv(scoped, 0);
   const scopedChildren = children(scoped, scopedTop);
   const pduChildren = children(scoped, scopedChildren[2]);
-  const responseBinds = readTlv(scoped, pduChildren[3].valueStart);
-  const responseBind = children(scoped, responseBinds)[0];
+  const responseBind = children(scoped, pduChildren[3])[0];
   const responseBindChildren = children(scoped, responseBind);
   return {
     requestId: decodeInteger(scoped, pduChildren[0]),
