@@ -126,6 +126,9 @@ jobs:
       - name: Install worker dependencies (frozen)
         run: cd mini-services/worker && bun install --frozen-lockfile
 
+      - name: Cloud layout and secret boundary validation
+        run: bash scripts/verification/validate-cloud-layout.sh
+
       - name: Lint
         run: bun run lint
 
