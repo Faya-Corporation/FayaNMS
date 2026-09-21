@@ -21,6 +21,15 @@ function u16(packet: Uint8Array, offset: number): number {
   return (packet[offset] << 8) | packet[offset + 1];
 }
 
+function u32(packet: Uint8Array, offset: number): number {
+  return (
+    packet[offset] * 0x1000000 +
+    packet[offset + 1] * 0x10000 +
+    packet[offset + 2] * 0x100 +
+    packet[offset + 3]
+  );
+}
+
 function waitForMessage(socket: ReturnType<typeof createSocket>): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -85,8 +94,8 @@ describe("CLOUD-11 packet-level protocol fixtures", () => {
     expect(u16(v9, 20)).toBe(0);
     expect(u16(ipfix, 0)).toBe(10);
     expect(u16(ipfix, 16)).toBe(2);
-    expect(u16(sflow, 0)).toBe(5);
-    expect(u16(sflow, 4)).toBe(1);
+    expect(u32(sflow, 0)).toBe(5);
+    expect(u32(sflow, 4)).toBe(1);
   });
 
   test("restricts the sender to loopback unless an explicit lab override exists", () => {
