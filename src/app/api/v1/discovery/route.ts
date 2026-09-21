@@ -21,14 +21,36 @@ export const dynamic = "force-dynamic";
 
 const IPV4_OCTET = "(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)";
 const CIDR_PATTERN = new RegExp(
-  `^${IPV4_OCTET}\\.${IPV4_OCTET}\\.${IPV4_OCTET}\\.${IPV4_OCTET}\\/(3[0-2]|[12]?\\d)$`
+  `^${IPV4_OCTET}\\.${IPV4_OCTET}\\.${IPV4_OCTET}\\/(3[0-2]|2[4-9])import { db } from "@/lib/db";
+import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../_lib/api";
+import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { z } from "zod";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * GET  /api/v1/discovery — recent DISCOVERY jobs (last 10, newest first).
+ *   Returns per job: id, correlationId, status, progress, timestamps, the
+ *   subnets from payloadJson, the parsed candidates from resultJson (when
+ *   SUCCEEDED), how many candidates were imported and the scan duration.
+ *
+ * POST /api/v1/discovery — queue a discovery scan.
+ *   Body: { subnets: string[] (1..8, CIDR-ish), name?: string }
+ *   Creates a QUEUED JobExecution (type DISCOVERY, target SYSTEM) which the
+ *   worker mini-service picks up via /api/v1/worker/claim. Candidates are
+ *   persistence-free: they land in the job's resultJson and are turned into
+ *   real devices by POST /api/v1/discovery/import.
+ */
+
+const IPV4_OCTET = "(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)";
+
 );
 
 const createSchema = z.object({
   subnets: z
-    .array(z.string().trim().regex(CIDR_PATTERN, "must be a CIDR like 10.40.0.0/24"))
+    .array(z.string().trim().regex(CIDR_PATTERN, "must be a CIDR like 10.40.0.0/24 with a /24-/32 prefix"))
     .min(1, "at least one subnet is required")
-    .max(8, "a scan is limited to 8 subnets"),
+    .max(4, "a scan is limited to 4 /24-or-smaller subnets"),
   name: z.string().trim().max(120).optional(),
 });
 

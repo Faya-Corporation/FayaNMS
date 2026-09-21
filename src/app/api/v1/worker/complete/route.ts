@@ -66,8 +66,9 @@ const discoveryResultSchema = z.object({
         discoveredAt: z.string().optional(),
       })
     )
-    .min(1),
+    .min(0),
   scannedSubnets: z.number().int().nonnegative().optional(),
+  scannedTargets: z.number().int().nonnegative().optional(),
   durationMs: z.number().int().nonnegative().optional(),
 });
 
