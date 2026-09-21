@@ -44,7 +44,7 @@ services:
         condition: service_healthy
     networks:
       - backend
-    command: ["x", "prisma", "migrate", "deploy"]
+    command: ["run", "./node_modules/prisma/build/index.js", "migrate", "deploy"]
     security_opt:
       - no-new-privileges:true
     cap_drop:
