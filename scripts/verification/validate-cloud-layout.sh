@@ -27,7 +27,7 @@ for path in "${required[@]}"; do
   test -f "$path" || { echo "missing required cloud file: $path" >&2; exit 1; }
 done
 
-if git ls-files | rg -n '(^|/)(\\.env|\\.env\\..*|.*\\.pem|.*\\.key)$' | rg -v '(^|/)\\.env\\.example$|^mini-services/worker/harness/tls/.*\\.pem$'; then
+if git ls-files | rg -n '(^|/)(\.env|\.env\..*|.*\.pem|.*\.key)$' | rg -v '(^|/)\.env\.example$|^mini-services/worker/harness/tls/.*\.pem$'; then
   echo "tracked secret-shaped file detected" >&2
   exit 1
 fi
