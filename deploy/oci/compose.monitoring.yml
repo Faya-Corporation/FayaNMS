@@ -10,7 +10,7 @@ services:
     profiles: ["monitoring"]
     restart: unless-stopped
     volumes:
-      - ../../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     networks:
       - backend
@@ -34,7 +34,7 @@ services:
     profiles: ["monitoring"]
     restart: unless-stopped
     volumes:
-      - ../../monitoring/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
+      - ./monitoring/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
     networks:
       - backend
       - monitoring
@@ -55,7 +55,7 @@ services:
     image: grafana/grafana:12.1.1
     profiles: ["monitoring"]
     restart: unless-stopped
-    env_file: ../oci/.env
+    env_file: .env
     environment:
       GF_SERVER_HTTP_ADDR: 0.0.0.0
       GF_SERVER_HTTP_PORT: 3000
