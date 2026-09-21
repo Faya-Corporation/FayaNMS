@@ -4,7 +4,7 @@
 **Execution branch:** `codex/fayanms-cloud-platform`  
 **Initial main SHA:** `7aef0a330dc8f965fb496b735eb8a97b8d2c5149`  
 **Current main readback:** `3ab5c7eb3118b9b37c6286058de99b41bb67cac0`  
-**Current implementation HEAD:** `0cd3fa11019dc79318d059fb9206a4a94e11f101`
+**Current implementation HEAD:** `0439509cc344bcb3b3014901936943b184ca4885`
 **Execution date:** 2026-09-21  
 **Authoritative inputs:** Cloud Development/CICD/OCI Implementation Plan, Executive Production Review, Full Independent Production Audit, Production Remediation Roadmap, Competitive Benchmark, Production Gap Register.
 
@@ -18,12 +18,12 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 
 | Item | Evidence |
 |---|---|
-| Current branch | Remote `codex/fayanms-cloud-platform` at `0cd3fa11019dc79318d059fb9206a4a94e11f101`; no local checkout was available in the execution workspace |
-| `main` HEAD | `7aef0a330dc8f965fb496b735eb8a97b8d2c5149` |
+| Current branch | Remote `codex/fayanms-cloud-platform` at `0439509cc344bcb3b3014901936943b184ca4885`; no local checkout was available in the execution workspace |
+| `main` HEAD | `3ab5c7eb3118b9b37c6286058de99b41bb67cac0` |
 | Remote protection | Live branch readback: `protected:false`, `protection.enabled:false`, required checks enforcement `off` |
-| Latest CI | Run `35590744651` on exact HEAD `0cd3fa11`: gate `106304371929`, scan `106305178120`, e2e `106305178084`, and browser `106305178090` all PASS; worker-side SNMPv3 authPriv verification tests included |
+| Latest CI | Run `35594017887` on exact HEAD `0439509c`: gate `106314598341`, scan `106315526255`, e2e `106315526127`, and browser `106315526176` all PASS; SNMPv3 engine-state policy, migration, replay, and worker verification tests included |
 | Browser evidence | Run `35575582829` browser job `106257462989` PASS; prior first-attempt B5 diagnostics remain retained as an intermittent-risk record. |
-| ARM64 container | Run `35590744643` job `106304455725` on exact HEAD `0cd3fa11`: app/worker/migrator ARM64 builds, direct Prisma CLI smoke, architecture/runtime checks, and strict HIGH/CRITICAL Trivy scans with `ignore-unfixed: false`; GHCR publication skipped for pull request |
+| ARM64 container | Run `35594017889` job `106314741108` on exact HEAD `0439509c`: app/worker/migrator ARM64 builds, direct Prisma CLI smoke, architecture/runtime checks, and strict HIGH/CRITICAL Trivy scans with `ignore-unfixed: false`; GHCR publication skipped for draft PR |
 | Open PRs | Draft PR #12: `codex/fayanms-cloud-platform` → `main` |
 | Repository access | GitHub connector has authenticated repository read/write access; plain Git clone is unavailable in this execution container |
 | Security note | Prior audit reports an exposed PAT; rotation/revocation remains an owner action and no token is copied into this repository |
@@ -45,7 +45,7 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 | CLOUD-08 | Automated staging deploy | P0 | BLOCKED — EXTERNAL | CLOUD-07 | Codex + owner | Exact-SHA protected-environment SSH workflow committed | Owner configures staging secrets/approval and runs deployment |
 | CLOUD-09 | Health/smoke gate | P0 | BLOCKED — EXTERNAL | CLOUD-08 | Codex | Fail-closed health script and release evidence runbook committed; no staging endpoint exists here | Run against OCI staging and retain smoke evidence |
 | CLOUD-10 | Observability | P1 | IN PROGRESS | CLOUD-09 | App /api/metrics and worker /api/metrics contracts are implemented with token gating; Prometheus/OTel configs now use reviewed SHA-256 image references and a regression test; staging architecture/scan/alert proof remains open | Owner validates the selected monitoring digests on the OCI host architecture and runs a controlled staging alert test |
-| CLOUD-11 | Network protocol lab | P1 | IN PROGRESS | CLOUD-10 | CI-certified SNMPv3 authPriv harness and worker-side vault-resolved verification are implemented; profile lookup returns only a vault reference and the receiver emits bounded verified metadata; unknown/community traps remain rejected | Add engine-ID pinning and bounded anti-replay/time policy, then certify receiver traffic in isolated staging/lab; HA and continuous discovery remain open |
+| CLOUD-11 | Network protocol lab | P1 | IN PROGRESS | CLOUD-10 | CI-certified SNMPv3 authPriv harness, worker-side vault-resolved verification, durable engine-ID enrollment, boots/time replay policy, and bounded verified metadata relay are implemented | Certify receiver traffic in isolated staging/lab; durable queue/HA, continuous discovery, and physical-vendor evidence remain open |
 | CLOUD-12 | Controlled telemetry ports | P1 | BLOCKED — EXTERNAL | CLOUD-11 | Codex + owner | Least-privilege port policy committed; no listeners should be opened yet | Apply only after receiver implementation and owner NSG/firewall review |
 | CLOUD-13 | VPN/physical device lab | P1 | BLOCKED — EXTERNAL | CLOUD-12 | Codex + owner | Hardware certification matrix and isolated-lab runbook committed | Owner supplies lab VPN/devices and executes matrix |
 | CLOUD-14 | Database backup/DR | P1 | BLOCKED — EXTERNAL | CLOUD-13 | Codex + owner | Encrypted backup and isolated restore-drill scripts/runbook committed; no off-host target/key exists here | Configure object storage/key custody and run restore drill |
@@ -154,6 +154,18 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 - Remaining risks: the disposable agent is loopback-only and does not establish staging, vendor, or physical-device support; optional monitoring profile digests and staging alert proof remain open.
 - Next task: continue CLOUD-11 with repository-side real collector/device-association work where executable; keep CLOUD-12 listener exposure blocked until those receivers are implemented and reviewed.
 
+### Round 10 — SNMPv3 engine enrollment and anti-replay policy
+
+- Completed: added durable device-bound SNMPv3 engine identity state; added enrollment/reset through the device API; added fail-closed engine-ID mismatch, unenrolled, invalid boots/time, and replay checks; advanced state with a conditional update to prevent concurrent stale observations from being accepted; updated profile lookup and worker relay to enforce the policy.
+- Files changed: prisma/schema.prisma; prisma/migrations/20260921110000_snmpv3_engine_state/migration.sql; src/app/api/v1/devices/[id]/route.ts; src/lib/protocol/snmpv3-policy.ts; src/app/api/v1/ingest/protocol/snmpv3-profile/route.ts; src/app/api/v1/ingest/protocol/snmpv3-profile/accept/route.ts; mini-services/worker/protocol-collector.ts; scripts/protocol-lab/snmpv3.ts; tests/snmpv3-policy.test.ts; tests/protocol-collector.test.ts; tests/protocol-ingest.test.ts; docs/runbooks/network-lab.md; this ledger.
+- Tests: the first engine-state run 35593695192 failed at typecheck with missing boots/time return typing and one incorrect relative import; fix commit 0439509c corrected both. Fresh exact-head run 35594017887 passed gate 106314598341, E2E 106315526127, browser/axe/keyboard/RTL 106315526176, and scan 106315526255.
+- Validation results: ARM64 run 35594017889, job 106314741108, passed app/worker/migrator builds, direct Prisma CLI smoke, architecture/runtime verification, and strict HIGH/CRITICAL Trivy scans with ignore-unfixed false. Migration/schema drift, typecheck, full unit/security/worker/protocol suites, production build, and Docker gates passed. GHCR publication was skipped because PR #12 remains draft.
+- Commit SHAs: engine-state implementation 2492ddce; type/import correction 0439509c.
+- CI status: exact current head is green in both repository and ARM64 certification; no credentials, secrets, private keys, packet bytes, or raw SNMP state were committed.
+- Newly discovered findings: engine-ID pinning and boots/time policy provide repository-side replay controls but do not establish staging, hardware, vendor interoperability, durable queue/HA, continuous discovery, or production proof. Devices require an explicit operator enrollment action before SNMPv3 telemetry is accepted.
+- Blockers: prior PAT rotation, branch protection/ruleset, live Codespaces proof, OCI tenancy/VM/NSG/DNS/SSH, staging approval, VPN, off-host backup key/target, and physical hardware remain owner-controlled actions.
+- Remaining risks: telemetry ports remain intentionally closed; monitoring digest/platform validation, alert proof, durable collector queue/HA, discovery, physical-vendor matrix, staging and production evidence remain open.
+- Exact next task: replace the worker's randomized discovery simulation with a bounded real TCP/reverse-DNS probe path; keep authenticated SNMP identity and vendor claims separate until credentials and isolated lab evidence exist.
 ## Evidence-state vocabulary
 
 For each capability, record separately where applicable: implemented; unit tested; integration tested; protocol-harness tested; Docker tested; CI certified; staging tested; physical-hardware tested; production proven.
