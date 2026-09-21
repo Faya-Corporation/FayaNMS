@@ -416,8 +416,21 @@ jobs:
           mkdir -p /tmp/gitleaks
           tar -xzf "/tmp/${GITLEAKS_ARCHIVE}" -C /tmp/gitleaks
           /tmp/gitleaks/gitleaks version
-          /tmp/gitleaks/gitleaks git --config .gitleaks.toml --redact --no-banner .
-          /tmp/gitleaks/gitleaks dir --config .gitleaks.toml --redact --no-banner .
+          set +e
+          /tmp/gitleaks/gitleaks git --config .gitleaks.toml --redact --no-banner \
+            --report-format json --report-path /tmp/gitleaks-git.json .
+          GITLEAKS_GIT_STATUS=$?
+          /tmp/gitleaks/gitleaks dir --config .gitleaks.toml --redact --no-banner \
+            --report-format json --report-path /tmp/gitleaks-dir.json .
+          GITLEAKS_DIR_STATUS=$?
+          set -e
+          for report in /tmp/gitleaks-git.json /tmp/gitleaks-dir.json; do
+            if test -s "${report}" && test "$(jq 'length' "${report}")" -gt 0; then
+              jq -r '.[] | "gitleaks finding: rule=\(.RuleID) file=\(.File) line=\(.StartLine) commit=\(.Commit)"' "${report}"
+            fi
+          done
+          test "${GITLEAKS_GIT_STATUS}" -eq 0
+          test "${GITLEAKS_DIR_STATUS}" -eq 0
 
       # ── 9. P20-011 — SAST ──
       # Action path preserved verbatim from docs/ci/ci-gate.yml; the same v1
