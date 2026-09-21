@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 
 const IPV4_OCTET = "(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)";
 const CIDR_PATTERN = new RegExp(
-  `^\${IPV4_OCTET}\\.\${IPV4_OCTET}\\.\${IPV4_OCTET}\\.\${IPV4_OCTET}\\/(3[0-2]|2[4-9])$`
+  `^${IPV4_OCTET}\\.${IPV4_OCTET}\\.${IPV4_OCTET}\\.${IPV4_OCTET}\\/(3[0-2]|2[4-9])$`
 );
 
 const createSchema = z.object({
