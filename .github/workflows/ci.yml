@@ -107,7 +107,7 @@ jobs:
       FAYANMS_SERVICE_SECRET: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
       FAYANMS_CONFIG_ENC_KEY: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (SHA-pinned 2026-09-11)
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (SHA-pinned 2026-09-11)
         with:
           fetch-depth: 0 # full history — gitleaks scans origin commits too
 
@@ -299,7 +299,7 @@ jobs:
     env:
       DATABASE_URL: "postgresql://fayanms:fayanms-ci-only@localhost:5433/fayanms"
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (SHA-pinned 2026-09-11)
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (SHA-pinned 2026-09-11)
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2 (SHA-pinned 2026-09-11)
         with:
           bun-version: 1.3.14
@@ -345,7 +345,7 @@ jobs:
     env:
       DATABASE_URL: "postgresql://fayanms:fayanms-ci-only@localhost:5433/fayanms"
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (SHA-pinned 2026-09-11)
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (SHA-pinned 2026-09-11)
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2 (SHA-pinned 2026-09-11)
         with:
           bun-version: 1.3.14
@@ -364,12 +364,24 @@ jobs:
       - name: Run rendering-layer browser journeys (axe a11y + keyboard + RTL)
         run: FAYANMS_BROWSER_E2E=1 bun test tests/browser/
 
+      - name: Upload browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-diagnostics-${{ github.run_id }}
+          path: |
+            /tmp/fayanms-e2e-*.log
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+
   scan:
     runs-on: ubuntu-latest
     needs: gate
     continue-on-error: false # explicit: scan steps are a hard gate, not advisory
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (SHA-pinned 2026-09-11)
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (SHA-pinned 2026-09-11)
         with:
           fetch-depth: 0
 
@@ -436,7 +448,7 @@ jobs:
       # guard below remains as a correctness guard for exotic checkouts.
       - name: Container scan (trivy)
         if: ${{ hashFiles('Dockerfile') != '' }}
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA-pinned 2026-09-11)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0 (SHA-pinned 2026-09-11)
         with:
           scan-type: fs
           scan-ref: .
@@ -496,7 +508,7 @@ jobs:
           docker build -f Dockerfile.worker -t fayanms-worker:ci .
 
       - name: Image scan — app (trivy, HIGH/CRITICAL fail)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA-pinned 2026-09-11)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0 (SHA-pinned 2026-09-11)
         with:
           scan-type: image
           image-ref: fayanms-app:ci
@@ -514,7 +526,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Image scan — worker (trivy, HIGH/CRITICAL fail)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA-pinned 2026-09-11)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0 (SHA-pinned 2026-09-11)
         with:
           scan-type: image
           image-ref: fayanms-worker:ci
