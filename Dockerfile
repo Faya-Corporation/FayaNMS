@@ -70,47 +70,30 @@ RUN bunx prisma generate \
       echo "NOTE: bun exited $code AFTER a successful build (known 1.3.14 teardown segfault, artifacts verified)" >&2; \
     fi
 
-FROM oven/bun:1.3.14-slim@sha256:d56a2534ffd262e92c12fd3249d3924d296d97086da773f821d7d0477435ea04 AS runtime
+FROM oven/bun:1.3.14-distroless@sha256:c28c51287af70bab8e0b66fc4b6a30cfb92a727ebc88045223adc9f4c9d09307 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
-# R78 (run 35423693016): the FIRST image scan found 88 HIGH/CRITICAL
-# findings — ALL in the base's Debian packages, with fixes published to the
-# Debian security channel AFTER the base image was built (the pinned digest
-# IS the current tag resolution, verified against the registry — no bump
-# exists). Pull the security channel at build time and drop the package
-# lists: the digest pin still governs the SDK/base binaries, while the OS
-# packages track Debian's security channel (forward-compatible within the
-# same release — Debian security patches never break ABI, so the glibc/
-# openssl consistency with the build stage holds).
-RUN apt-get update \
- && apt-get upgrade -y \
- && rm -rf /var/lib/apt/lists/*
+# Distroless runtime: no package manager, shell, or utility package surface.
+# The build stage remains Debian/glibc-compatible for Prisma and sharp; the
+# final stage carries only Bun, libc, CA roots, and the traced application.
 
-# Non-root runtime user with a pinned uid (see header note).
-# R75 (run 35421797082): the digest-pinned oven/bun slim base ships neither
-# adduser nor addgroup — the runtime stage's FIRST-ever execution died here
-# (exit 127). Register the pinned uid/gid directly: same non-root result
-# (passwd + group lines, no login shell, no home dir needed beyond WORKDIR),
-# no extra packages, no network in the build.
-RUN echo "faya:x:10001:10001::/app:/bin/false" >> /etc/passwd \
- && echo "faya:x:10001:" >> /etc/group
-
-COPY --from=build --chown=faya:faya /app/.next/standalone ./
+COPY --from=build --chown=10001:10001 /app/.next/standalone ./
 # Prisma client + query engine: explicit copy as a standalone-tracing safety
 # net — boot fails fast without them, so prove presence on a clean machine,
 # not just the build host (runbook T1 acceptance criteria).
-COPY --from=build --chown=faya:faya /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build --chown=faya:faya /app/node_modules/@prisma  ./node_modules/@prisma
+COPY --from=build --chown=10001:10001 /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build --chown=10001:10001 /app/node_modules/@prisma  ./node_modules/@prisma
 # Schema ships with the image so one-off provisioning (prisma db push against
 # the PostgreSQL service) can run from the build stage via the compose
 # `provision` service.
-COPY --from=build --chown=faya:faya /app/prisma ./prisma
+COPY --from=build --chown=10001:10001 /app/prisma ./prisma
 
-USER faya
+USER 10001
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD bun -e 'const r = await fetch("http://127.0.0.1:3000/"); process.exit(r.ok ? 0 : 1)'
-CMD ["bun", "server.js"]
+  CMD ["/usr/local/bin/bun", "-e", "const r = await fetch('http://127.0.0.1:3000/'); process.exit(r.ok ? 0 : 1)"]
+ENTRYPOINT ["/usr/local/bin/bun"]
+CMD ["server.js"]
