@@ -47,6 +47,26 @@ title = "FayaNMS gitleaks allowlist (audit-trialed throwaway fixtures only)"
 useDefault = true
 
 [allowlist]
+# The historical arm64 smoke script (commit 0d818cdbc6c96d4b77a2ac36a8394dfa03940f5c)
+# carried the same documented CI-only fixture already triaged in the workflow
+# and .env.example paths. Current smoke code generates credentials ephemerally;
+# this exact-value exception preserves the no-history-rewrite rule.
+regexes = [
+  '''^6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03 """R72 triage (run 35416148348): test fixture constants, audit-trail \
+prose quoting them, the protocol harness's own loopback-only key material, and \
+the documented CI fixture hex whose non-authority is machine-proven by the \
+P1-019 production blocklist. See docs/audits/FayaNMS-R70-Merge-to-Main-and-CI-Bootstrap-2026-09-19.md §8."""
+paths = [
+  '''^tests/''',
+  '''^docs/audits/''',
+  '''^docs/ci/''',
+  '''^worklog\.md$''',
+  '''^mini-services/worker/harness/''',
+  '''^\.github/workflows/ci\.yml$''',
+  '''^\.env\.example$''',
+]
+'',
+]
 description = """R72 triage (run 35416148348): test fixture constants, audit-trail \
 prose quoting them, the protocol harness's own loopback-only key material, and \
 the documented CI fixture hex whose non-authority is machine-proven by the \
