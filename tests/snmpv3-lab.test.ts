@@ -145,4 +145,4 @@ describe("CLOUD-11 SNMPv3 authPriv disposable agent", () => {
       decodeSnmpV3Trap(packet, { ...config, secret: randomBytes(24).toString("hex") }),
     ).toThrow("SNMPv3 USM authentication failed");
   });
-\n
+
