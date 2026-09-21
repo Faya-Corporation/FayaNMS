@@ -129,8 +129,10 @@ function activeBrowser(): Browser {
   return browser;
 }
 
-async function newJourneyPage(viewport: { width: number; height: number }): Promise<Page> {
-  const page = await activeBrowser().newPage({ viewport });
+async function newJourneyPage(options: {
+  viewport: { width: number; height: number };
+}): Promise<Page> {
+  const page = await activeBrowser().newPage(options);
   page.on("crash", () => {
     console.error("[browser] Playwright page crash detected");
   });
