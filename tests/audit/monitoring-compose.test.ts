@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
 
 const compose = await Bun.file("deploy/oci/compose.monitoring.yml").text();
+const composeLines = compose.split("\n");
 
 function imageFor(service: string): string {
-  const block = compose.match(new RegExp("  " + service + ":[\\s\\S]*?(?=\\n  [a-z0-9-]+:|\\nvolumes:)"))?.[0] ?? "";
-  return block.match(/^    image: (.+)$/m)?.[1] ?? "";
+  const start = composeLines.indexOf("  " + service + ":");
+  const imageLine = composeLines.slice(start + 1).find((line) => line.startsWith("    image: "));
+  return imageLine?.slice("    image: ".length) ?? "";
 }
 
 test("monitoring profile uses reviewed immutable image references", () => {
@@ -12,7 +14,8 @@ test("monitoring profile uses reviewed immutable image references", () => {
 
   expect(images).toHaveLength(3);
   for (const image of images) {
-    expect(image).toMatch(/^[^@\\s]+@sha256:[0-9a-f]{64}$/);
+    expect(image.split("@sha256:")).toHaveLength(2);
+    expect(image.split("@sha256:")[1]).toMatch(/^[0-9a-f]{64}$/);
   }
 
   expect(images[0]).toBe(
@@ -27,8 +30,8 @@ test("monitoring profile uses reviewed immutable image references", () => {
 });
 
 test("monitoring services stay isolated from public host publishing", () => {
-  expect(compose).not.toMatch(/^\\s*ports:/m);
-  expect(compose).toContain("monitoring:\\n    internal: true");
+  expect(composeLines.some((line) => line.trimStart().startsWith("ports:"))).toBe(false);
+  expect(compose).toContain(["monitoring:", "    internal: true"].join("\n"));
   expect(compose).toContain("cap_drop: [ALL]");
   expect(compose).toContain("no-new-privileges:true");
 });
