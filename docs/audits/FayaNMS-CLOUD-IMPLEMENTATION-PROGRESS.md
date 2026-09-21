@@ -4,6 +4,7 @@
 **Execution branch:** `codex/fayanms-cloud-platform`  
 **Initial main SHA:** `7aef0a330dc8f965fb496b735eb8a97b8d2c5149`  
 **Current main readback:** `3ab5c7eb3118b9b37c6286058de99b41bb67cac0`  
+**Current implementation HEAD:** `02962ee67d90371e537b16c0e7e18bc9add694e2`  
 **Execution date:** 2026-09-21  
 **Authoritative inputs:** Cloud Development/CICD/OCI Implementation Plan, Executive Production Review, Full Independent Production Audit, Production Remediation Roadmap, Competitive Benchmark, Production Gap Register.
 
@@ -17,12 +18,12 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 
 | Item | Evidence |
 |---|---|
-| Current branch | No local checkout was available in the execution workspace; remote implementation branch created from `main` |
+| Current branch | Remote `codex/fayanms-cloud-platform` at `02962ee67d90371e537b16c0e7e18bc9add694e2`; no local checkout was available in the execution workspace |
 | `main` HEAD | `7aef0a330dc8f965fb496b735eb8a97b8d2c5149` |
 | Remote protection | Live branch readback: `protected:false`, `protection.enabled:false`, required checks enforcement `off` |
-| Latest CI | Run `35546034099` on exact HEAD: `gate PASS`, `e2e PASS`, `scan PASS`, `browser FAIL` |
-| Browser failure | Playwright target closed during axe injection in B3b; B4/B5 then failed because the shared browser was closed |
-| Previous green CI | Run `35545341206` on `9f2b6d92cd3e29eb091c0de3cb2694090405c07f`: all four jobs passed |
+| Latest CI | Run `35569897344` on exact HEAD `02962ee6`: `gate PASS`, `e2e PASS`, `scan PASS`; browser rerun job `106242336219` PASS after first-attempt B5 timeout with diagnostics retained |
+| Browser evidence | First attempt job `106239905164` timed out in B5 RTL setup after the app process exited 143; diagnostics artifact retained. Rerun job `106242336219` passed all browser checks. |
+| ARM64 container | Run `35569897419` on exact HEAD `02962ee6`: app/worker/migrator ARM64 builds, Prisma CLI smoke, architecture/runtime checks, and strict Trivy scans all PASS; GHCR publish skipped for pull request |
 | Open PRs | Draft PR #12: `codex/fayanms-cloud-platform` → `main` |
 | Repository access | GitHub connector has authenticated repository read/write access; plain Git clone is unavailable in this execution container |
 | Security note | Prior audit reports an exposed PAT; rotation/revocation remains an owner action and no token is copied into this repository |
@@ -35,9 +36,9 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 | CLOUD-00-02 | Secret exposure review | P0 | IN PROGRESS | CLOUD-00-01 | Codex + owner | Repository-side secret controls and Gitleaks confirmation pending; reported PAT rotation is external | Add dev/deploy secret boundaries; run CI secret scan |
 | CLOUD-00-03 | Implementation branch | P0 | DONE | CLOUD-00-01 | Codex | `codex/fayanms-cloud-platform` created from baseline SHA | Keep all changes on branch; never force-push |
 | CLOUD-01 | Codespaces | P0 | IN PROGRESS | CLOUD-00 | Codex | `.devcontainer` Dockerfile/Compose/config/bootstrap/runbook are committed; live Codespace creation remains unproven in this executor | Owner opens a Codespace and records PostgreSQL/bootstrap evidence |
-| CLOUD-02 | CI certification | P0 | IN PROGRESS | CLOUD-00 | Codex | Run 35560343614 on exact head 783ac4c8 passed gate/e2e/browser/scan; current worker-metrics/action-refresh head is pending certification | Read current-head gate/e2e/browser/scan results |
-| CLOUD-03 | ARM64 container certification | P0 | BLOCKED — TECHNICAL | CLOUD-02 | Codex | Run 35560343558 built all three ARM64 images and passed runtime smoke, then hard-failed Trivy on 43 HIGH/0 CRITICAL Debian 13.7 findings with affected/unfixed packages | Remediate or replace the vulnerable base/runtime package set; rerun hard-fail ARM64 scans |
-| CLOUD-04 | GHCR immutable images | P0 | BLOCKED — TECHNICAL | CLOUD-03 | Codex | Publication workflow is repository-complete with app/worker/migrator SHA tags, SBOM/provenance, Trivy, and packages:write-only permissions; publication cannot proceed while ARM64 Trivy is red | Resolve CLOUD-03, then certify main push and read back GHCR digests/SBOMs |
+| CLOUD-02 | CI certification | P0 | DONE | CLOUD-00 | Codex | Run 35569897344: gate, e2e, scan PASS; browser rerun job 106242336219 PASS with diagnostics retained from the first B5 timeout | Keep current checks green on subsequent commits |
+| CLOUD-03 | ARM64 container certification | P0 | DONE | CLOUD-02 | Codex | Run 35569897419 job 106239336889 passed ARM64 app/worker/migrator builds, direct Prisma CLI smoke, architecture/runtime checks, and strict HIGH/CRITICAL scans with ignore-unfixed: false | Preserve image/runtime evidence; do not claim staging or production proof |
+| CLOUD-04 | GHCR immutable images | P0 | IN PROGRESS | CLOUD-03 | Codex + owner | Repository workflow is complete and its PR-side ARM64/SBOM/scan gates are green; immutable GHCR publication is gated to a successful main workflow-run and was correctly skipped for this draft PR | After authorized merge/main push, read back GHCR digests and SBOM attestations; do not merge here |
 | CLOUD-05 | OCI foundation | P0 | BLOCKED — EXTERNAL | CLOUD-04 | Codex + owner | Hardened host/bootstrap/network policy and operator runbook committed; tenancy/VM/NSG actions require owner access | Owner creates isolated compartment/VCN/NSG/ARM64 VM and supplies readback |
 | CLOUD-06 | OCI runtime | P0 | BLOCKED — EXTERNAL | CLOUD-05 | Codex + owner | Immutable hardened Compose, env contract, deploy/rollback/health scripts committed | Install on owner-controlled host and capture runtime evidence |
 | CLOUD-07 | HTTPS/reverse proxy | P0 | BLOCKED — EXTERNAL | CLOUD-06 | Codex + owner | Caddy HTTPS, HSTS, CSP, frame and permissions headers committed | Owner supplies DNS/ACME and proves external HTTPS-only access |
@@ -110,6 +111,20 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 - Blockers: CLOUD-03/04 remain BLOCKED — TECHNICAL until the strict ARM64 vulnerability scan is green and a current-head CI certification completes. PAT rotation, branch protection/ruleset, Codespaces proof, OCI tenancy/VM/DNS/SSH, staging approval, VPN, off-host backup key/target, and physical hardware remain BLOCKED — EXTERNAL.
 - Remaining risks: current-head ARM64 build/runtime/Trivy evidence is pending; GHCR publication cannot be claimed from a draft PR; optional monitoring profile image digests remain unresolved; real SNMP/syslog/flow/discovery receivers and staging alert proof remain outstanding.
 - Next task: certify head 8dfddce; fix any new repository-actionable failure; update this ledger with exact gate/ARM64 evidence before proceeding to GHCR/OCI waves.
+
+
+### Round 4 — current-head CI and ARM64 runtime certification
+
+- Completed: staged a bounded Prisma native runtime closure for the app and migrator distroless images; build stages install OpenSSL/libgcc only for preparation, the checked-in helper copies the required OpenSSL/libgcc libraries, and final stages remain digest-pinned, package-manager-free, and non-root. Added R78 audit coverage for the closure and migrator runtime contract.
+- Files changed: Dockerfile; Dockerfile.migrator; scripts/ci/prepare-prisma-runtime.sh; tests/audit/r78-image-scan-triage.test.ts; this ledger.
+- Tests: CI run 35569897344 on exact head 02962ee6 passed gate, E2E, and scan; the first browser job 106239905164 timed out in B5 RTL setup after the app process exited 143 and uploaded diagnostics; rerun job 106242336219 passed all browser journeys, axe, keyboard, and RTL checks. Container run 35569897419 job 106239336889 passed ARM64 app/worker/migrator builds, direct Prisma CLI smoke, architecture/runtime verification, and strict app/worker/migrator Trivy scans.
+- Validation results: the earlier migrator smoke exposed missing libgcc/OpenSSL runtime support in distroless; the corrected bounded closure passed the same direct CLI smoke without changing scan strictness. No skipped test, focused-only test, continue-on-error, credential, private key, device secret, or production configuration was added.
+- Commit SHA: 02962ee67d90371e537b16c0e7e18bc9add694e2.
+- CI status: current-head repository certification is green after the browser rerun; the container certification job is green; GHCR publication is skipped because the event is a draft pull request, not an authorized main push.
+- Newly discovered findings: the browser B5 timeout remains intermittently reproducible on first attempt even when its rerun passes; retain the uploaded diagnostics and continue monitoring subsequent runs. The distroless Prisma native closure is now repository-certified, but it has not been staging-, physical-hardware-, or production-tested.
+- Blockers: GHCR registry publication requires an authorized merge/main push and owner-controlled release action; Codespaces proof, PAT revocation, branch protection/ruleset, OCI tenancy/VM/DNS/SSH, staging approval, VPN, off-host backup key/target, and physical hardware remain BLOCKED — EXTERNAL.
+- Remaining risks: optional monitoring profile image digests and staging alert proof remain open; real SNMP/syslog/flow/discovery receivers remain absent; no OCI staging or physical device evidence exists.
+- Next task: continue repository-actionable CLOUD-05 through CLOUD-16 hardening and runbook completion while preserving CLOUD-04 exact-SHA GHCR publication gate; record only owner-controlled OCI/GHCR execution as BLOCKED — EXTERNAL.
 
 ## Evidence-state vocabulary
 
