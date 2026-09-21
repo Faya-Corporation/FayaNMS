@@ -33,6 +33,7 @@
  * panos-sshd.ts.
  */
 
+import { generateKeyPairSync } from "node:crypto";
 import { Server, utils, type Connection } from "ssh2";
 import type { Socket } from "node:net";
 
@@ -142,8 +143,11 @@ export async function startPersonaSshHarness(
 ): Promise<PersonaHarness> {
   const username = opts.username ?? "netadmin";
   const password = opts.password ?? "faya-harness";
-  const keyPair = utils.generateKeyPairSync("ed25519");
-  const hostKey = keyPair.private;
+  // Bun's native ssh2 helper can expose an Ed25519 key representation
+  // that ssh2.Server rejects on the hosted runner. Normalize at this
+  // harness-only boundary to a standard PKCS#8 PEM accepted by ssh2.
+  const keyPair = generateKeyPairSync("ed25519");
+  const hostKey = keyPair.privateKey.export({ format: "pem", type: "pkcs8" });
   // SAFE-001 — derive the persona's public key blob + fingerprint with the
   // SAME helpers the client transport enforces, so certify pins the real
   // value and a mismatch test proves the enforcement path end-to-end.
