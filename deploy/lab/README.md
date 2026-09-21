@@ -1,29 +1,30 @@
 # Network protocol lab
 
-This directory defines the isolation boundary for future real monitoring protocol tests. It is not a simulation claim and it is not connected to production device ranges.
+This directory defines an isolated packet-level protocol fixture boundary. The fixtures emit real wire-format packets to a lab destination; they are not production collectors and are never enabled by the OCI app profile.
 
-## Current state
+## Current implementation
 
-- Isolated Docker internal network bootstrap: repository automation present.
-- SNMPv3 polling: NOT IMPLEMENTED in the product collector.
-- SNMP trap receiver: NOT IMPLEMENTED.
-- Syslog receiver: NOT IMPLEMENTED.
-- NetFlow/IPFIX/sFlow receiver: NOT IMPLEMENTED.
-- Real discovery/topology: NOT IMPLEMENTED.
-- SSH vendor harnesses: existing worker certification harness only; physical hardware is not certified.
-- Sophos WebAPI write harness: external/hardware certification pending.
+- Internal-only Docker network bootstrap: repository automation present.
+- Dependency-free packet fixtures: RFC3164/RFC5424 syslog, SNMPv1/v2c traps, NetFlow v5, NetFlow v9 templates, IPFIX templates, and sFlow counter samples.
+- Loopback UDP integration test: CI sends and receives a real RFC5424 datagram.
+- External destination safety: the generator rejects non-loopback targets unless FAYANMS_PROTOCOL_LAB_ALLOW_NON_LOOPBACK=true is set for an operator-approved isolated lab CIDR.
+- SNMPv3 authPriv polling/agent, real product collectors, and continuous discovery: not implemented; no production readiness claim.
+- Existing SSH vendor harnesses remain separate from this packet fixture set.
 
-Do not open UDP 162, UDP 514, TCP 514, UDP 2055, UDP 4739, or UDP 6343 on OCI until the corresponding receiver is implemented, authenticated/restricted, and tested.
-
-## Start the isolation boundary
+Run the protocol fixture tests:
 
 ~~~bash
-sudo ./bootstrap.sh
-docker network inspect fayanms-lab
+bun test tests/protocol-lab.test.ts
 ~~~
 
-The network uses Docker internal mode and no host port publication. Attach only disposable protocol agents and test fixtures. Never attach production devices or the production management VLAN.
+Emit one packet to an isolated local receiver:
+
+~~~bash
+bun run scripts/protocol-lab/generate.ts --protocol=syslog5424 --host=127.0.0.1 --port=5514
+~~~
+
+Supported protocols are syslog3164, syslog5424, snmp-v1-trap, snmp-v2c-trap, netflow-v5, netflow-v9-template, ipfix-template, and sflow-counter. Use --count=N for a controlled burst. Do not set the external-target override outside the isolated lab.
 
 ## Promotion requirement
 
-A protocol lab capability becomes DONE only with code, unit/contract tests, a packet/protocol harness, CI evidence, staging evidence, and—where the capability claims hardware support—physical-device evidence.
+A protocol capability becomes DONE only with code, unit/contract tests, packet/protocol harness evidence, staging evidence, and—where the capability claims hardware support—physical-device evidence.
