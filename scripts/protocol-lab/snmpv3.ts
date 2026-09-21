@@ -445,7 +445,7 @@ function parseAuthenticatedRequest(
   if (decodeInteger(packet, topChildren[0]) !== 3) {
     throw new Error("SNMPv3 version 3 is required");
   }
-  const headerChildren = children(packet, readTlv(packet, topChildren[1].valueStart));
+  const headerChildren = children(packet, topChildren[1]);
   if ((bytes(packet, headerChildren[2])[0] & 0x03) !== 0x03) {
     throw new Error("SNMPv3 authPriv flags are required");
   }
