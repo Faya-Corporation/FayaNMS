@@ -8,13 +8,13 @@ This directory defines an isolated packet-level protocol fixture boundary. The f
 - Dependency-free packet fixtures: RFC3164/RFC5424 syslog, SNMPv1/v2c traps, NetFlow v5, NetFlow v9 templates, IPFIX templates, and sFlow counter samples.
 - Loopback UDP integration test: CI sends and receives a real RFC5424 datagram.
 - External destination safety: the generator rejects non-loopback targets unless FAYANMS_PROTOCOL_LAB_ALLOW_NON_LOOPBACK=true is set for an operator-approved isolated lab CIDR.
-- SNMPv3 authPriv polling/agent, real product collectors, and continuous discovery: not implemented; no production readiness claim.
+- Disposable SNMPv3 authPriv loopback agent: implemented and tested under scripts/protocol-lab/snmpv3.ts with per-run random test secrets; it is not a production collector and binds only to 127.0.0.1.\n- Real product collectors and continuous discovery: not implemented; no production readiness claim.
 - Existing SSH vendor harnesses remain separate from this packet fixture set.
 
 Run the protocol fixture tests:
 
 ~~~bash
-bun test tests/protocol-lab.test.ts
+bun test tests/protocol-lab.test.ts tests/snmpv3-lab.test.ts
 ~~~
 
 Emit one packet to an isolated local receiver:

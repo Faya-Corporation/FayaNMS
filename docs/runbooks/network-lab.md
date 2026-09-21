@@ -6,7 +6,7 @@ The OCI staging host must connect only to a dedicated lab VLAN or VPN. Do not ro
 
 ## Current repository evidence
 
-The worker has protocol certification harnesses for selected SSH flows. The repository now also contains dependency-free packet fixtures under scripts/protocol-lab for RFC3164/RFC5424 syslog, SNMPv1/v2c traps, NetFlow v5/v9, IPFIX, and sFlow, with loopback UDP coverage. The production monitoring plane still does not implement SNMPv3 authPriv polling, real traps/syslog/flow receivers, or continuous discovery. Dashboards must not be described as live network truth.
+The worker has protocol certification harnesses for selected SSH flows. The repository now also contains dependency-free packet fixtures under scripts/protocol-lab for RFC3164/RFC5424 syslog, SNMPv1/v2c traps, NetFlow v5/v9, IPFIX, and sFlow, with loopback UDP coverage. The repository now also has a disposable SNMPv3 authPriv loopback agent with per-run random test secrets and an end-to-end encrypted/authenticated GET test. The production monitoring plane still does not implement real traps/syslog/flow receivers or continuous discovery. Dashboards must not be described as live network truth.
 
 ## Lab sequence
 
