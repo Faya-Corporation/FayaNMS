@@ -51,7 +51,7 @@ jobs:
 
       - name: Build ARM64 application image
         run: |
-          docker buildx build             --platform linux/arm64             --load             --tag fayanms:arm64-${CANDIDATE_SHA}             --build-arg NEXT_PUBLIC_SITE_URL=https://fayanms.invalid             --label org.opencontainers.image.revision=${GITHUB_SHA}             --label org.opencontainers.image.source=https://github.com/fayafatehi/FayaNMS             --provenance=false             .
+          docker buildx build             --platform linux/arm64             --load             --tag fayanms:arm64-${CANDIDATE_SHA}             --build-arg NEXT_PUBLIC_SITE_URL=https://fayanms.invalid             --label org.opencontainers.image.revision=${CANDIDATE_SHA}             --label org.opencontainers.image.source=https://github.com/fayafatehi/FayaNMS             --provenance=false             .
 
       - name: Build ARM64 worker image
         run: |
