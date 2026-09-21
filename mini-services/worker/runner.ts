@@ -394,7 +394,7 @@ async function runDiscoveryJob(job: ClaimedJob): Promise<void> {
       " targets)",
   );
 
-  const candidates: Array<Record<string, unknown>> = [];
+  const candidates: unknown[] = [];
   let scannedTargets = 0;
 
   for (const [index, subnet] of subnets.entries()) {

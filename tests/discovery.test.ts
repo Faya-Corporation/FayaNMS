@@ -1,5 +1,5 @@
 import { createServer } from "node:net";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   enumerateDiscoveryTargets,
   probeDiscoveryTarget,
