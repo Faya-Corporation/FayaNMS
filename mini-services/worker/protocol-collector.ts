@@ -58,7 +58,7 @@ function parseSyslog(packet: Buffer) {
   const stripped = priorityMatch ? text.slice(priorityMatch[0].length) : text;
   const fields = stripped.split(/\s+/);
   const is5424 = fields[0] === "1";
-  const hostname = is5424 ? fields[1] : fields[0];
+  const hostname = is5424 ? fields[2] : fields[0];
   return {
     eventType: "SYSLOG_MESSAGE",
     severity: severityFromSyslog(priority),
