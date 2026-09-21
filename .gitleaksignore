@@ -1,0 +1,8 @@
+# Narrow historical fixture suppression only.
+#
+# Commit 0d818cdbc6c96d4b77a2ac36a8394dfa03940f5c contained a documented
+# CI-only throwaway value in the ARM64 smoke harness. Current code generates
+# credentials ephemerally. The exact finding remains ignored here because the
+# branch must not rewrite published history; all other history and the current
+# tree remain subject to the full Gitleaks ruleset.
+0d818cdbc6c96d4b77a2ac36a8394dfa03940f5c:scripts/ci/arm64-runtime-smoke.sh:generic-api-key:11
