@@ -35,6 +35,11 @@ WORKDIR /app
 COPY package.json bun.lock ./
 COPY prisma ./prisma
 RUN bun install --frozen-lockfile
+COPY scripts/ci/prepare-prisma-runtime.sh /usr/local/bin/prepare-prisma-runtime.sh
+RUN chmod 0755 /usr/local/bin/prepare-prisma-runtime.sh \
+ && apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libgcc-s1 openssl \
+ && rm -rf /var/lib/apt/lists/*
 
 FROM deps AS build
 # Fail fast with a human message instead of a deep siteUrl()/next-build throw.
@@ -71,16 +76,20 @@ RUN bunx prisma generate \
     if [ "$code" -ne 0 ]; then \
       echo "NOTE: bun exited $code AFTER a successful build (known 1.3.14 teardown segfault, artifacts verified)" >&2; \
     fi
+RUN /usr/local/bin/prepare-prisma-runtime.sh /app /prisma-runtime
 
 FROM oven/bun:1.3.14-distroless@sha256:c28c51287af70bab8e0b66fc4b6a30cfb92a727ebc88045223adc9f4c9d09307 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \
-    HOSTNAME=0.0.0.0
+    HOSTNAME=0.0.0.0 \
+    PATH=/app/prisma-runtime/bin:/usr/local/bin:/usr/bin:/bin \
+    LD_LIBRARY_PATH=/app/prisma-runtime/lib
 
 # Distroless runtime: no package manager, shell, or utility package surface.
 # The build stage remains Debian/glibc-compatible for Prisma and sharp; the
-# final stage carries only Bun, libc, CA roots, and the traced application.
+# final stage carries only Bun, libc, CA roots, the traced application, and
+# the minimal Prisma/OpenSSL native runtime closure.
 
 COPY --from=build --chown=10001:10001 /app/.next/standalone ./
 # Prisma client + query engine: explicit copy as a standalone-tracing safety
@@ -92,6 +101,7 @@ COPY --from=build --chown=10001:10001 /app/node_modules/@prisma  ./node_modules/
 # the PostgreSQL service) can run from the build stage via the compose
 # `provision` service.
 COPY --from=build --chown=10001:10001 /app/prisma ./prisma
+COPY --from=build --chown=10001:10001 /prisma-runtime ./prisma-runtime
 
 USER 10001
 EXPOSE 3000

@@ -15,6 +15,8 @@ const read = (p: string): string => readFileSync(join(REPO, p), "utf8");
 
 const DOCKERFILE = read("Dockerfile");
 const WORKER = read("Dockerfile.worker");
+const MIGRATOR = read("Dockerfile.migrator");
+const PRISMA_RUNTIME_HELPER = read("scripts/ci/prepare-prisma-runtime.sh");
 const CI = read(".github/workflows/ci.yml");
 const DOC = read("docs/audits/FayaNMS-R70-Merge-to-Main-and-CI-Bootstrap-2026-09-19.md");
 
@@ -90,5 +92,38 @@ describe("R78-C: the run record is frozen in the audit doc", () => {
       expect(text.includes("github_pat_"), name).toBeFalse();
       expect(text.includes("ghp_"), name).toBeFalse();
     }
+  });
+});
+
+
+describe("R78-D: Prisma native runtime closure is explicit and non-root", () => {
+  test("the app and migrator carry only the staged Prisma/OpenSSL closure", () => {
+    expect(PRISMA_RUNTIME_HELPER).toContain("libgcc_s.so.1");
+    expect(PRISMA_RUNTIME_HELPER).toContain("command -v openssl");
+
+    const appRuntime = DOCKERFILE.slice(
+      DOCKERFILE.indexOf("FROM oven/bun:1.3.14-distroless")
+    );
+    const migratorRuntime = MIGRATOR.slice(
+      MIGRATOR.indexOf("FROM oven/bun:1.3.14-distroless")
+    );
+
+    expect(DOCKERFILE).toContain(
+      "RUN /usr/local/bin/prepare-prisma-runtime.sh /app /prisma-runtime"
+    );
+    expect(appRuntime).toContain(
+      "COPY --from=build --chown=10001:10001 /prisma-runtime ./prisma-runtime"
+    );
+    expect(appRuntime).toContain(
+      "LD_LIBRARY_PATH=/app/prisma-runtime/lib"
+    );
+    expect(migratorRuntime).toContain(
+      "COPY --from=deps --chown=10001:10001 /prisma-runtime ./prisma-runtime"
+    );
+    expect(migratorRuntime).toContain(
+      "LD_LIBRARY_PATH=/migrator/prisma-runtime/lib"
+    );
+    expect(migratorRuntime).not.toContain("apt-get");
+    expect(migratorRuntime).toContain("USER 10001");
   });
 });
