@@ -1,6 +1,6 @@
 # Observability runbook
 
-The repository contains Prometheus and OpenTelemetry configuration as a staging foundation. It does not claim that application metrics, device telemetry, or collector metrics are live until endpoints and CI/staging evidence exist.
+The repository contains Prometheus and OpenTelemetry configuration as a staging foundation. The app exposes non-sensitive process metrics at /api/metrics; Caddy returns 404 for that route on public ingress. Set FAYANMS_METRICS_TOKEN and configure an internal Prometheus bearer credential before enabling remote scraping. It does not claim that application metrics, device telemetry, or collector metrics are live until endpoints and CI/staging evidence exist.
 
 ## Evidence states
 
