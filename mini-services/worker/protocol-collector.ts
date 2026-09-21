@@ -38,7 +38,8 @@ interface DecodedProtocolPayload {
   severity: string;
   message: string;
   protocolVersion: string;
-  deviceHint?: { hostname: string };
+  securityLevel?: "authPriv" | "community" | "unknown";
+  deviceHint?: { hostname: string; credentialProfileId?: string };
   attributes: Record<string, string | number | boolean | null>;
 }
 
@@ -91,6 +92,7 @@ function parseBinary(protocol: ProtocolName, packet: Buffer): DecodedProtocolPay
       severity: "INFO",
       message: "SNMP trap packet received",
       protocolVersion: "BER",
+      securityLevel: "unknown",
       attributes: { bytes: packet.length },
     };
   }

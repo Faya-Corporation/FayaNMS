@@ -40,4 +40,6 @@ export FAYANMS_SFLOW_PORT=6343
 
 Device association is advisory and ordered: exact hostname hint first, exact management IP second. UDP source identity is not trusted as proof of device identity. Unmatched events remain retained as unassociated ProtocolEvent audit history. Raw packets, communities, passphrases, and other secret material are never accepted by the ingestion contract.
 
-SNMPv3 authentication/privacy verification remains a protocol-lab capability only; the production receiver still requires a separately certified SNMPv3 trap decoder and device credential/profile policy. Continuous discovery, collector HA, staging scrape evidence, and physical-device proof remain open.
+The ingestion boundary is fail-closed for SNMP traps: the generic worker BER-framing path marks securityLevel=unknown and is rejected. Accepted SNMP traps must carry a server-side verified authPriv result, an explicit credentialProfileId, an exact associated device, and a CredentialProfile of type SNMPV3 bound to that device. The profile contains only the vault secret reference; the passphrase is never sent in the event or stored in audit JSON. The disposable scripts/protocol-lab/snmpv3.ts harness now proves authPriv trap verification and tamper rejection, but it does not constitute device or staging evidence.
+
+Continuous discovery, collector HA, staging scrape evidence, and physical-device proof remain open.

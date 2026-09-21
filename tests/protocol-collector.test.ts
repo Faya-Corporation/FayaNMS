@@ -27,3 +27,13 @@ test("protocol collector rejects malformed binary packets", () => {
   expect(decodeProtocolPacket("snmp-trap", Buffer.from([0x01, 0x02]), { address: "192.0.2.14", port: 1162 })).toBeNull();
   expect(decodeProtocolPacket("netflow", Buffer.from([0, 0, 0, 7]), { address: "192.0.2.15", port: 2055 })).toBeNull();
 });
+
+test("generic SNMP trap framing is explicitly untrusted until authPriv verification", () => {
+  const event = decodeProtocolPacket(
+    "snmp-trap",
+    Buffer.from([0x30, 0x00]),
+    { address: "192.0.2.16", port: 1162 },
+  );
+  expect(event?.securityLevel).toBe("unknown");
+  expect(event?.deviceHint).toBeUndefined();
+});

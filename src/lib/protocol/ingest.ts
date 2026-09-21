@@ -1,6 +1,11 @@
 export const PROTOCOLS = ["syslog", "snmp-trap", "netflow", "ipfix", "sflow"] as const;
 export type ProtocolName = (typeof PROTOCOLS)[number];
 export type ProtocolAttribute = string | number | boolean | null;
+export type SnmpSecurityLevel = "authPriv" | "community" | "unknown";
+export type ProtocolDeviceHint = {
+  hostname?: string;
+  credentialProfileId?: string;
+};
 
 export interface ProtocolIngestInput {
   collectorId: string;
@@ -12,7 +17,8 @@ export interface ProtocolIngestInput {
   severity: string;
   message: string;
   protocolVersion?: string;
-  deviceHint?: { hostname?: string };
+  securityLevel?: SnmpSecurityLevel;
+  deviceHint?: ProtocolDeviceHint;
   attributes?: Record<string, ProtocolAttribute>;
 }
 
@@ -37,6 +43,7 @@ export interface NormalizedProtocolEvent {
   severity: string;
   message: string;
   protocolVersion: string | null;
+  securityLevel: SnmpSecurityLevel | null;
   attributes: Record<string, ProtocolAttribute>;
 }
 
@@ -72,6 +79,7 @@ export function normalizeProtocolEvent(input: ProtocolIngestInput): NormalizedPr
     severity: boundedText(input.severity, 32).toUpperCase(),
     message: boundedText(input.message, MAX_MESSAGE_LENGTH),
     protocolVersion: input.protocolVersion ? boundedText(input.protocolVersion, 32) : null,
+    securityLevel: input.securityLevel ?? null,
     attributes: safeAttributes(input.attributes),
   };
 }
@@ -96,3 +104,63 @@ export const PROTOCOL_NORMALIZATION_LIMITS = {
   MAX_ATTRIBUTE_KEY_LENGTH,
   MAX_ATTRIBUTE_VALUE_LENGTH,
 } as const;
+
+export interface ProtocolCredentialProfileCandidate {
+  id: string;
+  type: string;
+  deviceId: string;
+}
+
+export type ProtocolPolicyResult =
+  | { ok: true }
+  | { ok: false; code: string; message: string };
+
+/**
+ * SNMP trap ingress is fail-closed. The worker's generic BER framing path
+ * reports securityLevel=unknown and is therefore not accepted as a trusted
+ * production trap. A future decoder may pass authPriv only after verifying
+ * USM authentication/privacy with a server-side credential profile that is
+ * bound to the associated device.
+ */
+export function validateProtocolIngestPolicy(
+  input: Pick<ProtocolIngestInput, "protocol" | "securityLevel" | "deviceHint">,
+  association: ProtocolDeviceAssociation,
+  profile: ProtocolCredentialProfileCandidate | null,
+): ProtocolPolicyResult {
+  if (input.protocol !== "snmp-trap") return { ok: true };
+  if (input.securityLevel !== "authPriv") {
+    return {
+      ok: false,
+      code: "SNMP_AUTHPRIV_REQUIRED",
+      message: "SNMP traps require verified SNMPv3 authPriv before ingestion.",
+    };
+  }
+  const profileId = input.deviceHint?.credentialProfileId?.trim();
+  if (!profileId) {
+    return {
+      ok: false,
+      code: "SNMP_PROFILE_REQUIRED",
+      message: "SNMPv3 traps require an explicit device credential profile reference.",
+    };
+  }
+  if (!association.device) {
+    return {
+      ok: false,
+      code: "SNMP_DEVICE_UNMATCHED",
+      message: "SNMPv3 traps require an exact associated device before ingestion.",
+    };
+  }
+  if (
+    !profile ||
+    profile.id !== profileId ||
+    profile.type !== "SNMPV3" ||
+    profile.deviceId !== association.device.id
+  ) {
+    return {
+      ok: false,
+      code: "SNMP_PROFILE_MISMATCH",
+      message: "SNMPv3 trap credential profile is not bound to the associated device.",
+    };
+  }
+  return { ok: true };
+}
