@@ -61,7 +61,7 @@ jobs:
       - name: Build ARM64 migration image
         run: |
           docker buildx build --platform linux/arm64 --load --file Dockerfile.migrator --tag fayanms-migrator:arm64-${CANDIDATE_SHA} .
-          docker run --rm fayanms-migrator:arm64-${CANDIDATE_SHA} x prisma --version
+          docker run --rm fayanms-migrator:arm64-${CANDIDATE_SHA} run ./node_modules/prisma/build/index.js --version
 
       - name: Verify image architecture and runtime
         run: |
