@@ -76,6 +76,10 @@ on:
   # tab the moment runner capacity exists (OWNER-CI-001 → HC-6).
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gate:
     runs-on: ubuntu-latest
