@@ -118,7 +118,7 @@ export function serviceAuthToken(): string {
       iat: nowS,
       exp: nowS + TOKEN_TTL_S,
       jti: randomUUID(),
-      scopes: ["jobs", "simulate", "alerts", "reports", "metrics"],
+      scopes: ["jobs", "simulate", "alerts", "reports", "metrics", "telemetry"],
     })
   );
 
