@@ -44,7 +44,7 @@ services:
         condition: service_healthy
     networks:
       - backend
-    command: ["bunx", "prisma", "migrate", "deploy"]
+    command: ["x", "prisma", "migrate", "deploy"]
     security_opt:
       - no-new-privileges:true
     cap_drop:
