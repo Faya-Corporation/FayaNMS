@@ -110,6 +110,7 @@ import { startRunner, getCounters } from "./runner";
 import { startScheduler, getSchedulerState } from "./scheduler";
 import { log } from "./next-client";
 import { controlRejectResponse, verifyControlToken } from "./control-auth";
+import { getProtocolCollectorMetrics, startProtocolCollector } from "./protocol-collector";
 
 const PORT = 3030; // hardcoded — do not read PORT env (task 2-b contract)
 
@@ -162,6 +163,7 @@ export async function handle(req: Request): Promise<Response> {
 
       const counters = getCounters();
       const scheduler = getSchedulerState();
+      const protocol = getProtocolCollectorMetrics();
       const metricLines = [
         "# HELP fayanms_worker_process_uptime_seconds Worker process uptime in seconds.",
         "# TYPE fayanms_worker_process_uptime_seconds gauge",
@@ -178,6 +180,14 @@ export async function handle(req: Request): Promise<Response> {
         "# HELP fayanms_worker_claim_backoff_seconds Current claim retry backoff.",
         "# TYPE fayanms_worker_claim_backoff_seconds gauge",
         `fayanms_worker_claim_backoff_seconds ${(counters.currentBackoffMs / 1000).toFixed(3)}`,
+        "# HELP fayanms_worker_protocol_packets_total Protocol packets received by the optional worker collector.",
+        "# TYPE fayanms_worker_protocol_packets_total counter",
+        `fayanms_worker_protocol_packets_total{state="received"} ${protocol.packetsReceived}`,
+        `fayanms_worker_protocol_packets_total{state="accepted"} ${protocol.packetsAccepted}`,
+        `fayanms_worker_protocol_packets_total{state="rejected"} ${protocol.packetsRejected}`,
+        `fayanms_worker_protocol_packets_total{state="queue_dropped"} ${protocol.queueDrops}`,
+        `fayanms_worker_protocol_relay_failures_total ${protocol.relayFailures}`,
+        `fayanms_worker_protocol_collector_up ${protocol.enabled ? 1 : 0}`,
       ];
 
       return new Response(`${metricLines.join("\n")}\n`, {
@@ -981,14 +991,17 @@ if (import.meta.main) {
   log(`fayanms-worker v0.1.0 listening on :${server.port}`);
   startRunner();
   startScheduler();
+  const protocolCollector = startProtocolCollector();
 
   process.on("SIGTERM", () => {
     log("SIGTERM received — shutting down");
+    protocolCollector?.stop();
     server.stop(true);
     process.exit(0);
   });
   process.on("SIGINT", () => {
     log("SIGINT received — shutting down");
+    protocolCollector?.stop();
     server.stop(true);
     process.exit(0);
   });

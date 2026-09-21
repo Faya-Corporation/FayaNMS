@@ -21,3 +21,23 @@ The worker has protocol certification harnesses for selected SSH flows. The repo
 ## External values
 
 The lab CIDR, VPN peer, firewall rules, exporter addresses, hardware inventory, and credentials are external operator actions. Record them in the protected environment inventory, never this repository.
+
+## Optional repository-side collector relay
+
+The worker contains an opt-in UDP receiver and authenticated relay. It is disabled unless FAYANMS_PROTOCOL_COLLECTOR_ENABLED=true, binds to 127.0.0.1 by default, uses non-privileged ports, bounds packets and relay concurrency, and sends normalized events to POST /api/v1/ingest/protocol with the worker service identity's telemetry scope.
+
+Set an explicit lab bind address and ports only on the operator host:
+
+~~~bash
+export FAYANMS_PROTOCOL_COLLECTOR_ENABLED=true
+export FAYANMS_PROTOCOL_COLLECTOR_BIND=127.0.0.1
+export FAYANMS_SYSLOG_PORT=5514
+export FAYANMS_SNMP_TRAP_PORT=1162
+export FAYANMS_NETFLOW_PORT=2055
+export FAYANMS_IPFIX_PORT=4739
+export FAYANMS_SFLOW_PORT=6343
+~~~
+
+Device association is advisory and ordered: exact hostname hint first, exact management IP second. UDP source identity is not trusted as proof of device identity. Unmatched events remain retained as unassociated ProtocolEvent audit history. Raw packets, communities, passphrases, and other secret material are never accepted by the ingestion contract.
+
+SNMPv3 authentication/privacy verification remains a protocol-lab capability only; the production receiver still requires a separately certified SNMPv3 trap decoder and device credential/profile policy. Continuous discovery, collector HA, staging scrape evidence, and physical-device proof remain open.
