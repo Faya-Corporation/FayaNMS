@@ -18,9 +18,11 @@
 #     (Phase 21 moved persistence to PostgreSQL) the uid is defense-in-depth:
 #     a compromised process cannot write outside tmp. The provision flow no
 #     longer needs any chown handback.
-#   * Runtime base is debian-slim (NOT alpine): the Prisma query engine and the
-#     sharp prebuilt binaries are produced in the glibc build stage and are
-#     incompatible with musl. Keep libc/openssl consistent across stages.
+#   * Runtime base is Bun's digest-pinned Debian 13 distroless image (NOT
+#     alpine): the Prisma query engine and sharp prebuilt binaries are produced
+#     in the glibc build stage and are incompatible with musl. Keep libc/openssl
+#     consistent across stages while excluding the build-stage package manager
+#     and utility surface from the shipped runtime.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # SUPPLY-001-A: base images are digest-pinned (immutable inputs). The tag
