@@ -406,18 +406,12 @@ jobs:
         run: |
           GITLEAKS_VERSION=8.24.3
           GITLEAKS_ARCHIVE="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          curl -sSfL -o /tmp/gitleaks-checksums.txt \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
-          test "$(grep -c " ${GITLEAKS_ARCHIVE}" /tmp/gitleaks-checksums.txt)" -eq 1
-          grep " ${GITLEAKS_ARCHIVE}" /tmp/gitleaks-checksums.txt \
-            | sha256sum -c -
-          curl -sSfL -o /tmp/${GITLEAKS_ARCHIVE} \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${GITLEAKS_ARCHIVE}"
-          grep " ${GITLEAKS_ARCHIVE}" /tmp/gitleaks-checksums.txt \
-            | sed "s#  ${GITLEAKS_ARCHIVE}##" \
-            | sha256sum -c - --status <(printf "%s  /tmp/%s\\n" "$(cut -d" " -f1 /tmp/gitleaks-checksums.txt | grep -m1 " ${GITLEAKS_ARCHIVE}" | cut -d" " -f1)" "${GITLEAKS_ARCHIVE}") || true
-          # Verify the downloaded archive directly against its exact checksum.
-          ARCHIVE_SHA="$(grep " ${GITLEAKS_ARCHIVE}" /tmp/gitleaks-checksums.txt | cut -d" " -f1)"
+          CHECKSUMS_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          ARCHIVE_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${GITLEAKS_ARCHIVE}"
+          curl -sSfL -o /tmp/gitleaks-checksums.txt "${CHECKSUMS_URL}"
+          ARCHIVE_SHA="$(awk -v name="${GITLEAKS_ARCHIVE}" '$2 == name {print $1}' /tmp/gitleaks-checksums.txt)"
+          test -n "${ARCHIVE_SHA}"
+          curl -sSfL -o "/tmp/${GITLEAKS_ARCHIVE}" "${ARCHIVE_URL}"
           printf "%s  /tmp/%s\\n" "${ARCHIVE_SHA}" "${GITLEAKS_ARCHIVE}" | sha256sum -c -
           mkdir -p /tmp/gitleaks
           tar -xzf "/tmp/${GITLEAKS_ARCHIVE}" -C /tmp/gitleaks
