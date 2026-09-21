@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
   workflow_run:
     workflows: ["CI gate"]
-    types: [completed]:
+    types: [completed]
 
 concurrency:
   group: container-${{ github.ref }}
@@ -38,8 +38,6 @@ jobs:
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
@@ -81,6 +79,8 @@ jobs:
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
