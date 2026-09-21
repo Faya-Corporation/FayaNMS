@@ -80,6 +80,11 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# CI only reads the repository. Publishing permissions are isolated to the
+# container workflow's publication job.
+permissions:
+  contents: read
+
 jobs:
   gate:
     runs-on: ubuntu-latest
@@ -393,10 +398,32 @@ jobs:
           fetch-depth: 0
 
       # ── 8. P20-010 — secret scanning ──
-      - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2 (SHA-pinned 2026-09-11)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # The official action's PR-annotation path requires pull_requests:read,
+      # which is intentionally not granted to this read-only CI workflow. Run
+      # the pinned upstream binary locally instead: git history and the checked
+      # out directory remain hard-fail scans without widening token scope.
+      - name: Secret scan (gitleaks history and working tree)
+        run: |
+          GITLEAKS_VERSION=8.24.3
+          GITLEAKS_ARCHIVE="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o /tmp/gitleaks-checksums.txt \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          test "$(grep -c " ${GITLEAKS_ARCHIVE}" /tmp/gitleaks-checksums.txt)" -eq 1
+          grep " ${GITLEAKS_ARCHIVE}" /tmp/gitleaks-checksums.txt \
+            | sha256sum -c -
+          curl -sSfL -o /tmp/${GITLEAKS_ARCHIVE} \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${GITLEAKS_ARCHIVE}"
+          grep " ${GITLEAKS_ARCHIVE}" /tmp/gitleaks-checksums.txt \
+            | sed "s#  ${GITLEAKS_ARCHIVE}##" \
+            | sha256sum -c - --status <(printf "%s  /tmp/%s\\n" "$(cut -d" " -f1 /tmp/gitleaks-checksums.txt | grep -m1 " ${GITLEAKS_ARCHIVE}" | cut -d" " -f1)" "${GITLEAKS_ARCHIVE}") || true
+          # Verify the downloaded archive directly against its exact checksum.
+          ARCHIVE_SHA="$(grep " ${GITLEAKS_ARCHIVE}" /tmp/gitleaks-checksums.txt | cut -d" " -f1)"
+          printf "%s  /tmp/%s\\n" "${ARCHIVE_SHA}" "${GITLEAKS_ARCHIVE}" | sha256sum -c -
+          mkdir -p /tmp/gitleaks
+          tar -xzf "/tmp/${GITLEAKS_ARCHIVE}" -C /tmp/gitleaks
+          /tmp/gitleaks/gitleaks version
+          /tmp/gitleaks/gitleaks git --config .gitleaks.toml --redact --no-banner .
+          /tmp/gitleaks/gitleaks dir --config .gitleaks.toml --redact --no-banner .
 
       # ── 9. P20-011 — SAST ──
       # Action path preserved verbatim from docs/ci/ci-gate.yml; the same v1
