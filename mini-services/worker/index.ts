@@ -149,7 +149,7 @@ export async function handle(req: Request): Promise<Response> {
       const configuredToken = process.env.FAYANMS_METRICS_TOKEN?.trim() ?? "";
       if (configuredToken.length > 0) {
         const supplied = req.headers.get("authorization") ?? "";
-        if (supplied !== \`Bearer \${configuredToken}\`) {
+        if (supplied !== `Bearer ${configuredToken}`) {
           return new Response("Unauthorized\n", {
             status: 401,
             headers: {
@@ -165,22 +165,22 @@ export async function handle(req: Request): Promise<Response> {
       const metricLines = [
         "# HELP fayanms_worker_process_uptime_seconds Worker process uptime in seconds.",
         "# TYPE fayanms_worker_process_uptime_seconds gauge",
-        \`fayanms_worker_process_uptime_seconds \${((Date.now() - STARTED_AT) / 1000).toFixed(3)}\`,
+        `fayanms_worker_process_uptime_seconds ${((Date.now() - STARTED_AT) / 1000).toFixed(3)}`,
         "# HELP fayanms_worker_jobs_total Worker jobs by lifecycle state.",
         "# TYPE fayanms_worker_jobs_total counter",
-        \`fayanms_worker_jobs_total{state="claimed"} \${counters.claimed}\`,
-        \`fayanms_worker_jobs_total{state="running"} \${counters.running}\`,
-        \`fayanms_worker_jobs_total{state="completed"} \${counters.completed}\`,
-        \`fayanms_worker_jobs_total{state="failed"} \${counters.failed}\`,
+        `fayanms_worker_jobs_total{state="claimed"} ${counters.claimed}`,
+        `fayanms_worker_jobs_total{state="running"} ${counters.running}`,
+        `fayanms_worker_jobs_total{state="completed"} ${counters.completed}`,
+        `fayanms_worker_jobs_total{state="failed"} ${counters.failed}`,
         "# HELP fayanms_worker_scheduler_up Whether the scheduler has no consecutive failures.",
         "# TYPE fayanms_worker_scheduler_up gauge",
-        \`fayanms_worker_scheduler_up \${scheduler.consecutiveTickFailures === 0 ? 1 : 0}\`,
+        `fayanms_worker_scheduler_up ${scheduler.consecutiveTickFailures === 0 ? 1 : 0}`,
         "# HELP fayanms_worker_claim_backoff_seconds Current claim retry backoff.",
         "# TYPE fayanms_worker_claim_backoff_seconds gauge",
-        \`fayanms_worker_claim_backoff_seconds \${(counters.currentBackoffMs / 1000).toFixed(3)}\`,
+        `fayanms_worker_claim_backoff_seconds ${(counters.currentBackoffMs / 1000).toFixed(3)}`,
       ];
 
-      return new Response(\`\${metricLines.join("\\n")}\\n\`, {
+      return new Response(`${metricLines.join("\n")}\n`, {
         status: 200,
         headers: {
           "content-type": "text/plain; version=0.0.4; charset=utf-8",
