@@ -100,6 +100,8 @@ describe("R78-D: Prisma native runtime closure is explicit and non-root", () => 
   test("the app and migrator carry only the staged Prisma/OpenSSL closure", () => {
     expect(PRISMA_RUNTIME_HELPER).toContain("libgcc_s.so.1");
     expect(PRISMA_RUNTIME_HELPER).toContain("command -v openssl");
+    expect(PRISMA_RUNTIME_HELPER).toContain("libssl.so.3");
+    expect(PRISMA_RUNTIME_HELPER).not.toContain("ldd");
 
     const appRuntime = DOCKERFILE.slice(
       DOCKERFILE.indexOf("FROM oven/bun:1.3.14-distroless")
