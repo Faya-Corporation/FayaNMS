@@ -18,7 +18,7 @@ A Prometheus target returning no metrics is a finding, not a green result.
 
 ## Start the internal monitoring profile
 
-After the base staging stack is healthy and the image digests in compose.monitoring.yml have been independently reviewed:
+The three monitoring image references in deploy/oci/compose.monitoring.yml are now pinned to reviewed SHA-256 digests. Before enabling the profile, the operator must independently verify that each exact digest is available for the OCI host architecture, scan those exact images, and retain the staging burn-in evidence. Digest pinning alone is not staging or production proof.
 
 ~~~bash
 cd /opt/fayanms

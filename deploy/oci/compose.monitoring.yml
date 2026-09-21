@@ -1,12 +1,12 @@
-# These monitoring images are tag-pinned pending an operator-approved digest
-# resolution from the selected registry. Do not enable the profile in a
-# production environment until the three tags are replaced with reviewed
-# immutable digests and scanned.
+# These monitoring images are digest-pinned to reviewed release references.
+# The monitoring profile remains operator-enabled only: validate the selected
+# platform manifest, scan the exact digests, and complete staging burn-in before
+# enabling it in OCI.
 name: fayanms-monitoring
 
 services:
   prometheus:
-    image: prom/prometheus:v3.5.0
+    image: prom/prometheus:v3.5.0@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996
     profiles: ["monitoring"]
     restart: unless-stopped
     volumes:
@@ -30,7 +30,7 @@ services:
     mem_limit: 512m
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.136.0
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.136.0@sha256:45392d534c1edcc809c2d112394029246bc679d2ae5ea7081414a1fc74f2c621
     profiles: ["monitoring"]
     restart: unless-stopped
     volumes:
@@ -52,7 +52,7 @@ services:
     mem_limit: 512m
 
   grafana:
-    image: grafana/grafana:12.1.1
+    image: grafana/grafana:12.1.1@sha256:a1701c2180249361737a99a01bc770db39381640e4d631825d38ff4535efa47d
     profiles: ["monitoring"]
     restart: unless-stopped
     env_file: .env
