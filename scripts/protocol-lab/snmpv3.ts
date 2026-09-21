@@ -556,9 +556,14 @@ export function createSnmpV3Agent(
         salt: Uint8Array.from(randomBytes(8)),
       });
       socket.send(response, remote.port, remote.address);
-    } catch {
+    } catch (error: unknown) {
       // The disposable agent fails closed on malformed, unauthenticated, or
-      // non-authPriv packets and emits no response.
+      // non-authPriv packets. The message contains no packet bytes or secrets
+      // and makes lab troubleshooting observable without opening a data path.
+      console.error(
+        "SNMPv3 lab packet rejected:",
+        error instanceof Error ? error.message : "unknown packet error",
+      );
     }
   });
   socket.bind(config.port ?? 0, config.host ?? "127.0.0.1");
