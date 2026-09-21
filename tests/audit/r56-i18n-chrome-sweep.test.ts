@@ -139,6 +139,26 @@ import { join } from "node:path";
  * technical token inside the card-description prose, and v{agent
  * .version} in the already-keyed distribution section.
  *
+ * R87 (tranche 6c, 2026-09-20): admin-credentials keyed by hand (new
+ * `credentials` namespace, 39 leaves) — full inventory cleaned incl. the
+ * non-swept plane: the breadcrumb colon-syntax labels, the AUTH_METHOD
+ * module map now resolved via t(`authMethod.${key}`) with raw-token
+ * fallback (the API contract is an open string — R86 KIND_KEYS
+ * precedent; SNMPv3/HTTPS stay Latin in both locales — the pre-tranche
+ * EN chip rendered "SNMPv3", not the raw SNMPV3 token), the Gate G7
+ * notice body split AROUND the vault:// code token (R83 revoke-dialog
+ * split precedent), the error-message reason fallback, the "Never"
+ * rotation fallback (R86 registry.row.never precedent), the device-count
+ * template (now an ICU plural: en one/other; ar
+ * zero/one/two/few/many/other — R84 row.counts precedent) and the
+ * lowercase "ref:" tooltip prefix. Ledger 16 → 15 entries (600 → 574
+ * candidates). Documented survivors: the •••••••• SECRET_MASK bullet
+ * token (secrets are never rendered in ANY locale — Gate G7), the
+ * vault:// technical reference, date-fns formatDistanceToNow (no ar
+ * locale wired anywhere — device-config-tab / R83-R86 precedent), the
+ * em-dash placeholders, and the data-plane row values
+ * (name/username/port/notes + title={notes}).
+ *
  * Detection regexes (documented, deliberately shallow):
  *   - PROP_RE  : literal string props  title=/placeholder=/aria-label=/
  *                label=/description=/heading= starting with a capital.
@@ -196,7 +216,7 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
 
 /**
  * Pending-views debt ledger (R56 baseline; R80 tranche 1 + R81 tranche 2
- * + R82 tranche 3 + R83 tranche 4 + R84 tranche 5 + R85 tranche 6a + R86 tranche 6b shrank it). Format: file → candidate ceiling (the count
+ * + R82 tranche 3 + R83 tranche 4 + R84 tranche 5 + R85 tranche 6a + R86 tranche 6b + R87 tranche 6c shrank it). Format: file → candidate ceiling (the count
  * at R56; may only DECREASE). A view leaves the ledger the day it is
  * keyed; when the ledger is empty the sweep flips to forbid candidates in
  * every view. Counts use the documented shallow regexes above —
@@ -204,7 +224,6 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
  */
 const PENDING_VIEWS: Record<string, number> = {
   "admin-api-clients-view.tsx": 27,
-  "admin-credentials-view.tsx": 26,
   "admin-integrations-view.tsx": 47,
   "admin-users-view.tsx": 51,
   "alerts-view.tsx": 36,

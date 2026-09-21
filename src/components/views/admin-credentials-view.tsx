@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { EyeOff, KeyRound, Lock, ShieldCheck, Vault } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { useCredentials } from "@/hooks/api/use-credentials";
 import {
@@ -31,17 +32,26 @@ import type { CredentialProfileRow } from "@/lib/api-client";
  * column is a fixed "••••••••" chip pointing at the vault reference.
  */
 
-const AUTH_METHOD_LABEL: Record<string, string> = {
-  SSH_PASSWORD: "SSH password",
-  SSH_KEY: "SSH key",
-  API_TOKEN: "API token",
-  SNMPV3: "SNMPv3",
-  HTTPS: "HTTPS",
+// Auth-method labels resolve in the active locale at render (the R82
+// SORT_CHIPS / R84 STATUS_GROUPS / R86 KIND_KEYS dynamic-key precedent).
+// The API contract is an open string (CredentialProfileRow.type), so
+// unknown tokens fall back to the raw value. SNMPv3/HTTPS are protocol
+// names — the dictionary values stay Latin in BOTH locales (the pre-tranche
+// EN chip rendered "SNMPv3", not the raw SNMPV3 token).
+const AUTH_KEYS: Record<string, string> = {
+  SSH_PASSWORD: "sshPassword",
+  SSH_KEY: "sshKey",
+  API_TOKEN: "apiToken",
+  SNMPV3: "snmpv3",
+  HTTPS: "https",
 };
 
+// The bullet mask is a locale-neutral technical token: secrets are never
+// rendered in ANY locale (Gate G7 — documented survivor).
 const SECRET_MASK = "••••••••";
 
 export function AdminCredentialsView() {
+  const t = useTranslations("credentials");
   const credentialsQuery = useCredentials();
   const profiles = credentialsQuery.data ?? [];
 
@@ -62,38 +72,42 @@ export function AdminCredentialsView() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        breadcrumbs={[{ label: "Administration" }, { label: "Credential Profiles" }]}
-        description="Vault-backed device credentials for adapter, backup and discovery jobs. This view is read-only by design — secret material never leaves the vault."
-        title="Credential Profiles"
+        breadcrumbs={[
+          { label: t("breadcrumb.administration") },
+          { label: t("breadcrumb.credentials") },
+        ]}
+        description={t("description")}
+        title={t("title")}
       />
 
-      {/* KPI row */}
+      {/* KPI row — the loading "—" placeholders and the KPI numbers are
+          locale-neutral tokens (numeric chip + fmtMetric precedent). */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          description="Profiles across all auth methods"
+          description={t("kpi.total.description")}
           icon={KeyRound}
-          label="Credential profiles"
+          label={t("kpi.total.label")}
           loading={credentialsQuery.isLoading}
           value={credentialsQuery.isLoading ? "—" : kpis.total}
         />
         <KpiCard
-          description="Password and key-based CLI access"
+          description={t("kpi.ssh.description")}
           icon={Lock}
-          label="SSH profiles"
+          label={t("kpi.ssh.label")}
           loading={credentialsQuery.isLoading}
           value={credentialsQuery.isLoading ? "—" : kpis.ssh}
         />
         <KpiCard
-          description="API_TOKEN and HTTPS integrations"
+          description={t("kpi.tokens.description")}
           icon={ShieldCheck}
-          label="API tokens"
+          label={t("kpi.tokens.label")}
           loading={credentialsQuery.isLoading}
           value={credentialsQuery.isLoading ? "—" : kpis.tokens}
         />
         <KpiCard
-          description="Most recent secret rotation across the vault"
+          description={t("kpi.rotation.description")}
           icon={Vault}
-          label="Last rotation"
+          label={t("kpi.rotation.label")}
           loading={credentialsQuery.isLoading}
           value={
             kpis.lastRotated
@@ -103,53 +117,53 @@ export function AdminCredentialsView() {
         />
       </div>
 
-      {/* Gate G7 notice */}
+      {/* Gate G7 notice — the vault:// reference is a technical token
+          (documented survivor); the prose splits around it so the code
+          element keeps its font-mono styling. */}
       <div className="flex items-start gap-3 rounded-xl border border-success/30 bg-success/10 p-4 text-sm">
         <EyeOff aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-success" />
         <div>
-          <p className="font-medium text-success">Secrets are always masked</p>
+          <p className="font-medium text-success">{t("notice.title")}</p>
           <p className="text-muted-foreground">
-            The vault holds the secret material; the platform stores and
-            displays only vault references ({" "}
-            <code className="font-mono text-xs">vault://…</code> ). No read,
-            export or display path for secrets exists in this view — enforced
-            for every role, including administrators.
+            {t("notice.bodyStart")}{" "}
+            <code className="font-mono text-xs">vault://…</code>{" "}
+            {t("notice.bodyEnd")}
           </p>
         </div>
       </div>
 
       <SectionCard
-        title="Profiles"
-        description="Auth methods, ownership and rotation history — secrets never displayed"
+        title={t("card.title")}
+        description={t("card.description")}
       >
         {credentialsQuery.isError ? (
           <ErrorState
             reason={
               credentialsQuery.error instanceof Error
                 ? credentialsQuery.error.message
-                : "The credential list could not be loaded."
+                : t("error.reasonFallback")
             }
-            title="Could not load credential profiles"
+            title={t("error.title")}
           />
         ) : profiles.length === 0 && !credentialsQuery.isLoading ? (
           <EmptyState
-            description="Credential profiles are provisioned with the vault and used by backup, discovery and change jobs."
+            description={t("empty.description")}
             icon={KeyRound}
-            title="No credential profiles yet"
+            title={t("empty.title")}
           />
         ) : (
           <div className="overflow-x-auto">
-            <Table aria-label="Credential vault — profile name, type, owner and rotation metadata (secrets are masked and never displayed)">
+            <Table aria-label={t("table.ariaLabel")}>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Auth method</TableHead>
-                  <TableHead>Username</TableHead>
-                  <TableHead>Secret</TableHead>
-                  <TableHead>Port</TableHead>
-                  <TableHead>Devices</TableHead>
-                  <TableHead>Last rotated</TableHead>
-                  <TableHead>Notes</TableHead>
+                  <TableHead>{t("table.col.name")}</TableHead>
+                  <TableHead>{t("table.col.authMethod")}</TableHead>
+                  <TableHead>{t("table.col.username")}</TableHead>
+                  <TableHead>{t("table.col.secret")}</TableHead>
+                  <TableHead>{t("table.col.port")}</TableHead>
+                  <TableHead>{t("table.col.devices")}</TableHead>
+                  <TableHead>{t("table.col.lastRotated")}</TableHead>
+                  <TableHead>{t("table.col.notes")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -174,9 +188,13 @@ export function AdminCredentialsView() {
 }
 
 function ProfileRow({ profile }: { profile: CredentialProfileRow }) {
+  const t = useTranslations("credentials");
+  const authKey = AUTH_KEYS[profile.type];
+  // date-fns English relative time — no ar locale wired anywhere
+  // (device-config-tab / R83-R86 precedent, documented survivor).
   const lastRotated = profile.lastRotatedAt
     ? formatDistanceToNow(parseISO(profile.lastRotatedAt), { addSuffix: true })
-    : "Never";
+    : t("row.never");
 
   return (
     <TableRow>
@@ -188,9 +206,11 @@ function ProfileRow({ profile }: { profile: CredentialProfileRow }) {
       </TableCell>
       <TableCell>
         <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold">
-          {AUTH_METHOD_LABEL[profile.type] ?? profile.type}
+          {authKey ? t(`authMethod.${authKey}`) : profile.type}
         </span>
       </TableCell>
+      {/* Data-plane cells: username/name/port/notes are vault-backed row
+          values (R83 data-plane titles precedent). */}
       <TableCell className="font-mono text-xs">{profile.username}</TableCell>
       <TableCell>
         <Tooltip>
@@ -207,9 +227,9 @@ function ProfileRow({ profile }: { profile: CredentialProfileRow }) {
             </span>
           </TooltipTrigger>
           <TooltipContent className="max-w-56">
-            Vault-managed — secrets are never displayed
+            {t("row.vaultManaged")}
             <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
-              ref: {profile.secretRef}
+              {t("row.ref", { ref: profile.secretRef })}
             </span>
           </TooltipContent>
         </Tooltip>
@@ -217,7 +237,7 @@ function ProfileRow({ profile }: { profile: CredentialProfileRow }) {
       <TableCell className="tabular-nums">{profile.port}</TableCell>
       <TableCell className="tabular-nums">
         {profile.deviceCount > 0 ? (
-          `${profile.deviceCount} device${profile.deviceCount === 1 ? "" : "s"}`
+          t("row.devices", { count: profile.deviceCount })
         ) : (
           <span className="text-muted-foreground">—</span>
         )}

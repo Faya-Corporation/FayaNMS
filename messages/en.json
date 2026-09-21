@@ -2522,5 +2522,74 @@
       "neverRan": "Pruning has not run yet.",
       "cancel": "Cancel"
     }
+  },
+  "credentials": {
+    "breadcrumb": {
+      "administration": "Administration",
+      "credentials": "Credential Profiles"
+    },
+    "title": "Credential Profiles",
+    "description": "Vault-backed device credentials for adapter, backup and discovery jobs. This view is read-only by design — secret material never leaves the vault.",
+    "kpi": {
+      "total": {
+        "label": "Credential profiles",
+        "description": "Profiles across all auth methods"
+      },
+      "ssh": {
+        "label": "SSH profiles",
+        "description": "Password and key-based CLI access"
+      },
+      "tokens": {
+        "label": "API tokens",
+        "description": "API_TOKEN and HTTPS integrations"
+      },
+      "rotation": {
+        "label": "Last rotation",
+        "description": "Most recent secret rotation across the vault"
+      }
+    },
+    "notice": {
+      "title": "Secrets are always masked",
+      "bodyStart": "The vault holds the secret material; the platform stores and displays only vault references (",
+      "bodyEnd": "). No read, export or display path for secrets exists in this view — enforced for every role, including administrators."
+    },
+    "card": {
+      "title": "Profiles",
+      "description": "Auth methods, ownership and rotation history — secrets never displayed"
+    },
+    "error": {
+      "title": "Could not load credential profiles",
+      "reasonFallback": "The credential list could not be loaded."
+    },
+    "empty": {
+      "title": "No credential profiles yet",
+      "description": "Credential profiles are provisioned with the vault and used by backup, discovery and change jobs."
+    },
+    "table": {
+      "ariaLabel": "Credential vault — profile name, type, owner and rotation metadata (secrets are masked and never displayed)",
+      "col": {
+        "name": "Name",
+        "authMethod": "Auth method",
+        "username": "Username",
+        "secret": "Secret",
+        "port": "Port",
+        "devices": "Devices",
+        "lastRotated": "Last rotated",
+        "notes": "Notes"
+      }
+    },
+    "authMethod": {
+      "sshPassword": "SSH password",
+      "sshKey": "SSH key",
+      "apiToken": "API token",
+      "snmpv3": "SNMPv3",
+      "https": "HTTPS"
+    },
+    "row": {
+      "vaultManaged": "Vault-managed — secrets are never displayed",
+      "ref": "ref: {ref}",
+      "never": "Never",
+      "devices": "{count, plural, one {# device} other {# devices}}"
+    }
   }
 }

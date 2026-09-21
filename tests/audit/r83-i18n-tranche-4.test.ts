@@ -352,14 +352,14 @@ describe("R83 — ledger governance", () => {
     expect(/"baselines-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 16 entries (20 − 4 at HEAD: −2 R84, −1 R85, −1 R86)", () => {
+  test("E: the numeric ledger carries EXACTLY 15 entries (20 − 5 at HEAD: −2 R84, −1 R85, −1 R86, −1 R87)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(16);
+    expect(entries.length).toBe(15);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 600 (690 − 90 at HEAD: −44 R84, −27 R85, −19 R86)", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 574 (690 − 116 at HEAD: −44 R84, −27 R85, −19 R86, −26 R87)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -367,7 +367,7 @@ describe("R83 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-    expect(sum).toBe(600);
+    expect(sum).toBe(574);
   });
 });
 
