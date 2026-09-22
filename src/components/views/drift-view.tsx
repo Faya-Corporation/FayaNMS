@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { formatDistanceToNow } from "date-fns";
 import {
   ChevronLeft,
@@ -89,6 +90,7 @@ type TriageAction = "ACCEPT" | "RESOLVE";
 
 export function DriftView() {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
+  const t = useTranslations("driftView");
   // Status labels resolve in the active locale (falls back to config.label).
   const resolveStatusLabel = useStatusLabel();
 
@@ -116,7 +118,7 @@ export function DriftView() {
 
   const lastCheckedLabel = meta?.lastCheckedAt
     ? formatDistanceToNow(new Date(meta.lastCheckedAt), { addSuffix: true })
-    : "never";
+    : t("lastChecked.never");
 
   const runButton = (
     <Button
@@ -129,7 +131,7 @@ export function DriftView() {
       ) : (
         <Play aria-hidden="true" />
       )}
-      Run drift check
+      {t("primary.run")}
     </Button>
   );
 
@@ -137,7 +139,7 @@ export function DriftView() {
     <div className="flex flex-col gap-4">
       <div data-tour="drift-header">
         <PageHeader
-          description="Running configs compared against approved baselines — triage deviations as accepted or resolved"
+          description={t("header.description")}
           primaryAction={
             hasBaselines ? (
               runButton
@@ -147,12 +149,12 @@ export function DriftView() {
                   <span className="inline-flex">{runButton}</span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Approve a baseline first (device → Config → Approve as baseline)
+                  {t("primary.approveBaseline")}
                 </TooltipContent>
               </Tooltip>
             )
           }
-          title="Drift"
+          title={t("header.title")}
         />
       </div>
 
@@ -160,30 +162,30 @@ export function DriftView() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           className={(meta?.open ?? 0) > 0 ? "border-warning/40" : undefined}
-          description="Records awaiting triage (OPEN status)"
+          description={t("kpi.open.description")}
           icon={FileDiff}
-          label="Open drifts"
+          label={t("kpi.open.label")}
           loading={drift.isLoading}
           value={meta?.open ?? 0}
         />
         <KpiCard
-          description="Distinct devices with open drift"
+          description={t("kpi.devices.description")}
           icon={Radar}
-          label="Devices affected"
+          label={t("kpi.devices.label")}
           loading={drift.isLoading}
           value={meta?.devicesAffected ?? 0}
         />
         <KpiCard
-          description="Records resolved since midnight"
+          description={t("kpi.resolved.description")}
           icon={CircleCheck}
-          label="Resolved today"
+          label={t("kpi.resolved.label")}
           loading={drift.isLoading}
           value={meta?.resolvedToday ?? 0}
         />
         <KpiCard
-          description="Latest finished DRIFT_CHECK job"
+          description={t("kpi.lastChecked.description")}
           icon={History}
-          label="Last checked"
+          label={t("kpi.lastChecked.label")}
           loading={drift.isLoading}
           value={lastCheckedLabel}
         />
@@ -191,12 +193,12 @@ export function DriftView() {
 
       <SectionCard
         contentClassName="p-0"
-        description="Open records first — refreshed by every DRIFT_CHECK the worker completes"
-        title="Drift records"
+        description={t("records.description")}
+        title={t("records.title")}
         actions={
           <div className="flex items-center gap-2">
             <span className="hidden text-xs text-muted-foreground md:inline">
-              Last checked: {lastCheckedLabel}
+              {t("records.lastChecked", { value: lastCheckedLabel })}
             </span>
             <Select
               onValueChange={(value) => {
@@ -205,11 +207,11 @@ export function DriftView() {
               }}
               value={status}
             >
-              <SelectTrigger aria-label="Filter by drift status" className="h-8 w-32 text-xs">
+              <SelectTrigger aria-label={t("filters.statusAria")} className="h-8 w-32 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL}>All statuses</SelectItem>
+                <SelectItem value={ALL}>{t("filters.all")}</SelectItem>
                 {Object.values(DRIFT_STATUS).map((config) => (
                   <SelectItem key={config.key} value={config.key}>
                     {resolveStatusLabel(config)}
@@ -225,7 +227,7 @@ export function DriftView() {
             <ErrorState
               onRetry={() => void drift.refetch()}
               reason={drift.error.message}
-              title="Drift records could not be loaded"
+              title={t("error.load")}
             />
           </div>
         ) : drift.isLoading ? (
@@ -239,32 +241,32 @@ export function DriftView() {
             <EmptyState
               description={
                 status !== ALL
-                  ? "No records with this status — try All statuses."
-                  : "No drift detected — baseline configs match running configs. Run a check to compare every baseline-covered device."
+                  ? t("empty.filtered")
+                  : t("empty.none")
               }
               icon={GitBranch}
-              title="No drift detected"
+              title={t("empty.title")}
             />
           </div>
         ) : (
           <div className="max-h-[600px] overflow-y-auto">
             <div className="min-w-[980px]">
-              <Table aria-label="Drift records — device, baseline vs current version, status and detection time">
+              <Table aria-label={t("table.aria")}>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Device</TableHead>
+                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("table.device")}</TableHead>
                     <TableHead className="h-(--density-row-h) px-(--density-cell-x)">
-                      Baseline → Current
+                      {t("table.baselineCurrent")}
                     </TableHead>
                     <TableHead className="h-(--density-row-h) px-(--density-cell-x)">
-                      Detected
+                      {t("table.detected")}
                     </TableHead>
                     <TableHead className="h-(--density-row-h) px-(--density-cell-x)">
-                      Summary
+                      {t("table.summary")}
                     </TableHead>
-                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Status</TableHead>
+                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("table.status")}</TableHead>
                     <TableHead className="h-(--density-row-h) px-(--density-cell-x) text-end">
-                      Actions
+                      {t("table.actions")}
                     </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -293,28 +295,31 @@ export function DriftView() {
         {meta && rows.length > 0 && (
           <div className="flex items-center justify-between gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
             <span className="tabular-nums">
-              {meta.total} record{meta.total === 1 ? "" : "s"} · page {meta.page} of{" "}
-              {meta.totalPages}
+              {t("pagination.summary", {
+                total: meta.total,
+                page: meta.page,
+                totalPages: meta.totalPages,
+              })}
             </span>
             <div className="flex items-center gap-1">
               <Button
-                aria-label="Previous page"
+                aria-label={t("pagination.previousAria")}
                 disabled={meta.page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 size="sm"
                 variant="outline"
               >
                 <ChevronLeft aria-hidden="true" />
-                Prev
+                {t("pagination.previous")}
               </Button>
               <Button
-                aria-label="Next page"
+                aria-label={t("pagination.nextAria")}
                 disabled={meta.page >= meta.totalPages}
                 onClick={() => setPage((p) => p + 1)}
                 size="sm"
                 variant="outline"
               >
-                Next
+                {t("pagination.next")}
                 <ChevronRight aria-hidden="true" />
               </Button>
             </div>
@@ -332,12 +337,14 @@ export function DriftView() {
         <DialogContent className="flex max-h-[90vh] flex-col gap-0 sm:max-w-[min(95vw,1100px)]">
           <DialogHeader className="border-b">
             <DialogTitle className="font-tech ltr-technical">
-              Drift diff — {diffRecord?.hostname} v{diffRecord?.baselineVersion} → v
-              {diffRecord?.currentVersion}
+              {t("dialog.title", {
+                hostname: diffRecord?.hostname ?? "—",
+                baseline: diffRecord?.baselineVersion ?? "—",
+                current: diffRecord?.currentVersion ?? "—",
+              })}
             </DialogTitle>
             <DialogDescription>
-              Baseline vs running configuration — secrets are masked; normalized
-              mode is the drift-equivalent view.
+              {t("dialog.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -364,25 +371,20 @@ export function DriftView() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirmAction?.action === "ACCEPT" ? "Accept drift?" : "Resolve drift?"}
+              {confirmAction?.action === "ACCEPT"
+                ? t("triage.acceptTitle")
+                : t("triage.resolveTitle")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmAction?.action === "ACCEPT"
-                ? "Marks the deviation on "
-                : "Marks the deviation on "}
-              <span className="font-tech ltr-technical">
-                {confirmAction?.record.hostname}
-              </span>{" "}
-              as{" "}
-              {confirmAction?.action === "ACCEPT"
-                ? "an intentional, accepted change. The record closes as Accepted."
-                : "brought back into compliance. The record closes as Resolved."}{" "}
+                ? t("triage.acceptDescription", { hostname: confirmAction.record.hostname })
+                : t("triage.resolveDescription", { hostname: confirmAction?.record.hostname ?? "—" })}{" "}
               {confirmAction?.action === "RESOLVE" &&
-                "Resolve this only when the config actually matches the baseline again."}
+                t("triage.resolveHint")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("triage.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className={cn(
                 confirmAction?.action === "RESOLVE" &&
@@ -397,7 +399,9 @@ export function DriftView() {
                 setConfirmAction(null);
               }}
             >
-              {confirmAction?.action === "ACCEPT" ? "Accept drift" : "Resolve drift"}
+              {confirmAction?.action === "ACCEPT"
+                ? t("triage.acceptAction")
+                : t("triage.resolveAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -419,6 +423,7 @@ function DriftRowRow({
   onTriage: (action: TriageAction) => void;
   triagePending: boolean;
 }) {
+  const t = useTranslations("driftView");
   const config = getStatusConfig(DRIFT_STATUS, row.status);
   const isOpen = row.status === "OPEN";
 
@@ -427,7 +432,7 @@ function DriftRowRow({
       <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
         <div className="flex flex-col">
           <button
-            aria-label={`Open ${row.hostname} device detail`}
+            aria-label={t("row.openDeviceAria", { hostname: row.hostname })}
             className="text-sm font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
             onClick={onNavigateDevice}
             type="button"
@@ -461,19 +466,23 @@ function DriftRowRow({
       <TableCell className="h-(--density-row-h) px-(--density-cell-x) text-end">
         <div className="flex items-center justify-end gap-1">
           <Button
-            aria-label={`View diff for ${row.hostname} v${row.baselineVersion} to v${row.currentVersion}`}
+            aria-label={t("row.viewDiffAria", {
+              hostname: row.hostname,
+              baseline: row.baselineVersion,
+              current: row.currentVersion,
+            })}
             onClick={onDiff}
             size="sm"
             variant="outline"
           >
             <FileDiff aria-hidden="true" />
-            View diff
+            {t("row.viewDiff")}
           </Button>
           {isOpen && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  aria-label={`Triage drift record for ${row.hostname}`}
+                  aria-label={t("row.triageAria", { hostname: row.hostname })}
                   disabled={triagePending}
                   size="sm"
                   variant="ghost"
@@ -482,7 +491,7 @@ function DriftRowRow({
                     aria-hidden="true"
                     className={cn("size-2 rounded-full", config.dotClass)}
                   />
-                  Triage
+                  {t("row.triage")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
@@ -495,7 +504,7 @@ function DriftRowRow({
                     aria-hidden="true"
                     className="size-2 rounded-full bg-info"
                   />
-                  Accept as intentional
+                  {t("row.acceptIntentional")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => {
@@ -503,7 +512,7 @@ function DriftRowRow({
                   }}
                 >
                   <CircleCheck aria-hidden="true" className="size-3.5 text-success" />
-                  Resolve (fixed)
+                  {t("row.resolveFixed")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

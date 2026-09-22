@@ -57,9 +57,9 @@ describe("R88 — admin API clients namespace", () => {
     }
   });
 
-  test("updates dictionary totals from R88's 1,938 leaves to 1,982", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(2063);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(2063);
+  test("checks dictionary totals at current HEAD after R92", () => {
+    expect(leaves(readJson("messages/en.json")).length).toBe(2114);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(2114);
   });
 });
 
@@ -94,12 +94,12 @@ describe("R88 — view keying and ledger", () => {
     }
   });
 
-  test("updates the R56 ledger to 11 views and 464 candidates", () => {
+  test("updates the R56 ledger to 10 views and 434 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     expect(block).not.toMatch(/"admin-api-clients-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(11);
-    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(464);
+    expect(entries.length).toBe(10);
+    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(434);
   });
 });

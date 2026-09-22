@@ -3815,3 +3815,9 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (snapshots removed) + R91 backlog/worklog/audit report; **11 entries / 464 candidates** remain. r81–r90 governance pins now reflect the current ledger and dictionary total.
 - Tests: R91 isolated **5 pass / 0 fail / 94 expectations**; combined r56+r80–r91 governance **161 pass / 0 fail / 6,608 expectations** across 13 files. Full application gate and live browser evidence remain unavailable in this environment.
 - Docs: `docs/audits/FayaNMS-R91-I18n-Tranche6g-Snapshots-Keyed-2026-09-22.md`, NEXT-TASKS R91 update. db/, .env, PAT never staged.
+
+## R92 — i18n tranche 6h: drift keyed; ledger 11 → 10 (2026-09-22)
+- R92 tranche: **Drift fully keyed by hand** through NEW `driftView` (51 leaves en = ar deep parity; dictionary 2,063 → **2,114 = 2,114**). All 30 swept literals cover page/KPI/filter/table/pagination chrome, empty/error states, the diff dialog, triage confirmation, and row accessibility/action labels. Shared `useStatusLabel` remains the status-option path; hostnames, versions, site codes, snapshot identifiers, and date-fns relative time remain data/format values.
+- Governance: r56 sweep ledger −1 entry (drift removed) + R92 backlog/worklog/audit report; **10 entries / 434 candidates** remain. r81–r91 governance pins now reflect the current ledger and dictionary total.
+- Tests: R92 isolated **5 pass / 0 fail / 118 expectations**; combined r56+r80–r92 governance **166 pass / 0 fail / 6,826 expectations** across 14 files. Full application gate and live browser evidence remain unavailable in this environment.
+- Docs: `docs/audits/FayaNMS-R92-I18n-Tranche6h-Drift-Keyed-2026-09-22.md`, NEXT-TASKS R92 update. db/, .env, PAT never staged.

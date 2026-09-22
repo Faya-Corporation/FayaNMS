@@ -2858,5 +2858,92 @@
       "title": "Config diff — {hostname} v{from} → v{to}",
       "description": "Secrets are masked; switch to raw mode to see the untouched text."
     }
+  },
+  "driftView": {
+    "header": {
+      "title": "Drift",
+      "description": "Running configs compared against approved baselines — triage deviations as accepted or resolved"
+    },
+    "primary": {
+      "run": "Run drift check",
+      "approveBaseline": "Approve a baseline first (device → Config → Approve as baseline)"
+    },
+    "lastChecked": {
+      "never": "never"
+    },
+    "kpi": {
+      "open": {
+        "description": "Records awaiting triage (OPEN status)",
+        "label": "Open drifts"
+      },
+      "devices": {
+        "description": "Distinct devices with open drift",
+        "label": "Devices affected"
+      },
+      "resolved": {
+        "description": "Records resolved since midnight",
+        "label": "Resolved today"
+      },
+      "lastChecked": {
+        "description": "Latest finished DRIFT_CHECK job",
+        "label": "Last checked"
+      }
+    },
+    "records": {
+      "title": "Drift records",
+      "description": "Open records first — refreshed by every DRIFT_CHECK the worker completes",
+      "lastChecked": "Last checked: {value}"
+    },
+    "filters": {
+      "statusAria": "Filter by drift status",
+      "all": "All statuses"
+    },
+    "error": {
+      "load": "Drift records could not be loaded"
+    },
+    "empty": {
+      "title": "No drift detected",
+      "filtered": "No records with this status — try All statuses.",
+      "none": "No drift detected — baseline configs match running configs. Run a check to compare every baseline-covered device."
+    },
+    "table": {
+      "aria": "Drift records — device, baseline vs current version, status and detection time",
+      "device": "Device",
+      "baselineCurrent": "Baseline → Current",
+      "detected": "Detected",
+      "summary": "Summary",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "pagination": {
+      "summary": "{total, plural, one {# record} other {# records}} · page {page} of {totalPages}",
+      "previousAria": "Previous page",
+      "previous": "Prev",
+      "nextAria": "Next page",
+      "next": "Next"
+    },
+    "dialog": {
+      "title": "Drift diff — {hostname} v{baseline} → v{current}",
+      "description": "Baseline vs running configuration — secrets are masked; normalized mode is the drift-equivalent view."
+    },
+    "triage": {
+      "acceptTitle": "Accept drift?",
+      "resolveTitle": "Resolve drift?",
+      "acceptDescription": "Marks the deviation on {hostname} as an intentional, accepted change. The record closes as Accepted.",
+      "resolveDescription": "Marks the deviation on {hostname} as brought back into compliance. The record closes as Resolved.",
+      "resolveHint": "Resolve this only when the config actually matches the baseline again.",
+      "cancel": "Cancel",
+      "acceptAction": "Accept drift",
+      "resolveAction": "Resolve drift"
+    },
+    "row": {
+      "openDeviceAria": "Open {hostname} device detail",
+      "viewDiffAria": "View diff for {hostname} v{baseline} to v{current}",
+      "viewDiff": "View diff",
+      "triageAria": "Triage drift record for {hostname}",
+      "triage": "Triage",
+      "acceptIntentional": "Accept as intentional",
+      "resolveFixed": "Resolve (fixed)"
+    }
   }
 }
