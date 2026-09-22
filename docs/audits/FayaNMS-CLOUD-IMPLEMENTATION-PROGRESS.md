@@ -61,7 +61,11 @@ CLOUD-11 remains `IN PROGRESS`, not `DONE`: current source confirms the durable 
 
 ### Post-merge workflow readback
 
-GitHub Actions readback for merge commit `5671bc5` found CI run `35677691852` (`push`) green. Container run `35677691855` was cancelled; the follow-on `workflow_run` container certification `35678367826` completed ARM64 build/runtime/scan successfully, but its `Publish immutable GHCR image` job failed. The job-log endpoint currently returns 404, so the failure cause is unresolved. The workflow reported no artifacts, and no image digest is verified. Staging deployment runs `35678435855` and `35681246805` were skipped. Thus immediate task 2 is only partially complete: main CI is green, but immutable publication and staging evidence remain open.
+GitHub Actions readback for merge commit `5671bc5` found CI run `35677691852` (`push`) green. Container run `35677691855` was cancelled; the follow-on `workflow_run` container certification `35678367826` completed ARM64 build/runtime/scan successfully, but its `Publish immutable GHCR image` job failed. The job-log endpoint returns 404, so the failure cause is unresolved. The workflow reported no artifacts, and no image digest is verified. Staging deployment runs `35678435855` and `35681246805` were skipped. Thus immediate task 2 is only partially complete: main CI is green, but immutable publication and staging evidence remain open.
+
+### Failure-boundary follow-up — 2026-09-23
+
+The failed container run's job timestamps narrow the issue without identifying its cause: ARM64 certification succeeded from 02:09:35Z to 02:34:26Z; the GHCR publish job ran from 02:34:37Z to 02:55:23Z and failed while `Build and push immutable multi-architecture image` was still reported in progress. This is shorter than the job's configured 45-minute timeout, so timeout is not established as the cause. The step logs remain unavailable (404), and the local environment has no Docker CLI for an exact-build reproduction. Do not change the workflow or claim publication success until a retained log or successful exact-SHA rerun identifies the failure boundary.
 
 ## Round log
 
