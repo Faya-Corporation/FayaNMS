@@ -15,6 +15,25 @@ const drainSchema = z.object({
 
 const LOCK_TIMEOUT_MS = 60_000;
 
+type ClaimedProtocolEvent = {
+  id: string;
+  collectorId: string;
+  protocol: string;
+  sourceIp: string;
+  sourcePort: number;
+  receivedAt: Date;
+  eventType: string;
+  severity: string;
+  message: string;
+  protocolVersion: string | null;
+  securityLevel: string | null;
+  deviceId: string | null;
+  attributesJson: string;
+  correlationId: string;
+  attempts: number;
+  maxAttempts: number;
+};
+
 function eventAttributes(attributesJson: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(attributesJson);
@@ -88,7 +107,7 @@ async function claimDueEvents(limit: number, now: Date) {
       orderBy: [{ nextAttemptAt: "asc" }, { createdAt: "asc" }],
       take: limit,
     });
-    const claimed = [];
+    const claimed: ClaimedProtocolEvent[] = [];
     for (const row of candidates) {
       const guard =
         row.status === "QUEUED"
@@ -110,7 +129,7 @@ async function claimDueEvents(limit: number, now: Date) {
   });
 }
 
-async function deliverEvent(row: Awaited<ReturnType<typeof claimDueEvents>>[number]): Promise<boolean> {
+async function deliverEvent(row: ClaimedProtocolEvent): Promise<boolean> {
   const deliveredAt = new Date();
   return db.$transaction(async (tx) => {
     const updated = await tx.protocolEventQueue.updateMany({
@@ -140,7 +159,7 @@ async function deliverEvent(row: Awaited<ReturnType<typeof claimDueEvents>>[numb
 }
 
 async function recordFailure(
-  row: Awaited<ReturnType<typeof claimDueEvents>>[number],
+  row: ClaimedProtocolEvent,
   error: unknown,
 ): Promise<"QUEUED" | "DEAD" | "SKIPPED"> {
   const decision = protocolQueueFailure(row.attempts, row.maxAttempts, new Date(), error);
