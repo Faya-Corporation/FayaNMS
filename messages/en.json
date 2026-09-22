@@ -2591,5 +2591,81 @@
       "never": "Never",
       "devices": "{count, plural, one {# device} other {# devices}}"
     }
+  },
+  "adminApiClients": {
+    "page": {
+      "title": "API Clients",
+      "description": "Scoped bearer tokens for integrations — hashed server-side, shown once"
+    },
+    "actions": {
+      "newClient": "New client",
+      "rotate": "Rotate",
+      "create": "Create client",
+      "creating": "Creating…",
+      "rotateToken": "Rotate token",
+      "rotating": "Rotating…",
+      "copyToken": "Copy token"
+    },
+    "kpi": {
+      "registered": "Registered clients",
+      "active": "Active",
+      "scopesInUse": "Scopes in use"
+    },
+    "card": {
+      "title": "Clients",
+      "description": "Tokens are stored as sha256 hashes — the prefix identifies each client"
+    },
+    "error": {
+      "title": "Could not load API clients",
+      "reason": "The admin surface answered with an error — try again."
+    },
+    "empty": {
+      "title": "No API clients yet",
+      "description": "Create a scoped token to let integrations read or write FayaNMS data."
+    },
+    "table": {
+      "aria": "API clients — name, prefix, scopes and last rotation per client (tokens stored hashed)",
+      "client": "Client",
+      "token": "Token",
+      "scopes": "Scopes",
+      "lastUsed": "Last used",
+      "created": "Created",
+      "active": "Active",
+      "actions": "Actions"
+    },
+    "dialog": {
+      "create": {
+        "title": "New API client",
+        "description": "The bearer token is generated server-side and shown exactly once after creation.",
+        "nameLabel": "Client name",
+        "namePlaceholder": "grafana-dashboard",
+        "scopesLabel": "Scopes",
+        "scopesSelected": "({count} selected)",
+        "cancel": "Cancel",
+        "submit": "Create client",
+        "submitting": "Creating…"
+      },
+      "reveal": {
+        "title": "Token for “{name}”",
+        "description": "Copy it now — this is the only time the full token is shown. Only its sha256 hash is stored server-side.",
+        "security": "Shown once. Treat it like a password — rotate immediately if leaked.",
+        "done": "Done — I saved it"
+      },
+      "rotate": {
+        "title": "Rotate token?",
+        "description": "“{name}” gets a brand-new token. The previous token stops working immediately — update the integration before rotating.",
+        "cancel": "Cancel",
+        "submit": "Rotate token",
+        "submitting": "Rotating…"
+      }
+    },
+    "toast": {
+      "copied": "Token copied to clipboard",
+      "copyFailed": "Copy failed — select the token manually"
+    },
+    "row": {
+      "never": "never",
+      "toggle": "Toggle {name}"
+    }
   }
 }

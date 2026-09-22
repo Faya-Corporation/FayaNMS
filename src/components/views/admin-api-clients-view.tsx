@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { Copy, KeyRound, Lock, Plus, RefreshCcw, ShieldCheck } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -50,6 +51,7 @@ import { useCanWrite } from "@/stores/permissions";
  */
 
 export function AdminApiClientsView() {
+  const t = useTranslations("adminApiClients");
   const canWrite = useCanWrite();
   const { toast } = useToast();
 
@@ -96,33 +98,33 @@ export function AdminApiClientsView() {
   const copyToken = async (token: string) => {
     try {
       await navigator.clipboard.writeText(token);
-      toast({ title: "Token copied to clipboard" });
+      toast({ title: t("toast.copied") });
     } catch {
-      toast({ title: "Copy failed — select the token manually", variant: "destructive" });
+      toast({ title: t("toast.copyFailed"), variant: "destructive" });
     }
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="API Clients"
-        description="Scoped bearer tokens for integrations — hashed server-side, shown once"
+        title={t("page.title")}
+        description={t("page.description")}
         actions={
           canWrite ? (
             <Button onClick={() => setCreateOpen(true)} size="sm">
-              <Plus className="mr-2 size-4" /> New client
+              <Plus className="mr-2 size-4" /> {t("actions.newClient")}
             </Button>
           ) : undefined
         }
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <KpiCard label="Registered clients" value={String(clients.length)} icon={KeyRound} />
-        <KpiCard label="Active" value={String(activeCount)} icon={ShieldCheck} />
-        <KpiCard label="Scopes in use" value={String(scopesInUse)} icon={Lock} />
+        <KpiCard label={t("kpi.registered")} value={String(clients.length)} icon={KeyRound} />
+        <KpiCard label={t("kpi.active")} value={String(activeCount)} icon={ShieldCheck} />
+        <KpiCard label={t("kpi.scopesInUse")} value={String(scopesInUse)} icon={Lock} />
       </div>
 
-      <SectionCard title="Clients" description="Tokens are stored as sha256 hashes — the prefix identifies each client">
+      <SectionCard title={t("card.title")} description={t("card.description")}>
         {clientsQuery.isLoading ? (
           <div className="space-y-2 p-4">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -131,27 +133,27 @@ export function AdminApiClientsView() {
           </div>
         ) : clientsQuery.isError ? (
           <ErrorState
-            title="Could not load API clients"
-            reason="The admin surface answered with an error — try again."
+            title={t("error.title")}
+            reason={t("error.reason")}
             onRetry={() => void clientsQuery.refetch()}
           />
         ) : clients.length === 0 ? (
           <EmptyState
             icon={KeyRound}
-            title="No API clients yet"
-            description="Create a scoped token to let integrations read or write FayaNMS data."
+            title={t("empty.title")}
+            description={t("empty.description")}
           />
         ) : (
-          <Table aria-label="API clients — name, prefix, scopes and last rotation per client (tokens stored hashed)">
+          <Table aria-label={t("table.aria")}>
             <TableHeader>
               <TableRow>
-                <TableHead>Client</TableHead>
-                <TableHead>Token</TableHead>
-                <TableHead>Scopes</TableHead>
-                <TableHead>Last used</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Active</TableHead>
-                {canWrite && <TableHead className="text-right">Actions</TableHead>}
+                <TableHead>{t("table.client")}</TableHead>
+                <TableHead>{t("table.token")}</TableHead>
+                <TableHead>{t("table.scopes")}</TableHead>
+                <TableHead>{t("table.lastUsed")}</TableHead>
+                <TableHead>{t("table.created")}</TableHead>
+                <TableHead>{t("table.active")}</TableHead>
+                {canWrite && <TableHead className="text-right">{t("table.actions")}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -175,7 +177,7 @@ export function AdminApiClientsView() {
                   <TableCell className="text-muted-foreground">
                     {client.lastUsedAt
                       ? formatDistanceToNow(parseISO(client.lastUsedAt), { addSuffix: true })
-                      : "never"}
+                      : t("row.never")}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {formatDistanceToNow(parseISO(client.createdAt), { addSuffix: true })}
@@ -187,7 +189,7 @@ export function AdminApiClientsView() {
                       onCheckedChange={(checked) =>
                         void updateClient.mutateAsync({ id: client.id, isActive: checked })
                       }
-                      aria-label={`Toggle ${client.name}`}
+                      aria-label={t("row.toggle", { name: client.name })}
                     />
                   </TableCell>
                   {canWrite && (
@@ -198,7 +200,7 @@ export function AdminApiClientsView() {
                         onClick={() => setRotateTarget(client)}
                         disabled={!client.isActive}
                       >
-                        <RefreshCcw className="mr-1 size-3" /> Rotate
+                        <RefreshCcw className="mr-1 size-3" /> {t("actions.rotate")}
                       </Button>
                     </TableCell>
                   )}
@@ -213,24 +215,26 @@ export function AdminApiClientsView() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>New API client</DialogTitle>
+            <DialogTitle>{t("dialog.create.title")}</DialogTitle>
             <DialogDescription>
-              The bearer token is generated server-side and shown exactly once after creation.
+              {t("dialog.create.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="client-name">Client name</Label>
+              <Label htmlFor="client-name">{t("dialog.create.nameLabel")}</Label>
               <Input
                 id="client-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="grafana-dashboard"
+                placeholder={t("dialog.create.namePlaceholder")}
                 maxLength={80}
               />
             </div>
             <div className="space-y-2">
-              <Label>Scopes ({selectedScopes.length} selected)</Label>
+              <Label>
+                {t("dialog.create.scopesLabel")} {t("dialog.create.scopesSelected", { count: selectedScopes.length })}
+              </Label>
               <div className="grid max-h-44 grid-cols-2 gap-1.5 overflow-y-auto rounded-md border p-2 sm:grid-cols-3">
                 {scopeCatalog.map((scope) => {
                   const checked = selectedScopes.includes(scope);
@@ -261,13 +265,13 @@ export function AdminApiClientsView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
+              {t("dialog.create.cancel")}
             </Button>
             <Button
               onClick={() => void handleCreate()}
               disabled={!name.trim() || selectedScopes.length === 0 || createClient.isPending}
             >
-              {createClient.isPending ? "Creating…" : "Create client"}
+              {createClient.isPending ? t("dialog.create.submitting") : t("dialog.create.submit")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -277,17 +281,16 @@ export function AdminApiClientsView() {
       <Dialog open={Boolean(reveal)} onOpenChange={(open) => !open && setReveal(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Token for “{reveal?.name}”</DialogTitle>
+            <DialogTitle>{t("dialog.reveal.title", { name: reveal?.name ?? "" })}</DialogTitle>
             <DialogDescription>
-              Copy it now — this is the only time the full token is shown. Only its sha256
-              hash is stored server-side.
+              {t("dialog.reveal.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
             <div className="flex items-start gap-2">
               <Lock className="mt-0.5 size-4 shrink-0 text-warning" />
               <p className="text-warning-foreground">
-                Shown once. Treat it like a password — rotate immediately if leaked.
+                {t("dialog.reveal.security")}
               </p>
             </div>
           </div>
@@ -295,12 +298,17 @@ export function AdminApiClientsView() {
             <code className="flex-1 break-all rounded bg-muted p-2 font-mono text-xs">
               {reveal?.token}
             </code>
-            <Button variant="outline" size="icon" onClick={() => reveal && void copyToken(reveal.token)} aria-label="Copy token">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => reveal && void copyToken(reveal.token)}
+              aria-label={t("actions.copyToken")}
+            >
               <Copy className="size-4" />
             </Button>
           </div>
           <DialogFooter>
-            <Button onClick={() => setReveal(null)}>Done — I saved it</Button>
+            <Button onClick={() => setReveal(null)}>{t("dialog.reveal.done")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -309,18 +317,17 @@ export function AdminApiClientsView() {
       <Dialog open={Boolean(rotateTarget)} onOpenChange={(open) => !open && setRotateTarget(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Rotate token?</DialogTitle>
+            <DialogTitle>{t("dialog.rotate.title")}</DialogTitle>
             <DialogDescription>
-              “{rotateTarget?.name}” gets a brand-new token. The previous token stops working
-              immediately — update the integration before rotating.
+              {t("dialog.rotate.description", { name: rotateTarget?.name ?? "" })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRotateTarget(null)}>
-              Cancel
+              {t("dialog.rotate.cancel")}
             </Button>
             <Button onClick={() => void handleRotate()} disabled={rotateClient.isPending}>
-              {rotateClient.isPending ? "Rotating…" : "Rotate token"}
+              {rotateClient.isPending ? t("dialog.rotate.submitting") : t("dialog.rotate.submit")}
             </Button>
           </DialogFooter>
         </DialogContent>
