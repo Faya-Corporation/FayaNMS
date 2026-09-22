@@ -96,11 +96,11 @@ describe("R85 — tranche 6a namespace exists and is balanced", () => {
     expect(leaves(ar.perfOverview).length).toBe(76);
   });
 
-  test("A: dictionary totals are 2,151 = 2,151 at current HEAD (+37 R93)", () => {
+  test("A: dictionary totals are 2,201 = 2,201 at current HEAD (+50 R94)", () => {
     const en = readJson("messages/en.json");
     const ar = readJson("messages/ar.json");
-    expect(leaves(en).length).toBe(2151);
-    expect(leaves(ar).length).toBe(2151);
+    expect(leaves(en).length).toBe(2201);
+    expect(leaves(ar).length).toBe(2201);
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {
@@ -319,14 +319,14 @@ describe("R85 — ledger governance", () => {
     expect(/"perf-overview-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 9 entries at current HEAD (R93 removed backup compliance)", () => {
+  test("E: the numeric ledger carries EXACTLY 8 entries at current HEAD (R94 removed change approvals)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(9);
+    expect(entries.length).toBe(8);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 404 at current HEAD (R93 removed backup compliance)", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 371 at current HEAD (R94 removed change approvals)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -334,7 +334,7 @@ describe("R85 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-    expect(sum).toBe(404);
+    expect(sum).toBe(371);
   });
 });
 

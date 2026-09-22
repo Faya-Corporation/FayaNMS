@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { formatDistanceToNow } from "date-fns";
 import {
   CheckCircle2,
@@ -79,9 +80,9 @@ import type { ApprovalQueueRow } from "@/lib/api-client";
  */
 
 const STATUS_FILTERS = [
-  { key: "PENDING", label: "Pending", values: "PENDING" },
-  { key: "DECIDED", label: "Decided", values: "APPROVED,REJECTED" },
-  { key: "ALL", label: "All", values: "PENDING,APPROVED,REJECTED,NOT_REQUIRED" },
+  { key: "PENDING", values: "PENDING" },
+  { key: "DECIDED", values: "APPROVED,REJECTED" },
+  { key: "ALL", values: "PENDING,APPROVED,REJECTED,NOT_REQUIRED" },
 ];
 
 /** Risk levels gated by the SoD rule (mirrors the server guard). */
@@ -96,6 +97,7 @@ interface DecisionTarget {
 }
 
 export function ChangeApprovalsView() {
+  const t = useTranslations("changeApprovals");
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   // Status labels resolve in the active locale (falls back to config.label).
   const resolveStatusLabel = useStatusLabel();
@@ -204,37 +206,37 @@ export function ChangeApprovalsView() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        description="Approval queue across changes — separation of duties enforced"
-        title="Approvals"
+        description={t("page.description")}
+        title={t("page.title")}
       />
 
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
-          description="Levels waiting for a decision"
+          description={t("kpi.pending.description")}
           icon={ClipboardCheck}
-          label="Pending approvals"
+          label={t("kpi.pending.label")}
           loading={!meta && approvals.isLoading}
           value={meta?.pending ?? 0}
         />
         <KpiCard
-          description="SoD-aware — decisions you may legally record"
+          description={t("kpi.mine.description")}
           icon={ShieldAlert}
-          label="Awaiting my decision"
+          label={t("kpi.mine.label")}
           loading={!meta && approvals.isLoading}
           value={meta?.mine ?? "—"}
         />
         <KpiCard
-          description="Approvals recorded today"
+          description={t("kpi.approved.description")}
           icon={CheckCircle2}
-          label="Approved today"
+          label={t("kpi.approved.label")}
           loading={!meta && approvals.isLoading}
           value={meta?.approvedToday ?? 0}
         />
         <KpiCard
-          description="Rejections recorded today"
+          description={t("kpi.rejected.description")}
           icon={XCircle}
-          label="Rejected today"
+          label={t("kpi.rejected.label")}
           loading={!meta && approvals.isLoading}
           value={meta?.rejectedToday ?? 0}
         />
@@ -247,32 +249,32 @@ export function ChangeApprovalsView() {
               onValueChange={(value) => setStatusKey(value)}
               value={statusKey}
             >
-              <SelectTrigger aria-label="Approval status filter" className="w-[130px]">
+              <SelectTrigger aria-label={t("filters.statusAria")} className="w-[130px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {STATUS_FILTERS.map((entry) => (
                   <SelectItem key={entry.key} value={entry.key}>
-                    {entry.label}
+                    {t(`filters.options.${entry.key}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Button
-              aria-label="Refresh approvals"
+              aria-label={t("filters.refreshAria")}
               onClick={() => void approvals.refetch()}
               size="sm"
               type="button"
               variant="outline"
             >
               <RefreshCw aria-hidden="true" className={cn(approvals.isFetching && "animate-spin")} />
-              Refresh
+              {t("filters.refresh")}
             </Button>
           </div>
         }
         contentClassName="p-0"
-        description="Decisions are recorded under your signed-in account (P19)"
-        title="Approval queue"
+        description={t("queue.description")}
+        title={t("queue.title")}
       >
         {/* Search */}
         <div className="border-b p-3">
@@ -282,10 +284,10 @@ export function ChangeApprovalsView() {
               className="absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
             />
             <Input
-              aria-label="Search approvals"
+              aria-label={t("search.aria")}
               className="ps-8"
               onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Search number or title…"
+              placeholder={t("search.placeholder")}
               value={searchInput}
             />
           </div>
@@ -296,7 +298,7 @@ export function ChangeApprovalsView() {
             <ErrorState
               onRetry={() => void approvals.refetch()}
               reason={approvals.error.message}
-              title="Approvals could not be loaded"
+              title={t("error.load")}
             />
           </div>
         ) : approvals.isLoading ? (
@@ -308,23 +310,23 @@ export function ChangeApprovalsView() {
         ) : changeRows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="No approval rows match the current filter — changes appear here once submitted for approval."
+              description={t("empty.description")}
               icon={ClipboardCheck}
-              title="Queue is clear"
+              title={t("empty.title")}
             />
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table aria-label="Approval queue — pending technical, security and manager approvals per change request" className="min-w-[900px]">
+            <Table aria-label={t("table.aria")} className="min-w-[900px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Number</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Risk</TableHead>
-                  <TableHead className="hidden md:table-cell">Requester</TableHead>
-                  <TableHead className="hidden lg:table-cell">Requested</TableHead>
-                  <TableHead>Approval levels</TableHead>
-                  <TableHead className="text-end">Actions</TableHead>
+                  <TableHead>{t("table.number")}</TableHead>
+                  <TableHead>{t("table.title")}</TableHead>
+                  <TableHead>{t("table.risk")}</TableHead>
+                  <TableHead className="hidden md:table-cell">{t("table.requester")}</TableHead>
+                  <TableHead className="hidden lg:table-cell">{t("table.requested")}</TableHead>
+                  <TableHead>{t("table.levels")}</TableHead>
+                  <TableHead className="text-end">{t("table.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -423,17 +425,23 @@ export function ChangeApprovalsView() {
                                     {resolveStatusLabel(levelConfig)}
                                   </span>
                                   <Button
-                                    aria-label={`Approve ${resolveStatusLabel(levelConfig)} for ${row.change.number}`}
+                                    aria-label={t("row.approveAria", {
+                                      level: resolveStatusLabel(levelConfig),
+                                      number: row.change.number,
+                                    })}
                                     disabled={decide.isPending || !levelAllowed}
                                     onClick={() => openDecision(row, level, "APPROVED")}
                                     size="sm"
                                     type="button"
                                     variant="outline"
                                   >
-                                    Approve
+                                    {t("row.approve")}
                                   </Button>
                                   <Button
-                                    aria-label={`Reject ${resolveStatusLabel(levelConfig)} for ${row.change.number}`}
+                                    aria-label={t("row.rejectAria", {
+                                      level: resolveStatusLabel(levelConfig),
+                                      number: row.change.number,
+                                    })}
                                     disabled={decide.isPending || !levelAllowed}
                                     onClick={() => openDecision(row, level, "REJECTED")}
                                     size="sm"
@@ -441,7 +449,7 @@ export function ChangeApprovalsView() {
                                     variant="outline"
                                   >
                                     <XCircle aria-hidden="true" className="text-danger" />
-                                    Reject
+                                    {t("row.reject")}
                                   </Button>
                                 </div>
                               );
@@ -456,8 +464,8 @@ export function ChangeApprovalsView() {
                                   </TooltipTrigger>
                                   <TooltipContent>
                                     {sodBlocked
-                                      ? `Blocked by separation of duties — the requester cannot approve a ${row.change.riskLevel} change`
-                                      : "Your role is not entitled to decide this approval level (server-enforced)"}
+                                      ? t("tooltips.sod", { risk: row.change.riskLevel })
+                                      : t("tooltips.entitlement")}
                                   </TooltipContent>
                                 </Tooltip>
                               );
@@ -484,28 +492,32 @@ export function ChangeApprovalsView() {
             <>
               <DialogHeader>
                 <DialogTitle>
-                  {decision.decision === "APPROVED" ? "Approve" : "Reject"}{" "}
+                  {decision.decision === "APPROVED"
+                    ? t("dialog.approveTitle")
+                    : t("dialog.rejectTitle")}{" "}
                   <span className="font-tech ltr-technical">{decision.changeNumber}</span> —{" "}
                   {resolveStatusLabel(lookupStatusConfig(CHANGE_APPROVAL_LEVEL_UI, decision.level))}
                 </DialogTitle>
                 <DialogDescription>
                   {decision.decision === "APPROVED"
-                    ? "Recording your approval as the acting user — a comment is optional."
-                    : "Rejections require a short reason (min 4 characters) for the audit trail."}
+                    ? t("dialog.approveDescription")
+                    : t("dialog.rejectDescription")}
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="approval-comment">
-                  Comment {decision.decision === "APPROVED" ? "(optional)" : "(required)"}
+                  {decision.decision === "APPROVED"
+                    ? t("dialog.commentOptional")
+                    : t("dialog.commentRequired")}
                 </Label>
                 <Textarea
-                  aria-label="Decision comment"
+                  aria-label={t("dialog.commentAria")}
                   id="approval-comment"
                   onChange={(event) => setComment(event.target.value)}
                   placeholder={
                     decision.decision === "APPROVED"
-                      ? "e.g. reviewed against the plan — looks good"
-                      : "e.g. rollback plan incomplete for this window"
+                      ? t("dialog.approvePlaceholder")
+                      : t("dialog.rejectPlaceholder")
                   }
                   rows={3}
                   value={comment}
@@ -514,7 +526,7 @@ export function ChangeApprovalsView() {
                   comment.trim().length > 0 &&
                   comment.trim().length < 4 && (
                     <p className="text-xs text-warning">
-                      Reason must be at least 4 characters.
+                      {t("dialog.reasonMin")}
                     </p>
                   )}
               </div>
@@ -524,7 +536,7 @@ export function ChangeApprovalsView() {
                   type="button"
                   variant="ghost"
                 >
-                  Cancel
+                  {t("dialog.cancel")}
                 </Button>
                 <Button
                   className={
@@ -539,7 +551,9 @@ export function ChangeApprovalsView() {
                   onClick={submitDecision}
                   type="button"
                 >
-                  {decision.decision === "APPROVED" ? "Approve" : "Reject change"}
+                  {decision.decision === "APPROVED"
+                    ? t("dialog.approveAction")
+                    : t("dialog.rejectAction")}
                 </Button>
               </DialogFooter>
             </>

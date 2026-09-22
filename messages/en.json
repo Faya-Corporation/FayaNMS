@@ -3008,5 +3008,89 @@
       "unassigned": "Unassigned",
       "noBackup": "No successful backup on record"
     }
+  },
+  "changeApprovals": {
+    "page": {
+      "title": "Approvals",
+      "description": "Approval queue across changes — separation of duties enforced"
+    },
+    "kpi": {
+      "pending": {
+        "description": "Levels waiting for a decision",
+        "label": "Pending approvals"
+      },
+      "mine": {
+        "description": "SoD-aware — decisions you may legally record",
+        "label": "Awaiting my decision"
+      },
+      "approved": {
+        "description": "Approvals recorded today",
+        "label": "Approved today"
+      },
+      "rejected": {
+        "description": "Rejections recorded today",
+        "label": "Rejected today"
+      }
+    },
+    "filters": {
+      "options": {
+        "PENDING": "Pending",
+        "DECIDED": "Decided",
+        "ALL": "All"
+      },
+      "statusAria": "Approval status filter",
+      "refreshAria": "Refresh approvals",
+      "refresh": "Refresh"
+    },
+    "queue": {
+      "description": "Decisions are recorded under your signed-in account (P19)",
+      "title": "Approval queue"
+    },
+    "search": {
+      "aria": "Search approvals",
+      "placeholder": "Search number or title…"
+    },
+    "error": {
+      "load": "Approvals could not be loaded"
+    },
+    "empty": {
+      "description": "No approval rows match the current filter — changes appear here once submitted for approval.",
+      "title": "Queue is clear"
+    },
+    "table": {
+      "aria": "Approval queue — pending technical, security and manager approvals per change request",
+      "number": "Number",
+      "title": "Title",
+      "risk": "Risk",
+      "requester": "Requester",
+      "requested": "Requested",
+      "levels": "Approval levels",
+      "actions": "Actions"
+    },
+    "row": {
+      "approveAria": "Approve {level} for {number}",
+      "rejectAria": "Reject {level} for {number}",
+      "approve": "Approve",
+      "reject": "Reject"
+    },
+    "tooltips": {
+      "sod": "Blocked by separation of duties — the requester cannot approve a {risk} change",
+      "entitlement": "Your role is not entitled to decide this approval level (server-enforced)"
+    },
+    "dialog": {
+      "approveTitle": "Approve",
+      "rejectTitle": "Reject",
+      "approveDescription": "Recording your approval as the acting user — a comment is optional.",
+      "rejectDescription": "Rejections require a short reason (min 4 characters) for the audit trail.",
+      "commentOptional": "Comment (optional)",
+      "commentRequired": "Comment (required)",
+      "commentAria": "Decision comment",
+      "approvePlaceholder": "e.g. reviewed against the plan — looks good",
+      "rejectPlaceholder": "e.g. rollback plan incomplete for this window",
+      "reasonMin": "Reason must be at least 4 characters.",
+      "cancel": "Cancel",
+      "approveAction": "Approve",
+      "rejectAction": "Reject change"
+    }
   }
 }

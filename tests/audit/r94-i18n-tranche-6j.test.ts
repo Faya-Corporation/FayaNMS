@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** R93 — i18n tranche 6i: backup compliance view keyed. */
+/** R94 — i18n tranche 6j: change approvals view keyed. */
 
 const REPO = join(import.meta.dir, "..", "..");
-const VIEW = "src/components/views/backup-compliance-view.tsx";
+const VIEW = "src/components/views/change-approvals-view.tsx";
 
 type Messages = Record<string, unknown>;
 
@@ -37,15 +37,15 @@ function candidates(src: string): string[] {
   ];
 }
 
-describe("R93 — backup compliance namespace", () => {
-  test("has 37 non-empty leaves with deep EN/AR parity", () => {
+describe("R94 — change approvals namespace", () => {
+  test("has 50 non-empty leaves with deep EN/AR parity", () => {
     const en = readJson("messages/en.json") as Record<string, Messages>;
     const ar = readJson("messages/ar.json") as Record<string, Messages>;
-    expect(leaves(en.backupCompliance).length).toBe(37);
-    expect(leaves(ar.backupCompliance).length).toBe(37);
-    expect(new Set(leaves(en.backupCompliance))).toEqual(new Set(leaves(ar.backupCompliance)));
+    expect(leaves(en.changeApprovals).length).toBe(50);
+    expect(leaves(ar.changeApprovals).length).toBe(50);
+    expect(new Set(leaves(en.changeApprovals))).toEqual(new Set(leaves(ar.changeApprovals)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).backupCompliance;
+      const namespace = (readJson(file) as Record<string, Messages>).changeApprovals;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -53,37 +53,38 @@ describe("R93 — backup compliance namespace", () => {
         }
         expect(typeof node === "string" && node.length > 0, `${file}:${path}`).toBe(true);
       };
-      walk(namespace, "backupCompliance");
+      walk(namespace, "changeApprovals");
     }
   });
 
-  test("checks dictionary totals at current HEAD after R94", () => {
+  test("updates dictionary totals from R93's 2,151 leaves to 2,201", () => {
     expect(leaves(readJson("messages/en.json")).length).toBe(2201);
     expect(leaves(readJson("messages/ar.json")).length).toBe(2201);
   });
 });
 
-describe("R93 — view keying and ledger", () => {
-  test("consumes backupCompliance and has zero shallow sweep candidates", () => {
+describe("R94 — view keying and ledger", () => {
+  test("consumes changeApprovals and has zero shallow sweep candidates", () => {
     const src = readRepo(VIEW);
-    expect(src).toContain('useTranslations("backupCompliance")');
+    expect(src).toContain('useTranslations("changeApprovals")');
     expect(candidates(src)).toEqual([]);
   });
 
-  test("keeps KPI and row interpolation shapes", () => {
+  test("keeps decision interpolation and validation shapes", () => {
     const src = readRepo(VIEW);
     const en = readJson("messages/en.json") as Record<string, Messages>;
-    expect(src).toContain('t("kpi.compliant.description"');
-    expect(src).toContain('t("row.openDeviceAria"');
-    expect(en.backupCompliance.kpi.compliant.description).toContain("{compliant}");
-    expect(en.backupCompliance.kpi.compliant.description).toContain("{managed}");
-    expect(en.backupCompliance.site.percent).toContain("{percent}");
+    expect(src).toContain('t("row.approveAria"');
+    expect(src).toContain('t("dialog.rejectDescription"');
+    expect(en.changeApprovals.row.approveAria).toContain("{level}");
+    expect(en.changeApprovals.row.approveAria).toContain("{number}");
+    expect(en.changeApprovals.dialog.rejectDescription).toContain("4");
+    expect(en.changeApprovals.tooltips.sod).toContain("{risk}");
   });
 
   test("updates the R56 ledger to 8 views and 371 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
-    expect(block).not.toMatch(/"backup-compliance-view\.tsx":\s*\d/);
+    expect(block).not.toMatch(/"change-approvals-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
     expect(entries.length).toBe(8);
     expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(371);
