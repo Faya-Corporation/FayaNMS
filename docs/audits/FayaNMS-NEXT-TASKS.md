@@ -1,10 +1,10 @@
 # FayaNMS — NEXT TASKS (i18n tranche history and cross-program status, updated 2026-09-22)
 
-The R80–R102 i18n tranche program is complete, but it is not the repository's only remaining work. The full independent production roadmap at `docs/audits/FayaNMS-Full-Independent-Production-Audit-and-Enterprise-Enhancement-Roadmap-2026-09-22 (1).md` is the current cross-program backlog; several items remain repository-actionable.
+The R80–R102 i18n tranche program is complete, but it is not the repository's only remaining work. A detailed independent production roadmap is present as an untracked workspace input; its first items cover the cloud ledger, post-merge release evidence, repository governance, real flow decoding, and topology/collector gaps. Several remaining items are repository-actionable.
 
 ## Current Cross-Program Status
 
-- Current local `main`: `59efaa9`; GitHub and local `origin/main`: `5671bc5`. The two focused ledger updates are local and not pushed.
+- GitHub and local `origin/main` were verified at `5671bc5`; local `main` contains the focused ledger updates in `9a6775f` and `59efaa9`. These commits have not been pushed.
 - Roadmap task 1 (cloud-ledger reconciliation) is complete in `9a6775f`.
 - Roadmap task 2 is partial: post-merge CI passed, but immutable GHCR publication failed; no image digests were verified and staging was skipped. Evidence is recorded in `FayaNMS-CLOUD-IMPLEMENTATION-PROGRESS.md` and commit `59efaa9`.
 - Roadmap task 3 (branch protection) is owner-controlled. Later telemetry, topology, HA, and lab tasks are not complete merely because the i18n tranche ledger is empty.
