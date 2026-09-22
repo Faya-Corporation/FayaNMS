@@ -60,6 +60,17 @@ const edgeSchema = z.object({
   simulated: z.boolean(),
 });
 
+const discoveryEvidenceSchema = z.object({
+  deviceId: z.string(),
+  ip: z.string(),
+  hostname: z.string(),
+  observedAt: z.string(),
+  openPorts: z.array(z.number().int().min(1).max(65_535)),
+  protocols: z.array(z.string()),
+  confidence: z.number().int().min(0).max(100),
+  osFingerprint: z.string(),
+});
+
 const summarySchema = z.object({
   siteCount: z.number().int().min(0),
   deviceCount: z.number().int().min(0),
@@ -75,6 +86,7 @@ const summarySchema = z.object({
 const responseSchema = z.object({
   nodes: z.array(nodeSchema),
   edges: z.array(edgeSchema),
+  discoveryEvidence: z.array(discoveryEvidenceSchema),
   summary: summarySchema,
   generatedAt: z.string(),
 });
@@ -170,7 +182,53 @@ export async function GET(request: Request) {
     circuitEdges,
   });
 
-  const payload = { ...graph, generatedAt: new Date().toISOString() };
+  const recentObservations = await db.discoveryObservation.findMany({
+    where: {
+      observedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1_000) },
+      deviceId: { not: null },
+    },
+    orderBy: { observedAt: "desc" },
+    take: 500,
+    select: {
+      deviceId: true,
+      ip: true,
+      hostname: true,
+      observedAt: true,
+      openPortsJson: true,
+      protocolsJson: true,
+      confidence: true,
+      osFingerprint: true,
+    },
+  });
+  const observedDeviceIds = new Set<string>();
+  const discoveryEvidence = recentObservations.flatMap((observation) => {
+    if (!observation.deviceId || observedDeviceIds.has(observation.deviceId)) return [];
+    observedDeviceIds.add(observation.deviceId);
+    let openPorts: unknown = [];
+    let protocols: unknown = [];
+    try {
+      openPorts = JSON.parse(observation.openPortsJson);
+      protocols = JSON.parse(observation.protocolsJson);
+    } catch {
+      // Corrupt evidence is omitted from the typed topology response.
+    }
+    return [{
+      deviceId: observation.deviceId,
+      ip: observation.ip,
+      hostname: observation.hostname,
+      observedAt: observation.observedAt.toISOString(),
+      openPorts: Array.isArray(openPorts)
+        ? openPorts.filter((port): port is number => typeof port === "number" && Number.isInteger(port) && port >= 1 && port <= 65_535)
+        : [],
+      protocols: Array.isArray(protocols)
+        ? protocols.filter((protocol): protocol is string => typeof protocol === "string").slice(0, 8)
+        : [],
+      confidence: observation.confidence,
+      osFingerprint: observation.osFingerprint,
+    }];
+  });
+
+  const payload = { ...graph, discoveryEvidence, generatedAt: new Date().toISOString() };
 
   // Zod-validated response contract — a malformed payload fails loudly
   // instead of shipping a shape the client cannot trust.

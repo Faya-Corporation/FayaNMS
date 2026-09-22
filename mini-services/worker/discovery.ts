@@ -28,8 +28,10 @@ export interface DiscoveryProbeResult {
 export interface DiscoveryCandidate {
   ip: string;
   hostname: string;
+  subnet?: string;
   vendorGuess: "generic";
   mgmtPort?: number;
+  openPorts?: number[];
   protocols: string[];
   confidence: number;
   osFingerprint: "Unauthenticated TCP reachability";
@@ -196,8 +198,10 @@ export async function scanDiscoverySubnet(
         candidates.push({
           ip: result.ip,
           hostname: result.hostname,
+          subnet: cidr,
           vendorGuess: "generic",
           mgmtPort: result.openPorts[0],
+          openPorts: result.openPorts,
           protocols: result.openPorts.map(protocolForPort),
           confidence: Math.min(90, 35 + result.openPorts.length * 12),
           osFingerprint: "Unauthenticated TCP reachability",

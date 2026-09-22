@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { normalizeDiscoveryPolicyConfig } from "@/lib/discovery/policy";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -30,14 +31,17 @@ const createSchema = z.object({
     .min(1, "at least one subnet is required")
     .max(4, "a scan is limited to 4 /24-or-smaller subnets"),
   name: z.string().trim().max(120).optional(),
-});
+  ports: z.array(z.number().int().min(1).max(65_535)).min(1).max(4).optional(),
+}).strict();
 
 interface DiscoveryCandidate {
   ip: string;
   hostname: string;
   vendorGuess: string;
   modelGuess?: string;
+  subnet?: string;
   mgmtPort?: number;
+  openPorts?: number[];
   protocols?: string[];
   confidence?: number;
   osFingerprint?: string;
@@ -113,7 +117,20 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
-  const { subnets, name } = parsed.data;
+  const { subnets, name, ports } = parsed.data;
+  const config = normalizeDiscoveryPolicyConfig({
+    subnets,
+    ports,
+    intervalMinutes: 60,
+    enabled: true,
+  });
+  if (!config) {
+    return fail(
+      "INVALID_POLICY",
+      "Discovery requires only approved /24-/32 subnets, approved TCP management ports, and no more than 1,024 targets.",
+      400,
+    );
+  }
 
   // Phase 19-C (audit AUTHZ-001 sweep): queueing discovery scans requires
   // the "device.write" permission (the import turns candidates into real
@@ -140,7 +157,11 @@ export async function POST(request: Request) {
         progress: 0,
         priority: 5,
         maxAttempts: 3,
-        payloadJson: JSON.stringify({ subnets, ...(name ? { name } : {}) }),
+        payloadJson: JSON.stringify({
+          subnets: config.subnets,
+          ports: config.ports,
+          ...(name ? { name } : {}),
+        }),
         correlationId,
       },
     }),
@@ -153,7 +174,11 @@ export async function POST(request: Request) {
         resourceLabel: name ?? subnets.join(", "),
         result: "SUCCESS",
         correlationId,
-        afterJson: JSON.stringify({ subnets, name: name ?? null }),
+        afterJson: JSON.stringify({
+          subnets: config.subnets,
+          ports: config.ports,
+          name: name ?? null,
+        }),
       },
     }),
   ]);

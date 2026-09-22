@@ -181,7 +181,8 @@ model Device {
   // SAFE-005: exclusive per-device write lock while a change step runs
   // (one change, one device, one step at a time).
   writeLocks  DeviceWriteLock[]
-  protocolEvents ProtocolEventQueue[]
+  protocolEvents        ProtocolEventQueue[]
+  discoveryObservations DiscoveryObservation[]
 
   @@index([siteId])
   @@index([vendorId])
@@ -785,7 +786,8 @@ model JobExecution {
   finishedAt    DateTime?
   createdAt     DateTime  @default(now())
 
-  snapshots ConfigSnapshot[]
+  snapshots             ConfigSnapshot[]
+  discoveryObservations DiscoveryObservation[]
 
   @@index([status, priority])
   @@index([type, status])
@@ -794,6 +796,54 @@ model JobExecution {
   @@index([scheduledAt])
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Continuous discovery evidence (CLOUD-11 — bounded live reconciliation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Operator-controlled, disabled-by-default recurring bounded discovery.
+model DiscoveryPolicy {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  // JSON array of IPv4 /24-/32 subnets.
+  subnetsJson     String
+  // JSON array of approved TCP management ports (22, 80, 443, 830).
+  portsJson       String
+  intervalMinutes Int       @default(60)
+  enabled         Boolean   @default(false)
+  lastEnqueuedAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([enabled, lastEnqueuedAt])
+}
+
+/// One bounded wire-observation per candidate per discovery job. A matched
+/// device is linked by exact management IP only; reverse DNS is evidence, not
+/// device identity. No vendor, SNMP identity, or topology edge is inferred.
+model DiscoveryObservation {
+  id             String    @id @default(cuid())
+  jobId          String?
+  job            JobExecution? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  deviceId       String?
+  device         Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  correlationId  String
+  subnet         String
+  ip             String
+  hostname       String
+  reachable      Boolean   @default(true)
+  openPortsJson  String
+  protocolsJson  String
+  confidence     Int
+  osFingerprint  String
+  observedAt     DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  @@unique([jobId, ip])
+  @@index([ip, observedAt])
+  @@index([deviceId, observedAt])
+  @@index([correlationId])
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Protocol event durability (CLOUD-11 — bounded collector handoff)

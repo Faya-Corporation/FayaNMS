@@ -97,7 +97,13 @@ import {
   resolveAdapter,
 } from "./adapter-router";
 import { nextPost, selfPost, log } from "./next-client";
-import { scanDiscoverySubnet, enumerateDiscoveryTargets, MAX_DISCOVERY_TARGETS } from "./discovery";
+import {
+  scanDiscoverySubnet,
+  enumerateDiscoveryTargets,
+  MAX_DISCOVERY_TARGETS,
+  type DiscoveryCandidate,
+} from "./discovery";
+import { normalizeDiscoveryPolicyConfig } from "../../src/lib/discovery/policy";
 import { pollSnmpV3, type SnmpV3PollProfileReference } from "./snmpv3-poller";
 
 const CLAIM_INTERVAL_MS = 3_000;
@@ -364,11 +370,18 @@ async function runDiscoveryJob(job: ClaimedJob): Promise<void> {
   const payload = job.payload ?? {};
   const name = typeof payload.name === "string" && payload.name ? payload.name : null;
   const rawSubnets = Array.isArray(payload.subnets) ? payload.subnets : [];
-  const subnets = rawSubnets.map((s) => String(s));
-
-  if (subnets.length === 0) {
-    throw new Error("Invalid discovery payload: subnets[] is empty or missing");
+  const rawPorts = Array.isArray(payload.ports) ? payload.ports : undefined;
+  const config = normalizeDiscoveryPolicyConfig({
+    subnets: rawSubnets.map((s) => String(s)),
+    ports: rawPorts,
+    intervalMinutes: 60,
+    enabled: true,
+  });
+  if (!config) {
+    throw new Error("Invalid discovery payload: only bounded /24-/32 subnets and approved TCP ports are allowed");
   }
+  const subnets = config.subnets;
+  const ports = config.ports;
 
   const targetCounts = subnets.map((subnet) => enumerateDiscoveryTargets(subnet).length);
   const totalTargets = targetCounts.reduce((sum, count) => sum + count, 0);
@@ -395,11 +408,12 @@ async function runDiscoveryJob(job: ClaimedJob): Promise<void> {
       " targets)",
   );
 
-  const candidates: unknown[] = [];
+  const candidates: DiscoveryCandidate[] = [];
   let scannedTargets = 0;
 
   for (const [index, subnet] of subnets.entries()) {
     const scan = await scanDiscoverySubnet(subnet, {
+      ports,
       onProgress: async (completed, total) => {
         const current = scannedTargets + completed;
         const progress = Math.min(
@@ -431,6 +445,17 @@ async function runDiscoveryJob(job: ClaimedJob): Promise<void> {
     );
   }
 
+  const reconciliation = (await nextPost(
+    "/api/v1/worker/discovery/reconcile",
+    { jobId: job.id, candidates },
+    15_000,
+  )) as {
+    observed?: number;
+    matchedDevices?: number;
+    unmatched?: number;
+    lastSeenUpdated?: number;
+  };
+
   const durationMs = Date.now() - startedAt;
   await nextPost(
     "/api/v1/worker/complete",
@@ -442,6 +467,7 @@ async function runDiscoveryJob(job: ClaimedJob): Promise<void> {
         scannedSubnets: subnets.length,
         scannedTargets,
         durationMs,
+        reconciliation,
       },
     },
     15_000,

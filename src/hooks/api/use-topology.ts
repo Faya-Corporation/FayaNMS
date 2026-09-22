@@ -10,7 +10,21 @@ import type { TopologyGraph } from "@/lib/topology/graph";
  * generation timestamp (two back-to-back GETs are byte-identical apart from
  * generatedAt).
  */
-export type TopologyResponse = TopologyGraph & { generatedAt: string };
+export interface TopologyDiscoveryEvidence {
+  deviceId: string;
+  ip: string;
+  hostname: string;
+  observedAt: string;
+  openPorts: number[];
+  protocols: string[];
+  confidence: number;
+  osFingerprint: string;
+}
+
+export type TopologyResponse = TopologyGraph & {
+  generatedAt: string;
+  discoveryEvidence: TopologyDiscoveryEvidence[];
+};
 
 /**
  * Network topology map hook (Task 18-b) against /api/v1/topology.

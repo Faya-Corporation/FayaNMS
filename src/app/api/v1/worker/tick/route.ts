@@ -6,6 +6,7 @@ import {
   scopeDeviceWhere,
   type ParsedPolicyScope,
 } from "../../_lib/scope";
+import { parseStoredDiscoveryPolicy } from "@/lib/discovery/policy";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -79,7 +80,7 @@ export const dynamic = "force-dynamic";
  *   CHANGE_EXECUTE the change-step engine's orphan-step reaper then owns
  *   the rollback-or-fail decision).
  *
- * Returns { enqueued, driftEnqueued, alertEvalEnqueued,
+ * Returns { enqueued, discoveryEnqueued, driftEnqueued, alertEvalEnqueued,
  * metricRetentionEnqueued, reapedOrphans, pruned, evaluatedAt, policies }.
  */
 
@@ -287,6 +288,99 @@ async function pruneRetention(
   return { pruned: result.count, prunedDevices: touchedDevices.size };
 }
 
+/* ── continuous discovery scheduling ────────────────────────────────────── */
+
+async function enqueueDiscoveryPolicies(now: Date): Promise<{ enqueued: number; invalid: number }> {
+  const policies = await db.discoveryPolicy.findMany({
+    where: { enabled: true },
+    orderBy: { name: "asc" },
+  });
+  let enqueued = 0;
+  let invalid = 0;
+
+  for (const policy of policies) {
+    const config = parseStoredDiscoveryPolicy(
+      policy.subnetsJson,
+      policy.portsJson,
+      policy.intervalMinutes,
+      policy.enabled,
+    );
+    if (!config) {
+      invalid += 1;
+      continue;
+    }
+    const dueBefore = new Date(now.getTime() - config.intervalMinutes * 60_000);
+    const policyTag = "\"policyId\":\"" + policy.id + "\"";
+    const active = await db.jobExecution.findFirst({
+      where: {
+        type: "DISCOVERY",
+        status: { in: ["QUEUED", "RUNNING"] },
+        payloadJson: { contains: policyTag },
+      },
+      select: { id: true },
+    });
+    if (active) continue;
+
+    const queued = await db.$transaction(async (tx) => {
+      const claimed = await tx.discoveryPolicy.updateMany({
+        where: {
+          id: policy.id,
+          enabled: true,
+          OR: [
+            { lastEnqueuedAt: null },
+            { lastEnqueuedAt: { lt: dueBefore } },
+          ],
+        },
+        data: { lastEnqueuedAt: now },
+      });
+      if (claimed.count !== 1) return false;
+
+      const correlationId = newJobCorrelationId();
+      const job = await tx.jobExecution.create({
+        data: {
+          type: "DISCOVERY",
+          targetType: "SYSTEM",
+          targetId: null,
+          status: "QUEUED",
+          progress: 0,
+          priority: 6,
+          maxAttempts: 3,
+          payloadJson: JSON.stringify({
+            policyId: policy.id,
+            policyName: policy.name,
+            source: "CONTINUOUS",
+            subnets: config.subnets,
+            ports: config.ports,
+          }),
+          correlationId,
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorName: "system:worker-scheduler",
+          action: "DISCOVERY_QUEUED",
+          resourceType: "DiscoveryPolicy",
+          resourceId: policy.id,
+          resourceLabel: policy.name,
+          result: "SUCCESS",
+          correlationId,
+          afterJson: JSON.stringify({
+            jobId: job.id,
+            policyId: policy.id,
+            subnets: config.subnets,
+            ports: config.ports,
+            intervalMinutes: config.intervalMinutes,
+            source: "CONTINUOUS",
+          }),
+        },
+      });
+      return true;
+    });
+    if (queued) enqueued += 1;
+  }
+  return { enqueued, invalid };
+}
+
 /* ── tick handler ───────────────────────────────────────────────────────── */
 
 export async function POST(request: Request) {
@@ -395,6 +489,8 @@ export async function POST(request: Request) {
       enqueued: count,
     });
   }
+
+  const discovery = await enqueueDiscoveryPolicies(now);
 
   // Drift scheduling (Task 3-c): DRIFT_CHECK for every baseline-covered
   // device, deduped by in-flight / recently-finished DRIFT_CHECK jobs.
@@ -512,6 +608,8 @@ export async function POST(request: Request) {
 
   return ok({
     enqueued: enqueuedTotal,
+    discoveryEnqueued: discovery.enqueued,
+    discoveryInvalidPolicies: discovery.invalid,
     driftEnqueued: driftTargets,
     alertEvalEnqueued,
     metricRetentionEnqueued,

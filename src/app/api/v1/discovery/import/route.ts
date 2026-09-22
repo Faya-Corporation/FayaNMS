@@ -48,7 +48,9 @@ interface DiscoveryCandidate {
   hostname: string;
   vendorGuess: string;
   modelGuess?: string;
+  subnet?: string;
   mgmtPort?: number;
+  openPorts?: number[];
   protocols?: string[];
   confidence?: number;
   osFingerprint?: string;
