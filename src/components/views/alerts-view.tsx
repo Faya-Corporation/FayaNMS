@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
+import { useTranslations } from "next-intl";
 import {
   BellOff,
   BellRing,
@@ -52,6 +53,7 @@ const SEVERITY_FILTERS = ["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] as
  * surface (header center, §74) — never mixed into this stream.
  */
 export function AlertsView() {
+  const t = useTranslations("alertsView");
   // Status labels resolve in the active locale (falls back to config.label).
   const resolveStatusLabel = useStatusLabel();
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
@@ -163,15 +165,15 @@ export function AlertsView() {
     <div className="flex flex-col gap-5">
       <div data-tour="alerts-header">
         <PageHeader
-          description="Threshold engine, dedup and suppression — auto-refreshed stream"
-          title="Alerts"
+          description={t("page.description")}
+          title={t("page.title")}
         />
       </div>
 
       <Tabs defaultValue="stream">
-        <TabsList aria-label="Alerts sections">
-          <TabsTrigger value="stream">Alert stream</TabsTrigger>
-          <TabsTrigger value="rules">Rules</TabsTrigger>
+        <TabsList aria-label={t("tabs.aria")}>
+          <TabsTrigger value="stream">{t("tabs.stream")}</TabsTrigger>
+          <TabsTrigger value="rules">{t("tabs.rules")}</TabsTrigger>
         </TabsList>
 
         <TabsContent className="mt-4 flex flex-col gap-4" value="stream">
@@ -188,31 +190,35 @@ export function AlertsView() {
           {/* KPI row */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard
-              description="Open threshold breaches"
+              description={t("kpi.firing.description")}
               icon={BellRing}
-              label="Firing"
+              label={t("kpi.firing.label")}
               loading={alerts.isLoading}
-              status={firing > 0 ? { label: "live", pulse: true, token: "danger" } : { label: "quiet", token: "success" }}
+              status={
+                firing > 0
+                  ? { label: t("kpi.status.live"), pulse: true, token: "danger" }
+                  : { label: t("kpi.status.quiet"), token: "success" }
+              }
               value={firing}
             />
             <KpiCard
-              description="Seen by an operator"
+              description={t("kpi.acknowledged.description")}
               icon={CircleCheck}
-              label="Acknowledged"
+              label={t("kpi.acknowledged.label")}
               loading={alerts.isLoading}
               value={acknowledged}
             />
             <KpiCard
-              description="Windows + suppressed children"
+              description={t("kpi.suppressed.description")}
               icon={BellOff}
-              label="Suppressed"
+              label={t("kpi.suppressed.label")}
               loading={alerts.isLoading}
               value={suppressed}
             />
             <KpiCard
-              description="Incidents linked to open alerts"
+              description={t("kpi.linked.description")}
               icon={Siren}
-              label="Linked incidents"
+              label={t("kpi.linked.label")}
               loading={alerts.isLoading}
               value={linkedIncidents}
             />
@@ -223,7 +229,7 @@ export function AlertsView() {
             {STATUS_FILTERS.map((filter) => {
               const label =
                 filter === "ALL"
-                  ? "All"
+                  ? t("filters.all")
                   : resolveStatusLabel(lookupStatusConfig(ALERT_STATUS_UI, filter));
               const count =
                 filter === "ALL"
@@ -261,15 +267,15 @@ export function AlertsView() {
               }}
               value={severity}
             >
-              <SelectTrigger aria-label="Filter by severity" className="h-8 w-32 text-xs">
-                <SelectValue placeholder="Severity" />
+              <SelectTrigger aria-label={t("filters.severityAria")} className="h-8 w-32 text-xs">
+                <SelectValue placeholder={t("filters.severityPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 {SEVERITY_FILTERS.map((filter) => (
                   <SelectItem key={filter} value={filter}>
                     {filter === "ALL"
-                      ? "All severities"
-                      : `${filter.charAt(0)}${filter.slice(1).toLowerCase()}`}
+                      ? t("filters.allSeverities")
+                      : t(`filters.severity.${filter}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -282,11 +288,11 @@ export function AlertsView() {
               }}
               value={ruleId}
             >
-              <SelectTrigger aria-label="Filter by rule" className="h-8 w-40 text-xs">
-                <SelectValue placeholder="Rule" />
+              <SelectTrigger aria-label={t("filters.ruleAria")} className="h-8 w-40 text-xs">
+                <SelectValue placeholder={t("filters.rulePlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">All rules</SelectItem>
+                <SelectItem value="ALL">{t("filters.allRules")}</SelectItem>
                 {(rules.data ?? []).map((rule) => (
                   <SelectItem key={rule.id} value={rule.id}>
                     {rule.name}
@@ -302,11 +308,11 @@ export function AlertsView() {
               }}
               value={siteCode}
             >
-              <SelectTrigger aria-label="Filter by site" className="hidden h-8 w-36 text-xs md:flex">
-                <SelectValue placeholder="Site" />
+              <SelectTrigger aria-label={t("filters.siteAria")} className="hidden h-8 w-36 text-xs md:flex">
+                <SelectValue placeholder={t("filters.sitePlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">All sites</SelectItem>
+                <SelectItem value="ALL">{t("filters.allSites")}</SelectItem>
                 {(meta.data?.sites ?? []).map((site) => (
                   <SelectItem key={site.id} value={site.code}>
                     {site.code}
@@ -321,10 +327,10 @@ export function AlertsView() {
                 className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
               />
               <Input
-                aria-label="Search alerts"
+                aria-label={t("filters.searchAria")}
                 className="h-8 ps-8 text-xs"
                 onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Search message or host…"
+                placeholder={t("filters.searchPlaceholder")}
                 value={searchInput}
               />
             </div>
@@ -333,24 +339,24 @@ export function AlertsView() {
               onValueChange={(value) => setSort(value as "lastSeen" | "severity")}
               value={sort}
             >
-              <SelectTrigger aria-label="Sort alerts" className="hidden h-8 w-36 text-xs sm:flex">
+              <SelectTrigger aria-label={t("filters.sortAria")} className="hidden h-8 w-36 text-xs sm:flex">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="lastSeen">Last seen first</SelectItem>
-                <SelectItem value="severity">Severity first</SelectItem>
+                <SelectItem value="lastSeen">{t("filters.lastSeenFirst")}</SelectItem>
+                <SelectItem value="severity">{t("filters.severityFirst")}</SelectItem>
               </SelectContent>
             </Select>
 
             <Button
-              aria-label="Reset filters"
+              aria-label={t("filters.resetAria")}
               disabled={!hasFilters}
               onClick={resetFilters}
               size="sm"
               variant="ghost"
             >
               <RefreshCcw aria-hidden="true" />
-              Reset
+              {t("filters.reset")}
             </Button>
           </div>
 
@@ -359,17 +365,19 @@ export function AlertsView() {
             contentClassName="p-0"
             description={
               alerts.dataUpdatedAt
-                ? `Auto-refreshes while alerts fire · updated ${formatDistanceToNow(new Date(lastRefresh), { addSuffix: true })}`
-                : "Auto-refreshes while alerts fire"
+                ? t("stream.updated", {
+                    time: formatDistanceToNow(new Date(lastRefresh), { addSuffix: true }),
+                  })
+                : t("stream.autoRefresh")
             }
-            title="Alert Stream"
+            title={t("stream.title")}
           >
             {alerts.isError ? (
               <div className="p-4">
                 <ErrorState
                   onRetry={() => void alerts.refetch()}
                   reason={alerts.error.message}
-                  title="Alerts could not be loaded"
+                  title={t("error.load")}
                 />
               </div>
             ) : alerts.isLoading ? (
@@ -381,9 +389,9 @@ export function AlertsView() {
             ) : rows.length === 0 ? (
               <div className="p-4">
                 <EmptyState
-                  description="Nothing matches the current filters — the network is quiet."
+                  description={t("empty.description")}
                   icon={CircleCheck}
-                  title="No alerts to show"
+                  title={t("empty.title")}
                 />
               </div>
             ) : (
@@ -402,27 +410,30 @@ export function AlertsView() {
             {alerts.data && alerts.data.meta.totalPages > 1 && (
               <div className="flex items-center justify-between border-t px-4 py-2.5 text-xs text-muted-foreground">
                 <span className="tabular-nums">
-                  Page {alerts.data.meta.page} of {alerts.data.meta.totalPages} ·{" "}
-                  {alerts.data.meta.total} alerts
+                  {t("pagination.summary", {
+                    count: alerts.data.meta.total,
+                    page: alerts.data.meta.page,
+                    totalPages: alerts.data.meta.totalPages,
+                  })}
                 </span>
                 <div className="flex gap-1.5">
                   <Button
-                    aria-label="Previous page"
+                    aria-label={t("pagination.previousAria")}
                     disabled={alerts.data.meta.page <= 1}
                     onClick={() => setPage((value) => Math.max(1, value - 1))}
                     size="sm"
                     variant="outline"
                   >
-                    Prev
+                    {t("pagination.previous")}
                   </Button>
                   <Button
-                    aria-label="Next page"
+                    aria-label={t("pagination.nextAria")}
                     disabled={alerts.data.meta.page >= alerts.data.meta.totalPages}
                     onClick={() => setPage((value) => value + 1)}
                     size="sm"
                     variant="outline"
                   >
-                    Next
+                    {t("pagination.next")}
                   </Button>
                 </div>
               </div>
@@ -440,9 +451,7 @@ export function AlertsView() {
 
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Gauge aria-hidden="true" className="size-3.5" />
-        The evaluation engine runs in the worker every ~3 minutes: dedup by
-        fingerprint, maintenance-window + root-alert suppression, auto-resolve
-        and incident auto-creation.
+        {t("footer.engine")}
       </p>
     </div>
   );

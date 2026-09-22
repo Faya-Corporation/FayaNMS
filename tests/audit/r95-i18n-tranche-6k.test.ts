@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** R93 — i18n tranche 6i: backup compliance view keyed. */
+/** R95 — i18n tranche 6k: alerts view keyed. */
 
 const REPO = join(import.meta.dir, "..", "..");
-const VIEW = "src/components/views/backup-compliance-view.tsx";
+const VIEW = "src/components/views/alerts-view.tsx";
 
 type Messages = Record<string, unknown>;
 
@@ -37,15 +37,15 @@ function candidates(src: string): string[] {
   ];
 }
 
-describe("R93 — backup compliance namespace", () => {
-  test("has 37 non-empty leaves with deep EN/AR parity", () => {
+describe("R95 — alerts namespace", () => {
+  test("has 49 non-empty leaves with deep EN/AR parity", () => {
     const en = readJson("messages/en.json") as Record<string, Messages>;
     const ar = readJson("messages/ar.json") as Record<string, Messages>;
-    expect(leaves(en.backupCompliance).length).toBe(37);
-    expect(leaves(ar.backupCompliance).length).toBe(37);
-    expect(new Set(leaves(en.backupCompliance))).toEqual(new Set(leaves(ar.backupCompliance)));
+    expect(leaves(en.alertsView).length).toBe(49);
+    expect(leaves(ar.alertsView).length).toBe(49);
+    expect(new Set(leaves(en.alertsView))).toEqual(new Set(leaves(ar.alertsView)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).backupCompliance;
+      const namespace = (readJson(file) as Record<string, Messages>).alertsView;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -53,37 +53,39 @@ describe("R93 — backup compliance namespace", () => {
         }
         expect(typeof node === "string" && node.length > 0, `${file}:${path}`).toBe(true);
       };
-      walk(namespace, "backupCompliance");
+      walk(namespace, "alertsView");
     }
   });
 
-  test("checks dictionary totals at current HEAD after R95", () => {
+  test("updates dictionary totals from R94's 2,201 leaves to 2,250", () => {
     expect(leaves(readJson("messages/en.json")).length).toBe(2250);
     expect(leaves(readJson("messages/ar.json")).length).toBe(2250);
   });
 });
 
-describe("R93 — view keying and ledger", () => {
-  test("consumes backupCompliance and has zero shallow sweep candidates", () => {
+describe("R95 — view keying and ledger", () => {
+  test("consumes alertsView and has zero shallow sweep candidates", () => {
     const src = readRepo(VIEW);
-    expect(src).toContain('useTranslations("backupCompliance")');
+    expect(src).toContain('useTranslations("alertsView")');
     expect(candidates(src)).toEqual([]);
   });
 
-  test("keeps KPI and row interpolation shapes", () => {
+  test("keeps filter and pagination interpolation shapes", () => {
     const src = readRepo(VIEW);
     const en = readJson("messages/en.json") as Record<string, Messages>;
-    expect(src).toContain('t("kpi.compliant.description"');
-    expect(src).toContain('t("row.openDeviceAria"');
-    expect(en.backupCompliance.kpi.compliant.description).toContain("{compliant}");
-    expect(en.backupCompliance.kpi.compliant.description).toContain("{managed}");
-    expect(en.backupCompliance.site.percent).toContain("{percent}");
+    expect(src).toContain('t(`filters.severity.${filter}`)');
+    expect(src).toContain('t("stream.updated"');
+    expect(src).toContain('t("pagination.summary"');
+    expect(en.alertsView.stream.updated).toContain("{time}");
+    expect(en.alertsView.pagination.summary).toContain("{page}");
+    expect(en.alertsView.pagination.summary).toContain("{totalPages}");
+    expect(en.alertsView.pagination.summary).toContain("{count, plural");
   });
 
   test("updates the R56 ledger to 7 views and 335 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
-    expect(block).not.toMatch(/"backup-compliance-view\.tsx":\s*\d/);
+    expect(block).not.toMatch(/"alerts-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
     expect(entries.length).toBe(7);
     expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(335);

@@ -57,9 +57,9 @@ describe("R90 — events namespace", () => {
     }
   });
 
-  test("checks dictionary totals at current HEAD after R94", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(2201);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(2201);
+  test("checks dictionary totals at current HEAD after R95", () => {
+    expect(leaves(readJson("messages/en.json")).length).toBe(2250);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(2250);
   });
 });
 
@@ -78,12 +78,12 @@ describe("R90 — view keying and ledger", () => {
     expect(src).toContain('t("row.correlationFilterTitle")');
   });
 
-  test("updates the R56 ledger to 8 views and 371 candidates", () => {
+  test("updates the R56 ledger to 7 views and 335 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     expect(block).not.toMatch(/"events-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(8);
-    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(371);
+    expect(entries.length).toBe(7);
+    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(335);
   });
 });

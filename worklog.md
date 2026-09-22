@@ -3833,3 +3833,9 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (change-approvals removed) + R94 backlog/worklog/audit report; **8 entries / 371 candidates** remain. r81–r93 governance pins now reflect the current ledger and dictionary total.
 - Tests: R94 isolated **5 pass / 0 fail / 116 expectations**; combined r56+r80–r94 governance **176 pass / 0 fail / 7,201 expectations** across 16 files. Full application gate and live browser evidence remain unavailable in this environment.
 - Docs: `docs/audits/FayaNMS-R94-I18n-Tranche6j-ChangeApprovals-Keyed-2026-09-22.md`, NEXT-TASKS R94 update. db/, .env, PAT never staged.
+
+## R95 — i18n tranche 6k: alerts keyed; ledger 8 → 7 (2026-09-22)
+- R95 tranche: **Alerts fully keyed by hand** through NEW `alertsView` (49 leaves en = ar deep parity; dictionary 2,201 → **2,250 = 2,250**). The 36-candidate ledger item is zero in the shallow sweep; the visible surface covers page/tabs/KPIs, status and severity filters, rule/site/search/sort controls, refresh/error/empty states, pagination, and the worker-engine footer. Alert rows, rule/site names, counts, status tokens, and date-fns relative time remain data/format values.
+- Governance: r56 sweep ledger −1 entry (alerts removed) + R95 backlog/worklog/audit report; **7 entries / 335 candidates** remain. r81–r94 governance pins now reflect the current ledger and dictionary total.
+- Tests: R95 isolated **5 pass / 0 fail / 115 expectations**; combined r56+r80–r95 governance **181 pass / 0 fail / 7,412 expectations** across 17 files. Full application gate and live browser evidence remain unavailable in this environment.
+- Docs: `docs/audits/FayaNMS-R95-I18n-Tranche6k-Alerts-Keyed-2026-09-22.md`, NEXT-TASKS R95 update. db/, .env, PAT never staged.

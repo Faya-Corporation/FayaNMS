@@ -3092,5 +3092,86 @@
       "approveAction": "Approve",
       "rejectAction": "Reject change"
     }
-  }
+  },
+  "alertsView": {
+      "page": {
+        "title": "Alerts",
+        "description": "Threshold engine, dedup and suppression — auto-refreshed stream"
+      },
+      "tabs": {
+        "aria": "Alerts sections",
+        "stream": "Alert stream",
+        "rules": "Rules"
+      },
+      "kpi": {
+        "firing": {
+          "description": "Open threshold breaches",
+          "label": "Firing"
+        },
+        "status": {
+          "live": "live",
+          "quiet": "quiet"
+        },
+        "acknowledged": {
+          "description": "Seen by an operator",
+          "label": "Acknowledged"
+        },
+        "suppressed": {
+          "description": "Windows + suppressed children",
+          "label": "Suppressed"
+        },
+        "linked": {
+          "description": "Incidents linked to open alerts",
+          "label": "Linked incidents"
+        }
+      },
+      "filters": {
+        "all": "All",
+        "severityAria": "Filter by severity",
+        "severityPlaceholder": "Severity",
+        "allSeverities": "All severities",
+        "severity": {
+          "CRITICAL": "Critical",
+          "HIGH": "High",
+          "MEDIUM": "Medium",
+          "LOW": "Low",
+          "INFO": "Info"
+        },
+        "ruleAria": "Filter by rule",
+        "rulePlaceholder": "Rule",
+        "allRules": "All rules",
+        "siteAria": "Filter by site",
+        "sitePlaceholder": "Site",
+        "allSites": "All sites",
+        "searchAria": "Search alerts",
+        "searchPlaceholder": "Search message or host…",
+        "sortAria": "Sort alerts",
+        "lastSeenFirst": "Last seen first",
+        "severityFirst": "Severity first",
+        "resetAria": "Reset filters",
+        "reset": "Reset"
+      },
+      "stream": {
+        "autoRefresh": "Auto-refreshes while alerts fire",
+        "updated": "Auto-refreshes while alerts fire · updated {time}",
+        "title": "Alert Stream"
+      },
+      "error": {
+        "load": "Alerts could not be loaded"
+      },
+      "empty": {
+        "description": "Nothing matches the current filters — the network is quiet.",
+        "title": "No alerts to show"
+      },
+      "pagination": {
+        "summary": "Page {page} of {totalPages} · {count, plural, one {# alert} other {# alerts}}",
+        "previousAria": "Previous page",
+        "previous": "Prev",
+        "nextAria": "Next page",
+        "next": "Next"
+      },
+      "footer": {
+        "engine": "The evaluation engine runs in the worker every ~3 minutes: dedup by fingerprint, maintenance-window + root-alert suppression, auto-resolve and incident auto-creation."
+      }
+    }
 }

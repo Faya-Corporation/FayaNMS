@@ -225,7 +225,6 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
 const PENDING_VIEWS: Record<string, number> = {
   "admin-integrations-view.tsx": 47,
   "admin-users-view.tsx": 51,
-  "alerts-view.tsx": 36,
   "backups-view.tsx": 61,
   "change-detail-view.tsx": 52,
   "discovery-view.tsx": 43,
