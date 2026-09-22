@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** R91 — i18n tranche 6g: snapshots view keyed. */
+/** R97 — i18n tranche 6m: discovery view keyed. */
 
 const REPO = join(import.meta.dir, "..", "..");
-const VIEW = "src/components/views/snapshots-view.tsx";
+const VIEW = "src/components/views/discovery-view.tsx";
 
 type Messages = Record<string, unknown>;
 
@@ -37,15 +37,15 @@ function candidates(src: string): string[] {
   ];
 }
 
-describe("R91 — snapshots namespace", () => {
-  test("has 39 non-empty leaves with deep EN/AR parity", () => {
+describe("R97 — discovery namespace", () => {
+  test("has 69 non-empty leaves with deep EN/AR parity", () => {
     const en = readJson("messages/en.json") as Record<string, Messages>;
     const ar = readJson("messages/ar.json") as Record<string, Messages>;
-    expect(leaves(en.snapshotsView).length).toBe(39);
-    expect(leaves(ar.snapshotsView).length).toBe(39);
-    expect(new Set(leaves(en.snapshotsView))).toEqual(new Set(leaves(ar.snapshotsView)));
+    expect(leaves(en.discoveryView).length).toBe(69);
+    expect(leaves(ar.discoveryView).length).toBe(69);
+    expect(new Set(leaves(en.discoveryView))).toEqual(new Set(leaves(ar.discoveryView)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).snapshotsView;
+      const namespace = (readJson(file) as Record<string, Messages>).discoveryView;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -53,38 +53,37 @@ describe("R91 — snapshots namespace", () => {
         }
         expect(typeof node === "string" && node.length > 0, `${file}:${path}`).toBe(true);
       };
-      walk(namespace, "snapshotsView");
+      walk(namespace, "discoveryView");
     }
   });
 
-  test("checks dictionary totals at current HEAD after R97", () => {
+  test("updates dictionary totals from R96's 2,315 leaves to 2,384", () => {
     expect(leaves(readJson("messages/en.json")).length).toBe(2384);
     expect(leaves(readJson("messages/ar.json")).length).toBe(2384);
   });
 });
 
-describe("R91 — view keying and ledger", () => {
-  test("consumes snapshotsView and has zero shallow sweep candidates", () => {
+describe("R97 — view keying and ledger", () => {
+  test("consumes discoveryView and has zero shallow sweep candidates", () => {
     const src = readRepo(VIEW);
-    expect(src).toContain('useTranslations("snapshotsView")');
+    expect(src).toContain('useTranslations("discoveryView")');
     expect(candidates(src)).toEqual([]);
   });
 
-  test("keeps selection and dialog interpolation shapes", () => {
+  test("keeps scan, candidate, and import interpolation shapes", () => {
     const src = readRepo(VIEW);
     const en = readJson("messages/en.json") as Record<string, Messages>;
-    expect(src).toContain('t("selection.ready"');
-    expect(src).toContain('t("dialog.title"');
-    expect(en.snapshotsView.selection.ready).toContain("{hostname}");
-    expect(en.snapshotsView.selection.ready).toContain("{from}");
-    expect(en.snapshotsView.selection.ready).toContain("{to}");
-    expect(en.snapshotsView.dialog.description).toContain("raw");
+    expect(src).toContain('t("candidates.summary"');
+    expect(src).toContain('t("import.title"');
+    expect(en.discoveryView.candidates.summary).toContain("{count, plural");
+    expect(en.discoveryView.import.title).toContain("{count, plural");
+    expect(en.discoveryView.candidateRow.confidenceAria).toContain("{confidence}");
   });
 
   test("updates the R56 ledger to 5 views and 254 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
-    expect(block).not.toMatch(/"snapshots-view\.tsx":\s*\d/);
+    expect(block).not.toMatch(/"discovery-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
     expect(entries.length).toBe(5);
     expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(254);

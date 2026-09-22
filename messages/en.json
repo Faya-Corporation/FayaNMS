@@ -3270,5 +3270,98 @@
       "cancel": "Cancel",
       "action": "Delete window"
     }
+  },
+  "discoveryView": {
+    "page": {
+      "title": "Discovery",
+      "description": "Scan subnets for candidate devices and import them into the inventory",
+      "newScan": "New Scan"
+    },
+    "history": {
+      "title": "Scan history",
+      "description": "The worker sweeps each subnet and reports candidates — polling is live while a scan runs",
+      "tableAria": "Discovery scan history — sweep target, method, status, found devices and progress",
+      "columns": {
+        "scan": "Scan",
+        "status": "Status",
+        "subnets": "Subnets",
+        "candidates": "Candidates",
+        "duration": "Duration",
+        "created": "Created"
+      },
+      "error": "Scan history could not be loaded",
+      "emptyDescription": "Queue a scan against one or more subnets (one CIDR per line, e.g. 10.60.0.0/24) — discovered candidates appear here.",
+      "emptyTitle": "No discovery scans yet"
+    },
+    "row": {
+      "adHocScan": "Ad-hoc scan",
+      "progressAria": "Scan {correlationId} progress",
+      "imported": "imported"
+    },
+    "candidates": {
+      "title": "Candidates",
+      "summary": "{count, plural, one {# candidate} other {# candidates}} · {subnets}",
+      "notFinishedTitle": "Scan not finished yet",
+      "lastError": "Last error: {error}",
+      "pendingEmpty": "The scan is queued or running — the table fills in as soon as the worker reports.",
+      "emptyTitle": "No candidates in this scan",
+      "emptyDescription": "The scan finished without discovering candidates. Try a different subnet range.",
+      "selectedSummary": "{count, plural, one {# candidate selected} other {# candidates selected}}",
+      "importSelected": "{count, plural, one {Import # candidate} other {Import # candidates}}",
+      "clear": "Clear",
+      "tableAria": "Importable device candidates — IP, hostname, vendor, confidence and import selection",
+      "columns": {
+        "ip": "IP",
+        "hostname": "Hostname",
+        "vendor": "Vendor",
+        "model": "Model",
+        "confidence": "Confidence",
+        "ports": "Ports / protocols",
+        "os": "OS fingerprint",
+        "imported": "Imported"
+      }
+    },
+    "scan": {
+      "title": "New discovery scan",
+      "description": "One subnet per line in CIDR notation. The simulation worker scans each subnet and reports candidate devices.",
+      "nameLabel": "Name (optional)",
+      "namePlaceholder": "Branch sweep — September",
+      "subnetsLabel": "Subnets *",
+      "invalid": "Invalid subnets: {issues} — expected a.b.c.d/prefix.",
+      "helper": "Up to 8 subnets per scan (e.g. 10.60.0.0/24).",
+      "cancel": "Cancel",
+      "queue": "Queue scan"
+    },
+    "import": {
+      "title": "{count, plural, one {Import # candidate} other {Import # candidates}}",
+      "description": "Devices are created with status Unknown (or Unmanaged) until the first successful poll. The credential profile is recorded for the collector — secrets stay in the vault.",
+      "siteLabel": "Site",
+      "credentialLabel": "Credential profile",
+      "criticalityLabel": "Default criticality",
+      "manageAria": "Manage imported devices",
+      "managedLabel": "Managed",
+      "unassigned": "Unassigned",
+      "noneOption": "— none —",
+      "cancel": "Cancel",
+      "action": "Import devices"
+    },
+    "candidateRow": {
+      "selectAllAria": "Select all importable candidates",
+      "selectAria": "Select candidate {ip}",
+      "confidenceAria": "Confidence {confidence}%",
+      "imported": "Imported",
+      "new": "New"
+    },
+    "severity": {
+      "LOW": "Low",
+      "MEDIUM": "Medium",
+      "HIGH": "High",
+      "CRITICAL": "Critical"
+    },
+    "toast": {
+      "checkSettings": "Check the scan settings",
+      "invalidScan": "Invalid scan",
+      "skipped": "{count, plural, one {1 candidate skipped} other {# candidates skipped}}"
+    }
   }
 }

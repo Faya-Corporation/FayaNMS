@@ -57,9 +57,9 @@ describe("R94 — change approvals namespace", () => {
     }
   });
 
-  test("checks dictionary totals at current HEAD after R96", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(2315);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(2315);
+  test("checks dictionary totals at current HEAD after R97", () => {
+    expect(leaves(readJson("messages/en.json")).length).toBe(2384);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(2384);
   });
 });
 
@@ -81,12 +81,12 @@ describe("R94 — view keying and ledger", () => {
     expect(en.changeApprovals.tooltips.sod).toContain("{risk}");
   });
 
-  test("updates the R56 ledger to 6 views and 297 candidates", () => {
+  test("updates the R56 ledger to 5 views and 254 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     expect(block).not.toMatch(/"change-approvals-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(6);
-    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(297);
+    expect(entries.length).toBe(5);
+    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(254);
   });
 });

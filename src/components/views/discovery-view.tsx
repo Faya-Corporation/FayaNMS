@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
+import { useTranslations } from "next-intl";
 import { z } from "zod";
 import {
   Crosshair,
@@ -11,7 +12,6 @@ import {
 } from "lucide-react";
 
 import { useMeta } from "@/hooks/api/use-meta";
-import { useStatusLabel } from "@/hooks/use-status-label";
 import {
   useDiscoveryJobs,
   useImportCandidates,
@@ -59,7 +59,6 @@ import type {
   DiscoveryCandidate,
   DiscoveryJobSummary,
 } from "@/lib/api-client";
-import { SEVERITY, getStatusConfig } from "@/lib/domain/status";
 import type { StatusBadgeConfig } from "@/lib/domain/status";
 import { cn } from "@/lib/utils";
 
@@ -86,7 +85,7 @@ const scanFormSchema = z.object({
 /** "Imported" chip — neutral token family per the status.ts token classes. */
 const IMPORTED_CHIP: StatusBadgeConfig = {
   key: "IMPORTED",
-  label: "Imported",
+  label: "",
   token: "neutral",
   icon: "Check",
   dotClass: "bg-neutral",
@@ -97,7 +96,7 @@ const IMPORTED_CHIP: StatusBadgeConfig = {
 /** "New" chip for not-yet-imported candidates. */
 const NEW_CHIP: StatusBadgeConfig = {
   key: "NEW",
-  label: "New",
+  label: "",
   token: "info",
   icon: "Sparkles",
   dotClass: "bg-info",
@@ -105,11 +104,11 @@ const NEW_CHIP: StatusBadgeConfig = {
   iconClass: "text-info",
 };
 
-const CRITICALITIES: { value: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"; label: string }[] = [
-  { value: "LOW", label: "Low" },
-  { value: "MEDIUM", label: "Medium" },
-  { value: "HIGH", label: "High" },
-  { value: "CRITICAL", label: "Critical" },
+const CRITICALITIES: { value: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" }[] = [
+  { value: "LOW" },
+  { value: "MEDIUM" },
+  { value: "HIGH" },
+  { value: "CRITICAL" },
 ];
 
 function durationLabel(ms: number | null): string {
@@ -118,9 +117,8 @@ function durationLabel(ms: number | null): string {
 }
 
 export function DiscoveryView() {
+  const t = useTranslations("discoveryView");
   const { toast } = useToast();
-  // Status labels resolve in the active locale (falls back to config.label).
-  const resolveStatusLabel = useStatusLabel();
   const jobs = useDiscoveryJobs();
   const meta = useMeta();
   const startScan = useStartScan();
@@ -191,8 +189,8 @@ export function DiscoveryView() {
     });
     if (!parsed.success) {
       toast({
-        title: "Check the scan settings",
-        description: parsed.error.issues[0]?.message ?? "Invalid scan",
+        title: t("toast.checkSettings"),
+        description: parsed.error.issues[0]?.message ?? t("toast.invalidScan"),
         variant: "destructive",
       });
       return;
@@ -237,7 +235,7 @@ export function DiscoveryView() {
           setSelectedCandidates(new Set());
           if (result.skipped.length > 0) {
             toast({
-              title: `${result.skipped.length} candidate${result.skipped.length === 1 ? "" : "s"} skipped`,
+              title: t("toast.skipped", { count: result.skipped.length }),
               description: result.skipped
                 .slice(0, 3)
                 .map((entry) => `${entry.ip}: ${entry.reason}`)
@@ -252,28 +250,28 @@ export function DiscoveryView() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        description="Scan subnets for candidate devices and import them into the inventory"
+        description={t("page.description")}
         primaryAction={
           <Button onClick={() => setScanOpen(true)}>
             <Radar aria-hidden="true" />
-            New Scan
+            {t("page.newScan")}
           </Button>
         }
-        title="Discovery"
+        title={t("page.title")}
       />
 
       {/* Scan history */}
       <SectionCard
         contentClassName="p-0"
-        description="The worker sweeps each subnet and reports candidates — polling is live while a scan runs"
-        title="Scan history"
+        description={t("history.description")}
+        title={t("history.title")}
       >
         {jobs.isError ? (
           <div className="p-4">
             <ErrorState
               onRetry={() => void jobs.refetch()}
               reason={jobs.error.message}
-              title="Scan history could not be loaded"
+              title={t("history.error")}
             />
           </div>
         ) : jobs.isLoading ? (
@@ -285,24 +283,24 @@ export function DiscoveryView() {
         ) : rows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="Queue a scan against one or more subnets (one CIDR per line, e.g. 10.60.0.0/24) — discovered candidates appear here."
+              description={t("history.emptyDescription")}
               icon={Radar}
-              title="No discovery scans yet"
+              title={t("history.emptyTitle")}
             />
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table aria-label="Discovery scan history — sweep target, method, status, found devices and progress" className="min-w-[860px]">
+            <Table aria-label={t("history.tableAria")} className="min-w-[860px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Scan</TableHead>
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Status</TableHead>
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Subnets</TableHead>
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Candidates</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("history.columns.scan")}</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("history.columns.status")}</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("history.columns.subnets")}</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("history.columns.candidates")}</TableHead>
                   <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) md:table-cell">
-                    Duration
+                    {t("history.columns.duration")}
                   </TableHead>
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Created</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("history.columns.created")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -318,7 +316,7 @@ export function DiscoveryView() {
                       <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
                         <div className="flex flex-col">
                           <span className="text-sm font-medium">
-                            {job.name ?? "Ad-hoc scan"}
+                            {job.name ?? t("row.adHocScan")}
                           </span>
                           <span className="font-tech text-xs ltr-technical text-muted-foreground">
                             {job.correlationId}
@@ -330,7 +328,7 @@ export function DiscoveryView() {
                           <JobStatusBadge value={job.status} />
                           {running && (
                             <Progress
-                              aria-label={`Scan ${job.correlationId} progress`}
+                              aria-label={t("row.progressAria", { correlationId: job.correlationId })}
                               className="h-1.5 w-28"
                               value={job.progress}
                             />
@@ -357,7 +355,7 @@ export function DiscoveryView() {
                             {job.importedCount > 0 && (
                               <span className="text-muted-foreground">
                                 {" "}
-                                ({job.importedCount} imported)
+                                ({job.importedCount} {t("row.imported")})
                               </span>
                             )}
                           </span>
@@ -391,29 +389,32 @@ export function DiscoveryView() {
           }
           description={
             selectedJob.status === "SUCCEEDED"
-              ? `${selectedJob.candidateCount} candidate${selectedJob.candidateCount === 1 ? "" : "s"} · ${selectedJob.subnets.join(", ")}`
-              : "Candidates appear when the scan finishes"
+              ? t("candidates.summary", {
+                  count: selectedJob.candidateCount,
+                  subnets: selectedJob.subnets.join(", "),
+                })
+              : t("candidates.pendingEmpty")
           }
-          title="Candidates"
+          title={t("candidates.title")}
         >
           {selectedJob.status !== "SUCCEEDED" ? (
             <div className="p-4">
               <EmptyState
                 description={
                   selectedJob.error
-                    ? `Last error: ${selectedJob.error}`
-                    : "The scan is queued or running — the table fills in as soon as the worker reports."
+                    ? t("candidates.lastError", { error: selectedJob.error })
+                    : t("candidates.pendingEmpty")
                 }
                 icon={LoaderCircle}
-                title="Scan not finished yet"
+                title={t("candidates.notFinishedTitle")}
               />
             </div>
           ) : selectedJob.candidateCount === 0 ? (
             <div className="p-4">
               <EmptyState
-                description="The scan finished without discovering candidates. Try a different subnet range."
+                description={t("candidates.emptyDescription")}
                 icon={SearchX}
-                title="No candidates in this scan"
+                title={t("candidates.emptyTitle")}
               />
             </div>
           ) : (
@@ -425,31 +426,29 @@ export function DiscoveryView() {
                   className="flex flex-wrap items-center gap-2 border-b border-t bg-primary/5 px-4 py-2.5"
                 >
                   <span className="text-sm font-medium">
-                    {selectedCandidates.size} candidate
-                    {selectedCandidates.size === 1 ? "" : "s"} selected
+                    {t("candidates.selectedSummary", { count: selectedCandidates.size })}
                   </span>
                   <Button disabled={pendingImport} onClick={() => setImportOpen(true)} size="sm">
                     <Crosshair aria-hidden="true" />
-                    Import {selectedCandidates.size} candidate
-                    {selectedCandidates.size === 1 ? "" : "s"}
+                    {t("candidates.importSelected", { count: selectedCandidates.size })}
                   </Button>
                   <Button
                     onClick={() => setSelectedCandidates(new Set())}
                     size="sm"
                     variant="ghost"
                   >
-                    Clear
+                    {t("candidates.clear")}
                   </Button>
                 </div>
               )}
 
               <div className="overflow-x-auto">
-                <Table aria-label="Importable device candidates — IP, hostname, vendor, confidence and import selection" className="min-w-[980px]">
+                <Table aria-label={t("candidates.tableAria")} className="min-w-[980px]">
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
                       <TableHead className="h-(--density-row-h) w-10 px-(--density-cell-x)">
                         <Checkbox
-                          aria-label="Select all importable candidates"
+                          aria-label={t("candidateRow.selectAllAria")}
                           checked={
                             importable.length > 0 &&
                             importable.every((candidate) =>
@@ -470,14 +469,14 @@ export function DiscoveryView() {
                           }}
                         />
                       </TableHead>
-                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">IP</TableHead>
-                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Hostname</TableHead>
-                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Vendor</TableHead>
-                      <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) md:table-cell">Model</TableHead>
-                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Confidence</TableHead>
-                      <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) lg:table-cell">Ports / protocols</TableHead>
-                      <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) xl:table-cell">OS fingerprint</TableHead>
-                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Imported</TableHead>
+                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("candidates.columns.ip")}</TableHead>
+                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("candidates.columns.hostname")}</TableHead>
+                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("candidates.columns.vendor")}</TableHead>
+                      <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) md:table-cell">{t("candidates.columns.model")}</TableHead>
+                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("candidates.columns.confidence")}</TableHead>
+                      <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) lg:table-cell">{t("candidates.columns.ports")}</TableHead>
+                      <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) xl:table-cell">{t("candidates.columns.os")}</TableHead>
+                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("candidates.columns.imported")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -501,24 +500,23 @@ export function DiscoveryView() {
       <Dialog onOpenChange={setScanOpen} open={scanOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>New discovery scan</DialogTitle>
+            <DialogTitle>{t("scan.title")}</DialogTitle>
             <DialogDescription>
-              One subnet per line in CIDR notation. The simulation worker scans
-              each subnet and reports candidate devices.
+              {t("scan.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="scan-name">Name (optional)</Label>
+              <Label htmlFor="scan-name">{t("scan.nameLabel")}</Label>
               <Input
                 id="scan-name"
                 onChange={(event) => setScanName(event.target.value)}
-                placeholder="Branch sweep — September"
+                placeholder={t("scan.namePlaceholder")}
                 value={scanName}
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="scan-subnets">Subnets *</Label>
+              <Label htmlFor="scan-subnets">{t("scan.subnetsLabel")}</Label>
               <Textarea
                 aria-invalid={scanIssues.length > 0}
                 className="font-tech ltr-technical"
@@ -530,18 +528,18 @@ export function DiscoveryView() {
               />
               {scanIssues.length > 0 ? (
                 <p className="text-xs text-danger">
-                  Invalid subnets: {scanIssues.join(", ")} — expected a.b.c.d/prefix.
+                  {t("scan.invalid", { issues: scanIssues.join(", ") })}
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Up to 8 subnets per scan (e.g. 10.60.0.0/24).
+                  {t("scan.helper")}
                 </p>
               )}
             </div>
           </div>
           <DialogFooter>
             <Button onClick={() => setScanOpen(false)} type="button" variant="outline">
-              Cancel
+              {t("scan.cancel")}
             </Button>
             <Button
               disabled={pendingScan || scanIssues.length > 0}
@@ -549,7 +547,7 @@ export function DiscoveryView() {
               type="button"
             >
               {pendingScan && <LoaderCircle aria-hidden="true" className="animate-spin" />}
-              Queue scan
+              {t("scan.queue")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -560,29 +558,26 @@ export function DiscoveryView() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              Import {selectedCandidates.size} candidate
-              {selectedCandidates.size === 1 ? "" : "s"}
+              {t("import.title", { count: selectedCandidates.size })}
             </DialogTitle>
             <DialogDescription>
-              Devices are created with status Unknown (or Unmanaged) until the
-              first successful poll. The credential profile is recorded for the
-              collector — secrets stay in the vault.
+              {t("import.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label>Site</Label>
+              <Label>{t("import.siteLabel")}</Label>
               <Select
                 onValueChange={(value) =>
                   setImportSiteId(value === "NONE" ? "" : value)
                 }
                 value={importSiteId || "NONE"}
               >
-                <SelectTrigger aria-label="Site">
-                  <SelectValue placeholder="Unassigned" />
+                <SelectTrigger aria-label={t("import.siteLabel")}>
+                  <SelectValue placeholder={t("import.unassigned")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="NONE">Unassigned</SelectItem>
+                  <SelectItem value="NONE">{t("import.unassigned")}</SelectItem>
                   {(meta.data?.sites ?? []).map((site) => (
                     <SelectItem key={site.id} value={site.id}>
                       {site.name} ({site.code})
@@ -592,18 +587,18 @@ export function DiscoveryView() {
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Credential profile</Label>
+              <Label>{t("import.credentialLabel")}</Label>
               <Select
                 onValueChange={(value) =>
                   setImportCredentialId(value === "NONE" ? "" : value)
                 }
                 value={importCredentialId || "NONE"}
               >
-                <SelectTrigger aria-label="Credential profile">
-                  <SelectValue placeholder="None" />
+                <SelectTrigger aria-label={t("import.credentialLabel")}>
+                  <SelectValue placeholder={t("import.noneOption")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="NONE">— none —</SelectItem>
+                  <SelectItem value="NONE">{t("import.noneOption")}</SelectItem>
                   {(meta.data?.credentialProfiles ?? []).map((profile) => (
                     <SelectItem key={profile.id} value={profile.id}>
                       {profile.name} · {profile.type}
@@ -614,20 +609,20 @@ export function DiscoveryView() {
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
-                <Label>Default criticality</Label>
+                <Label>{t("import.criticalityLabel")}</Label>
                 <Select
                   onValueChange={(value) =>
                     setImportCriticality(value as typeof importCriticality)
                   }
                   value={importCriticality}
                 >
-                  <SelectTrigger aria-label="Default criticality">
+                  <SelectTrigger aria-label={t("import.criticalityLabel")}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {CRITICALITIES.map((entry) => (
                       <SelectItem key={entry.value} value={entry.value}>
-                        {resolveStatusLabel(getStatusConfig(SEVERITY, entry.value))}
+                        {t(`severity.${entry.value}`)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -635,22 +630,22 @@ export function DiscoveryView() {
               </div>
               <div className="flex items-center gap-2 pt-6">
                 <Switch
-                  aria-label="Manage imported devices"
+                  aria-label={t("import.manageAria")}
                   checked={importManaged}
                   id="import-managed"
                   onCheckedChange={setImportManaged}
                 />
-                <Label htmlFor="import-managed">Managed</Label>
+                <Label htmlFor="import-managed">{t("import.managedLabel")}</Label>
               </div>
             </div>
           </div>
           <DialogFooter>
             <Button onClick={() => setImportOpen(false)} type="button" variant="outline">
-              Cancel
+              {t("import.cancel")}
             </Button>
             <Button disabled={pendingImport} onClick={handleImport} type="button">
               {pendingImport && <LoaderCircle aria-hidden="true" className="animate-spin" />}
-              Import devices
+              {t("import.action")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -668,6 +663,7 @@ function CandidateRow({
   selected: boolean;
   onToggle: (ip: string, checked: boolean) => void;
 }) {
+  const t = useTranslations("discoveryView");
   const disabled = Boolean(candidate.imported);
   const confidence = candidate.confidence ?? 0;
 
@@ -675,7 +671,7 @@ function CandidateRow({
     <TableRow data-state={selected ? "selected" : undefined}>
       <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
         <Checkbox
-          aria-label={`Select candidate ${candidate.ip}`}
+          aria-label={t("candidateRow.selectAria", { ip: candidate.ip })}
           aria-disabled={disabled}
           checked={candidate.imported ? true : selected}
           disabled={disabled}
@@ -696,7 +692,7 @@ function CandidateRow({
       </TableCell>
       <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
         <div className="flex items-center gap-2">
-          <Progress aria-label={`Confidence ${confidence}%`} className="h-1.5 w-16" value={confidence} />
+          <Progress aria-label={t("candidateRow.confidenceAria", { confidence })} className="h-1.5 w-16" value={confidence} />
           <span className="text-xs tabular-nums text-muted-foreground">{confidence}%</span>
         </div>
       </TableCell>
@@ -710,9 +706,9 @@ function CandidateRow({
       </TableCell>
       <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
         {candidate.imported ? (
-          <StatusBadge config={IMPORTED_CHIP} />
+          <StatusBadge config={{ ...IMPORTED_CHIP, label: t("candidateRow.imported") }} />
         ) : (
-          <StatusBadge config={NEW_CHIP} />
+          <StatusBadge config={{ ...NEW_CHIP, label: t("candidateRow.new") }} />
         )}
       </TableCell>
     </TableRow>

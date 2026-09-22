@@ -57,9 +57,9 @@ describe("R96 — maintenance namespace", () => {
     }
   });
 
-  test("updates dictionary totals from R95's 2,250 leaves to 2,315", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(2315);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(2315);
+  test("updates dictionary totals from R96's 2,315 leaves to 2,384", () => {
+    expect(leaves(readJson("messages/en.json")).length).toBe(2384);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(2384);
   });
 });
 
@@ -81,12 +81,12 @@ describe("R96 — view keying and ledger", () => {
     expect(en.maintenanceView.delete.title).toContain("{name}");
   });
 
-  test("updates the R56 ledger to 6 views and 297 candidates", () => {
+  test("updates the R56 ledger to 5 views and 254 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     expect(block).not.toMatch(/"maintenance-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(6);
-    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(297);
+    expect(entries.length).toBe(5);
+    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(254);
   });
 });
