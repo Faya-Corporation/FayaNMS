@@ -1,3 +1,5 @@
+import type { NetFlowV5Batch } from "./netflow-v5";
+
 export const PROTOCOLS = ["syslog", "snmp-trap", "netflow", "ipfix", "sflow"] as const;
 export type ProtocolName = (typeof PROTOCOLS)[number];
 export type ProtocolAttribute = string | number | boolean | null;
@@ -17,6 +19,7 @@ export interface ProtocolIngestInput {
   severity: string;
   message: string;
   protocolVersion?: string;
+  flowBatch?: NetFlowV5Batch;
   securityLevel?: SnmpSecurityLevel;
   deviceHint?: ProtocolDeviceHint;
   attributes?: Record<string, ProtocolAttribute>;

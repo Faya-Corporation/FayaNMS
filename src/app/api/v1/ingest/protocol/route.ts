@@ -8,6 +8,11 @@ import {
   validateProtocolIngestPolicy,
 } from "@/lib/protocol/ingest";
 import { PROTOCOL_QUEUE_DEFAULT_MAX_ATTEMPTS } from "@/lib/protocol/queue";
+import {
+  netFlowV5BatchSchema,
+  protocolFlowBatchContractIssue,
+  serializedFlowBatchWithinLimit,
+} from "@/lib/protocol/netflow-v5-schema";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +34,11 @@ const ingestSchema = z.object({
     credentialProfileId: z.string().trim().min(1).max(120).regex(/^[A-Za-z0-9._:-]+$/).optional(),
   }).strict().optional(),
   attributes: z.record(z.string().max(64), attributeSchema).optional(),
-}).strict();
+  flowBatch: netFlowV5BatchSchema.optional(),
+}).strict().superRefine((value, ctx) => {
+  const message = protocolFlowBatchContractIssue(value);
+  if (message) ctx.addIssue({ code: "custom", path: ["flowBatch"], message });
+});
 
 /**
  * POST /api/v1/ingest/protocol — authenticated collector event relay.
@@ -55,6 +64,9 @@ export async function POST(request: Request) {
   }
   const parsed = ingestSchema.safeParse(body);
   if (!parsed.success) return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
+  if (parsed.data.flowBatch && !serializedFlowBatchWithinLimit(parsed.data.flowBatch)) {
+    return fail("INVALID_BODY", "Flow batch exceeds the 16 KiB limit", 400);
+  }
 
   const input = { ...parsed.data, receivedAt: parsed.data.receivedAt ?? new Date() };
   const [hostnameMatch, ipMatch] = await Promise.all([
@@ -106,6 +118,7 @@ export async function POST(request: Request) {
         message: event.message,
         protocolVersion: event.protocolVersion,
         securityLevel: event.securityLevel,
+        flowBatchJson: input.flowBatch ? JSON.stringify(input.flowBatch) : null,
         deviceId: association.device?.id ?? null,
         attributesJson: JSON.stringify(event.attributes),
         correlationId,
@@ -153,6 +166,7 @@ export async function POST(request: Request) {
     status: queued.status,
     correlationId,
     protocol: event.protocol,
+    flowRecordsAccepted: input.flowBatch?.records.length ?? 0,
     associatedDevice: association.device
       ? { id: association.device.id, hostname: association.device.hostname, method: association.method }
       : null,

@@ -182,6 +182,7 @@ model Device {
   // (one change, one device, one step at a time).
   writeLocks  DeviceWriteLock[]
   protocolEvents        ProtocolEventQueue[]
+  flowRecords           FlowRecord[]
   discoveryObservations DiscoveryObservation[]
 
   @@index([siteId])
@@ -864,8 +865,10 @@ model ProtocolEventQueue {
   message         String
   protocolVersion String?
   securityLevel   String?
+  flowBatchJson   String?
   deviceId        String?
   device          Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  flowRecords     FlowRecord[]
   attributesJson  String
   correlationId   String
   // status: QUEUED | IN_FLIGHT | DELIVERED | DEAD
@@ -883,6 +886,53 @@ model ProtocolEventQueue {
   @@index([collectorId, createdAt])
   @@index([deviceId, status])
   @@index([correlationId])
+}
+
+/// Typed NetFlow v5 records staged through the durable protocol queue.
+model FlowRecord {
+  id               String             @id @default(cuid())
+  queueId          String
+  queue            ProtocolEventQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  recordIndex      Int
+  deviceId         String?
+  device           Device?            @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  collectorId      String
+  exporterAddress  String
+  exporterPort     Int
+  receivedAt       DateTime
+  exportedAt       DateTime
+  recordCount      Int
+  systemUptimeMs   BigInt
+  unixSeconds      BigInt
+  unixNanoseconds  BigInt
+  flowSequence     BigInt
+  engineType       Int
+  engineId         Int
+  samplingMode     Int
+  samplingInterval Int
+  sourceIp         String
+  destinationIp    String
+  nextHopIp        String
+  inputIfIndex     Int
+  outputIfIndex    Int
+  packets          BigInt
+  octets           BigInt
+  firstUptimeMs    BigInt
+  lastUptimeMs     BigInt
+  sourcePort       Int
+  destinationPort  Int
+  tcpFlags         Int
+  protocol         Int
+  tos              Int
+  sourceAs         Int
+  destinationAs    Int
+  sourceMask       Int
+  destinationMask  Int
+  createdAt        DateTime           @default(now())
+
+  @@unique([queueId, recordIndex])
+  @@index([receivedAt])
+  @@index([deviceId, receivedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
