@@ -216,7 +216,7 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
 
 /**
  * Pending-views debt ledger (R56 baseline; R80 tranche 1 + R81 tranche 2
- * + R82 tranche 3 + R83 tranche 4 + R84 tranche 5 + R85 tranche 6a + R86 tranche 6b + R87 tranche 6c + R97 tranche 6m shrank it). Format: file → candidate ceiling (the count
+ * + R82 tranche 3 + R83 tranche 4 + R84 tranche 5 + R85 tranche 6a + R86 tranche 6b + R87 tranche 6c + R97 tranche 6m + R98 tranche 6n shrank it). Format: file → candidate ceiling (the count
  * at R56; may only DECREASE). A view leaves the ledger the day it is
  * keyed; when the ledger is empty the sweep flips to forbid candidates in
  * every view. Counts use the documented shallow regexes above —
@@ -227,7 +227,6 @@ const PENDING_VIEWS: Record<string, number> = {
   "admin-users-view.tsx": 51,
   "backups-view.tsx": 61,
   "change-detail-view.tsx": 52,
-  "incident-detail-view.tsx": 43,
 };
 
 describe("HC-4 — dictionary parity is machine-enforced", () => {

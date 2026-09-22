@@ -3363,5 +3363,150 @@
       "invalidScan": "الفحص غير صالح",
       "skipped": "{count, plural, zero {تم تخطي # مرشح} one {تم تخطي مرشح واحد} two {تم تخطي مرشحين} few {تم تخطي # مرشحين} many {تم تخطي # مرشحًا} other {تم تخطي # مرشح}}"
     }
+  },
+  "incidentDetail": {
+    "page": {
+      "back": "العودة إلى الحوادث",
+      "error": "تعذر تحميل الحادثة"
+    },
+    "header": {
+      "actions": "الإجراءات",
+      "lifecycle": "دورة الحياة",
+      "acknowledge": "إقرار…",
+      "assign": "تعيين…",
+      "investigate": "تحقيق…",
+      "mitigate": "تخفيف…",
+      "monitor": "مراقبة…",
+      "resolve": "حل…",
+      "openReview": "فتح مراجعة ما بعد الحادثة",
+      "close": "إغلاق…",
+      "unlink": "إلغاء ربط التغيير",
+      "link": "ربط التغيير…",
+      "exportPir": "تصدير مراجعة ما بعد الحادثة",
+      "created": "أُنشئت {time}",
+      "owner": "المالك {name}"
+    },
+    "kpi": {
+      "timeToAcknowledge": "زمن الإقرار",
+      "notAcknowledged": "لم يتم الإقرار بعد",
+      "timeToResolve": "زمن الحل",
+      "open": "مفتوحة",
+      "noTarget": "لا يوجد هدف SLA لهذه الحادثة",
+      "slaState": "حالة SLA",
+      "met": "مستوفى",
+      "breached": "متجاوز",
+      "onTrack": "على المسار",
+      "affectedDevices": "الأجهزة المتأثرة",
+      "linkedAlerts": "{count, plural, zero {# تنبيه مرتبط} one {تنبيه مرتبط واحد} two {تنبيهان مرتبطان} few {# تنبيهات مرتبطة} many {# تنبيهًا مرتبطًا} other {# تنبيه مرتبط}}",
+      "noAlerts": "لا توجد تنبيهات مرتبطة"
+    },
+    "timeline": {
+      "title": "{count, plural, zero {المخطط الزمني — لا أحداث} one {المخطط الزمني — حدث واحد} two {المخطط الزمني — حدثان} few {المخطط الزمني — # أحداث} many {المخطط الزمني — # حدثًا} other {المخطط الزمني — # حدث}}",
+      "emptyTitle": "لا توجد أحداث بعد",
+      "emptyDescription": "تظهر الأحداث هنا مع انتقال الحادثة خلال دورة حياتها.",
+      "kindEvent": "حدث {kind}",
+      "kind": {
+        "system": "النظام",
+        "user": "المستخدم",
+        "integration": "التكامل"
+      },
+      "systemActor": "النظام",
+      "unknownActor": "غير معروف"
+    },
+    "devices": {
+      "title": "الأجهزة ({count})",
+      "empty": "لا توجد أجهزة مرتبطة.",
+      "noSite": "لا يوجد موقع",
+      "status": "الحالة {status}"
+    },
+    "alerts": {
+      "title": "التنبيهات المرتبطة ({count})",
+      "empty": "لا توجد تنبيهات مرتبطة."
+    },
+    "change": {
+      "title": "التغيير المرتبط",
+      "open": "فتح",
+      "emptyDescription": "لا يوجد تغيير مرتبط. اربط واحدًا لربط الإصلاح بالسجل.",
+      "link": "ربط"
+    },
+    "pir": {
+      "title": "مراجعة ما بعد الحادثة",
+      "rootCause": "السبب الجذري",
+      "rootCausePlaceholder": "ماذا حدث فعليًا ولماذا؟",
+      "correctiveAction": "الإجراء التصحيحي",
+      "correctiveActionPlaceholder": "ما الذي تم فعله لإصلاحه الآن؟",
+      "preventiveAction": "الإجراء الوقائي",
+      "preventiveActionPlaceholder": "ما الذي يمنع تكرار ذلك؟",
+      "exportHint": "يفتح التصدير تقريرًا قابلًا للطباعة — استخدم طباعة المتصفح للحفظ بصيغة PDF.",
+      "saving": "جارٍ الحفظ…",
+      "save": "حفظ مراجعة ما بعد الحادثة",
+      "unlockHint": "يُفتح نموذج المراجعة بعد حل الحادثة (حلّها من قائمة الإجراءات)."
+    },
+    "actions": {
+      "acknowledge": {
+        "title": "إقرار بالحادثة",
+        "description": "يضع الحادثة في حالة الإقرار. يُسجّل وقت الإقرار الأول لحساب MTTA.",
+        "cta": "إقرار",
+        "noteLabel": "ملاحظة (اختيارية)",
+        "notePlaceholder": "مثل: فُتح الجسر وأُشرك المناوب…"
+      },
+      "investigate": {
+        "title": "بدء التحقيق",
+        "description": "ينقل الحادثة إلى حالة التحقيق.",
+        "cta": "بدء التحقيق",
+        "noteLabel": "ملاحظة (اختيارية)",
+        "notePlaceholder": "ما الذي تحقق فيه أولًا؟"
+      },
+      "mitigate": {
+        "title": "بدء التخفيف",
+        "description": "ينقل الحادثة إلى حالة التخفيف.",
+        "cta": "بدء التخفيف",
+        "noteLabel": "ملاحظة (اختيارية)",
+        "notePlaceholder": "ما إجراء التخفيف الذي تطبقه؟"
+      },
+      "monitor": {
+        "title": "بدء المراقبة",
+        "description": "ينقل الحادثة إلى حالة المراقبة.",
+        "cta": "بدء المراقبة",
+        "noteLabel": "ملاحظة (اختيارية)",
+        "notePlaceholder": "ما الذي تراقبه؟"
+      },
+      "resolve": {
+        "title": "حل الحادثة",
+        "description": "يسجل وقت الحل ويوقف ساعة SLA. تظهر الملاحظة في المخطط الزمني وتصدير المراجعة.",
+        "cta": "حل",
+        "noteLabel": "ملاحظة الحل",
+        "notePlaceholder": "ما الذي أصلح المشكلة؟ (تُسجّل في المخطط الزمني)"
+      },
+      "close": {
+        "title": "إغلاق الحادثة",
+        "description": "حالة نهائية — يصبح السجل للقراءة فقط باستثناء حقول المراجعة.",
+        "cta": "إغلاق الحادثة",
+        "noteLabel": "ملاحظة الإغلاق (اختيارية)",
+        "notePlaceholder": "مثل: اعتمدت لجنة التغيير المراجعة…"
+      },
+      "working": "جارٍ التنفيذ…"
+    },
+    "assign": {
+      "title": "تعيين الحادثة",
+      "description": "عيّن مستخدمًا و/أو فريقًا مالكًا. يُسجّل ذلك في المخطط الزمني.",
+      "ownerLabel": "المالك (المستخدم)",
+      "ownerPlaceholder": "اختر مستخدمًا",
+      "teamLabel": "فريق المالك",
+      "teamPlaceholder": "مثل: NOC-Core، NetEng",
+      "action": "تعيين",
+      "assigning": "جارٍ التعيين…"
+    },
+    "link": {
+      "title": "ربط تغيير",
+      "description": "اربط هذه الحادثة بطلب التغيير الذي يعالجها (أو تسبب فيها).",
+      "requestLabel": "طلب التغيير",
+      "requestPlaceholder": "اختر تغييرًا",
+      "action": "ربط التغيير",
+      "linking": "جارٍ الربط…"
+    },
+    "common": {
+      "cancel": "إلغاء"
+    }
   }
 }

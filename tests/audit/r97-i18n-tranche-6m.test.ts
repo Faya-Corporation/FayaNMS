@@ -57,9 +57,9 @@ describe("R97 — discovery namespace", () => {
     }
   });
 
-  test("updates dictionary totals from R96's 2,315 leaves to 2,384", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(2384);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(2384);
+  test("updates dictionary totals from R96's 2,315 leaves to 2,489", () => {
+    expect(leaves(readJson("messages/en.json")).length).toBe(2489);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(2489);
   });
 });
 
@@ -80,12 +80,12 @@ describe("R97 — view keying and ledger", () => {
     expect(en.discoveryView.candidateRow.confidenceAria).toContain("{confidence}");
   });
 
-  test("updates the R56 ledger to 5 views and 254 candidates", () => {
+  test("updates the R56 ledger to 4 views and 211 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     expect(block).not.toMatch(/"discovery-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(5);
-    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(254);
+    expect(entries.length).toBe(4);
+    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(211);
   });
 });

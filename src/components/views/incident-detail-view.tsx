@@ -93,64 +93,10 @@ const OPEN_STATUSES = [
 
 type NoteAction = "acknowledge" | "investigate" | "mitigate" | "monitor" | "resolve" | "close";
 
-const NOTE_ACTION_META: Record<
-  NoteAction,
-  { title: string; description: string; cta: string; noteLabel: string; notePlaceholder: string; noteRequired: boolean }
-> = {
-  acknowledge: {
-    title: "Acknowledge incident",
-    description: "Marks the incident acknowledged. The first acknowledgement time is recorded for MTTA.",
-    cta: "Acknowledge",
-    noteLabel: "Note (optional)",
-    notePlaceholder: "e.g. Bridge opened, on-call engaged…",
-    noteRequired: false,
-  },
-  investigate: {
-    title: "Start investigation",
-    description: "Moves the incident to INVESTIGATING.",
-    cta: "Start investigation",
-    noteLabel: "Note (optional)",
-    notePlaceholder: "What are you investigating first?",
-    noteRequired: false,
-  },
-  mitigate: {
-    title: "Start mitigation",
-    description: "Moves the incident to MITIGATING.",
-    cta: "Start mitigation",
-    noteLabel: "Note (optional)",
-    notePlaceholder: "What mitigation are you applying?",
-    noteRequired: false,
-  },
-  monitor: {
-    title: "Start monitoring",
-    description: "Moves the incident to MONITORING.",
-    cta: "Start monitoring",
-    noteLabel: "Note (optional)",
-    notePlaceholder: "What are you watching for?",
-    noteRequired: false,
-  },
-  resolve: {
-    title: "Resolve incident",
-    description: "Sets resolvedAt and stops the SLA clock. The note lands on the timeline and in the PIR export.",
-    cta: "Resolve",
-    noteLabel: "Resolution note",
-    notePlaceholder: "What fixed it? (recorded on the timeline)",
-    noteRequired: false,
-  },
-  close: {
-    title: "Close incident",
-    description: "Final state — the record becomes read-only except for the PIR fields.",
-    cta: "Close incident",
-    noteLabel: "Closing note (optional)",
-    notePlaceholder: "e.g. PIR approved by CAB…",
-    noteRequired: false,
-  },
-};
-
-const KIND_META: Record<string, { icon: typeof Bot; className: string; label: string }> = {
-  SYSTEM: { icon: Bot, className: "bg-neutral-subtle text-neutral", label: "System" },
-  USER: { icon: User, className: "bg-primary/10 text-primary-ink", label: "User" },
-  INTEGRATION: { icon: Plug, className: "bg-info-subtle text-info", label: "Integration" },
+const KIND_META: Record<string, { icon: typeof Bot; className: string; labelKey: "system" | "user" | "integration" }> = {
+  SYSTEM: { icon: Bot, className: "bg-neutral-subtle text-neutral", labelKey: "system" },
+  USER: { icon: User, className: "bg-primary/10 text-primary-ink", labelKey: "user" },
+  INTEGRATION: { icon: Plug, className: "bg-info-subtle text-info", labelKey: "integration" },
 };
 
 function durationBetween(from: string | null, to: string | null): string {
@@ -164,6 +110,7 @@ function durationBetween(from: string | null, to: string | null): string {
 }
 
 export function IncidentDetailView() {
+  const t = useTranslations("incidentDetail");
   const params = useNavigationStore((state) => state.params);
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   const incidentId = params?.incidentId ?? null;
@@ -356,14 +303,14 @@ export function IncidentDetailView() {
         variant="ghost"
       >
         <ArrowLeft aria-hidden className="size-4" />
-        Back to incidents
+        {t("page.back")}
       </Button>
 
       {incident.isError ? (
         <ErrorState
           onRetry={() => void incident.refetch()}
           reason={incident.error.message}
-          title="Incident could not be loaded"
+          title={t("page.error")}
         />
       ) : incident.isLoading || !detail ? (
         <div className="flex flex-col gap-3">
@@ -401,8 +348,10 @@ export function IncidentDetailView() {
               </h1>
               <p className="text-xs text-muted-foreground">
                 {detail.site ? `${detail.site.name} · ` : ""}
-                created {formatDistanceToNow(new Date(detail.createdAt), { addSuffix: true })}
-                {detail.owner ? ` · owner ${detail.owner.name}` : ""}
+                {t("header.created", {
+                  time: formatDistanceToNow(new Date(detail.createdAt), { addSuffix: true }),
+                })}
+                {detail.owner ? ` · ${t("header.owner", { name: detail.owner.name })}` : ""}
 
               </p>
             </div>
@@ -412,11 +361,11 @@ export function IncidentDetailView() {
                   <DropdownMenuTrigger asChild>
                     <Button size="sm">
                       <Wrench aria-hidden className="size-4" />
-                      Actions
+                      {t("header.actions")}
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel>Lifecycle</DropdownMenuLabel>
+                    <DropdownMenuLabel>{t("header.lifecycle")}</DropdownMenuLabel>
                     {detail.status === "NEW" && (
                       <DropdownMenuItem
                         onSelect={() => {
@@ -424,11 +373,11 @@ export function IncidentDetailView() {
                           setNoteAction("acknowledge");
                         }}
                       >
-                        <Eye aria-hidden className="size-4" /> Acknowledge…
+                        <Eye aria-hidden className="size-4" /> {t("header.acknowledge")}
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem onSelect={() => setAssignOpen(true)}>
-                      <User aria-hidden className="size-4" /> Assign…
+                      <User aria-hidden className="size-4" /> {t("header.assign")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -437,7 +386,7 @@ export function IncidentDetailView() {
                         setNoteAction("investigate");
                       }}
                     >
-                      <Siren aria-hidden className="size-4" /> Investigate…
+                        <Siren aria-hidden className="size-4" /> {t("header.investigate")}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={() => {
@@ -445,7 +394,7 @@ export function IncidentDetailView() {
                         setNoteAction("mitigate");
                       }}
                     >
-                      <Wrench aria-hidden className="size-4" /> Mitigate…
+                        <Wrench aria-hidden className="size-4" /> {t("header.mitigate")}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={() => {
@@ -453,7 +402,7 @@ export function IncidentDetailView() {
                         setNoteAction("monitor");
                       }}
                     >
-                      <MonitorDot aria-hidden className="size-4" /> Monitor…
+                        <MonitorDot aria-hidden className="size-4" /> {t("header.monitor")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -462,11 +411,11 @@ export function IncidentDetailView() {
                         setNoteAction("resolve");
                       }}
                     >
-                      <CircleCheck aria-hidden className="size-4" /> Resolve…
+                        <CircleCheck aria-hidden className="size-4" /> {t("header.resolve")}
                     </DropdownMenuItem>
                     {detail.status === "RESOLVED" && (
                       <DropdownMenuItem onSelect={() => reviewAction.mutate({ id: detail.id, payload: {} })}>
-                        <ClipboardList aria-hidden className="size-4" /> Open PIR review
+                        <ClipboardList aria-hidden className="size-4" /> {t("header.openReview")}
                       </DropdownMenuItem>
                     )}
                     {(detail.status === "RESOLVED" || detail.status === "POST_INCIDENT_REVIEW") && (
@@ -476,7 +425,7 @@ export function IncidentDetailView() {
                           setNoteAction("close");
                         }}
                       >
-                        <ShieldAlert aria-hidden className="size-4" /> Close…
+                        <ShieldAlert aria-hidden className="size-4" /> {t("header.close")}
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
@@ -486,11 +435,11 @@ export function IncidentDetailView() {
                           unlinkChangeAction.mutate({ id: detail.id, payload: {} })
                         }
                       >
-                        <Unlink aria-hidden className="size-4" /> Unlink change
+                        <Unlink aria-hidden className="size-4" /> {t("header.unlink")}
                       </DropdownMenuItem>
                     ) : (
                       <DropdownMenuItem onSelect={() => setLinkOpen(true)}>
-                        <Link2 aria-hidden className="size-4" /> Link change…
+                        <Link2 aria-hidden className="size-4" /> {t("header.link")}
                       </DropdownMenuItem>
                     )}
                   </DropdownMenuContent>
@@ -508,7 +457,7 @@ export function IncidentDetailView() {
                 variant="outline"
               >
                 <FileDown aria-hidden className="size-4" />
-                Export PIR
+                {t("header.exportPir")}
               </Button>
             </div>
           </div>
@@ -516,50 +465,50 @@ export function IncidentDetailView() {
           {/* ── KPI strip ──────────────────────────────────────────────── */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <KpiCard
-              description={detail.acknowledgedAt ? format(new Date(detail.acknowledgedAt), "MMM d, HH:mm") : "not acknowledged yet"}
+              description={detail.acknowledgedAt ? format(new Date(detail.acknowledgedAt), "MMM d, HH:mm") : t("kpi.notAcknowledged")}
               icon={Eye}
-              label="Time to acknowledge"
+              label={t("kpi.timeToAcknowledge")}
               value={durationBetween(detail.createdAt, detail.acknowledgedAt)}
             />
             <KpiCard
-              description={detail.resolvedAt ? format(new Date(detail.resolvedAt), "MMM d, HH:mm") : "open"}
+              description={detail.resolvedAt ? format(new Date(detail.resolvedAt), "MMM d, HH:mm") : t("kpi.open")}
               icon={CircleCheck}
-              label="Time to resolve"
+              label={t("kpi.timeToResolve")}
               value={durationBetween(detail.createdAt, detail.resolvedAt)}
             />
             <KpiCard
-              description={detail.sla.targetLabel ?? "No SLA target on this incident"}
+              description={detail.sla.targetLabel ?? t("kpi.noTarget")}
               icon={Clock}
-              label="SLA state"
+              label={t("kpi.slaState")}
               value={
                 detail.sla.outcome
                   ? detail.sla.outcome === "MET"
-                    ? "Met"
-                    : "Breached"
+                    ? t("kpi.met")
+                    : t("kpi.breached")
                   : detail.sla.breached
-                    ? "Breached"
+                    ? t("kpi.breached")
                     : detail.sla.tracked
-                      ? "On track"
+                      ? t("kpi.onTrack")
                       : "—"
               }
             />
             <KpiCard
-              description={detail.alerts.length > 0 ? `${detail.alerts.length} linked alert${detail.alerts.length === 1 ? "" : "s"}` : "no alerts linked"}
+              description={detail.alerts.length > 0 ? t("kpi.linkedAlerts", { count: detail.alerts.length }) : t("kpi.noAlerts")}
               icon={CircleDot}
-              label="Affected devices"
+              label={t("kpi.affectedDevices")}
               value={detail.devices.length}
             />
           </div>
 
           {/* ── Two-column: timeline + side panel ──────────────────────── */}
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.4fr_1fr]">
-            <SectionCard contentClassName="p-0" title={`Timeline — ${timeline.length} event${timeline.length === 1 ? "" : "s"}`}>
+            <SectionCard contentClassName="p-0" title={t("timeline.title", { count: timeline.length })}>
               {timeline.length === 0 ? (
                 <div className="p-4">
                   <EmptyState
-                    description="Events appear here as the incident moves through its lifecycle."
+                    description={t("timeline.emptyDescription")}
                     icon={Clock}
-                    title="No events yet"
+                    title={t("timeline.emptyTitle")}
                   />
                 </div>
               ) : (
@@ -574,7 +523,9 @@ export function IncidentDetailView() {
                             "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border",
                             kindMeta.className
                           )}
-                          title={`${kindMeta.label} event`}
+                          title={t("timeline.kindEvent", {
+                            kind: t(`timeline.kind.${kindMeta.labelKey}`),
+                          })}
                         >
                           <KindIcon aria-hidden className="size-3.5" />
                         </span>
@@ -583,7 +534,10 @@ export function IncidentDetailView() {
                             <span className="text-sm">{event.message}</span>
                           </div>
                           <p className="mt-0.5 text-xs text-muted-foreground">
-                            <span className="font-medium">{event.actor?.name ?? (event.kind === "SYSTEM" ? "system" : "unknown")}</span>
+                            <span className="font-medium">
+                              {event.actor?.name ??
+                                t(event.kind === "SYSTEM" ? "timeline.systemActor" : "timeline.unknownActor")}
+                            </span>
                             {event.actor?.email ? ` · ${event.actor.email}` : ""} ·{" "}
                             <time dateTime={event.createdAt} title={format(new Date(event.createdAt), "EEE d MMM yyyy, HH:mm:ss")}>
                               {formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })}
@@ -608,9 +562,9 @@ export function IncidentDetailView() {
 
             <div className="flex flex-col gap-4">
               {/* Devices */}
-              <SectionCard contentClassName="p-0" title={`Devices (${detail.devices.length})`}>
+              <SectionCard contentClassName="p-0" title={t("devices.title", { count: detail.devices.length })}>
                 {detail.devices.length === 0 ? (
-                  <p className="p-4 text-sm text-muted-foreground">No devices linked.</p>
+                  <p className="p-4 text-sm text-muted-foreground">{t("devices.empty")}</p>
                 ) : (
                   <ul className="max-h-48 overflow-y-auto">
                     {detail.devices.map((link) => (
@@ -628,7 +582,7 @@ export function IncidentDetailView() {
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {link.device.model ?? "—"} · {link.device.site?.code ?? "no site"} · status {link.device.status}
+                          {link.device.model ?? "—"} · {link.device.site?.code ?? t("devices.noSite")} · {t("devices.status", { status: link.device.status })}
                         </p>
                       </li>
                     ))}
@@ -637,9 +591,9 @@ export function IncidentDetailView() {
               </SectionCard>
 
               {/* Linked alerts */}
-              <SectionCard contentClassName="p-0" title={`Linked alerts (${detail.alerts.length})`}>
+              <SectionCard contentClassName="p-0" title={t("alerts.title", { count: detail.alerts.length })}>
                 {detail.alerts.length === 0 ? (
-                  <p className="p-4 text-sm text-muted-foreground">No alerts linked.</p>
+                  <p className="p-4 text-sm text-muted-foreground">{t("alerts.empty")}</p>
                 ) : (
                   <ul className="max-h-48 overflow-y-auto">
                     {detail.alerts.map((alert) => (
@@ -670,7 +624,7 @@ export function IncidentDetailView() {
               </SectionCard>
 
               {/* Linked change */}
-              <SectionCard contentClassName="p-0" title="Linked change">
+              <SectionCard contentClassName="p-0" title={t("change.title")}>
                 {detail.change ? (
                   <div className="flex items-center justify-between gap-2 p-4">
                     <div className="min-w-0">
@@ -685,17 +639,17 @@ export function IncidentDetailView() {
                       variant="outline"
                     >
                       <GitPullRequest aria-hidden className="size-4" />
-                      Open
+                      {t("change.open")}
                     </Button>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between gap-2 p-4">
                     <p className="text-sm text-muted-foreground">
-                      No change correlated. Link one to tie the fix to the record.
+                      {t("change.emptyDescription")}
                     </p>
                     <Button disabled={!isOpen} onClick={() => setLinkOpen(true)} size="sm" variant="outline">
                       <Link2 aria-hidden className="size-4" />
-                      Link
+                      {t("change.link")}
                     </Button>
                   </div>
                 )}
@@ -704,7 +658,7 @@ export function IncidentDetailView() {
               {/* PIR form */}
               <SectionCard
                 contentClassName="p-4"
-                title="Post-incident review"
+                title={t("pir.title")}
               >
                 {showPir ? (
                   <div className="flex flex-col gap-3">
@@ -748,38 +702,38 @@ export function IncidentDetailView() {
                       </p>
                     )}
                     <div className="space-y-1.5">
-                      <Label htmlFor="pir-root-cause">Root cause</Label>
+                      <Label htmlFor="pir-root-cause">{t("pir.rootCause")}</Label>
                       <Textarea
                         id="pir-root-cause"
                         onChange={(event) => setPirRootCause(event.target.value)}
-                        placeholder="What actually happened and why?"
+                        placeholder={t("pir.rootCausePlaceholder")}
                         rows={3}
                         value={pirRootCause}
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="pir-corrective">Corrective action</Label>
+                      <Label htmlFor="pir-corrective">{t("pir.correctiveAction")}</Label>
                       <Textarea
                         id="pir-corrective"
                         onChange={(event) => setPirCorrective(event.target.value)}
-                        placeholder="What was done to fix it now?"
+                        placeholder={t("pir.correctiveActionPlaceholder")}
                         rows={3}
                         value={pirCorrective}
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="pir-preventive">Preventive action</Label>
+                      <Label htmlFor="pir-preventive">{t("pir.preventiveAction")}</Label>
                       <Textarea
                         id="pir-preventive"
                         onChange={(event) => setPirPreventive(event.target.value)}
-                        placeholder="What prevents a recurrence?"
+                        placeholder={t("pir.preventiveActionPlaceholder")}
                         rows={3}
                         value={pirPreventive}
                       />
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs text-muted-foreground">
-                        Export opens a printable report — use your browser&apos;s Print to save as PDF.
+                        {t("pir.exportHint")}
                       </p>
                       <Button
                         disabled={
@@ -792,14 +746,13 @@ export function IncidentDetailView() {
                         size="sm"
                       >
                         <Save aria-hidden className="size-4" />
-                        {savePirAction.isPending ? "Saving…" : "Save PIR"}
+                        {savePirAction.isPending ? t("pir.saving") : t("pir.save")}
                       </Button>
                     </div>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    The review form unlocks once the incident is resolved (resolve it from the
-                    Actions menu).
+                    {t("pir.unlockHint")}
                   </p>
                 )}
               </SectionCard>
@@ -819,28 +772,30 @@ export function IncidentDetailView() {
           {noteAction && (
             <>
               <DialogHeader>
-                <DialogTitle>{NOTE_ACTION_META[noteAction].title}</DialogTitle>
-                <DialogDescription>{NOTE_ACTION_META[noteAction].description}</DialogDescription>
+                <DialogTitle>{t(`actions.${noteAction}.title`)}</DialogTitle>
+                <DialogDescription>{t(`actions.${noteAction}.description`)}</DialogDescription>
               </DialogHeader>
               <div className="space-y-1.5">
-                <Label htmlFor="incident-action-note">{NOTE_ACTION_META[noteAction].noteLabel}</Label>
+                <Label htmlFor="incident-action-note">{t(`actions.${noteAction}.noteLabel`)}</Label>
                 <Textarea
                   id="incident-action-note"
                   onChange={(event) => setNoteText(event.target.value)}
-                  placeholder={NOTE_ACTION_META[noteAction].notePlaceholder}
+                  placeholder={t(`actions.${noteAction}.notePlaceholder`)}
                   rows={3}
                   value={noteText}
                 />
               </div>
               <DialogFooter>
                 <Button onClick={() => setNoteAction(null)} variant="outline">
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
                 <Button
                   disabled={actionFor(noteAction).isPending}
                   onClick={submitNoteAction}
                 >
-                  {actionFor(noteAction).isPending ? "Working…" : NOTE_ACTION_META[noteAction].cta}
+                  {actionFor(noteAction).isPending
+                    ? t("actions.working")
+                    : t(`actions.${noteAction}.cta`)}
                 </Button>
               </DialogFooter>
             </>
@@ -857,17 +812,15 @@ export function IncidentDetailView() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Assign incident</DialogTitle>
-            <DialogDescription>
-              Assign to a user and/or an owning team. Recorded on the timeline.
-            </DialogDescription>
+            <DialogTitle>{t("assign.title")}</DialogTitle>
+            <DialogDescription>{t("assign.description")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>Owner (user)</Label>
+              <Label>{t("assign.ownerLabel")}</Label>
               <Select onValueChange={setAssignOwnerId} value={assignOwnerId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a user" />
+                  <SelectValue placeholder={t("assign.ownerPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {(meta.data?.users ?? []).map((user) => (
@@ -879,21 +832,21 @@ export function IncidentDetailView() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="assign-team">Owner team</Label>
+              <Label htmlFor="assign-team">{t("assign.teamLabel")}</Label>
               <Input
                 id="assign-team"
                 onChange={(event) => setAssignTeam(event.target.value)}
-                placeholder="e.g. NOC-Core, NetEng"
+                placeholder={t("assign.teamPlaceholder")}
                 value={assignTeam}
               />
             </div>
           </div>
           <DialogFooter>
             <Button onClick={() => setAssignOpen(false)} variant="outline">
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button disabled={assignAction.isPending || (!assignOwnerId && !assignTeam.trim())} onClick={submitAssign}>
-              {assignAction.isPending ? "Assigning…" : "Assign"}
+              {assignAction.isPending ? t("assign.assigning") : t("assign.action")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -908,16 +861,14 @@ export function IncidentDetailView() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Link a change</DialogTitle>
-            <DialogDescription>
-              Tie this incident to the change request that fixes (or caused) it.
-            </DialogDescription>
+            <DialogTitle>{t("link.title")}</DialogTitle>
+            <DialogDescription>{t("link.description")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
-            <Label>Change request</Label>
+            <Label>{t("link.requestLabel")}</Label>
             <Select onValueChange={setLinkChangeId} value={linkChangeId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select a change" />
+                <SelectValue placeholder={t("link.requestPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 {(changes.data?.data ?? []).map((change) => (
@@ -930,10 +881,10 @@ export function IncidentDetailView() {
           </div>
           <DialogFooter>
             <Button onClick={() => setLinkOpen(false)} variant="outline">
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button disabled={linkChangeAction.isPending || !linkChangeId} onClick={submitLink}>
-              {linkChangeAction.isPending ? "Linking…" : "Link change"}
+              {linkChangeAction.isPending ? t("link.linking") : t("link.action")}
             </Button>
           </DialogFooter>
         </DialogContent>

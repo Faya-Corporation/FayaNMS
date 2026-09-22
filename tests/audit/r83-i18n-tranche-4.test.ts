@@ -25,7 +25,7 @@ import { join } from "node:path";
  *      (each individually asserted absent).
  *   E. Ledger governance: the r56 sweep no longer ledgers the two
  *      files, the numeric ledger carries EXACTLY 20 entries, and the
- *      LIVE candidate sum over the ledgered files is EXACTLY 590
+ *      LIVE candidate sum over the ledgered files is EXACTLY 490
  *      (computed from the tree, not quoted).
  *   F. Interpolation shape: the dictionary values carry the placeholders
  *      the views pass ({metric}, {range}, {total}, {page}, {totalPages},
@@ -352,14 +352,14 @@ describe("R83 — ledger governance", () => {
     expect(/"baselines-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 5 entries at current HEAD (R97 removed discovery)", () => {
+  test("E: the numeric ledger carries EXACTLY 4 entries at current HEAD (R98 removed incident detail)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(5);
+    expect(entries.length).toBe(4);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 254 at current HEAD (R97 removed discovery)", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 211 at current HEAD (R98 removed incident detail)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -367,7 +367,7 @@ describe("R83 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-    expect(sum).toBe(254);
+    expect(sum).toBe(211);
   });
 });
 

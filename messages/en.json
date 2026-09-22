@@ -3363,5 +3363,150 @@
       "invalidScan": "Invalid scan",
       "skipped": "{count, plural, one {1 candidate skipped} other {# candidates skipped}}"
     }
+  },
+  "incidentDetail": {
+    "page": {
+      "back": "Back to incidents",
+      "error": "Incident could not be loaded"
+    },
+    "header": {
+      "actions": "Actions",
+      "lifecycle": "Lifecycle",
+      "acknowledge": "Acknowledge…",
+      "assign": "Assign…",
+      "investigate": "Investigate…",
+      "mitigate": "Mitigate…",
+      "monitor": "Monitor…",
+      "resolve": "Resolve…",
+      "openReview": "Open PIR review",
+      "close": "Close…",
+      "unlink": "Unlink change",
+      "link": "Link change…",
+      "exportPir": "Export PIR",
+      "created": "created {time}",
+      "owner": "owner {name}"
+    },
+    "kpi": {
+      "timeToAcknowledge": "Time to acknowledge",
+      "notAcknowledged": "not acknowledged yet",
+      "timeToResolve": "Time to resolve",
+      "open": "open",
+      "noTarget": "No SLA target on this incident",
+      "slaState": "SLA state",
+      "met": "Met",
+      "breached": "Breached",
+      "onTrack": "On track",
+      "affectedDevices": "Affected devices",
+      "linkedAlerts": "{count, plural, one {# linked alert} other {# linked alerts}}",
+      "noAlerts": "no alerts linked"
+    },
+    "timeline": {
+      "title": "{count, plural, one {Timeline — # event} other {Timeline — # events}}",
+      "emptyTitle": "No events yet",
+      "emptyDescription": "Events appear here as the incident moves through its lifecycle.",
+      "kindEvent": "{kind} event",
+      "kind": {
+        "system": "System",
+        "user": "User",
+        "integration": "Integration"
+      },
+      "systemActor": "system",
+      "unknownActor": "unknown"
+    },
+    "devices": {
+      "title": "Devices ({count})",
+      "empty": "No devices linked.",
+      "noSite": "no site",
+      "status": "status {status}"
+    },
+    "alerts": {
+      "title": "Linked alerts ({count})",
+      "empty": "No alerts linked."
+    },
+    "change": {
+      "title": "Linked change",
+      "open": "Open",
+      "emptyDescription": "No change correlated. Link one to tie the fix to the record.",
+      "link": "Link"
+    },
+    "pir": {
+      "title": "Post-incident review",
+      "rootCause": "Root cause",
+      "rootCausePlaceholder": "What actually happened and why?",
+      "correctiveAction": "Corrective action",
+      "correctiveActionPlaceholder": "What was done to fix it now?",
+      "preventiveAction": "Preventive action",
+      "preventiveActionPlaceholder": "What prevents a recurrence?",
+      "exportHint": "Export opens a printable report — use your browser's Print to save as PDF.",
+      "saving": "Saving…",
+      "save": "Save PIR",
+      "unlockHint": "The review form unlocks once the incident is resolved (resolve it from the Actions menu)."
+    },
+    "actions": {
+      "acknowledge": {
+        "title": "Acknowledge incident",
+        "description": "Marks the incident acknowledged. The first acknowledgement time is recorded for MTTA.",
+        "cta": "Acknowledge",
+        "noteLabel": "Note (optional)",
+        "notePlaceholder": "e.g. Bridge opened, on-call engaged…"
+      },
+      "investigate": {
+        "title": "Start investigation",
+        "description": "Moves the incident to INVESTIGATING.",
+        "cta": "Start investigation",
+        "noteLabel": "Note (optional)",
+        "notePlaceholder": "What are you investigating first?"
+      },
+      "mitigate": {
+        "title": "Start mitigation",
+        "description": "Moves the incident to MITIGATING.",
+        "cta": "Start mitigation",
+        "noteLabel": "Note (optional)",
+        "notePlaceholder": "What mitigation are you applying?"
+      },
+      "monitor": {
+        "title": "Start monitoring",
+        "description": "Moves the incident to MONITORING.",
+        "cta": "Start monitoring",
+        "noteLabel": "Note (optional)",
+        "notePlaceholder": "What are you watching for?"
+      },
+      "resolve": {
+        "title": "Resolve incident",
+        "description": "Sets resolvedAt and stops the SLA clock. The note lands on the timeline and in the PIR export.",
+        "cta": "Resolve",
+        "noteLabel": "Resolution note",
+        "notePlaceholder": "What fixed it? (recorded on the timeline)"
+      },
+      "close": {
+        "title": "Close incident",
+        "description": "Final state — the record becomes read-only except for the PIR fields.",
+        "cta": "Close incident",
+        "noteLabel": "Closing note (optional)",
+        "notePlaceholder": "e.g. PIR approved by CAB…"
+      },
+      "working": "Working…"
+    },
+    "assign": {
+      "title": "Assign incident",
+      "description": "Assign to a user and/or an owning team. Recorded on the timeline.",
+      "ownerLabel": "Owner (user)",
+      "ownerPlaceholder": "Select a user",
+      "teamLabel": "Owner team",
+      "teamPlaceholder": "e.g. NOC-Core, NetEng",
+      "action": "Assign",
+      "assigning": "Assigning…"
+    },
+    "link": {
+      "title": "Link a change",
+      "description": "Tie this incident to the change request that fixes (or caused) it.",
+      "requestLabel": "Change request",
+      "requestPlaceholder": "Select a change",
+      "action": "Link change",
+      "linking": "Linking…"
+    },
+    "common": {
+      "cancel": "Cancel"
+    }
   }
 }

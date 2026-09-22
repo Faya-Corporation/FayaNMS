@@ -3851,3 +3851,9 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (discovery removed) + R97 backlog/worklog/audit report; **5 entries / 254 candidates** remain. Earlier governance pins require the current dictionary total and ledger truth.
 - Tests: R97 isolated **5 pass / 0 fail / 153 expectations**; combined r56+r80–r97 governance **191 pass / 0 fail / 7,975 expectations** across 19 files. Full application gate and live browser evidence remain unavailable in this environment.
 - Docs: `docs/audits/FayaNMS-R97-I18n-Tranche6m-Discovery-Keyed-2026-09-22.md`, NEXT-TASKS R97 update. db/, .env, PAT never staged.
+
+## R98 — i18n tranche 6n: incident detail keyed; ledger 5 → 4 (2026-09-22)
+- R98 tranche: **Incident detail fully keyed by hand** through NEW `incidentDetail` (105 leaves en = ar deep parity; dictionary 2,384 → **2,489 = 2,489**). The 43-candidate ledger item is zero in the shallow sweep; the visible surface covers header/lifecycle actions, KPIs, timeline, devices and alerts panels, linked-change controls, the PIR form, note-action/assignment/link dialogs, and dynamic action-kind labels. Incident numbers, titles, names, statuses, timestamps, device/alert/change data, and technical status tokens remain data/format values.
+- Governance: r56 sweep ledger −1 entry (incident-detail removed) + R98 backlog/worklog/audit report; **4 entries / 211 candidates** remain. Earlier governance pins now reflect the current dictionary total and ledger truth.
+- Tests: R98 isolated **5 pass / 0 fail / 226 expectations**; combined r56+r80–r98 governance **196 pass / 0 fail / 8,409 expectations** across 20 files. Full application gate and live browser evidence remain unavailable in this environment.
+- Docs: `docs/audits/FayaNMS-R98-I18n-Tranche6n-IncidentDetail-Keyed-2026-09-22.md`, NEXT-TASKS R98 update. db/, .env, PAT never staged.

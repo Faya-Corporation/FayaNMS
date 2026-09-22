@@ -27,7 +27,7 @@ import { join } from "node:path";
  *   E. Ledger governance: the r56 sweep no longer ledgers
  *      admin-credentials-view, the numeric ledger carries EXACTLY 15
  *      entries, and the LIVE candidate sum over the ledgered files is
- *      EXACTLY 574 (computed from the tree, not quoted).
+ *      EXACTLY 474 (computed from the tree, not quoted).
  *   F. Shape: every credentials leaf is a static string EXCEPT row.ref
  *      ("ref: {ref}") and row.devices (ICU plural — en one/other; ar
  *      zero/one/two/few/many/other, R84 row.counts precedent); the view
@@ -88,11 +88,11 @@ describe("R87 — namespace is balanced", () => {
     }
   });
 
-  test("A: dictionary totals are 2,384 = 2,384 at current HEAD (+69 R97)", () => {
+  test("A: dictionary totals are 2,489 = 2,489 at current HEAD (+69 R97)", () => {
     const en = readJson("messages/en.json");
     const ar = readJson("messages/ar.json");
-    expect(leaves(en).length).toBe(2384);
-    expect(leaves(ar).length).toBe(2384);
+    expect(leaves(en).length).toBe(2489);
+    expect(leaves(ar).length).toBe(2489);
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {
@@ -245,14 +245,14 @@ describe("R87 — ledger governance", () => {
     expect(/"admin-credentials-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 5 entries at current HEAD (R97 removed discovery)", () => {
+  test("E: the numeric ledger carries EXACTLY 4 entries at current HEAD (R98 removed incident detail)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(5);
+    expect(entries.length).toBe(4);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 254 at current HEAD (R97 removed discovery)", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 211 at current HEAD (R98 removed incident detail)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -260,7 +260,7 @@ describe("R87 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-    expect(sum).toBe(254);
+    expect(sum).toBe(211);
   });
 });
 
