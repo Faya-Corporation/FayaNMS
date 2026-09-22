@@ -1,5 +1,7 @@
 # Release promotion runbook
 
+Create and retain the candidate's machine-readable evidence bundle using [`release-evidence.md`](release-evidence.md) before promotion.
+
 ## Development to staging
 
 ~~~text

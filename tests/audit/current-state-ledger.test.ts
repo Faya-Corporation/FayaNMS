@@ -39,4 +39,9 @@ describe("N0-001 canonical current-state ledger", () => {
       expect(readRepoFile(file), file).toContain("docs/implementation/CURRENT-STATE.md");
     }
   });
+
+  test("does not freeze a commit distance that changes as follow-up tasks are committed", () => {
+    expect(state).toContain("git rev-list --left-right --count origin/main...HEAD");
+    expect(state).not.toMatch(/\d+ commits ahead of that ref/);
+  });
 });

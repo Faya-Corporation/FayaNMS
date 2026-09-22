@@ -3891,3 +3891,12 @@ Stage Summary:
 - Added `tests/audit/current-state-ledger.test.ts` to pin baseline/local distinction, queue/discovery status, protection truth, and document pointers.
 - Verification: a Node-based static assertion of the required state and four references passed after correction. Bun tests were not run because Bun is not installed in this environment; GitHub CLI is also unavailable for a fresh external readback.
 - Commit: the focused Conventional Commit records this entry together with its deliverables.
+
+---
+
+## N0-002 — release evidence manifest (2026-09-23)
+
+- Added `scripts/release/evidence-manifest.ts` to capture the exact local Git SHA/branch/cleanliness, latest Prisma migration directory, SBOM SHA-256, and vendor top-tier summary. PR/run IDs, image digests, protection readback, and external blockers are explicit inputs; absent external evidence remains `null`/empty and is never inferred. Output creation is exclusive and refuses overwrite.
+- Added the operator contract in `docs/runbooks/release-evidence.md` and linked it from the release-promotion runbook. Current state records that the generator exists but this dirty local checkout is not a release bundle.
+- Tests: focused test file passed **5/5** via Node 24's TypeScript-stripping test runner; direct CLI smoke emitted parseable JSON with current HEAD, migration head, certification tiers, and unknown external evidence. Bun and local TypeScript/lint toolchains are unavailable, so those checks were not run. No exact-SHA external release bundle was fabricated.
+- Commit: the focused Conventional Commit records this entry together with its deliverables.
