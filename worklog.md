@@ -3821,3 +3821,9 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (drift removed) + R92 backlog/worklog/audit report; **10 entries / 434 candidates** remain. r81–r91 governance pins now reflect the current ledger and dictionary total.
 - Tests: R92 isolated **5 pass / 0 fail / 118 expectations**; combined r56+r80–r92 governance **166 pass / 0 fail / 6,826 expectations** across 14 files. Full application gate and live browser evidence remain unavailable in this environment.
 - Docs: `docs/audits/FayaNMS-R92-I18n-Tranche6h-Drift-Keyed-2026-09-22.md`, NEXT-TASKS R92 update. db/, .env, PAT never staged.
+
+## R93 — i18n tranche 6i: backup compliance keyed; ledger 10 → 9 (2026-09-22)
+- R93 tranche: **Backup Compliance fully keyed by hand** through NEW `backupCompliance` (37 leaves en = ar deep parity; dictionary 2,114 → **2,151 = 2,151**). The 30-candidate ledger item is zero in the shallow sweep; the complete visible surface covers the legend/page/loading/error states, KPI descriptions and status labels, per-site table and empty state, stale-device section, and row accessibility labels. Backup bands, site names, timestamps, percentages, and shared status semantics remain data/format values.
+- Governance: r56 sweep ledger −1 entry (backup-compliance removed) + R93 backlog/worklog/audit report; **9 entries / 404 candidates** remain. r81–r92 governance pins now reflect the current ledger and dictionary total.
+- Tests: R93 isolated **5 pass / 0 fail / 89 expectations**; combined r56+r80–r93 governance **171 pass / 0 fail / 6,987 expectations** across 15 files. Full application gate and live browser evidence remain unavailable in this environment.
+- Docs: `docs/audits/FayaNMS-R93-I18n-Tranche6i-BackupCompliance-Keyed-2026-09-22.md`, NEXT-TASKS R93 update. db/, .env, PAT never staged.

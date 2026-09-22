@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { format, formatDistanceToNow } from "date-fns";
 import { Activity, ShieldCheck, ShieldAlert, CloudOff } from "lucide-react";
 
@@ -55,10 +56,11 @@ function ComplianceBar({
 }
 
 function ComplianceLegend() {
+  const t = useTranslations("backupCompliance");
   const items = [
-    { className: "bg-success", label: "Compliant ≤ 24 h" },
-    { className: "bg-warning", label: "At risk 24–72 h" },
-    { className: "bg-danger", label: "Non-compliant > 72 h / never" },
+    { className: "bg-success", label: t("legend.compliant") },
+    { className: "bg-warning", label: t("legend.atRisk") },
+    { className: "bg-danger", label: t("legend.nonCompliant") },
   ];
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -73,6 +75,7 @@ function ComplianceLegend() {
 }
 
 export function BackupComplianceView() {
+  const t = useTranslations("backupCompliance");
   const compliance = useBackupCompliance();
   const setActiveView = useNavigationStore((state) => state.setActiveView);
 
@@ -80,15 +83,15 @@ export function BackupComplianceView() {
     return (
       <div className="flex flex-col gap-4">
         <PageHeader
-          description="Backup posture across the fleet, recomputed live from device backup state"
-          title="Backup Compliance"
+          description={t("page.description")}
+          title={t("page.title")}
         />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
             <KpiCard key={index} label="" loading value="" />
           ))}
         </div>
-        <SectionCard className="min-h-48" title="Per-site compliance">
+        <SectionCard className="min-h-48" title={t("site.title")}>
           <div className="flex flex-col gap-2">
             {Array.from({ length: 3 }).map((_, index) => (
               <div key={index} className="h-10 animate-pulse rounded-md bg-muted/60" />
@@ -103,17 +106,17 @@ export function BackupComplianceView() {
     return (
       <div className="flex flex-col gap-4">
         <PageHeader
-          description="Backup posture across the fleet, recomputed live from device backup state"
-          title="Backup Compliance"
+          description={t("page.description")}
+          title={t("page.title")}
         />
         <ErrorState
           onRetry={() => void compliance.refetch()}
           reason={
             compliance.error instanceof Error
               ? compliance.error.message
-              : "Unknown error"
+              : t("error.unknown")
           }
-          title="Backup compliance could not be loaded"
+          title={t("error.load")}
         />
       </div>
     );
@@ -125,37 +128,40 @@ export function BackupComplianceView() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        description="Backup posture across the fleet, recomputed live from device backup state"
-        title="Backup Compliance"
+        description={t("page.description")}
+        title={t("page.title")}
       />
 
       {/* KPI row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          description={`${kpis.compliant} of ${kpis.managedDevices} managed devices`}
+          description={t("kpi.compliant.description", {
+            compliant: kpis.compliant,
+            managed: kpis.managedDevices,
+          })}
           icon={ShieldCheck}
-          label="Compliant"
-          status={{ label: "backed up ≤ 24 h", token: "success" }}
+          label={t("kpi.compliant.label")}
+          status={{ label: t("kpi.compliant.status"), token: "success" }}
           value={`${kpis.compliantPct}%`}
         />
         <KpiCard
-          description="Last backup 24–72 h ago — next window decides"
+          description={t("kpi.atRisk.description")}
           icon={ShieldAlert}
-          label="At risk"
-          status={{ label: "24–72 h", token: "warning" }}
+          label={t("kpi.atRisk.label")}
+          status={{ label: t("kpi.atRisk.status"), token: "warning" }}
           value={kpis.atRisk}
         />
         <KpiCard
-          description="Older than 72 h or never backed up"
+          description={t("kpi.nonCompliant.description")}
           icon={CloudOff}
-          label="Non-compliant"
-          status={{ label: "> 72 h / never", token: "danger" }}
+          label={t("kpi.nonCompliant.label")}
+          status={{ label: t("kpi.nonCompliant.status"), token: "danger" }}
           value={kpis.nonCompliant}
         />
         <KpiCard
-          description="Configurations captured in the last 24 hours"
+          description={t("kpi.snapshots.description")}
           icon={Activity}
-          label="Snapshots (24 h)"
+          label={t("kpi.snapshots.label")}
           value={kpis.snapshotsLast24h}
         />
       </div>
@@ -164,33 +170,33 @@ export function BackupComplianceView() {
       <SectionCard
         contentClassName="p-0"
         actions={<ComplianceLegend />}
-        description="Compliance mix per site; devices without a site are grouped as Unassigned"
-        title="Per-site compliance"
+        description={t("site.description")}
+        title={t("site.title")}
       >
         {perSite.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="Add managed devices to start tracking backup compliance."
+              description={t("site.emptyDescription")}
               icon={ShieldCheck}
-              title="No managed devices"
+              title={t("site.emptyTitle")}
             />
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table aria-label="Devices needing backup attention — last backup age and compliance state per device" className="min-w-[760px]">
+            <Table aria-label={t("site.tableAria")} className="min-w-[760px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Site</TableHead>
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Managed</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("site.headers.site")}</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("site.headers.managed")}</TableHead>
                   <TableHead className="h-(--density-row-h) px-(--density-cell-x)">
-                    Compliant
+                    {t("site.headers.compliant")}
                   </TableHead>
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">At risk</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("site.headers.atRisk")}</TableHead>
                   <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
-                    Non-compliant
+                    {t("site.headers.nonCompliant")}
                   </TableHead>
                   <TableHead className="h-(--density-row-h) w-48 px-(--density-cell-x)">
-                    Mix
+                    {t("site.headers.mix")}
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -227,7 +233,9 @@ export function BackupComplianceView() {
                           nonCompliant={site.nonCompliant}
                         />
                         <span className="text-xs text-muted-foreground tabular-nums">
-                          {site.compliantPct !== null ? `${site.compliantPct}% compliant` : "—"}
+                          {site.compliantPct !== null
+                            ? t("site.percent", { percent: site.compliantPct })
+                            : "—"}
                         </span>
                       </div>
                     </TableCell>
@@ -242,15 +250,15 @@ export function BackupComplianceView() {
       {/* Stale devices */}
       <SectionCard
         contentClassName="p-0"
-        description="Worst ten by last successful backup — never backed up first, then oldest"
-        title="Devices needing attention"
+        description={t("stale.description")}
+        title={t("stale.title")}
       >
         {staleDevices.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="Every managed device has a backup within the last 24 hours."
+              description={t("stale.emptyDescription")}
               icon={ShieldCheck}
-              title="No stale devices"
+              title={t("stale.emptyTitle")}
             />
           </div>
         ) : (
@@ -261,7 +269,7 @@ export function BackupComplianceView() {
                 key={device.deviceId}
               >
                 <button
-                  aria-label={`Open ${device.hostname} device detail`}
+                  aria-label={t("row.openDeviceAria", { hostname: device.hostname })}
                   className="font-tech text-sm font-medium ltr-technical text-foreground underline-offset-4 hover:text-primary hover:underline"
                   onClick={() =>
                     setActiveView("network.device-detail", { deviceId: device.deviceId })
@@ -271,7 +279,7 @@ export function BackupComplianceView() {
                   {device.hostname}
                 </button>
                 <span className="text-xs text-muted-foreground">
-                  {device.siteCode ?? "Unassigned"}
+                  {device.siteCode ?? t("row.unassigned")}
                 </span>
                 <BackupComplianceBadge value={device.band} />
                 <span className="ms-auto text-xs text-muted-foreground tabular-nums">
@@ -280,7 +288,7 @@ export function BackupComplianceView() {
                         new Date(device.lastBackupAt),
                         { addSuffix: true }
                       )})`
-                    : "No successful backup on record"}
+                    : t("row.noBackup")}
                 </span>
               </li>
             ))}

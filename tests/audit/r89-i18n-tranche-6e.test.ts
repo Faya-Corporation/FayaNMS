@@ -57,9 +57,9 @@ describe("R89 — changes namespace", () => {
     }
   });
 
-  test("checks dictionary totals at current HEAD after R92", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(2114);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(2114);
+  test("checks dictionary totals at current HEAD after R93", () => {
+    expect(leaves(readJson("messages/en.json")).length).toBe(2151);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(2151);
   });
 });
 
@@ -85,12 +85,12 @@ describe("R89 — view keying and ledger", () => {
     expect(ar.changesView.row.steps).toContain("zero");
   });
 
-  test("updates the R56 ledger to 10 views and 434 candidates", () => {
+  test("updates the R56 ledger to 9 views and 404 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     expect(block).not.toMatch(/"changes-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(10);
-    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(434);
+    expect(entries.length).toBe(9);
+    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(404);
   });
 });

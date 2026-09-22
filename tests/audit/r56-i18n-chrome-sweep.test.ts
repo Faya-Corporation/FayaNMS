@@ -226,7 +226,6 @@ const PENDING_VIEWS: Record<string, number> = {
   "admin-integrations-view.tsx": 47,
   "admin-users-view.tsx": 51,
   "alerts-view.tsx": 36,
-  "backup-compliance-view.tsx": 30,
   "backups-view.tsx": 61,
   "change-approvals-view.tsx": 33,
   "change-detail-view.tsx": 52,

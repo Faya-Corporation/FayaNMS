@@ -2945,5 +2945,68 @@
       "acceptIntentional": "Accept as intentional",
       "resolveFixed": "Resolve (fixed)"
     }
+  },
+  "backupCompliance": {
+    "legend": {
+      "compliant": "Compliant ≤ 24 h",
+      "atRisk": "At risk 24–72 h",
+      "nonCompliant": "Non-compliant > 72 h / never"
+    },
+    "page": {
+      "title": "Backup Compliance",
+      "description": "Backup posture across the fleet, recomputed live from device backup state"
+    },
+    "site": {
+      "title": "Per-site compliance",
+      "description": "Compliance mix per site; devices without a site are grouped as Unassigned",
+      "emptyTitle": "No managed devices",
+      "emptyDescription": "Add managed devices to start tracking backup compliance.",
+      "tableAria": "Devices needing backup attention — last backup age and compliance state per device",
+      "percent": "{percent}% compliant",
+      "headers": {
+        "site": "Site",
+        "managed": "Managed",
+        "compliant": "Compliant",
+        "atRisk": "At risk",
+        "nonCompliant": "Non-compliant",
+        "mix": "Mix"
+      }
+    },
+    "error": {
+      "load": "Backup compliance could not be loaded",
+      "unknown": "Unknown error"
+    },
+    "kpi": {
+      "compliant": {
+        "description": "{compliant} of {managed} managed devices",
+        "label": "Compliant",
+        "status": "backed up ≤ 24 h"
+      },
+      "atRisk": {
+        "description": "Last backup 24–72 h ago — next window decides",
+        "label": "At risk",
+        "status": "24–72 h"
+      },
+      "nonCompliant": {
+        "description": "Older than 72 h or never backed up",
+        "label": "Non-compliant",
+        "status": "> 72 h / never"
+      },
+      "snapshots": {
+        "description": "Configurations captured in the last 24 hours",
+        "label": "Snapshots (24 h)"
+      }
+    },
+    "stale": {
+      "title": "Devices needing attention",
+      "description": "Worst ten by last successful backup — never backed up first, then oldest",
+      "emptyTitle": "No stale devices",
+      "emptyDescription": "Every managed device has a backup within the last 24 hours."
+    },
+    "row": {
+      "openDeviceAria": "Open {hostname} device detail",
+      "unassigned": "Unassigned",
+      "noBackup": "No successful backup on record"
+    }
   }
 }
