@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** R89 — i18n tranche 6e: changes view keyed. */
+/** R90 — i18n tranche 6f: events view keyed. */
 
 const REPO = join(import.meta.dir, "..", "..");
-const VIEW = "src/components/views/changes-view.tsx";
+const VIEW = "src/components/views/events-view.tsx";
 
 type Messages = Record<string, unknown>;
 
@@ -37,15 +37,15 @@ function candidates(src: string): string[] {
   ];
 }
 
-describe("R89 — changes namespace", () => {
-  test("has 44 non-empty leaves with deep EN/AR parity", () => {
+describe("R90 — events namespace", () => {
+  test("has 42 non-empty leaves with deep EN/AR parity", () => {
     const en = readJson("messages/en.json") as Record<string, Messages>;
     const ar = readJson("messages/ar.json") as Record<string, Messages>;
-    expect(leaves(en.changesView).length).toBe(44);
-    expect(leaves(ar.changesView).length).toBe(44);
-    expect(new Set(leaves(en.changesView))).toEqual(new Set(leaves(ar.changesView)));
+    expect(leaves(en.eventsView).length).toBe(42);
+    expect(leaves(ar.eventsView).length).toBe(42);
+    expect(new Set(leaves(en.eventsView))).toEqual(new Set(leaves(ar.eventsView)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).changesView;
+      const namespace = (readJson(file) as Record<string, Messages>).eventsView;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -53,42 +53,35 @@ describe("R89 — changes namespace", () => {
         }
         expect(typeof node === "string" && node.length > 0, `${file}:${path}`).toBe(true);
       };
-      walk(namespace, "changesView");
+      walk(namespace, "eventsView");
     }
   });
 
-  test("updates dictionary totals from R88's 1,938 leaves to 1,982", () => {
+  test("updates dictionary totals from R89's 1,982 leaves to 2,024", () => {
     expect(leaves(readJson("messages/en.json")).length).toBe(2024);
     expect(leaves(readJson("messages/ar.json")).length).toBe(2024);
   });
 });
 
-describe("R89 — view keying and ledger", () => {
-  test("consumes changesView and has zero shallow sweep candidates", () => {
+describe("R90 — view keying and ledger", () => {
+  test("consumes eventsView and has zero shallow sweep candidates", () => {
     const src = readRepo(VIEW);
-    expect(src).toContain('useTranslations("changesView")');
+    expect(src).toContain('useTranslations("eventsView")');
     expect(candidates(src)).toEqual([]);
   });
 
-  test("uses dynamic keys for status chips and risk labels", () => {
+  test("keys row expansion and copy chrome in the helper components", () => {
     const src = readRepo(VIEW);
-    expect(src).toContain("t(`statusChip.${entry.key}`)");
-    expect(src).toContain("status.risk.${level}");
-  });
-
-  test("keeps locale-aware row plural shapes", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
-    expect(en.changesView.row.devices).toContain("plural");
-    expect(en.changesView.row.steps).toContain("plural");
-    expect(ar.changesView.row.devices).toContain("zero");
-    expect(ar.changesView.row.steps).toContain("zero");
+    expect(src).toContain('t("row.copyJson"');
+    expect(src).toContain('t("row.notRecorded")');
+    expect(src).toContain('t("row.noPayload")');
+    expect(src).toContain('t("row.correlationFilterTitle")');
   });
 
   test("updates the R56 ledger to 12 views and 493 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
-    expect(block).not.toMatch(/"changes-view\.tsx":\s*\d/);
+    expect(block).not.toMatch(/"events-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
     expect(entries.length).toBe(12);
     expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(493);

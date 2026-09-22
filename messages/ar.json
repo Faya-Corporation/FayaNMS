@@ -2735,5 +2735,67 @@
       "previous": "السابق",
       "next": "التالي"
     }
+  },
+  "eventsView": {
+    "page": {
+      "title": "سجل الأحداث",
+      "description": "خط زمني لأحداث التدقيق في المنصة — كل إجراء مستخدم وقرار محرك ومهمة نظام، من الأحدث أولًا"
+    },
+    "kpi": {
+      "eventsLabel": "الأحداث · 24 ساعة",
+      "eventsDescription": "أحداث التدقيق المسجلة خلال آخر 24 ساعة",
+      "liveStatus": "مباشر · 7 ثوانٍ",
+      "actorsLabel": "المستخدمون المميزون",
+      "actorsDescription": "المستخدمون المميزون ضمن المرشح الحالي",
+      "topActionLabel": "الإجراء الأبرز",
+      "topActionDescription": "{count} حدث — الإجراءات مجمعة حسب بادئة العائلة",
+      "topActionEmpty": "لا يوجد نشاط إجراءات ضمن المرشح الحالي"
+    },
+    "filter": {
+      "actorAria": "المستخدم",
+      "anyActor": "أي مستخدم",
+      "actionAria": "الإجراء",
+      "anyAction": "أي إجراء",
+      "families": "العائلات",
+      "otherActions": "إجراءات أخرى",
+      "entityAria": "نوع الكيان",
+      "anyEntity": "أي كيان",
+      "timeRangeAria": "النطاق الزمني",
+      "correlationSrOnly": "التصفية حسب معرّف الارتباط",
+      "correlationPlaceholder": "correlationId…",
+      "reset": "إعادة تعيين"
+    },
+    "section": {
+      "livePolls": "مباشر · استطلاع كل 7 ثوانٍ",
+      "title": "الأحداث",
+      "titleWithTotal": "الأحداث — {total}"
+    },
+    "error": {
+      "title": "تعذّر تحميل الأحداث"
+    },
+    "empty": {
+      "title": "لا توجد أحداث لعرضها",
+      "description": "لا تطابق أحداث التدقيق المرشح الحالي. وسّع النطاق الزمني أو امسح أحد المرشحات."
+    },
+    "pagination": {
+      "summary": "الصفحة {page} من {totalPages} · {total} حدث",
+      "previous": "السابق",
+      "next": "التالي"
+    },
+    "row": {
+      "copyJson": "نسخ JSON لـ {label}",
+      "notRecorded": "لم يُسجّل",
+      "detail": "التفاصيل",
+      "hide": "إخفاء",
+      "correlationFilterTitle": "تصفية السجل حسب معرّف الارتباط هذا",
+      "copied": "تم نسخ {label}",
+      "before": "قبل",
+      "after": "بعد",
+      "noPayload": "لم تُسجّل حمولة منظمة قبل/بعد لهذا الحدث."
+    },
+    "fallback": {
+      "allTime": "كل الوقت",
+      "timeRange": "النطاق الزمني"
+    }
   }
 }

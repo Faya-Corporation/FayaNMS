@@ -3803,3 +3803,9 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (changes removed) + R89 backlog/worklog/audit report; **13 entries / 520 candidates** remain. r81–r88 governance pins now reflect the current ledger.
 - Tests: R89 isolated **6 pass / 0 fail / 104 expectations**; combined r56+r80–r89 governance **151 pass / 0 fail / 6,258 expectations** across 11 files. Full application gate and live browser evidence remain unavailable in this environment.
 - Docs: `docs/audits/FayaNMS-R89-I18n-Tranche6e-Changes-Keyed-2026-09-22.md`, NEXT-TASKS R89 update. db/, .env, PAT never staged.
+
+## R90 — i18n tranche 6f: events keyed; ledger 13 → 12 (2026-09-22)
+- R90 tranche: **Events fully keyed by hand** through NEW `eventsView` (42 leaves en = ar deep parity; dictionary 1,982 → **2,024 = 2,024**). All 27 swept literals cover page, KPI/filter/section/pagination chrome and the memoized event-row/JSON expansion helpers. Shared `timeRange` labels remain reused; action/result tokens, actor/resource/correlation IDs, JSON payloads, technical timestamps, and relative time remain data-plane/format values.
+- Governance: r56 sweep ledger −1 entry (events removed) + R90 backlog/worklog/audit report; **12 entries / 493 candidates** remain. r81–r89 governance pins now reflect the current ledger and dictionary total.
+- Tests: R90 isolated **5 pass / 0 fail / 98 expectations**; combined r56+r80–r90 governance **156 pass / 0 fail / 6,438 expectations** across 12 files. Full application gate and live browser evidence remain unavailable in this environment.
+- Docs: `docs/audits/FayaNMS-R90-I18n-Tranche6f-Events-Keyed-2026-09-22.md`, NEXT-TASKS R90 update. db/, .env, PAT never staged.

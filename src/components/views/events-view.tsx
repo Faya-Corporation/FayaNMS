@@ -141,6 +141,7 @@ function JsonPane({
   value: unknown;
   onCopied: (text: string, label: string) => void;
 }) {
+  const t = useTranslations("eventsView");
   const isEmpty = value === null || value === undefined;
   return (
     <div className="min-w-0 rounded-md border bg-surface-subtle">
@@ -148,7 +149,7 @@ function JsonPane({
         <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
         {!isEmpty && (
           <Button
-            aria-label={`Copy ${label.toLowerCase()} JSON`}
+            aria-label={t("row.copyJson", { label: label.toLowerCase() })}
             className="size-6"
             onClick={() => onCopied(JSON.stringify(value, null, 2), label)}
             size="icon"
@@ -159,7 +160,7 @@ function JsonPane({
         )}
       </div>
       {isEmpty ? (
-        <p className="px-2.5 py-2 text-xs text-muted-foreground">Not recorded</p>
+        <p className="px-2.5 py-2 text-xs text-muted-foreground">{t("row.notRecorded")}</p>
       ) : (
         <pre className="max-h-48 overflow-auto p-2.5 font-tech text-[11px] leading-relaxed ltr-technical">
           {JSON.stringify(value, null, 2)}
@@ -185,6 +186,7 @@ const EventRow = memo(function EventRow({
   onCorrelationClick: (correlationId: string) => void;
 }) {
   const [copied, setCopied] = useState<string | null>(null);
+  const t = useTranslations("eventsView");
   const token = actionFamily(event.action);
   const hasPayload = event.beforeJson !== null || event.afterJson !== null;
 
@@ -242,7 +244,9 @@ const EventRow = memo(function EventRow({
         )}
         <span className="ms-auto flex shrink-0 items-center gap-1 text-muted-foreground">
           {hasPayload && (
-            <span className="me-1 text-[11px]">{expanded ? "Hide" : "Detail"}</span>
+            <span className="me-1 text-[11px]">
+              {expanded ? t("row.hide") : t("row.detail")}
+            </span>
           )}
           {expanded ? (
             <ChevronUp aria-hidden className="size-4" />
@@ -259,7 +263,7 @@ const EventRow = memo(function EventRow({
               <button
                 className="inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 font-tech text-[11px] transition-colors hover:bg-accent ltr-technical"
                 onClick={() => onCorrelationClick(event.correlationId as string)}
-                title="Filter the stream by this correlation id"
+                title={t("row.correlationFilterTitle")}
                 type="button"
               >
                 <Link2 aria-hidden className="size-3" />
@@ -280,17 +284,19 @@ const EventRow = memo(function EventRow({
               </span>
             )}
             {copied && (
-              <span className="text-[11px] font-medium text-success">{copied} copied</span>
+              <span className="text-[11px] font-medium text-success">
+                {t("row.copied", { label: copied })}
+              </span>
             )}
           </div>
           {hasPayload ? (
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <JsonPane label="Before" onCopied={copy} value={event.beforeJson} />
-              <JsonPane label="After" onCopied={copy} value={event.afterJson} />
+              <JsonPane label={t("row.before")} onCopied={copy} value={event.beforeJson} />
+              <JsonPane label={t("row.after")} onCopied={copy} value={event.afterJson} />
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">
-              No structured before/after payload was recorded for this event.
+              {t("row.noPayload")}
             </p>
           )}
         </div>
@@ -304,6 +310,7 @@ const EventRow = memo(function EventRow({
  * apply the correlation filter (the "click to filter" affordance).
  */
 export function EventsView() {
+  const t = useTranslations("eventsView");
   const tTimeRange = useTranslations("timeRange");
 
   const [actor, setActor] = useState<string>("ALL");
@@ -344,8 +351,8 @@ export function EventsView() {
     } catch {
       /* missing namespace → fall through to the English label */
     }
-    if (value === "all") return "All time";
-    return TIME_RANGES.find((entry) => entry.value === value)?.label ?? "Time range";
+    if (value === "all") return t("fallback.allTime");
+    return TIME_RANGES.find((entry) => entry.value === value)?.label ?? t("fallback.timeRange");
   };
 
   const params: EventListParams = useMemo(
@@ -430,36 +437,36 @@ export function EventsView() {
     <div className="flex flex-col gap-5">
       <div data-tour="events-header">
         <PageHeader
-          description="Platform audit-event timeline — every user action, engine decision and system job, newest first"
-          title="Event Stream"
+          description={t("page.description")}
+          title={t("page.title")}
         />
       </div>
 
       {/* KPI strip */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard
-          description="Audit events recorded in the trailing 24 h"
+          description={t("kpi.eventsDescription")}
           icon={Activity}
-          label="Events · 24 h"
+          label={t("kpi.eventsLabel")}
           loading={events.isLoading}
-          status={{ label: "live · 7 s", token: "info", pulse: true }}
+          status={{ label: t("kpi.liveStatus"), token: "info", pulse: true }}
           value={listMeta?.last24h ?? "—"}
         />
         <KpiCard
-          description="Distinct actors over the current filter"
+          description={t("kpi.actorsDescription")}
           icon={Users}
-          label="Distinct actors"
+          label={t("kpi.actorsLabel")}
           loading={events.isLoading}
           value={listMeta?.distinctActors ?? "—"}
         />
         <KpiCard
           description={
             facetActions.length > 0
-              ? `${facetActions[0].count} events — actions are grouped by family prefix`
-              : "No action activity under the current filter"
+              ? t("kpi.topActionDescription", { count: facetActions[0].count })
+              : t("kpi.topActionEmpty")
           }
           icon={Zap}
-          label="Top action"
+          label={t("kpi.topActionLabel")}
           loading={events.isLoading}
           value={facetActions.length > 0 ? facetActions[0].action : "—"}
         />
@@ -484,11 +491,11 @@ export function EventsView() {
           }}
           value={actor}
         >
-          <SelectTrigger aria-label="Actor" className="w-[180px]">
+          <SelectTrigger aria-label={t("filter.actorAria")} className="w-[180px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="max-h-60">
-            <SelectItem value="ALL">Any actor</SelectItem>
+            <SelectItem value="ALL">{t("filter.anyActor")}</SelectItem>
             {(listMeta?.topActors ?? []).map((facet) => (
               <SelectItem key={facet.actor} value={facet.actor}>
                 {facet.actor} · {facet.count}
@@ -503,13 +510,13 @@ export function EventsView() {
           }}
           value={action}
         >
-          <SelectTrigger aria-label="Action" className="w-[180px]">
+          <SelectTrigger aria-label={t("filter.actionAria")} className="w-[180px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="max-h-60">
-            <SelectItem value="ALL">Any action</SelectItem>
+            <SelectItem value="ALL">{t("filter.anyAction")}</SelectItem>
             <SelectGroup>
-              <SelectLabel>Families</SelectLabel>
+              <SelectLabel>{t("filter.families")}</SelectLabel>
               {ACTION_FAMILIES.map((family) => {
                 const count = facetActions
                   .filter((facet) => facet.action.startsWith(family))
@@ -535,7 +542,7 @@ export function EventsView() {
             </SelectGroup>
             {extraActions.length > 0 && (
               <SelectGroup>
-                <SelectLabel>Other actions</SelectLabel>
+                <SelectLabel>{t("filter.otherActions")}</SelectLabel>
                 {extraActions.map((name) => (
                   <SelectItem key={name} value={name}>
                     {name}
@@ -552,11 +559,11 @@ export function EventsView() {
           }}
           value={entityType}
         >
-          <SelectTrigger aria-label="Entity type" className="w-[160px]">
+          <SelectTrigger aria-label={t("filter.entityAria")} className="w-[160px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="max-h-60">
-            <SelectItem value="ALL">Any entity</SelectItem>
+            <SelectItem value="ALL">{t("filter.anyEntity")}</SelectItem>
             {(listMeta?.entityTypes ?? []).map((facet) => (
               <SelectItem key={facet.entityType} value={facet.entityType}>
                 {facet.entityType} · {facet.count}
@@ -571,7 +578,7 @@ export function EventsView() {
           }}
           value={timeRange}
         >
-          <SelectTrigger aria-label="Time range" className="w-[150px]">
+          <SelectTrigger aria-label={t("filter.timeRangeAria")} className="w-[150px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -583,7 +590,7 @@ export function EventsView() {
           </SelectContent>
         </Select>
         <label className="relative">
-          <span className="sr-only">Filter by correlation id</span>
+          <span className="sr-only">{t("filter.correlationSrOnly")}</span>
           <Link2
             aria-hidden
             className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -591,13 +598,13 @@ export function EventsView() {
           <Input
             className="w-full ps-8 font-tech ltr-technical sm:w-52"
             onChange={(event) => setCorrelationInput(event.target.value)}
-            placeholder="correlationId…"
+            placeholder={t("filter.correlationPlaceholder")}
             value={correlationInput}
           />
         </label>
         {hasFilters && (
           <Button onClick={resetFilters} size="sm" variant="ghost">
-            Reset
+            {t("filter.reset")}
           </Button>
         )}
       </div>
@@ -606,18 +613,22 @@ export function EventsView() {
         actions={
           <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <StatusDot pulse token="info" />
-            live · polls every 7 s
+            {t("section.livePolls")}
           </span>
         }
         contentClassName="p-0"
-        title={`Events${listMeta ? ` — ${listMeta.total}` : ""}`}
+        title={
+          listMeta
+            ? t("section.titleWithTotal", { total: listMeta.total })
+            : t("section.title")
+        }
       >
         {events.isError ? (
           <div className="p-4">
             <ErrorState
               onRetry={() => void events.refetch()}
               reason={events.error.message}
-              title="Events could not be loaded"
+              title={t("error.title")}
             />
           </div>
         ) : events.isLoading ? (
@@ -629,9 +640,9 @@ export function EventsView() {
         ) : rows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="No audit events match the current filter. Widen the time range or clear a filter."
+              description={t("empty.description")}
               icon={Search}
-              title="No events to show"
+              title={t("empty.title")}
             />
           </div>
         ) : (
@@ -648,7 +659,11 @@ export function EventsView() {
         {listMeta && listMeta.totalPages > 1 && (
           <div className="flex items-center justify-between border-t px-4 py-2 text-xs text-muted-foreground">
             <span>
-              Page {listMeta.page} of {listMeta.totalPages} · {listMeta.total} events
+              {t("pagination.summary", {
+                page: listMeta.page,
+                totalPages: listMeta.totalPages,
+                total: listMeta.total,
+              })}
             </span>
             <div className="flex gap-2">
               <Button
@@ -657,7 +672,7 @@ export function EventsView() {
                 size="sm"
                 variant="outline"
               >
-                Previous
+                {t("pagination.previous")}
               </Button>
               <Button
                 disabled={listMeta.page >= listMeta.totalPages}
@@ -665,7 +680,7 @@ export function EventsView() {
                 size="sm"
                 variant="outline"
               >
-                Next
+                {t("pagination.next")}
               </Button>
             </div>
           </div>

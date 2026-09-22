@@ -2735,5 +2735,67 @@
       "previous": "Prev",
       "next": "Next"
     }
+  },
+  "eventsView": {
+    "page": {
+      "title": "Event Stream",
+      "description": "Platform audit-event timeline — every user action, engine decision and system job, newest first"
+    },
+    "kpi": {
+      "eventsLabel": "Events · 24 h",
+      "eventsDescription": "Audit events recorded in the trailing 24 h",
+      "liveStatus": "live · 7 s",
+      "actorsLabel": "Distinct actors",
+      "actorsDescription": "Distinct actors over the current filter",
+      "topActionLabel": "Top action",
+      "topActionDescription": "{count} events — actions are grouped by family prefix",
+      "topActionEmpty": "No action activity under the current filter"
+    },
+    "filter": {
+      "actorAria": "Actor",
+      "anyActor": "Any actor",
+      "actionAria": "Action",
+      "anyAction": "Any action",
+      "families": "Families",
+      "otherActions": "Other actions",
+      "entityAria": "Entity type",
+      "anyEntity": "Any entity",
+      "timeRangeAria": "Time range",
+      "correlationSrOnly": "Filter by correlation id",
+      "correlationPlaceholder": "correlationId…",
+      "reset": "Reset"
+    },
+    "section": {
+      "livePolls": "live · polls every 7 s",
+      "title": "Events",
+      "titleWithTotal": "Events — {total}"
+    },
+    "error": {
+      "title": "Events could not be loaded"
+    },
+    "empty": {
+      "title": "No events to show",
+      "description": "No audit events match the current filter. Widen the time range or clear a filter."
+    },
+    "pagination": {
+      "summary": "Page {page} of {totalPages} · {total} events",
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "row": {
+      "copyJson": "Copy {label} JSON",
+      "notRecorded": "Not recorded",
+      "detail": "Detail",
+      "hide": "Hide",
+      "correlationFilterTitle": "Filter the stream by this correlation id",
+      "copied": "{label} copied",
+      "before": "Before",
+      "after": "After",
+      "noPayload": "No structured before/after payload was recorded for this event."
+    },
+    "fallback": {
+      "allTime": "All time",
+      "timeRange": "Time range"
+    }
   }
 }
