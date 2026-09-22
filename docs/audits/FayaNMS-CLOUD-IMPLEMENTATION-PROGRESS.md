@@ -4,7 +4,7 @@
 **Execution branch:** `codex/fayanms-cloud-platform`  
 **Initial main SHA:** `7aef0a330dc8f965fb496b735eb8a97b8d2c5149`  
 **Current main readback:** `3ab5c7eb3118b9b37c6286058de99b41bb67cac0`  
-**Current implementation HEAD:** `2ad921e3bc40ce85d902eea07f0fb413eaf8e531`
+**Current implementation HEAD:** `256fa786023b2b12e8233a9efe200b6ce3650fad`
 **Execution date:** 2026-09-21  
 **Authoritative inputs:** Cloud Development/CICD/OCI Implementation Plan, Executive Production Review, Full Independent Production Audit, Production Remediation Roadmap, Competitive Benchmark, Production Gap Register.
 
@@ -18,12 +18,12 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 
 | Item | Evidence |
 |---|---|
-| Current branch | Remote `codex/fayanms-cloud-platform` at `2ad921e3bc40ce85d902eea07f0fb413eaf8e531`; no local checkout was available in the execution workspace |
+| Current branch | Remote `codex/fayanms-cloud-platform` at `256fa786023b2b12e8233a9efe200b6ce3650fad`; no local checkout was available in the execution workspace |
 | `main` HEAD | `3ab5c7eb3118b9b37c6286058de99b41bb67cac0` |
 | Remote protection | Live branch readback: `protected:false`, `protection.enabled:false`, required checks enforcement `off` |
-| Latest CI | Run `35597305855` on exact HEAD `2ad921e3`: gate `106324987882`, scan `106326050876`, e2e `106326051433`, and browser `106326050820` all PASS; bounded discovery probe tests included |
+| Latest CI | Run `35669619525` on exact HEAD `256fa786`: gate `106563110436`, scan `106563898555`, e2e `106563898705`, and browser `106563898515` all PASS; authenticated SNMPv3 polling/IF-MIB harness tests included |
 | Browser evidence | Run `35575582829` browser job `106257462989` PASS; prior first-attempt B5 diagnostics remain retained as an intermittent-risk record. |
-| ARM64 container | Run `35597305920` job `106325176910` on exact HEAD `2ad921e3`: app/worker/migrator ARM64 builds, direct Prisma CLI smoke, architecture/runtime checks, and strict HIGH/CRITICAL Trivy scans with `ignore-unfixed: false`; GHCR publication skipped for draft PR |
+| ARM64 container | Run `35669619540` job `106562927250` on exact HEAD `256fa786`: app/worker/migrator ARM64 builds, direct Prisma CLI smoke, architecture/runtime checks, and strict HIGH/CRITICAL Trivy scans with `ignore-unfixed: false`; GHCR publication skipped for draft PR |
 | Open PRs | Draft PR #12: `codex/fayanms-cloud-platform` → `main` |
 | Repository access | GitHub connector has authenticated repository read/write access; plain Git clone is unavailable in this execution container |
 | Security note | Prior audit reports an exposed PAT; rotation/revocation remains an owner action and no token is copied into this repository |
@@ -45,7 +45,7 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 | CLOUD-08 | Automated staging deploy | P0 | BLOCKED — EXTERNAL | CLOUD-07 | Codex + owner | Exact-SHA protected-environment SSH workflow committed | Owner configures staging secrets/approval and runs deployment |
 | CLOUD-09 | Health/smoke gate | P0 | BLOCKED — EXTERNAL | CLOUD-08 | Codex | Fail-closed health script and release evidence runbook committed; no staging endpoint exists here | Run against OCI staging and retain smoke evidence |
 | CLOUD-10 | Observability | P1 | IN PROGRESS | CLOUD-09 | App /api/metrics and worker /api/metrics contracts are implemented with token gating; Prometheus/OTel configs now use reviewed SHA-256 image references and a regression test; staging architecture/scan/alert proof remains open | Owner validates the selected monitoring digests on the OCI host architecture and runs a controlled staging alert test |
-| CLOUD-11 | Network protocol lab | P1 | IN PROGRESS | CLOUD-10 | CI-certified SNMPv3 authPriv harness, worker-side vault-resolved verification, durable engine-ID enrollment, boots/time replay policy, bounded verified metadata relay, and bounded TCP/reverse-DNS discovery are implemented | Add authenticated SNMPv3 polling/IF-MIB evidence; certify receiver traffic in isolated staging/lab; durable queue/HA, continuous discovery, and physical-vendor evidence remain open |
+| CLOUD-11 | Network protocol lab | P1 | IN PROGRESS | CLOUD-10 | CI-certified SNMPv3 authPriv harness, worker-side vault-resolved verification, durable engine-ID enrollment, boots/time replay policy, bounded verified metadata relay, bounded TCP/reverse-DNS discovery, and authenticated SNMPv3 polling/initial IF-MIB persistence are implemented | Certify real-device polling in isolated staging/lab; durable queue/HA, continuous discovery/topology, and physical-vendor evidence remain open |
 | CLOUD-12 | Controlled telemetry ports | P1 | BLOCKED — EXTERNAL | CLOUD-11 | Codex + owner | Least-privilege port policy committed; no listeners should be opened yet | Apply only after receiver implementation and owner NSG/firewall review |
 | CLOUD-13 | VPN/physical device lab | P1 | BLOCKED — EXTERNAL | CLOUD-12 | Codex + owner | Hardware certification matrix and isolated-lab runbook committed | Owner supplies lab VPN/devices and executes matrix |
 | CLOUD-14 | Database backup/DR | P1 | BLOCKED — EXTERNAL | CLOUD-13 | Codex + owner | Encrypted backup and isolated restore-drill scripts/runbook committed; no off-host target/key exists here | Configure object storage/key custody and run restore drill |
@@ -225,3 +225,16 @@ Never fabricate OCI, DNS, VPN, physical-device, GitHub-owner, or secret-manager 
 - Blockers: prior PAT rotation, branch protection/ruleset, live Codespaces proof, OCI tenancy/VM/NSG/DNS/SSH, staging approval, VPN, off-host backup key/target, and physical hardware remain owner-controlled actions.
 - Remaining risks: do not open telemetry ports; SNMP engine identity/replay controls, durable queue/HA, continuous discovery, staging evidence, and physical-vendor matrix remain incomplete.
 - Exact next task: add repository-side SNMP engine-ID pinning and bounded anti-replay/timeliness policy without persisting secrets or raw packets.
+
+### Round 12 — authenticated SNMPv3 polling
+
+- Completed: added a server-authorized SNMP_POLL job path. A session with device.read can enqueue one bounded poll per device; the worker obtains only a telemetry-scoped profile reference, resolves the vault secret locally, sends authenticated SNMPv3 authPriv requests for sysName, sysDescr, sysUpTime, ifNumber, ifDescr, ifOperStatus, ifHCInOctets, and ifHCOutOctets, applies bounded timeout/retry/exponential-backoff/jitter, verifies the enrolled response engine identity, passes boots/time through the existing anti-replay acceptance route, and completes through a jobs-scoped persistence endpoint.
+- Files changed: mini-services/worker/snmpv3-poller.ts; mini-services/worker/runner.ts; scripts/protocol-lab/snmpv3.ts; src/app/api/v1/devices/[id]/snmp/poll/route.ts; src/app/api/v1/ingest/protocol/snmpv3-profile/poll/route.ts; src/app/api/v1/worker/snmpv3-poll/complete/route.ts; tests/snmpv3-poller.test.ts; docs/runbooks/snmpv3-polling.md; Dockerfile.worker; prisma/schema.prisma.
+- Tests: the loopback protocol harness performs a real encrypted/authenticated UDP poll and verifies sysName, sysDescr, uptime conversion, initial interface state, Counter64 values, engine identity/timeliness, and no-secret output; counterDelta tests distinguish normal increments, 32-bit wrap, and reset. Exact-head CI run 35669619525 passed gate 106563110436, E2E 106563898705, browser/axe/keyboard/RTL 106563898515, and scan 106563898555.
+- Validation results: ARM64 run 35669619540, job 106562927250, passed application/worker/migrator ARM64 builds, direct Prisma CLI smoke, architecture/runtime verification, and strict HIGH/CRITICAL Trivy scans with ignore-unfixed false. The worker image now explicitly contains the shared protocol decoder/policy runtime imports; the build passed after that closure was added.
+- Commit SHAs: polling implementation d3c999eab06d12a8c5ce68efef36bf1f15cb8b3a; runner/runtime integration 256fa786023b2b12e8233a9efe200b6ce3650fad.
+- CI status: exact current head is green in repository CI and ARM64 container certification; GHCR publication remains skipped because PR #12 is draft and no authorized main push occurred.
+- Newly discovered findings: the poller is protocol-harness and CI certified but has no staging, physical-hardware, vendor-interoperability, or production evidence. Counter64 samples are retained as bounded decimal strings in the job result; rate derivation and long-term queue/HA behavior remain separate work. Poll acceptance and completion are intentionally split so a completion post cannot advance engine state without the server-side acceptance decision.
+- Blockers: prior PAT rotation, branch protection/ruleset, live Codespaces proof, OCI tenancy/VM/NSG/DNS/SSH, staging approval, VPN, off-host backup key/target, and physical hardware remain owner-controlled actions.
+- Remaining risks: telemetry ports remain intentionally closed; durable collector queue/HA, continuous discovery/topology, vendor-specific IF-MIB behavior, monitoring alert proof, staging, and production evidence remain open.
+- Exact next task: add repository-side durable protocol event queuing/retry/dead-letter behavior behind the existing opt-in collector, without opening external telemetry ports or claiming staging/production proof.
