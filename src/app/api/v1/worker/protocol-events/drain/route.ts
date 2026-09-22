@@ -174,6 +174,7 @@ async function deliverEvent(row: ClaimedProtocolEvent): Promise<number> {
         deliveredAt,
         lockedAt: null,
         lastError: null,
+        flowBatchJson: null,
       },
     });
     if (updated.count !== 1) throw new Error("protocol queue lease was lost");

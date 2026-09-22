@@ -74,6 +74,7 @@ test("drain persists all flow rows before delivery state in one transaction", ()
   );
   expect(delivery).toContain('throw new Error("protocol queue lease was lost")');
   expect(delivery).toContain("skipDuplicates: true");
+  expect(delivery).toContain("flowBatchJson: null");
   expect(route).toContain("flowRecordsPersisted");
   expect(route).toContain("netFlowV5BatchSchema.safeParse");
 });

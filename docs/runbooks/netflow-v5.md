@@ -8,7 +8,7 @@ The worker supports bounded NetFlow v5 record ingestion. The UDP collector is op
 
 The decoder accepts only version 5 datagrams with 1–30 records and exact `24 + count × 48` byte framing. The authenticated telemetry ingest validates all fields and caps serialized batches at 16 KiB. Exporter peer address/port are stored separately from flow endpoint addresses. Raw datagrams and credentials are not stored. NetFlow v9 templates, IPFIX templates, and sFlow records are not decoded into `FlowRecord` rows.
 
-The collector relays to `/api/v1/ingest/protocol` with its telemetry service identity. Queue delivery inserts the typed records and marks the queue row delivered atomically. Failures follow the existing five-attempt queue retry/dead-letter policy; dead-lettered rows retain their validated batch under existing queue access controls. Review queue audit events `PROTOCOL_EVENT_QUEUED`, `PROTOCOL_EVENT_RECEIVED`, and `PROTOCOL_EVENT_DEAD_LETTERED` for delivery status.
+The collector relays to `/api/v1/ingest/protocol` with its telemetry service identity. Queue delivery inserts the typed records, clears the duplicate queue batch, and marks the queue row delivered atomically. Failures follow the existing five-attempt queue retry/dead-letter policy; retryable and dead-lettered rows retain their validated batch under existing queue access controls. Review queue audit events `PROTOCOL_EVENT_QUEUED`, `PROTOCOL_EVENT_RECEIVED`, and `PROTOCOL_EVENT_DEAD_LETTERED` for delivery status.
 
 ## Retention
 
