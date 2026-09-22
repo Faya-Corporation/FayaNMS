@@ -4,7 +4,7 @@ export const DISCOVERY_MAX_SUBNETS_PER_POLICY = 4;
 export const DISCOVERY_MAX_TARGETS_PER_JOB = 1_024;
 
 const IPV4_CIDR =
-  /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\/(\d|[12]\d|3[0-2])$/;
+  /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\/(\d|[12]\d|3[0-2])$/;
 
 export interface DiscoveryPolicyConfig {
   subnets: string[];
@@ -16,7 +16,7 @@ export interface DiscoveryPolicyConfig {
 export function discoveryTargetCount(cidr: string): number | null {
   const match = IPV4_CIDR.exec(cidr.trim());
   if (!match) return null;
-  const prefix = Number(match[5]);
+  const prefix = Number(match[1]);
   if (prefix < 24) return null;
   const size = 2 ** (32 - prefix);
   return prefix >= 31 ? size : Math.max(0, size - 2);
