@@ -1,0 +1,41 @@
+services:
+  workspace:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    command: sleep infinity
+    working_dir: /workspaces/FayaNMS
+    volumes:
+      - ..:/workspaces/FayaNMS:cached
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://fayanms:fayanms-codespaces@postgres:5432/fayanms
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: codespaces-only-not-production
+      FAYANMS_SERVICE_SECRET: codespaces-only-not-production
+      FAYANMS_CONFIG_ENC_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      FAYANMS_PROBE_ALLOW_SPECIAL: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fayanms
+      POSTGRES_DB: fayanms
+      POSTGRES_PASSWORD: fayanms-codespaces
+    ports:
+      - "5433:5432"
+    volumes:
+      - fayanms-codespaces-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fayanms -d fayanms"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  fayanms-codespaces-pgdata:

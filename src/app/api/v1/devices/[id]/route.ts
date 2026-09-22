@@ -61,6 +61,10 @@ async function loadDevice(id: string) {
     hostname: device.hostname,
     displayName: device.displayName,
     mgmtIp: device.mgmtIp,
+    snmpEngineIdHex: device.snmpEngineIdHex,
+    snmpEngineBoots: device.snmpEngineBoots,
+    snmpEngineTime: device.snmpEngineTime,
+    snmpEngineLastSeenAt: device.snmpEngineLastSeenAt,
     model: device.model,
     platform: device.platform,
     serialNumber: device.serialNumber,
@@ -131,6 +135,9 @@ const patchSchema = z.object({
       "mgmtIp must be a valid IPv4 address",
     )
     .optional(),
+  // Operator-enrolled SNMPv3 engine ID (hex, 5–64 octets). Setting it
+  // explicitly resets boots/time so replay state cannot cross an enrollment.
+  snmpEngineIdHex: z.string().trim().regex(/^[0-9a-fA-F]{10,128}$/, "snmpEngineIdHex must be 5–64 octets of hex").nullable().optional(),
   siteId: z.string().trim().min(1).nullable().optional(),
   tags: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
   // status: UI uses PATCH for MAINTENANCE toggling; the full set is accepted
@@ -250,6 +257,12 @@ export async function PATCH(
   }
   if (data.status !== undefined) updateData.status = data.status;
   if (data.mgmtIp !== undefined) updateData.mgmtIp = data.mgmtIp;
+  if (data.snmpEngineIdHex !== undefined) {
+    updateData.snmpEngineIdHex = data.snmpEngineIdHex?.toLowerCase() ?? null;
+    updateData.snmpEngineBoots = null;
+    updateData.snmpEngineTime = null;
+    updateData.snmpEngineLastSeenAt = null;
+  }
   if (data.dataSource !== undefined) updateData.dataSource = data.dataSource;
   // credentialProfileId is validated above and PERSISTED here (the secret
   // itself never travels — profiles store a vault secretRef pointer).
@@ -263,7 +276,7 @@ export async function PATCH(
     return JSON.stringify(before ?? null) !== JSON.stringify(after ?? null);
   });
 
-  if (changedKeys.length === 0 && data.credentialProfileId === undefined && data.dataSource === undefined) {
+  if (changedKeys.length === 0 && data.credentialProfileId === undefined && data.dataSource === undefined && data.snmpEngineIdHex === undefined) {
     const device = await loadDevice(id);
     return ok(device);
   }

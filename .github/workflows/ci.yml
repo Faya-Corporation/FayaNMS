@@ -76,6 +76,15 @@ on:
   # tab the moment runner capacity exists (OWNER-CI-001 → HC-6).
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# CI only reads the repository. Publishing permissions are isolated to the
+# container workflow's publication job.
+permissions:
+  contents: read
+
 jobs:
   gate:
     runs-on: ubuntu-latest
@@ -107,7 +116,7 @@ jobs:
       FAYANMS_SERVICE_SECRET: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
       FAYANMS_CONFIG_ENC_KEY: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (SHA-pinned 2026-09-11)
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (SHA-pinned 2026-09-11)
         with:
           fetch-depth: 0 # full history — gitleaks scans origin commits too
 
@@ -125,6 +134,9 @@ jobs:
       # install in Dockerfile.worker — CI needs the types for the typecheck.)
       - name: Install worker dependencies (frozen)
         run: cd mini-services/worker && bun install --frozen-lockfile
+
+      - name: Cloud layout and secret boundary validation
+        run: bash scripts/verification/validate-cloud-layout.sh
 
       - name: Lint
         run: bun run lint
@@ -299,7 +311,7 @@ jobs:
     env:
       DATABASE_URL: "postgresql://fayanms:fayanms-ci-only@localhost:5433/fayanms"
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (SHA-pinned 2026-09-11)
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (SHA-pinned 2026-09-11)
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2 (SHA-pinned 2026-09-11)
         with:
           bun-version: 1.3.14
@@ -345,7 +357,7 @@ jobs:
     env:
       DATABASE_URL: "postgresql://fayanms:fayanms-ci-only@localhost:5433/fayanms"
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (SHA-pinned 2026-09-11)
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (SHA-pinned 2026-09-11)
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2 (SHA-pinned 2026-09-11)
         with:
           bun-version: 1.3.14
@@ -364,20 +376,61 @@ jobs:
       - name: Run rendering-layer browser journeys (axe a11y + keyboard + RTL)
         run: FAYANMS_BROWSER_E2E=1 bun test tests/browser/
 
+      - name: Upload browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-diagnostics-${{ github.run_id }}
+          path: |
+            /tmp/fayanms-e2e-*.log
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+
   scan:
     runs-on: ubuntu-latest
     needs: gate
     continue-on-error: false # explicit: scan steps are a hard gate, not advisory
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (SHA-pinned 2026-09-11)
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (SHA-pinned 2026-09-11)
         with:
           fetch-depth: 0
 
       # ── 8. P20-010 — secret scanning ──
-      - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2 (SHA-pinned 2026-09-11)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # The official action's PR-annotation path requires pull_requests:read,
+      # which is intentionally not granted to this read-only CI workflow. Run
+      # the pinned upstream binary locally instead: git history and the checked
+      # out directory remain hard-fail scans without widening token scope.
+      - name: Secret scan (gitleaks history and working tree)
+        run: |
+          GITLEAKS_VERSION=8.24.3
+          GITLEAKS_ARCHIVE="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          CHECKSUMS_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          ARCHIVE_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${GITLEAKS_ARCHIVE}"
+          curl -sSfL -o /tmp/gitleaks-checksums.txt "${CHECKSUMS_URL}"
+          ARCHIVE_SHA="$(awk -v name="${GITLEAKS_ARCHIVE}" '$2 == name {print $1}' /tmp/gitleaks-checksums.txt)"
+          test -n "${ARCHIVE_SHA}"
+          curl -sSfL -o "/tmp/${GITLEAKS_ARCHIVE}" "${ARCHIVE_URL}"
+          printf "%s  /tmp/%s\\n" "${ARCHIVE_SHA}" "${GITLEAKS_ARCHIVE}" | sha256sum -c -
+          mkdir -p /tmp/gitleaks
+          tar -xzf "/tmp/${GITLEAKS_ARCHIVE}" -C /tmp/gitleaks
+          /tmp/gitleaks/gitleaks version
+          set +e
+          /tmp/gitleaks/gitleaks git --config .gitleaks.toml --redact --no-banner \
+            --report-format json --report-path /tmp/gitleaks-git.json .
+          GITLEAKS_GIT_STATUS=$?
+          /tmp/gitleaks/gitleaks dir --config .gitleaks.toml --redact --no-banner \
+            --report-format json --report-path /tmp/gitleaks-dir.json .
+          GITLEAKS_DIR_STATUS=$?
+          set -e
+          for report in /tmp/gitleaks-git.json /tmp/gitleaks-dir.json; do
+            if test -s "${report}" && test "$(jq 'length' "${report}")" -gt 0; then
+              jq -r '.[] | "gitleaks finding: rule=\(.RuleID) file=\(.File) line=\(.StartLine) commit=\(.Commit)"' "${report}"
+            fi
+          done
+          test "${GITLEAKS_GIT_STATUS}" -eq 0
+          test "${GITLEAKS_DIR_STATUS}" -eq 0
 
       # ── 9. P20-011 — SAST ──
       # Action path preserved verbatim from docs/ci/ci-gate.yml; the same v1
@@ -436,7 +489,7 @@ jobs:
       # guard below remains as a correctness guard for exotic checkouts.
       - name: Container scan (trivy)
         if: ${{ hashFiles('Dockerfile') != '' }}
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA-pinned 2026-09-11)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0 (SHA-pinned 2026-09-11)
         with:
           scan-type: fs
           scan-ref: .
@@ -496,33 +549,28 @@ jobs:
           docker build -f Dockerfile.worker -t fayanms-worker:ci .
 
       - name: Image scan — app (trivy, HIGH/CRITICAL fail)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA-pinned 2026-09-11)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0 (SHA-pinned 2026-09-11)
         with:
           scan-type: image
           image-ref: fayanms-app:ci
           severity: HIGH,CRITICAL
           exit-code: "1"
-          # R78 triage (run 35423693016): the FIRST image scan found 88
-          # HIGH/CRITICAL findings — ALL base-image Debian packages. The
-          # runtime stages now track the Debian security channel (apt-get
-          # upgrade; both Dockerfiles), so every finding WITH a published
-          # fix is patched at build time; `ignore-unfixed` scopes the gate
-          # to what an operator can actually act on — a vulnerability with
-          # NO fix released anywhere has no remediation path and is reported
-          # (visible in the log) rather than fatal. Widening requires a new
-          # triage note. The fs scan above is untouched (narrowness).
-          ignore-unfixed: true
+          # Distroless runtime remediation: the shipped image excludes
+          # the Debian package-manager and utility surface. Keep the image
+          # gate fatal for every HIGH/CRITICAL result, including unfixed
+          # findings; no vulnerability is hidden by scan configuration.
+          ignore-unfixed: false
 
       - name: Image scan — worker (trivy, HIGH/CRITICAL fail)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA-pinned 2026-09-11)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0 (SHA-pinned 2026-09-11)
         with:
           scan-type: image
           image-ref: fayanms-worker:ci
           severity: HIGH,CRITICAL
           exit-code: "1"
-          # R78: same triage as the app image scan (security-channel upgrade
-          # in the runtime stage; gate scoped to fixable findings).
-          ignore-unfixed: true
+          # Same strict policy as the app image: distroless runtime,
+          # no ignored HIGH/CRITICAL findings.
+          ignore-unfixed: false
 
       - name: Image SBOMs (syft → CycloneDX, per image)
         run: |

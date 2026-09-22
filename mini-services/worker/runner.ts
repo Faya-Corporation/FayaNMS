@@ -7,19 +7,18 @@
  * Task 10-a hardening: the claim loop is self-scheduling and immortal (the
  * next tick is always scheduled), backs off exponentially on claim failures
  * (3 s → 5 min cap) and auto-recovers with a greppable log line.
- * The runner is a pure orchestration/simulation engine — no DB access.
+ * The runner is a pure orchestration/probe engine — no DB access.
  *
  * CONFIG_BACKUP step sequence (progress reported via /api/v1/worker/progress):
  *   5%  resolving device            15% connect (via self POST /simulate/connect)
  *   40–85% generate config (1–2 s simulated work, 1–2 progress posts)
  *   then POST /api/v1/worker/complete with the raw/normalized config text.
  *
- * DISCOVERY step sequence (roadmap 2-c):
- *   per subnet 1.2–2.5 s of simulated scanning, 2–4 candidate devices per
- *   subnet, progress = round(scanned/total*90) with a per-subnet message,
- *   then POST /api/v1/worker/complete with { candidates, scannedSubnets,
- *   durationMs }. Candidates are persistence-free: they land in the job's
- *   resultJson and the import flow turns them into real Device rows.
+ * DISCOVERY step sequence:
+ *   enumerate an explicitly bounded IPv4 target set, probe approved TCP
+ *   management ports, and perform reverse DNS only for reachable targets;
+ *   report bounded wire-derived candidates to /worker/complete. No vendor,
+ *   SNMP identity, or credential claim is made by this unauthenticated scan.
  *
  * DRIFT_CHECK branch (roadmap 3-c) — minimal: POST
  * /api/v1/worker/drift-evaluate { jobId } (the evaluation service runs
@@ -98,6 +97,14 @@ import {
   resolveAdapter,
 } from "./adapter-router";
 import { nextPost, selfPost, log } from "./next-client";
+import {
+  scanDiscoverySubnet,
+  enumerateDiscoveryTargets,
+  MAX_DISCOVERY_TARGETS,
+  type DiscoveryCandidate,
+} from "./discovery";
+import { normalizeDiscoveryPolicyConfig } from "../../src/lib/discovery/policy";
+import { pollSnmpV3, type SnmpV3PollProfileReference } from "./snmpv3-poller";
 
 const CLAIM_INTERVAL_MS = 3_000;
 /** Claim-loop exponential backoff cap (Task 10-a) — 5 minutes. */
@@ -356,156 +363,98 @@ async function runBackupJob(job: ClaimedJob): Promise<void> {
   );
 }
 
-/* ───────────────────────── DISCOVERY simulation ───────────────────────── */
+/* ───────────────────────── DISCOVERY probe ────────────────────────────── */
 
-/** Candidate vendors, weighted towards cisco/hpe like a real campus fleet. */
-const DISCOVERY_VENDORS: { vendor: string; weight: number }[] = [
-  { vendor: "cisco", weight: 4 },
-  { vendor: "hpe", weight: 3 },
-  { vendor: "fortinet", weight: 2 },
-  { vendor: "sophos", weight: 2 },
-  { vendor: "generic", weight: 1 },
-];
-
-const OS_FINGERPRINTS: Record<string, string[]> = {
-  cisco: [
-    "Cisco IOS 15.x banner",
-    "Cisco IOS XE 17.x banner (SSH-2.0 Cisco)",
-    "Cisco NX-OS 9.3 banner",
-  ],
-  fortinet: ["FortiGate FortiOS 7.x", "FortiGate FortiOS 7.4 banner"],
-  sophos: ["Sophos SFOS 19.x banner", "Sophos SFOS 20.x banner"],
-  hpe: ["HPE AOS-CX 10.x banner", "HPE AOS-CX 10.10 banner"],
-  generic: ["Generic SNMP sysDescr (v2c)", "Unknown appliance SSH banner"],
-};
-
-const MODEL_GUESSES: Record<string, string[]> = {
-  cisco: ["C9300-48P", "C9200L-24P-4G", "ISR4331", "WS-C2960X-24TS-L"],
-  fortinet: ["FortiGate 120G", "FortiGate 90G", "FortiGate 201F"],
-  sophos: ["XGS 1300", "XGS 2100", "XGS 87"],
-  hpe: ["6200F 48G (JL727A)", "6100 24G (JL679A)", "3810M 24G"],
-  generic: ["NetGate 6100", "Unmanaged appliance"],
-};
-
-function weightedVendor(): string {
-  const total = DISCOVERY_VENDORS.reduce((sum, entry) => sum + entry.weight, 0);
-  let roll = Math.random() * total;
-  for (const entry of DISCOVERY_VENDORS) {
-    roll -= entry.weight;
-    if (roll < 0) return entry.vendor;
-  }
-  return "generic";
-}
-
-const SUBNET_PATTERN = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/;
-
-/** Loose CIDR validation: dotted quad + prefix 8..32. Throws on garbage. */
-function parseSubnet(subnet: string): { baseInt: number; prefix: number } {
-  const match = SUBNET_PATTERN.exec(subnet.trim());
-  if (!match) {
-    throw new Error(`Invalid subnet "${subnet}" — expected a.b.c.d/prefix`);
-  }
-  const octets = [
-    Number(match[1]),
-    Number(match[2]),
-    Number(match[3]),
-    Number(match[4]),
-  ];
-  if (octets.some((o) => o > 255)) {
-    throw new Error(`Invalid subnet "${subnet}" — octet out of range`);
-  }
-  const prefix = Number(match[5]);
-  if (prefix < 8 || prefix > 32) {
-    throw new Error(`Invalid subnet "${subnet}" — prefix must be 8..32`);
-  }
-  const baseInt =
-    ((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0;
-  return { baseInt, prefix };
-}
-
-function intToIp(value: number): string {
-  return [
-    (value >>> 24) & 255,
-    (value >>> 16) & 255,
-    (value >>> 8) & 255,
-    value & 255,
-  ].join(".");
-}
-
-/** Host address inside the subnet: /24 → last octet 1..254, else base + offset. */
-function hostAddress(baseInt: number, prefix: number): number {
-  return prefix >= 24
-    ? (baseInt & 0xffffff00) + randInt(1, 254)
-    : baseInt + randInt(1, 254);
-}
-
-function candidateHostname(ip: string, vendor: string): string {
-  const dashed = ip.replaceAll(".", "-");
-  // Reverse-DNS-ish name for ~40% of hosts, neutral otherwise.
-  const role = vendor === "cisco" || vendor === "hpe" ? "sw" : "unk";
-  return Math.random() < 0.4
-    ? `${role}-${dashed}.example.net`
-    : `unk-${dashed}`;
-}
-
-/** DISCOVERY execution — simulates a per-subnet sweep and reports candidates. */
 async function runDiscoveryJob(job: ClaimedJob): Promise<void> {
   const startedAt = Date.now();
   const payload = job.payload ?? {};
   const name = typeof payload.name === "string" && payload.name ? payload.name : null;
   const rawSubnets = Array.isArray(payload.subnets) ? payload.subnets : [];
-  const subnets = rawSubnets.map((s) => String(s));
-
-  if (subnets.length === 0) {
-    throw new Error("Invalid discovery payload: subnets[] is empty or missing");
+  const rawPorts = Array.isArray(payload.ports) ? payload.ports : undefined;
+  const config = normalizeDiscoveryPolicyConfig({
+    subnets: rawSubnets.map((s) => String(s)),
+    ports: rawPorts,
+    intervalMinutes: 60,
+    enabled: true,
+  });
+  if (!config) {
+    throw new Error("Invalid discovery payload: only bounded /24-/32 subnets and approved TCP ports are allowed");
   }
-  const parsed = subnets.map((s) => ({ subnet: s, ...parseSubnet(s) }));
+  const subnets = config.subnets;
+  const ports = config.ports;
+
+  const targetCounts = subnets.map((subnet) => enumerateDiscoveryTargets(subnet).length);
+  const totalTargets = targetCounts.reduce((sum, count) => sum + count, 0);
+  if (totalTargets > MAX_DISCOVERY_TARGETS) {
+    throw new Error(
+      "Discovery is limited to " +
+        MAX_DISCOVERY_TARGETS +
+        " IPv4 targets per job; requested " +
+        totalTargets,
+    );
+  }
 
   await reportProgress(
     job.id,
     3,
-    `Starting${name ? ` "${name}"` : ""} scan of ${parsed.length} subnet${parsed.length === 1 ? "" : "s"} (ping/SNMP sweep)`
+    "Starting" +
+      (name ? ' "' + name + '"' : "") +
+      " bounded TCP/reverse-DNS scan of " +
+      subnets.length +
+      " subnet" +
+      (subnets.length === 1 ? "" : "s") +
+      " (" +
+      totalTargets +
+      " targets)",
   );
 
-  const candidates: Array<Record<string, unknown>> = [];
-  let scanned = 0;
+  const candidates: DiscoveryCandidate[] = [];
+  let scannedTargets = 0;
 
-  for (const entry of parsed) {
-    await sleep(randInt(1_200, 2_500));
-    const found = randInt(2, 4);
-    const usedHosts = new Set<number>();
-    for (let i = 0; i < found; i += 1) {
-      // Roll a unique host address within the subnet (12 tries is plenty
-      // for 2–4 picks out of ≥254 addresses).
-      let hostInt = 0;
-      for (let tries = 0; tries < 12; tries += 1) {
-        hostInt = hostAddress(entry.baseInt, entry.prefix);
-        if (!usedHosts.has(hostInt)) break;
-      }
-      usedHosts.add(hostInt);
-      const vendor = weightedVendor();
-      const ip = intToIp(hostInt);
-      const fingerprints = OS_FINGERPRINTS[vendor];
-      const models = MODEL_GUESSES[vendor];
-      candidates.push({
-        ip,
-        hostname: candidateHostname(ip, vendor),
-        vendorGuess: vendor,
-        modelGuess: models[randInt(0, models.length - 1)],
-        mgmtPort: 22,
-        protocols: ["ssh", "https"],
-        confidence: randInt(60, 99),
-        osFingerprint: fingerprints[randInt(0, fingerprints.length - 1)],
-        discoveredAt: new Date().toISOString(),
-      });
-    }
-    scanned += 1;
+  for (const [index, subnet] of subnets.entries()) {
+    const scan = await scanDiscoverySubnet(subnet, {
+      ports,
+      onProgress: async (completed, total) => {
+        const current = scannedTargets + completed;
+        const progress = Math.min(
+          90,
+          5 + Math.round((current / Math.max(totalTargets, 1)) * 85),
+        );
+        await reportProgress(
+          job.id,
+          progress,
+          "Probed " + subnet + ": " + completed + "/" + total + " targets",
+        );
+      },
+    });
+
+    candidates.push(...scan.candidates);
+    scannedTargets += scan.targetsScanned;
     await reportProgress(
       job.id,
-      Math.round((scanned / parsed.length) * 90),
-      `Scanned ${entry.subnet} — ${found} candidates`
+      5 + Math.round((scannedTargets / Math.max(totalTargets, 1)) * 85),
+      "Scanned " +
+        subnet +
+        " (" +
+        (index + 1) +
+        "/" +
+        subnets.length +
+        ") — " +
+        scan.candidates.length +
+        " reachable targets",
     );
   }
+
+  const reconciliation = (await nextPost(
+    "/api/v1/worker/discovery/reconcile",
+    { jobId: job.id, candidates },
+    15_000,
+  )) as {
+    observed?: number;
+    matchedDevices?: number;
+    unmatched?: number;
+    lastSeenUpdated?: number;
+  };
 
   const durationMs = Date.now() - startedAt;
   await nextPost(
@@ -516,16 +465,29 @@ async function runDiscoveryJob(job: ClaimedJob): Promise<void> {
       result: {
         candidates,
         scannedSubnets: subnets.length,
+        scannedTargets,
         durationMs,
+        reconciliation,
       },
     },
-    15_000
+    15_000,
   );
 
   counters.completed += 1;
   counters.completedByType.DISCOVERY = (counters.completedByType.DISCOVERY ?? 0) + 1;
   await log(
-    `job ${job.id} [${job.correlationId}] SUCCEEDED: discovery scanned=${subnets.length} candidates=${candidates.length} durationMs=${durationMs}`
+    "job " +
+      job.id +
+      " [" +
+      job.correlationId +
+      "] SUCCEEDED: discovery scanned=" +
+      subnets.length +
+      " targets=" +
+      scannedTargets +
+      " reachable=" +
+      candidates.length +
+      " durationMs=" +
+      durationMs,
   );
 }
 
@@ -1015,12 +977,111 @@ async function runReportJob(job: ClaimedJob): Promise<void> {
   );
 }
 
+
+/* ───────────────────── SNMP_POLL data-plane execution ─────────────────── */
+
+interface SnmpPollProfileResponse {
+  profile?: SnmpV3PollProfileReference;
+}
+
+/** SNMP_POLL execution — credentials resolve only inside the worker. */
+async function runSnmpPollJob(job: ClaimedJob): Promise<void> {
+  const payload = job.payload ?? {};
+  const deviceId = typeof payload.deviceId === "string" ? payload.deviceId : job.targetId;
+  if (!deviceId) throw new Error("Invalid SNMP_POLL payload: deviceId is missing");
+
+  const profileResult = (await nextPost(
+    "/api/v1/ingest/protocol/snmpv3-profile/poll",
+    {
+      deviceId,
+      ...(typeof payload.credentialProfileId === "string"
+        ? { credentialProfileId: payload.credentialProfileId }
+        : {}),
+    },
+    10_000,
+  )) as SnmpPollProfileResponse;
+  const profile = profileResult.profile;
+  if (!profile) throw new Error("SNMPv3 polling profile lookup returned no profile");
+
+  const hostname = profile.hostname;
+  await reportProgress(job.id, 5, "Resolved enrolled SNMPv3 profile for " + hostname);
+  const rawIndexes = payload.interfaceIndexes;
+  if (
+    rawIndexes !== undefined &&
+    (!Array.isArray(rawIndexes) ||
+      rawIndexes.some((index) => typeof index !== "number" || !Number.isSafeInteger(index)))
+  ) {
+    throw new Error("Invalid SNMP_POLL payload: interfaceIndexes must be integer[]");
+  }
+  const rawMax = payload.maxInterfaces;
+  if (
+    rawMax !== undefined &&
+    (typeof rawMax !== "number" || !Number.isSafeInteger(rawMax) || rawMax < 1 || rawMax > 32)
+  ) {
+    throw new Error("Invalid SNMP_POLL payload: maxInterfaces must be 1..32");
+  }
+
+  await reportProgress(job.id, 10, "Polling sysName, sysDescr, uptime, and bounded IF-MIB data");
+  const result = await pollSnmpV3(profile, {
+    maxInterfaces: rawMax as number | undefined,
+    interfaceIndexes: rawIndexes as number[] | undefined,
+    timeoutMs: 1_500,
+    retries: 2,
+    retryBackoffMs: 150,
+    jitterMs: 100,
+  });
+  await reportProgress(
+    job.id,
+    78,
+    "Verified " + result.interfaces.length + " interface(s) and " + result.attempts + " request attempt(s)",
+  );
+
+  await nextPost(
+    "/api/v1/ingest/protocol/snmpv3-profile/accept",
+    {
+      sourceIp: profile.mgmtIp,
+      username: profile.username,
+      credentialProfileId: profile.credentialProfileId,
+      engineIdHex: result.engine.engineIdHex,
+      boots: result.engine.boots,
+      time: result.engine.time,
+    },
+    10_000,
+  );
+
+  const completion = (await nextPost(
+    "/api/v1/worker/snmpv3-poll/complete",
+    { jobId: job.id, result },
+    15_000,
+  )) as { status?: string; interfaces?: number };
+  counters.completed += 1;
+  counters.completedByType.SNMP_POLL = (counters.completedByType.SNMP_POLL ?? 0) + 1;
+  await log(
+    "job " +
+      job.id +
+      " [" +
+      job.correlationId +
+      "] " +
+      (completion.status ?? "SUCCEEDED") +
+      ": SNMPv3 poll " +
+      hostname +
+      " interfaces=" +
+      (completion.interfaces ?? result.interfaces.length) +
+      " attempts=" +
+      result.attempts +
+      " optionalFailures=" +
+      result.optionalFailures,
+  );
+}
+
 async function executeJob(job: ClaimedJob): Promise<void> {
   try {
     if (job.type === "CONFIG_BACKUP") {
       await raceTimeout(runBackupJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "DISCOVERY") {
       await raceTimeout(runDiscoveryJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "SNMP_POLL") {
+      await raceTimeout(runSnmpPollJob(job), 120_000, `job ${job.id}`);
     } else if (job.type === "DRIFT_CHECK") {
       await raceTimeout(runDriftCheckJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "CHANGE_EXECUTE") {
@@ -1074,7 +1135,7 @@ async function claimTick(): Promise<"ok" | "failed" | "busy"> {
     try {
       jobs = (await nextPost(
         "/api/v1/worker/claim",
-        { types: ["CONFIG_BACKUP", "DISCOVERY", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION", "REPORT_RUN", "FIRMWARE_UPGRADE", "ZTP_PROVISION"], limit: Math.min(CLAIM_BATCH, free) },
+        { types: ["CONFIG_BACKUP", "DISCOVERY", "SNMP_POLL", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION", "REPORT_RUN", "FIRMWARE_UPGRADE", "ZTP_PROVISION"], limit: Math.min(CLAIM_BATCH, free) },
         10_000
       )) as ClaimedJob[];
     } catch (e) {

@@ -1,0 +1,79 @@
+name: Deploy exact certified SHA to OCI staging
+
+on:
+  workflow_run:
+    workflows: ["Container certification and publication"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full commit SHA to deploy
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Promote immutable image to staging
+    if: >-
+      (github.event_name == 'workflow_dispatch') ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    timeout-minutes: 20
+    steps:
+      - name: Resolve exact source SHA
+        id: source
+        env:
+          EVENT_SHA: ${{ github.event.workflow_run.head_sha }}
+          MANUAL_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          sha="${MANUAL_SHA:-${EVENT_SHA}}"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+
+      - name: Validate protected deployment inputs
+        env:
+          HOST: ${{ secrets.OCI_STAGING_HOST }}
+          USER: ${{ secrets.OCI_STAGING_USER }}
+          KEY: ${{ secrets.OCI_STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.OCI_STAGING_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$HOST"
+          test -n "$USER"
+          test -n "$KEY"
+          test -n "$KNOWN_HOSTS"
+
+      - name: Deploy exact SHA over restricted SSH
+        env:
+          HOST: ${{ secrets.OCI_STAGING_HOST }}
+          USER: ${{ secrets.OCI_STAGING_USER }}
+          KEY: ${{ secrets.OCI_STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.OCI_STAGING_KNOWN_HOSTS }}
+          SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          install -m 600 /dev/null "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$KEY" >"$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$KNOWN_HOSTS" >"$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/id_ed25519" "$USER@$HOST" \
+            "cd /opt/fayanms && sudo ./deploy.sh '$SHA'"
+
+      - name: Remove temporary SSH material
+        if: always()
+        run: rm -f "$HOME/.ssh/id_ed25519"

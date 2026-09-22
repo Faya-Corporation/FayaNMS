@@ -33,10 +33,40 @@
  * panos-sshd.ts.
  */
 
+import { spawnSync } from "node:child_process";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Server, utils, type Connection } from "ssh2";
 import type { Socket } from "node:net";
 
 import { computeHostKeyFingerprint, parseHostKeyType } from "../ssh-transport";
+
+/**
+ * Generate an ephemeral OpenSSH-format Ed25519 host key without storing any
+ * key material in the repository. ssh2's in-process key converter is not
+ * reliable under the Bun runner, while ssh2.Server requires OpenSSH format.
+ * The hosted CI runner and the reproducible Codespaces image provide
+ * ssh-keygen; failures remain hard failures rather than silently degrading
+ * the protocol harness.
+ */
+function generateEphemeralHostKey(): string {
+  const dir = mkdtempSync(join(tmpdir(), "fayanms-ssh-harness-"));
+  const keyPath = join(dir, "host");
+  try {
+    const result = spawnSync(
+      "ssh-keygen",
+      ["-q", "-t", "ed25519", "-N", "", "-C", "fayanms-live-harness", "-f", keyPath],
+      { encoding: "utf8" },
+    );
+    if (result.error || result.status !== 0) {
+      throw new Error("ssh-keygen failed to create the ephemeral harness host key");
+    }
+    return readFileSync(keyPath, "utf8");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 /** One line of CLI input handled by the persona shell. */
 export interface PersonaShellAction {
@@ -142,8 +172,8 @@ export async function startPersonaSshHarness(
 ): Promise<PersonaHarness> {
   const username = opts.username ?? "netadmin";
   const password = opts.password ?? "faya-harness";
-  const keyPair = utils.generateKeyPairSync("ed25519");
-  const hostKey = keyPair.private;
+  // Generate a fresh key per harness instance; never persist or commit it.
+  const hostKey = generateEphemeralHostKey();
   // SAFE-001 — derive the persona's public key blob + fingerprint with the
   // SAME helpers the client transport enforces, so certify pins the real
   // value and a mismatch test proves the enforcement path end-to-end.

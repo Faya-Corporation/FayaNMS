@@ -25,11 +25,11 @@ export const dynamic = "force-dynamic";
  *   src/lib/config/create-snapshot.ts — which the Task 4-b change-step
  *   executor also uses, so both paths stay byte-identical.)
  *
- * SUCCEEDED (DISCOVERY, 2-c) — persistence-free demo pattern: the scan
- *   result ({ candidates[], scannedSubnets, durationMs }) is stored verbatim
- *   in the job's resultJson. No Device/Audit rows are written here — the
- *   import flow (POST /api/v1/discovery/import) turns candidates into real
- *   devices with their own audit trail.
+ * SUCCEEDED (DISCOVERY) — the bounded scan result and reconciliation summary
+ *   are stored in resultJson after the worker has persisted each normalized
+ *   wire observation through /worker/discovery/reconcile. A matched device is
+ *   linked only by exact management IP; reverse DNS remains evidence, not
+ *   identity. Candidate import remains an explicit operator action.
  *
  * FAILED — Next.js decides retry vs dead-letter:
  *   attempts < maxAttempts → back to QUEUED with
@@ -57,18 +57,27 @@ const discoveryResultSchema = z.object({
       z.object({
         ip: z.string().min(1),
         hostname: z.string().min(1),
+        subnet: z.string().max(64).optional(),
         vendorGuess: z.string().min(1),
         modelGuess: z.string().optional(),
         mgmtPort: z.number().int().optional(),
+        openPorts: z.array(z.number().int().min(1).max(65_535)).max(4).optional(),
         protocols: z.array(z.string()).optional(),
         confidence: z.number().int().min(0).max(100).optional(),
         osFingerprint: z.string().optional(),
         discoveredAt: z.string().optional(),
       })
     )
-    .min(1),
+    .min(0),
   scannedSubnets: z.number().int().nonnegative().optional(),
+  scannedTargets: z.number().int().nonnegative().optional(),
   durationMs: z.number().int().nonnegative().optional(),
+  reconciliation: z.object({
+    observed: z.number().int().nonnegative(),
+    matchedDevices: z.number().int().nonnegative(),
+    unmatched: z.number().int().nonnegative(),
+    lastSeenUpdated: z.number().int().nonnegative(),
+  }).optional(),
 });
 
 /** DRIFT_CHECK result (3-c) — evaluation already persisted by

@@ -1,34 +1,12 @@
 /**
- * R75 — CI bring-up iteration 6: journey-accurate D-tests + portable
- * non-root user in the app image.
+ * R75 — CI journey-accuracy history plus the current portable non-root
+ * container contract.
  *
- * Context (docs/audits/FayaNMS-R70-Merge-to-Main-and-CI-Bootstrap-2026-09-19.md §11):
- * run 35421797082 @ af91847 — gate GREEN fourth consecutive, e2e GREEN third
- * consecutive, browser 9/12 (D6, D8+D9, D10 joined the green B-suite), scan
- * reached the image build again:
- *   - D7 (2.4 s): Playwright STRICT-mode refusal — the toast-title wait used
- *     substring matching and the live-region wrapper's text CONTAINS the
- *     title, so getByText resolved TWO elements. The app behaved correctly.
- *     FIX: exact match on the title.
- *   - D11 (30 s): the test assumed one conflict chip survives both buttons;
- *     the component resolves the conflict with EITHER button (the chip then
- *     goes away), so "Keep mine then Use" on one chip is impossible by
- *     design. FIX: two passes — Use applies the staged value, then re-type +
- *     re-detect and Keep-mine holds the operator's value.
- *   - D12 (12.9 s): the journey asserted the sandbox-specific
- *     CREDENTIAL_UNRESOLVED code; the CI harness wires the worker to the
- *     app's resolver, so the probe proceeds and the target-policy plane
- *     refuses the loopback dial (no lab hatch in CI). FIX: assert the
- *     topology-honest invariant — a typed code from the R50 catalog, never a
- *     raw stack — while keeping the T061 partial-success assertion.
- *   - scan: the app image build died at `addgroup: not found` (exit 127) —
- *     the digest-pinned oven/bun slim base ships neither adduser nor
- *     addgroup, and the runtime stage had never executed before R74. FIX:
- *     register the pinned uid/gid 10001 directly via /etc/passwd +
- *     /etc/group appends (same non-root result, no packages, no network).
- *
- * These pins freeze the journey fixes and the portable user registration.
- * They never execute the harness, docker, or a browser.
+ * The journey assertions retain the historical R75 evidence. The image
+ * assertions track the current hardened runtime: Bun's digest-pinned
+ * distroless image, numeric uid 10001, and no runtime user/package-manager
+ * registration. The build/runtime split is intentional and is covered by
+ * the supply-chain and image-build contracts.
  */
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -77,25 +55,34 @@ describe("R75-A: the D-journeys match the UI's real conflict semantics", () => {
   });
 });
 
-describe("R75-B: the app image registers its non-root user portably", () => {
-  test("pinned uid/gid via passwd/group appends, no adduser dependency", () => {
-    expect(DOCKERFILE).toContain('echo "faya:x:10001:10001::/app:/bin/false" >> /etc/passwd');
-    expect(DOCKERFILE).toContain('echo "faya:x:10001:" >> /etc/group');
-    // no COMMAND dependency on the (absent) binaries — the R75 comment
-    // mentioning them by name is documentation, not usage
-    expect(DOCKERFILE).not.toContain("addgroup --system");
-    expect(DOCKERFILE).not.toContain("adduser --system");
-    expect(DOCKERFILE).toContain("35421797082");
-    // the COPY ownership and USER directive keep referencing the same user
-    expect(DOCKERFILE).toContain("COPY --from=build --chown=faya:faya");
-    expect(DOCKERFILE).toContain("USER faya");
+describe("R75-B: the images use portable non-root distroless runtimes", () => {
+  test("the app runtime is digest-pinned and runs as numeric uid 10001", () => {
+    const runtime = DOCKERFILE.slice(
+      DOCKERFILE.indexOf("FROM oven/bun:1.3.14-distroless")
+    );
+    expect(runtime).toContain(
+      "oven/bun:1.3.14-distroless@sha256:c28c51287af70bab8e0b66fc4b6a30cfb92a727ebc88045223adc9f4c9d09307"
+    );
+    expect(runtime).toContain("COPY --from=build --chown=10001:10001");
+    expect(runtime).toContain("USER 10001");
+    expect(runtime).toContain('ENTRYPOINT ["/usr/local/bin/bun"]');
+    expect(runtime).not.toContain(">> /etc/passwd");
+    expect(runtime).not.toContain(">> /etc/group");
+    expect(runtime).not.toContain("addgroup --system");
+    expect(runtime).not.toContain("adduser --system");
   });
 
-  test("the worker image needs no user registration (base's own bun user)", () => {
+  test("the worker runtime is distroless and uses the same non-root uid", () => {
     const worker = read("Dockerfile.worker");
-    expect(worker).toContain("USER bun");
-    expect(worker).not.toContain("addgroup");
-    expect(worker).not.toContain("adduser");
+    const runtime = worker.slice(worker.indexOf("FROM oven/bun:1.3.14-distroless"));
+    expect(runtime).toContain(
+      "oven/bun:1.3.14-distroless@sha256:c28c51287af70bab8e0b66fc4b6a30cfb92a727ebc88045223adc9f4c9d09307"
+    );
+    expect(runtime).toContain("USER 10001");
+    expect(runtime).toContain('ENTRYPOINT ["/usr/local/bin/bun"]');
+    expect(runtime).not.toContain("USER bun");
+    expect(runtime).not.toContain("addgroup");
+    expect(runtime).not.toContain("adduser");
   });
 });
 

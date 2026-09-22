@@ -227,7 +227,7 @@ export interface ServicePrincipal {
  * Per-route scope catalog (Phase 19-C): jobs (worker job engine), simulate
  * (Next→worker simulator calls), alerts, reports, metrics.
  */
-export type ServiceScope = "jobs" | "simulate" | "alerts" | "reports" | "metrics";
+export type ServiceScope = "jobs" | "simulate" | "alerts" | "reports" | "metrics" | "telemetry";
 
 export type ServiceAuthResult =
   | { ok: true; principal: ServicePrincipal }

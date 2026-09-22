@@ -123,6 +123,13 @@ model Device {
   id                  String             @id @default(cuid())
   hostname            String             @unique
   mgmtIp              String
+  // SNMPv3 engine identity/state is operator-enrolled per device. The worker
+  // rejects traps until the engine ID is pinned; boots/time advance only
+  // after authenticated packet verification.
+  snmpEngineIdHex     String?  @unique
+  snmpEngineBoots     Int?
+  snmpEngineTime      Int?
+  snmpEngineLastSeenAt DateTime?
   displayName         String?
   vendorId            String
   vendor              Vendor             @relation(fields: [vendorId], references: [id], onDelete: Restrict)
@@ -174,6 +181,8 @@ model Device {
   // SAFE-005: exclusive per-device write lock while a change step runs
   // (one change, one device, one step at a time).
   writeLocks  DeviceWriteLock[]
+  protocolEvents        ProtocolEventQueue[]
+  discoveryObservations DiscoveryObservation[]
 
   @@index([siteId])
   @@index([vendorId])
@@ -754,7 +763,7 @@ model Notification {
 
 model JobExecution {
   id            String    @id @default(cuid())
-  // type: DISCOVERY | CONFIG_BACKUP | CONFIG_RESTORE | CONFIG_APPLY | VALIDATION |
+  // type: DISCOVERY | CONFIG_BACKUP | CONFIG_RESTORE | CONFIG_APPLY | SNMP_POLL | VALIDATION |
   //       INVENTORY_POLL | METRIC_POLL | REPORT_GENERATION | NOTIFICATION |
   //       DRIFT_CHECK | CHANGE_EXECUTE | ALERT_EVALUATION
   type          String
@@ -777,13 +786,103 @@ model JobExecution {
   finishedAt    DateTime?
   createdAt     DateTime  @default(now())
 
-  snapshots ConfigSnapshot[]
+  snapshots             ConfigSnapshot[]
+  discoveryObservations DiscoveryObservation[]
 
   @@index([status, priority])
   @@index([type, status])
   @@index([correlationId])
   @@index([createdAt])
   @@index([scheduledAt])
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Continuous discovery evidence (CLOUD-11 — bounded live reconciliation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Operator-controlled, disabled-by-default recurring bounded discovery.
+model DiscoveryPolicy {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  // JSON array of IPv4 /24-/32 subnets.
+  subnetsJson     String
+  // JSON array of approved TCP management ports (22, 80, 443, 830).
+  portsJson       String
+  intervalMinutes Int       @default(60)
+  enabled         Boolean   @default(false)
+  lastEnqueuedAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([enabled, lastEnqueuedAt])
+}
+
+/// One bounded wire-observation per candidate per discovery job. A matched
+/// device is linked by exact management IP only; reverse DNS is evidence, not
+/// device identity. No vendor, SNMP identity, or topology edge is inferred.
+model DiscoveryObservation {
+  id             String    @id @default(cuid())
+  jobId          String?
+  job            JobExecution? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  deviceId       String?
+  device         Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  correlationId  String
+  subnet         String
+  ip             String
+  hostname       String
+  reachable      Boolean   @default(true)
+  openPortsJson  String
+  protocolsJson  String
+  confidence     Int
+  osFingerprint  String
+  observedAt     DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  @@unique([jobId, ip])
+  @@index([ip, observedAt])
+  @@index([deviceId, observedAt])
+  @@index([correlationId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Protocol event durability (CLOUD-11 — bounded collector handoff)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Normalized protocol events are durably staged before the worker delivers
+/// them to the audit/event sink. Raw packets, SNMP communities, passphrases,
+/// and vault values are intentionally absent from this model.
+model ProtocolEventQueue {
+  id              String    @id @default(cuid())
+  collectorId     String
+  protocol        String
+  sourceIp        String
+  sourcePort      Int
+  receivedAt      DateTime
+  eventType       String
+  severity        String
+  message         String
+  protocolVersion String?
+  securityLevel   String?
+  deviceId        String?
+  device          Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  attributesJson  String
+  correlationId   String
+  // status: QUEUED | IN_FLIGHT | DELIVERED | DEAD
+  status          String    @default("QUEUED")
+  attempts        Int       @default(0)
+  maxAttempts     Int       @default(5)
+  nextAttemptAt   DateTime  @default(now())
+  lockedAt        DateTime?
+  deliveredAt     DateTime?
+  lastError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([collectorId, createdAt])
+  @@index([deviceId, status])
+  @@index([correlationId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

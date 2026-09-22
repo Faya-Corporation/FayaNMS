@@ -33,6 +33,7 @@ function readRepoFile(relativePath: string): string {
 const EXPECTED_DIGESTS: Record<string, string> = {
   "oven/bun:1.3.14": "sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4",
   "oven/bun:1.3.14-slim": "sha256:d56a2534ffd262e92c12fd3249d3924d296d97086da773f821d7d0477435ea04",
+  "oven/bun:1.3.14-distroless": "sha256:c28c51287af70bab8e0b66fc4b6a30cfb92a727ebc88045223adc9f4c9d09307",
   "postgres:16-alpine": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
   "caddy:2-alpine": "sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648",
 };
@@ -52,11 +53,15 @@ describe("SUPPLY-001-A: every base image is digest-pinned", () => {
     }
   });
 
-  test("Dockerfile.worker FROM line carries an @sha256 digest", () => {
+  test("Dockerfile.worker build and runtime FROM lines carry digests", () => {
     const dockerfile = readRepoFile("Dockerfile.worker");
     const froms = dockerfile.split("\n").filter((l) => l.startsWith("FROM "));
-    expect(froms.length).toBe(1);
-    expect(froms[0]).toMatch(/@sha256:[0-9a-f]{64}/);
+    expect(froms.length).toBe(2);
+    for (const line of froms) {
+      expect(line).toMatch(/@sha256:[0-9a-f]{64}/);
+    }
+    expect(froms.some((line) => line.includes("AS deps"))).toBeTrue();
+    expect(froms.some((line) => line.includes("distroless") && line.includes("AS runtime"))).toBeTrue();
   });
 
   test("compose base images (postgres, proxy) are digest-pinned", () => {

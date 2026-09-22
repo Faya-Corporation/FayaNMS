@@ -2,8 +2,9 @@
  * FayaNMS worker — scheduler loop.
  *
  * Every 30 s it pokes POST /api/v1/worker/tick so the Next.js side can
- * evaluate BackupPolicy cron schedules and enqueue CONFIG_BACKUP jobs.
- * One extra tick runs ~10 s after service start.
+ * evaluate BackupPolicy cron schedules and enqueue CONFIG_BACKUP jobs. It
+ * also drains the durable normalized protocol-event handoff in bounded
+ * batches. One extra tick runs ~10 s after service start.
  *
  * Task 10-a hardening: the tick loop is self-scheduling (recursive
  * setTimeout; the next tick is always scheduled in `finally`) and backs off
@@ -17,6 +18,7 @@ const TICK_INTERVAL_MS = 30_000;
 const FIRST_TICK_DELAY_MS = 10_000;
 /** Tick-loop exponential backoff cap (Task 10-a) — 5 minutes. */
 const MAX_TICK_BACKOFF_MS = 300_000;
+const PROTOCOL_DRAIN_LIMIT = 32;
 
 let consecutiveTickFailures = 0;
 
@@ -36,8 +38,28 @@ async function tick(): Promise<boolean> {
     const data = (await nextPost("/api/v1/worker/tick", {}, 20_000)) as {
       enqueued?: number;
     };
+    let drainSummary = "protocol queue drain unavailable";
+    try {
+      const drain = (await nextPost(
+        "/api/v1/worker/protocol-events/drain",
+        { limit: PROTOCOL_DRAIN_LIMIT },
+        20_000,
+      )) as {
+        claimed?: number;
+        delivered?: number;
+        requeued?: number;
+        deadLettered?: number;
+        queueDepth?: number;
+      };
+      drainSummary =
+        `protocolQueue claimed=${drain?.claimed ?? "?"} delivered=${drain?.delivered ?? "?"} requeued=${drain?.requeued ?? "?"} dead=${drain?.deadLettered ?? "?"} depth=${drain?.queueDepth ?? "?"}`;
+    } catch (error) {
+      await log(
+        `protocol queue drain failed (tick remains healthy): ${(error as Error).message}`,
+      );
+    }
     await log(
-      `scheduler tick ok in ${Date.now() - started}ms: enqueued=${data?.enqueued ?? "?"}`
+      `scheduler tick ok in ${Date.now() - started}ms: enqueued=${data?.enqueued ?? "?"}; ${drainSummary}`,
     );
     return true;
   } catch (e) {

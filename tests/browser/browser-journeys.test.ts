@@ -30,7 +30,7 @@
  *   FAYANMS_BROWSER_E2E=1 bun test tests/browser/     # after `bun run build:gate`
  *   (a PostgreSQL at DATABASE_URL with CREATEDB — shared harness rules apply)
  */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 
 import { createRequire } from "node:module";
 
@@ -120,7 +120,24 @@ async function signIn(page: Page): Promise<void> {
   });
 }
 
-let browser: Browser;
+let browser: Browser | undefined;
+
+function activeBrowser(): Browser {
+  if (!browser?.isConnected()) {
+    throw new Error("Browser fixture is not connected");
+  }
+  return browser;
+}
+
+async function newJourneyPage(options: {
+  viewport: { width: number; height: number };
+}): Promise<Page> {
+  const page = await activeBrowser().newPage(options);
+  page.on("crash", () => {
+    console.error("[browser] Playwright page crash detected");
+  });
+  return page;
+}
 
 const enabled = process.env[BROWSER_E2E_FLAG] === "1";
 
@@ -131,8 +148,23 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
   beforeAll(async () => {
     if (!enabled) return;
     await bootE2E();
-    browser = await chromium.launch({ headless: true });
   }, 300_000);
+
+  // A dashboard axe run can terminate Chromium on constrained CI runners.
+  // Isolating every journey prevents one browser-process failure from
+  // cascading into the remaining accessibility, keyboard, and RTL gates.
+  beforeEach(async () => {
+    if (!enabled) return;
+    browser = await chromium.launch({
+      headless: true,
+      args: ["--disable-dev-shm-usage"],
+    });
+  }, 120_000);
+
+  afterEach(async () => {
+    await browser?.close().catch(() => undefined);
+    browser = undefined;
+  }, 60_000);
 
   afterAll(async () => {
     await browser?.close().catch(() => undefined);
@@ -144,7 +176,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
   browserTest(
     "B1: sign-in journey — gate renders, real credentials sign in, sign-out returns",
     async () => {
-      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
       try {
         await page.goto(`${APP_BASE}/`, { waitUntil: "domcontentloaded" });
         await page.waitForSelector("#sign-in-title", { state: "visible", timeout: 60_000 });
@@ -175,7 +207,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
   browserTest(
     "B2: dashboard render — the authenticated shell exposes its primary controls",
     async () => {
-      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
       try {
         await signIn(page);
         expect(
@@ -195,7 +227,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
   browserTest(
     "B3a: axe scan — sign-in page has no critical/serious accessibility violations",
     async () => {
-      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
       try {
         await page.goto(`${APP_BASE}/`, { waitUntil: "domcontentloaded" });
         await page.waitForSelector("#sign-in-title", { state: "visible", timeout: 60_000 });
@@ -213,7 +245,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
   browserTest(
     "B3b: axe scan — authenticated dashboard has no critical/serious violations",
     async () => {
-      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
       try {
         await signIn(page);
         await page.waitForLoadState("networkidle").catch(() => undefined);
@@ -231,7 +263,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
   browserTest(
     "B4: keyboard-only sweep — focus flows through the form and the shell, never lost",
     async () => {
-      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
       try {
         await page.goto(`${APP_BASE}/`, { waitUntil: "domcontentloaded" });
         await page.waitForSelector("#sign-in-email", { state: "visible", timeout: 60_000 });
@@ -288,7 +320,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
   browserTest(
     "B5: RTL sweep — العربية flips <html dir> to rtl with no horizontal overflow (and back)",
     async () => {
-      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
       try {
         await signIn(page);
 

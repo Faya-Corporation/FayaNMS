@@ -1,0 +1,36 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    service: fayanms
+    environment: staging
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: fayanms-app
+    metrics_path: /api/metrics
+    static_configs:
+      - targets: ["app:3000"]
+        labels:
+          component: app
+
+  - job_name: fayanms-worker
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["worker:3030"]
+        labels:
+          component: worker
+
+  # Enable only after a real collector endpoint exists and its network is
+  # restricted to the lab/VPN. This target is intentionally not simulated.
+  # - job_name: fayanms-collector
+  #   static_configs:
+  #     - targets: ["collector:9091"]
+  #       labels:
+  #         component: collector
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]

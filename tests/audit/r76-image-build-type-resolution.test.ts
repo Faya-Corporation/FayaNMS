@@ -39,7 +39,7 @@ describe("R76-A: the app image build mirrors the CI type-check environment", () 
   test("the build stage installs the worker deps frozen BEFORE the build", () => {
     const buildStage = DOCKERFILE.slice(
       DOCKERFILE.indexOf("FROM deps AS build"),
-      DOCKERFILE.indexOf("FROM oven/bun:1.3.14-slim")
+      DOCKERFILE.indexOf("FROM oven/bun:1.3.14-distroless")
     );
     const workerCopy = buildStage.indexOf("COPY mini-services/worker/package.json");
     const workerInstall = buildStage.indexOf(
@@ -53,11 +53,14 @@ describe("R76-A: the app image build mirrors the CI type-check environment", () 
   });
 
   test("the runtime stage stays worker-free (unchanged audited content)", () => {
-    const runtime = DOCKERFILE.slice(DOCKERFILE.indexOf("FROM oven/bun:1.3.14-slim"));
+    const runtime = DOCKERFILE.slice(DOCKERFILE.indexOf("FROM oven/bun:1.3.14-distroless"));
     expect(runtime).toContain("/app/.next/standalone");
     expect(runtime).toContain("node_modules/.prisma");
+    expect(runtime).toContain("USER 10001");
+    expect(runtime).toContain('ENTRYPOINT ["/usr/local/bin/bun"]');
     expect(runtime).not.toContain("mini-services/worker");
     expect(runtime).not.toContain("bun install");
+    expect(runtime).not.toContain("apt-get");
   });
 
   test("the CI jobs' worker install remains the documented reference shape", () => {

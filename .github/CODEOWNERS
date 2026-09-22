@@ -56,3 +56,11 @@
 /scripts/validate-brand-consumers.ts    @fayafatehi
 /scripts/generate-brand-raster-assets.ts @fayafatehi
 /scripts/brand-raster-composition.ts    @fayafatehi
+
+# Cloud/DevSecOps deployment-sensitive paths
+/deploy/ @fayafatehi
+/monitoring/ @fayafatehi
+/scripts/ci/ @fayafatehi
+/scripts/verification/ @fayafatehi
+/Dockerfile @fayafatehi
+/Dockerfile.worker @fayafatehi
