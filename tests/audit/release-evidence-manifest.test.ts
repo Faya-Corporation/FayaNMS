@@ -64,6 +64,8 @@ test("builds a verifiable snapshot without inventing absent external release evi
     assert.deepEqual(manifest.ciRunIds, []);
     assert.deepEqual(manifest.imageDigests, {});
     assert.equal(manifest.branchProtectionReadback, null);
+    assert.equal(manifest.sbomArtifactHash, null);
+    assert.equal(manifest.sbomArtifactProvenance, null);
     assert.equal(manifest.externalBlockers, null);
     assert.equal(manifest.certificationTierSummary.highestRecordedTier, "T2");
     assert.equal(manifest.certificationTierSummary.vendorCount, 2);
@@ -95,6 +97,7 @@ test("hashes SBOM bytes and preserves supplied, dated release readbacks", () => 
     });
 
     assert.equal(manifest.sbomArtifactHash, "sha256:e3a851f1fa2cdc51abe1e2b9403fe108efeb7547bd9c1878fcbf4750ace837ed");
+    assert.equal(manifest.sbomArtifactProvenance, null);
     assert.equal(manifest.pullRequestNumber, 12);
     assert.deepEqual(manifest.ciRunIds, ["35677691852"]);
     assert.equal(manifest.imageDigests.app, `sha256:${"a".repeat(64)}`);
@@ -103,6 +106,69 @@ test("hashes SBOM bytes and preserves supplied, dated release readbacks", () => 
     assert.deepEqual(manifest.externalBlockers, ["OCI staging evidence unavailable"]);
   } finally {
     rmSync(sbomPath, { force: true });
+    fixture.cleanup();
+  }
+});
+
+test("binds an externally recorded SBOM artifact digest to its exact source SHA and run", () => {
+  const fixture = fixtureRepo();
+  try {
+    const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: fixture.root,
+      encoding: "utf8",
+    }).trim();
+    const manifest = buildEvidenceManifest({
+      repoRoot: fixture.root,
+      externalEvidence: {
+        sbomArtifact: {
+          artifactId: 10673822610,
+          workflowRunId: "35677691852",
+          sourceSha,
+          sha256: `sha256:${"b".repeat(64)}`,
+          source: "https://api.github.com/repos/fayafatehi/FayaNMS/actions/artifacts/10673822610",
+        },
+      },
+    });
+
+    assert.equal(manifest.sbomArtifactHash, `sha256:${"b".repeat(64)}`);
+    assert.deepEqual(manifest.sbomArtifactProvenance, {
+      artifactId: 10673822610,
+      workflowRunId: "35677691852",
+      sourceSha,
+      source: "https://api.github.com/repos/fayafatehi/FayaNMS/actions/artifacts/10673822610",
+    });
+    assert.throws(
+      () => buildEvidenceManifest({
+        repoRoot: fixture.root,
+        externalEvidence: {
+          sbomArtifact: {
+            artifactId: 10673822610,
+            workflowRunId: "35677691852",
+            sourceSha: "f".repeat(40),
+            sha256: `sha256:${"b".repeat(64)}`,
+            source: "https://api.github.com/repos/fayafatehi/FayaNMS/actions/artifacts/10673822610",
+          },
+        },
+      }),
+      /must match the manifest source SHA/i,
+    );
+    assert.throws(
+      () => buildEvidenceManifest({
+        repoRoot: fixture.root,
+        sbomPath: join(fixture.root, "tracked.txt"),
+        externalEvidence: {
+          sbomArtifact: {
+            artifactId: 10673822610,
+            workflowRunId: "35677691852",
+            sourceSha,
+            sha256: `sha256:${"b".repeat(64)}`,
+            source: "https://api.github.com/repos/fayafatehi/FayaNMS/actions/artifacts/10673822610",
+          },
+        },
+      }),
+      /either --sbom or externalEvidence\.sbomArtifact/i,
+    );
+  } finally {
     fixture.cleanup();
   }
 });
@@ -126,6 +192,22 @@ test("rejects malformed digests and branch-protection claims without dated prove
   assert.throws(
     () => parseExternalEvidence({ branchProtectionReadback: { protected: true } }),
     /observedAt and source/i,
+  );
+  assert.throws(
+    () => parseExternalEvidence({ sbomArtifact: { artifactId: 1, workflowRunId: "1", sourceSha: "bad", sha256: "bad", source: "bad" } }),
+    /sbomArtifact requires/i,
+  );
+  assert.throws(
+    () => parseExternalEvidence({
+      sbomArtifact: {
+        artifactId: 1,
+        workflowRunId: "1",
+        sourceSha: "a".repeat(40),
+        sha256: `sha256:${"b".repeat(64)}`,
+        source: "https://example.invalid/artifact?token=secret",
+      },
+    }),
+    /without credentials, query parameters or fragments/i,
   );
   assert.throws(() => parseExternalEvidence({ token: "must-not-be-accepted" }), /unexpected field/i);
 });

@@ -24,6 +24,13 @@ The optional `--evidence` file is JSON with only these fields:
   "imageDigests": {
     "app": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
+  "sbomArtifact": {
+    "artifactId": 10673822610,
+    "workflowRunId": "35677691852",
+    "sourceSha": "cccccccccccccccccccccccccccccccccccccccc",
+    "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "source": "https://api.github.com/repos/OWNER/REPOSITORY/actions/artifacts/10673822610"
+  },
   "branchProtectionReadback": {
     "protected": false,
     "observedAt": "2026-09-22T21:14:56.000Z",
@@ -33,11 +40,11 @@ The optional `--evidence` file is JSON with only these fields:
 }
 ```
 
-Replace every example value with evidence read from the exact candidate SHA. Omit unavailable values: the output uses `null` or an empty collection and never infers a successful readback. In particular, `externalBlockers: null` means the blocker list was not supplied; provide `[]` only after verifying there are no external blockers. Image digests must be immutable `sha256:` values; branch-protection evidence requires both an observation time and source. This tool does not call GitHub, validate that an external run belongs to the source SHA, or decide release eligibility—review those links and artifacts independently.
+Replace every example value with evidence read from the exact candidate SHA. Omit unavailable values: the output uses `null` or an empty collection and never infers a successful readback. In particular, `externalBlockers: null` means the blocker list was not supplied; provide `[]` only after verifying there are no external blockers. Image and SBOM artifact digests must be immutable `sha256:` values; branch-protection evidence requires both an observation time and source. For `sbomArtifact`, record GitHub's artifact ID, workflow run ID, full source SHA, API-reported artifact digest, and HTTPS API URL. The tool checks that `sourceSha` matches local `HEAD` and records this provenance; it does not contact GitHub or verify the API response, run association, or digest. Do not use signed download URLs. Supply either `sbomArtifact` or `--sbom`, not both: the former records the archive digest reported by GitHub, while the latter hashes local SBOM file bytes. Review all external links and artifacts independently; this tool does not decide release eligibility.
 
 ## Handling and interpretation
 
 - Keep the input and output outside the checkout where practical; the source cleanliness field is captured before the artifact is written.
 - Do not put credentials, tokens, private URLs, or raw device/configuration data in evidence fields or blockers.
-- Preserve the JSON with the release record. The SBOM hash identifies bytes but does not embed or authenticate the SBOM's publisher.
+- Preserve the JSON with the release record. The SBOM hash identifies an artifact/archive or local file bytes, depending on the input path; it does not embed or authenticate the SBOM's publisher.
 - A manifest is a snapshot, not a substitute for required CI, image publication, staging, backup/restore, governance, security, or vendor-lab acceptance. Re-generate after the candidate SHA or evidence changes.

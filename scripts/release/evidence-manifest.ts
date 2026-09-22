@@ -12,10 +12,19 @@ type BranchProtectionReadback = {
   source: string;
 };
 
+type SbomArtifactEvidence = {
+  artifactId: number;
+  workflowRunId: string;
+  sourceSha: string;
+  sha256: string;
+  source: string;
+};
+
 type ExternalEvidence = {
   pullRequestNumber: number | null;
   ciRunIds: string[];
   imageDigests: Record<string, string>;
+  sbomArtifact: SbomArtifactEvidence | null;
   branchProtectionReadback: BranchProtectionReadback | null;
   externalBlockers: string[] | null;
 };
@@ -40,6 +49,7 @@ export type EvidenceManifest = {
   imageDigests: Record<string, string>;
   migrationHead: string | null;
   sbomArtifactHash: string | null;
+  sbomArtifactProvenance: Omit<SbomArtifactEvidence, "sha256"> | null;
   certificationTierSummary: CertificationTierSummary;
   branchProtectionReadback: BranchProtectionReadback | null;
   externalBlockers: string[] | null;
@@ -56,6 +66,7 @@ const EVIDENCE_KEYS = new Set([
   "pullRequestNumber",
   "ciRunIds",
   "imageDigests",
+  "sbomArtifact",
   "branchProtectionReadback",
   "externalBlockers",
 ]);
@@ -91,6 +102,47 @@ export function parseExternalEvidence(value: unknown = {}): ExternalEvidence {
     }
   }
 
+  const rawSbomArtifact = value.sbomArtifact ?? null;
+  let sbomArtifact: SbomArtifactEvidence | null = null;
+  if (rawSbomArtifact !== null) {
+    if (!isRecord(rawSbomArtifact)) throw new Error("sbomArtifact must be an object or null");
+    assertOnlyKeys(
+      rawSbomArtifact,
+      new Set(["artifactId", "workflowRunId", "sourceSha", "sha256", "source"]),
+      "sbomArtifact",
+    );
+    if (
+      !Number.isSafeInteger(rawSbomArtifact.artifactId) || (rawSbomArtifact.artifactId as number) < 1 ||
+      typeof rawSbomArtifact.workflowRunId !== "string" || !/^\d+$/.test(rawSbomArtifact.workflowRunId) ||
+      typeof rawSbomArtifact.sourceSha !== "string" || !/^[a-f0-9]{40}$/i.test(rawSbomArtifact.sourceSha) ||
+      typeof rawSbomArtifact.sha256 !== "string" || !/^sha256:[a-f0-9]{64}$/i.test(rawSbomArtifact.sha256) ||
+      typeof rawSbomArtifact.source !== "string"
+    ) {
+      throw new Error(
+        "sbomArtifact requires a positive artifactId, numeric workflowRunId, full sourceSha, sha256 digest and HTTPS source",
+      );
+    }
+    let sourceUrl: URL;
+    try {
+      sourceUrl = new URL(rawSbomArtifact.source);
+    } catch {
+      throw new Error("sbomArtifact requires a valid HTTPS source");
+    }
+    if (
+      sourceUrl.protocol !== "https:" || sourceUrl.username || sourceUrl.password ||
+      sourceUrl.search || sourceUrl.hash
+    ) {
+      throw new Error("sbomArtifact source must be an HTTPS URL without credentials, query parameters or fragments");
+    }
+    sbomArtifact = {
+      artifactId: rawSbomArtifact.artifactId as number,
+      workflowRunId: rawSbomArtifact.workflowRunId,
+      sourceSha: rawSbomArtifact.sourceSha.toLowerCase(),
+      sha256: rawSbomArtifact.sha256.toLowerCase(),
+      source: sourceUrl.toString(),
+    };
+  }
+
   const rawProtection = value.branchProtectionReadback ?? null;
   let branchProtectionReadback: BranchProtectionReadback | null = null;
   if (rawProtection !== null) {
@@ -123,6 +175,7 @@ export function parseExternalEvidence(value: unknown = {}): ExternalEvidence {
     imageDigests: Object.fromEntries(
       Object.entries(imageDigests).map(([name, digest]) => [name, (digest as string).toLowerCase()]),
     ),
+    sbomArtifact,
     branchProtectionReadback,
     externalBlockers: externalBlockers === null
       ? null
@@ -177,19 +230,34 @@ export function buildEvidenceManifest(options: BuildEvidenceOptions): EvidenceMa
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   if (Number.isNaN(Date.parse(generatedAt))) throw new Error("generatedAt must be a valid date-time");
   const external = parseExternalEvidence(options.externalEvidence);
+  if (options.sbomPath && external.sbomArtifact) {
+    throw new Error("Use either --sbom or externalEvidence.sbomArtifact, not both");
+  }
+  const source = collectSource(repoRoot);
+  if (external.sbomArtifact && external.sbomArtifact.sourceSha !== source.sha.toLowerCase()) {
+    throw new Error("sbomArtifact sourceSha must match the manifest source SHA");
+  }
   const sbomArtifactHash = options.sbomPath
     ? `sha256:${createHash("sha256").update(readFileSync(options.sbomPath)).digest("hex")}`
-    : null;
+    : external.sbomArtifact?.sha256 ?? null;
 
   return {
     schemaVersion: 1,
     generatedAt,
-    source: collectSource(repoRoot),
+    source,
     pullRequestNumber: external.pullRequestNumber,
     ciRunIds: external.ciRunIds,
     imageDigests: external.imageDigests,
     migrationHead: collectMigrationHead(repoRoot),
     sbomArtifactHash,
+    sbomArtifactProvenance: external.sbomArtifact
+      ? {
+          artifactId: external.sbomArtifact.artifactId,
+          workflowRunId: external.sbomArtifact.workflowRunId,
+          sourceSha: external.sbomArtifact.sourceSha,
+          source: external.sbomArtifact.source,
+        }
+      : null,
     certificationTierSummary: collectCertificationSummary(repoRoot),
     branchProtectionReadback: external.branchProtectionReadback,
     externalBlockers: external.externalBlockers,
