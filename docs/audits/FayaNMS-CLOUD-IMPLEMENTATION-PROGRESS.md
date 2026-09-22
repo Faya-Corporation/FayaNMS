@@ -288,7 +288,7 @@ Never fabricate OCI, DNS, VPN, physical-device, GitHub-owner, or secret-manager 
 - Completed: the release evidence generator now accepts a GitHub-reported SBOM artifact digest together with its artifact ID, workflow run, source SHA, and HTTPS API URL. It binds that evidence to local `HEAD`, stores provenance in the manifest, and rejects mixed local-file/external-artifact inputs and URLs containing credentials or query secrets.
 - Documentation: `docs/runbooks/release-evidence.md` distinguishes GitHub archive digests from local SBOM byte hashes and clarifies that external API evidence is recorded, not independently fetched or authenticated by the generator.
 - Tests: `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/audit/release-evidence-manifest.test.ts` passed all 6 tests; CLI `--help` smoke passed. Bun, TypeScript, and lint executables were unavailable for this local validation.
-- Evidence boundary: this enables recording the SBOM artifact from CI run `35677691852` on source SHA `5671bc5b5067d1503b6e10be73101f006b3af794`; it does not resolve the failed OCI publication or establish release eligibility.
+- Evidence boundary: `docs/implementation/release-evidence-5671bc5.json` records the SBOM artifact from CI run `35677691852` on source SHA `5671bc5b5067d1503b6e10be73101f006b3af794`, generated from a clean checkout of that exact SHA. It does not resolve the failed OCI publication or establish release eligibility; staging remains skipped and no physical-vendor evidence is claimed.
 
 ### Round 14 — bounded continuous discovery and topology evidence
 

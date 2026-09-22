@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-22T21:47:09.000Z",
+  "source": {
+    "sha": "5671bc5b5067d1503b6e10be73101f006b3af794",
+    "branch": null,
+    "worktreeClean": true
+  },
+  "pullRequestNumber": 12,
+  "ciRunIds": [
+    "35677691852",
+    "35678367826"
+  ],
+  "imageDigests": {},
+  "migrationHead": "20260922020000_discovery_policy_observations",
+  "sbomArtifactHash": "sha256:3872e8e51b8b6fada9f4cfed9ac85f090ba66899408f24206c7542347975157b",
+  "sbomArtifactProvenance": {
+    "artifactId": 10673822610,
+    "workflowRunId": "35677691852",
+    "sourceSha": "5671bc5b5067d1503b6e10be73101f006b3af794",
+    "source": "https://api.github.com/repos/fayafatehi/FayaNMS/actions/artifacts/10673822610"
+  },
+  "certificationTierSummary": {
+    "matrix": "docs/certification/MATRIX.md",
+    "vendorCount": 6,
+    "highestRecordedTier": "T2",
+    "vendorTopTiers": {
+      "cisco-ios": "T2",
+      "fortinet-fortios": "T2",
+      "hpe-aos-cx": "T2",
+      "juniper-junos": "T2",
+      "palo-panos": "T2",
+      "sophos (SFOS WebAPI)": "T1"
+    }
+  },
+  "branchProtectionReadback": {
+    "protected": false,
+    "observedAt": "2026-09-22T21:36:31.000Z",
+    "source": "https://api.github.com/repos/fayafatehi/FayaNMS/branches/main"
+  },
+  "externalBlockers": [
+    "GHCR publication failed on both attempts; no immutable image digest was verified",
+    "Staging workflow 35786763683 was skipped",
+    "No physical vendor-lab certification is recorded"
+  ]
+}
