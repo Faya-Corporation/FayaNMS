@@ -8,6 +8,8 @@
 **Execution date:** 2026-09-22
 **Authoritative inputs:** Cloud Development/CICD/OCI Implementation Plan, Executive Production Review, Full Independent Production Audit, Production Remediation Roadmap, Competitive Benchmark, Production Gap Register.
 
+> **Current consolidated status:** see [`docs/implementation/CURRENT-STATE.md`](../implementation/CURRENT-STATE.md). This page retains its dated task history and workflow evidence; timestamped snapshots are not live readbacks.
+
 ## Operating contract
 
 This ledger records repository implementation evidence separately from external OCI, DNS, VPN, physical hardware, and GitHub-owner actions. A task is `DONE` only when its repository acceptance criteria and available automated evidence are satisfied. No credentials, private keys, device secrets, production backups, or production data may be committed.

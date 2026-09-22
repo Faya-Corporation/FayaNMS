@@ -3,6 +3,8 @@
 **Status date:** 2026-09-15 (Asia/Riyadh) · **Baseline:** the production remediation session (R34–R43).
 **Prime rule (never violated):** protocol-harness certification ≠ real-hardware certification. A capability below is claimed ONLY at the highest tier actually evidenced.
 
+> This dated matrix remains the hardware evidence record; see [`docs/implementation/CURRENT-STATE.md`](../implementation/CURRENT-STATE.md) for consolidated current release status.
+
 ## 1. Evidence tiers (the vocabulary every claim must use)
 
 | Tier | Meaning | Evidence required |

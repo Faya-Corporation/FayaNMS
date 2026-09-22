@@ -3881,3 +3881,13 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (backups removed) + R102 backlog/worklog/audit report; **0 entries / 0 candidates** remain. The empty-ledger sweep now forbids any future unledgered candidate.
 - Tests: R102 isolated **5 pass / 0 fail / 248 expectations**; combined r56+r80–r102 governance **216 pass / 0 fail / 9,904 expectations** across 24 files. Full application gate and live browser evidence remain unavailable in this environment.
 - Docs: `docs/audits/FayaNMS-R102-I18n-Tranche6r-Backups-Keyed-2026-09-22.md`, NEXT-TASKS R102 update. db/, .env, PAT never staged.
+
+---
+
+## N0-001 — canonical implementation state ledger (2026-09-23)
+
+- Added `docs/implementation/CURRENT-STATE.md` as the concise source for current repository, implementation, and release posture. It distinguishes the last recorded live GitHub readback from the local tracking ref, identifies 24 unpushed commits and the non-clean worktree, and avoids claiming branch protection, image publication, staging, hardware certification, or production readiness without evidence.
+- Added pointers from the cloud implementation ledger, next-task index, historical production gate, and hardware certification matrix. Historical dates and evidence remain intact.
+- Added `tests/audit/current-state-ledger.test.ts` to pin baseline/local distinction, queue/discovery status, protection truth, and document pointers.
+- Verification: a Node-based static assertion of the required state and four references passed after correction. Bun tests were not run because Bun is not installed in this environment; GitHub CLI is also unavailable for a fresh external readback.
+- Commit: the focused Conventional Commit records this entry together with its deliverables.

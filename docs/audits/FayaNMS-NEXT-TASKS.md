@@ -1,5 +1,7 @@
 # FayaNMS — NEXT TASKS (i18n tranche history and cross-program status, updated 2026-09-23)
 
+> **Current consolidated status:** see [`docs/implementation/CURRENT-STATE.md`](../implementation/CURRENT-STATE.md). The roadmap/backlog below is planning context; completion requires acceptance evidence.
+
 The R80–R102 i18n tranche program is complete, but it is not the repository's only remaining work. A detailed independent production roadmap is present as an untracked workspace input; its first items cover the cloud ledger, post-merge release evidence, repository governance, real flow decoding, and topology/collector gaps. Several remaining items are repository-actionable.
 
 ## Current Cross-Program Status

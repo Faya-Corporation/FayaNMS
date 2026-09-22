@@ -3,6 +3,8 @@
 **Score 85/100 · CONTROLLED PILOT · 2026-09-15 · audited HEAD `c65a9b1`**
 Release to "PRODUCTION READY" requires every ☐ below ticked with evidence. Do not tick from hope.
 
+> This is a historical gate snapshot, not current release status. See [`docs/implementation/CURRENT-STATE.md`](../implementation/CURRENT-STATE.md) for the latest consolidated, evidence-qualified status.
+
 ## A. Code-side posture (current: all green)
 
 - [x] Per-service secret scopes enforced (compose split + boot warnings → future refusal) — `tests/audit/env-boundary.test.ts`
