@@ -6,10 +6,10 @@
 ## Repository and governance
 
 - Repository: `fayafatehi/FayaNMS`; checked-out branch: `main`.
-- Latest recorded live GitHub readback (2026-09-22): remote `main` was `5671bc5b5067d1503b6e10be73101f006b3af794`; branch protection API returned `protected=false`. This is a dated readback, not a fresh 2026-09-23 query.
+- Live GitHub readback at 2026-09-22 21:36:31 UTC: remote `main` was `5671bc5b5067d1503b6e10be73101f006b3af794`; the branch endpoint returned `protected=false`. A direct branch-protection endpoint request returned 403, so no further protection settings are claimed.
 - The local `origin/main` ref still points to that SHA. **Local main contains unpushed commits**; get the exact distance with `git rev-list --left-right --count origin/main...HEAD`.
 - **Worktree is not clean.** It includes extensive pre-existing modifications and untracked files outside this ledger task. They are not represented as part of these focused documentation commits and must be preserved.
-- Branch protection: **NOT ACTIVE** at the last recorded live readback (`protected=false`). Enabling it is an owner action; re-read the GitHub API before relying on this status.
+- Branch protection: **NOT ACTIVE** at the live readback (`protected=false`). Enabling it is an owner action; re-read the GitHub API before relying on this status.
 
 ## Implementation and release status
 
@@ -17,7 +17,7 @@
 |---|---|---|
 | Cloud implementation ledger (CLOUD-11) | IN PROGRESS | Authenticated SNMPv3 polling, durable protocol event queue, and bounded continuous discovery/reconciliation are present. The implementation is real; physical-vendor certification remains open. Collector ownership/failover and DLQ operator alert/replay remain. See the cloud progress ledger. |
 | Post-merge CI | Last recorded PASS | Run `35677691852` passed on merge SHA `5671bc5` (recorded 2026-09-22). Recheck before release. |
-| ARM64 container certification | Last recorded PASS | ARM64 build/runtime/scan passed in run `35678367826`; the exact-SHA publication retry was last recorded in progress, with unavailable logs and no verified immutable image digest. |
+| ARM64 container certification / GHCR | PARTIAL — PUBLISH FAILED | Both publish attempts in run `35678367826` failed at the multi-architecture build/push step after 20–23 minutes (under its 45-minute timeout). ARM64 build/runtime/scan passed; logs return `BlobNotFound`, artifacts are empty, and no immutable image digest is verified. |
 | Release evidence manifest (N0-002) | IMPLEMENTED — CANDIDATE INPUTS REQUIRED | `scripts/release/evidence-manifest.ts` produces a JSON snapshot; external evidence stays unknown unless explicitly supplied. No release bundle is claimed for the dirty local checkout. See `docs/runbooks/release-evidence.md`. |
 | Staging / OCI | NOT VERIFIED | Staging workflows were last recorded skipped; no live staging or production deployment is claimed. |
 | NetFlow v5 records | SPEC REVIEW PENDING | Design is in `docs/superpowers/specs/2026-09-23-netflow-v5-record-ingestion.md`; no implementation is claimed. `/api/v1/flows` simulation remains separate roadmap work. |

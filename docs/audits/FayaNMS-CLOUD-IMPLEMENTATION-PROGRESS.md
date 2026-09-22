@@ -75,6 +75,12 @@ The failed publish job was retried without rerunning successful jobs. At 2026-09
 
 Roadmap item 4 now has a committed design, `docs/superpowers/specs/2026-09-23-netflow-v5-record-ingestion.md` (commit `83996eb`). It specifies bounded NetFlow v5 decoding into the existing durable queue and idempotent persisted records, while leaving `/api/v1/flows` simulation for item 7. This is design-only progress; implementation planning awaits user review of the spec, including the proposed independent 14-day retention default and pruning path.
 
+### Exact-SHA GHCR retry completion — 2026-09-22 21:36:31 UTC
+
+Fresh GitHub readback confirms run `35678367826`, attempt 2, completed with conclusion `failure` on merge SHA `5671bc5b5067d1503b6e10be73101f006b3af794`. ARM64 job `106937448161` passed. Publish job `106937446266` failed; its step list still marks `Build and push immutable multi-architecture image` in progress, so the failure boundary remains unresolved. The job-log endpoint returned `BlobNotFound` and the run has no artifacts; no GHCR digest is verified. A fresh branch read reports `protected=false`; the dedicated branch-protection endpoint returned 403.
+
+Attempts 1 and 2 exhibit the same stage signature: setup, GHCR login, and metadata extraction succeeded, while only the multi-architecture build/push step remained in progress when the job ended. Attempt 1 ran 20m46s (`02:34:37Z`–`02:55:23Z`; build/push step began `02:35:19Z`); attempt 2 ran 22m42s (`21:04:48Z`–`21:27:30Z`; step began `21:05:16Z`). Both are shorter than the configured 45-minute timeout, and both job-log downloads return `BlobNotFound`. This narrows the failure to that step but does not identify its cause. Do not rerun until a useful failure signal or operator direction is available.
+
 ## Round log
 
 ### Round 0 — baseline and branch

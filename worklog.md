@@ -3900,3 +3900,10 @@ Stage Summary:
 - Added the operator contract in `docs/runbooks/release-evidence.md` and linked it from the release-promotion runbook. Current state records that the generator exists but this dirty local checkout is not a release bundle.
 - Tests: focused test file passed **5/5** via Node 24's TypeScript-stripping test runner; direct CLI smoke emitted parseable JSON with current HEAD, migration head, certification tiers, and unknown external evidence. Bun and local TypeScript/lint toolchains are unavailable, so those checks were not run. No exact-SHA external release bundle was fabricated.
 - Commit: the focused Conventional Commit records this entry together with its deliverables.
+
+### Evidence refresh — GHCR retry completion (2026-09-23)
+
+- Read-only GitHub API refresh at 2026-09-22 21:36:31 UTC confirmed run `35678367826` attempt 2 ended in failure: ARM64 passed, GHCR publish failed, job logs remain `BlobNotFound`, and artifacts are empty. The branch endpoint still reports `protected=false`; the dedicated protection endpoint returned 403.
+- Follow-up readback found attempt 1 has the same signature: setup/login/metadata passed, multi-architecture build/push stayed in progress, then the job failed after 20m46s; attempt 2 failed after 22m42s. Both are below the configured 45-minute timeout; both logs are `BlobNotFound`, so root cause remains unknown.
+- Updated the canonical state and cloud progress ledger. Did not rerun the workflow or claim an image digest. Local validation: documentation facts cross-checked against both attempt job lists, logs, artifacts, run, and branch API responses.
+- Commit: a separate focused commit records this evidence refresh.
