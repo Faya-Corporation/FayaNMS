@@ -2,11 +2,11 @@
 
 ## Safety boundary
 
-The OCI staging host must connect only to a dedicated lab VLAN or VPN. Do not route this lab into production management networks. Keep all telemetry listeners closed until an authenticated/restricted receiver exists.
+The OCI staging host must connect only to a dedicated lab VLAN or VPN. Do not route this lab into production management networks. The worker UDP collector is disabled by default and binds to loopback by default; enable a listener only behind an isolated network and explicit exporter/firewall allowlists.
 
 ## Current repository evidence
 
-The worker has protocol certification harnesses for selected SSH flows. The repository now also contains dependency-free packet fixtures under scripts/protocol-lab for RFC3164/RFC5424 syslog, SNMPv1/v2c traps, NetFlow v5/v9, IPFIX, and sFlow, with loopback UDP coverage. The repository now also has a disposable SNMPv3 authPriv loopback agent with per-run random test secrets and an end-to-end encrypted/authenticated GET test. The production monitoring plane still does not implement real traps/syslog/flow receivers or continuous discovery. Dashboards must not be described as live network truth.
+The worker has protocol certification harnesses for selected SSH flows. The repository also contains dependency-free packet fixtures under scripts/protocol-lab for RFC3164/RFC5424 syslog, SNMPv1/v2c traps, NetFlow v5/v9, IPFIX, and sFlow, with loopback UDP coverage, plus a disposable SNMPv3 authPriv loopback agent. The opt-in worker receiver now decodes NetFlow v5 into a bounded durable flow queue; this does not certify physical exporters, collector HA, production operation, or continuous discovery. The simulated `/api/v1/flows` endpoint remains simulated. Dashboards must not be described as live network truth.
 
 ## Lab sequence
 
@@ -44,7 +44,7 @@ The ingestion boundary is fail-closed for SNMP traps: the generic worker BER-fra
 
 ### Durable handoff behavior
 
-The authenticated ingest route writes a normalized ProtocolEventQueue row and its PROTOCOL_EVENT_QUEUED audit record in one database transaction. It stores bounded fields and serialized normalized attributes only; it never stores the raw UDP packet or secret material. The worker scheduler drains up to 32 rows per cycle through the jobs-scoped endpoint. Each row uses a short claim lease, bounded exponential retry (5 seconds through a 15-minute cap), and a five-attempt dead-letter boundary. Successful delivery writes PROTOCOL_EVENT_RECEIVED; terminal failures write PROTOCOL_EVENT_DEAD_LETTERED with sanitized error text. The opt-in UDP collector also keeps a bounded in-memory relay retry queue for transient API failures before the durable database handoff.
+The authenticated ingest route writes a normalized ProtocolEventQueue row and its PROTOCOL_EVENT_QUEUED audit record in one database transaction. It stores bounded fields and serialized normalized attributes only; it never stores raw UDP bytes or secret material. Valid NetFlow v5 records are stored as a typed batch, then inserted atomically during drain with the queue delivery and audit update. The worker scheduler drains through the jobs-scoped endpoint. Each row uses a short claim lease, bounded exponential retry (5 seconds through a 15-minute cap), and a five-attempt dead-letter boundary. Successful delivery writes PROTOCOL_EVENT_RECEIVED; terminal failures write PROTOCOL_EVENT_DEAD_LETTERED with sanitized error text. The opt-in UDP collector also keeps a bounded in-memory relay retry queue for transient API failures before the durable database handoff. See the [NetFlow v5 runbook](netflow-v5.md) for listener and retention operations.
 
 Queue delivery currently proves durable normalized event retention/audit delivery. It does not by itself prove live alert fan-out, continuous discovery, collector HA, OCI staging, physical-vendor interoperability, or production operation.
 
