@@ -39,8 +39,14 @@ test("protocol association prefers hostname over source IP", () => {
 test("ingestion route requires telemetry scope and stores no raw packet field", () => {
   const route = readFileSync("src/app/api/v1/ingest/protocol/route.ts", "utf8");
   expect(route).toContain('authenticateServiceRequest(request, "telemetry")');
-  expect(route).toContain("PROTOCOL_EVENT_RECEIVED");
+  expect(route).toContain("PROTOCOL_EVENT_QUEUED");
+  expect(route).toContain("protocolEventQueue.create");
   expect(route).not.toContain("payloadBase64");
+  expect(route).not.toContain("secretValue");
+  const drainRoute = readFileSync("src/app/api/v1/worker/protocol-events/drain/route.ts", "utf8");
+  expect(drainRoute).toContain("PROTOCOL_EVENT_DEAD_LETTERED");
+  expect(drainRoute).toContain("status: { in: [\"QUEUED\", \"IN_FLIGHT\"] }");
+
   const profileRoute = readFileSync("src/app/api/v1/ingest/protocol/snmpv3-profile/route.ts", "utf8");
   expect(profileRoute).toContain('authenticateServiceRequest(request, "telemetry")');
   expect(profileRoute).toContain("secretRef");

@@ -17,6 +17,9 @@ const DEFAULT_PORTS: Record<ProtocolName, number> = {
 };
 const MAX_PACKET_BYTES = 65_535;
 const MAX_IN_FLIGHT = 32;
+const MAX_PENDING_RELAYS = 256;
+const MAX_RELAY_ATTEMPTS = 3;
+const RELAY_BACKOFF_BASE_MS = 250;
 
 export interface ProtocolCollectorMetrics {
   enabled: boolean;
@@ -26,6 +29,9 @@ export interface ProtocolCollectorMetrics {
   packetsRejected: number;
   queueDrops: number;
   relayFailures: number;
+  relayRetries: number;
+  relayDeadLetters: number;
+  relayQueueDepth: number;
 }
 
 let metrics: ProtocolCollectorMetrics = {
@@ -36,9 +42,20 @@ let metrics: ProtocolCollectorMetrics = {
   packetsRejected: 0,
   queueDrops: 0,
   relayFailures: 0,
+  relayRetries: 0,
+  relayDeadLetters: 0,
+  relayQueueDepth: 0,
 };
 let activeRelays = 0;
 let activeVerifications = 0;
+
+interface PendingRelay {
+  event: Record<string, unknown>;
+  attempt: number;
+}
+
+let relayQueue: PendingRelay[] = [];
+let relayDraining = false;
 
 export interface SnmpV3ProfileReference {
   credentialProfileId: string;
@@ -206,16 +223,50 @@ export function startProtocolCollector(): { stop: () => void } | null {
   const sockets: Socket[] = [];
   metrics = { ...metrics, enabled: true, sockets: 0 };
 
+  const relayDelayMs = (attempt: number) =>
+    Math.min(5_000, RELAY_BACKOFF_BASE_MS * 2 ** attempt);
+
+  const drainRelays = async (): Promise<void> => {
+    if (relayDraining) return;
+    relayDraining = true;
+    try {
+      while (relayQueue.length > 0) {
+        const item = relayQueue.shift();
+        metrics.relayQueueDepth = relayQueue.length;
+        if (!item) continue;
+        activeRelays += 1;
+        try {
+          await nextPost("/api/v1/ingest/protocol", item.event, 5_000);
+          metrics.packetsAccepted += 1;
+        } catch {
+          const nextAttempt = item.attempt + 1;
+          if (nextAttempt < MAX_RELAY_ATTEMPTS) {
+            metrics.relayRetries += 1;
+            relayQueue.push({ ...item, attempt: nextAttempt });
+            metrics.relayQueueDepth = relayQueue.length;
+            await new Promise((resolve) => setTimeout(resolve, relayDelayMs(nextAttempt)));
+          } else {
+            metrics.relayFailures += 1;
+            metrics.relayDeadLetters += 1;
+          }
+        } finally {
+          activeRelays -= 1;
+        }
+      }
+    } finally {
+      relayDraining = false;
+      metrics.relayQueueDepth = relayQueue.length;
+    }
+  };
+
   const relay = (event: Record<string, unknown>) => {
-    if (activeRelays + activeVerifications >= MAX_IN_FLIGHT) {
+    if (relayQueue.length >= MAX_PENDING_RELAYS) {
       metrics.queueDrops += 1;
       return;
     }
-    activeRelays += 1;
-    metrics.packetsAccepted += 1;
-    void nextPost("/api/v1/ingest/protocol", event, 5_000)
-      .catch(() => { metrics.relayFailures += 1; })
-      .finally(() => { activeRelays -= 1; });
+    relayQueue.push({ event, attempt: 0 });
+    metrics.relayQueueDepth = relayQueue.length;
+    void drainRelays();
   };
 
   const verifyAndRelaySnmpTrap = async (packet: Buffer, remote: RemoteInfo) => {

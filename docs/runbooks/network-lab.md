@@ -42,6 +42,12 @@ Device association is advisory and ordered: exact hostname hint first, exact man
 
 The ingestion boundary is fail-closed for SNMP traps: the generic worker BER-framing path marks securityLevel=unknown and is rejected. Accepted SNMP traps must carry a server-side verified authPriv result, an explicit credentialProfileId, an exact associated device, and a CredentialProfile of type SNMPV3 bound to that device. The profile contains only the vault secret reference; the passphrase is never sent in the event or stored in audit JSON. The disposable scripts/protocol-lab/snmpv3.ts harness now proves authPriv trap verification and tamper rejection, but it does not constitute device or staging evidence.
 
+### Durable handoff behavior
+
+The authenticated ingest route writes a normalized ProtocolEventQueue row and its PROTOCOL_EVENT_QUEUED audit record in one database transaction. It stores bounded fields and serialized normalized attributes only; it never stores the raw UDP packet or secret material. The worker scheduler drains up to 32 rows per cycle through the jobs-scoped endpoint. Each row uses a short claim lease, bounded exponential retry (5 seconds through a 15-minute cap), and a five-attempt dead-letter boundary. Successful delivery writes PROTOCOL_EVENT_RECEIVED; terminal failures write PROTOCOL_EVENT_DEAD_LETTERED with sanitized error text. The opt-in UDP collector also keeps a bounded in-memory relay retry queue for transient API failures before the durable database handoff.
+
+Queue delivery currently proves durable normalized event retention/audit delivery. It does not by itself prove live alert fan-out, continuous discovery, collector HA, OCI staging, physical-vendor interoperability, or production operation.
+
 SNMPv3 engine IDs are operator-enrolled on the Device record through the authenticated device PATCH contract (snmpEngineIdHex). Enrollment resets boots/time state. The worker-side profile lookup refuses unenrolled devices; after authPriv verification, the acceptance route atomically advances the pinned engine boots/time and rejects older or equal observations. This is a replay/timeliness control, not physical-device or staging proof.
 
 Continuous discovery, collector HA, staging scrape evidence, and physical-device proof remain open.

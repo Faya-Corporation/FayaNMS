@@ -181,6 +181,7 @@ model Device {
   // SAFE-005: exclusive per-device write lock while a change step runs
   // (one change, one device, one step at a time).
   writeLocks  DeviceWriteLock[]
+  protocolEvents ProtocolEventQueue[]
 
   @@index([siteId])
   @@index([vendorId])
@@ -791,6 +792,47 @@ model JobExecution {
   @@index([correlationId])
   @@index([createdAt])
   @@index([scheduledAt])
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Protocol event durability (CLOUD-11 — bounded collector handoff)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Normalized protocol events are durably staged before the worker delivers
+/// them to the audit/event sink. Raw packets, SNMP communities, passphrases,
+/// and vault values are intentionally absent from this model.
+model ProtocolEventQueue {
+  id              String    @id @default(cuid())
+  collectorId     String
+  protocol        String
+  sourceIp        String
+  sourcePort      Int
+  receivedAt      DateTime
+  eventType       String
+  severity        String
+  message         String
+  protocolVersion String?
+  securityLevel   String?
+  deviceId        String?
+  device          Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  attributesJson  String
+  correlationId   String
+  // status: QUEUED | IN_FLIGHT | DELIVERED | DEAD
+  status          String    @default("QUEUED")
+  attempts        Int       @default(0)
+  maxAttempts     Int       @default(5)
+  nextAttemptAt   DateTime  @default(now())
+  lockedAt        DateTime?
+  deliveredAt     DateTime?
+  lastError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([collectorId, createdAt])
+  @@index([deviceId, status])
+  @@index([correlationId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
