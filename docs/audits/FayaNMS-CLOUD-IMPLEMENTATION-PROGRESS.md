@@ -290,6 +290,12 @@ Never fabricate OCI, DNS, VPN, physical-device, GitHub-owner, or secret-manager 
 - Tests: `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/audit/release-evidence-manifest.test.ts` passed all 6 tests; CLI `--help` smoke passed. Bun, TypeScript, and lint executables were unavailable for this local validation.
 - Evidence boundary: `docs/implementation/release-evidence-5671bc5.json` records the SBOM artifact from CI run `35677691852` on source SHA `5671bc5b5067d1503b6e10be73101f006b3af794`, generated from a clean checkout of that exact SHA. It does not resolve the failed OCI publication or establish release eligibility; staging remains skipped and no physical-vendor evidence is claimed.
 
+### N1-001/N1-002 design gate — NetFlow v5 records
+
+- Decision: the user approved the written design and its 14-day default with a server-owned scheduled prune path. Keep `/api/v1/flows` simulation as roadmap item 7.
+- Plan: `docs/superpowers/plans/2026-09-23-netflow-v5-ingestion.md` divides decoder, strict batch/queue schema, atomic persistence, audited retention, and operations guidance into independently tested commits.
+- Status: implementation awaits plan review and the user's choice of execution method. No NetFlow v5 record decoder or persistence implementation is claimed yet.
+
 ### Round 14 — bounded continuous discovery and topology evidence
 
 - Task status: CLOUD-11 — IN PROGRESS.

@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-Written design for roadmap item 4: decode NetFlow v5 datagrams and persist their actual records. It does not replace the simulated `/api/v1/flows` response; that is roadmap item 7. NetFlow v9/IPFIX templates, sFlow, sampling correction, exporter ownership/failover, interface mapping, dashboards, and production vendor certification are also out of scope. The packet layout follows [Cisco's NetFlow Export Datagram Formats](https://www.cisco.com/c/en/us/td/docs/net_mgmt/netflow_collection_engine/5-0-3/user/guide/format.html).
+Approved design for roadmap item 4: decode NetFlow v5 datagrams and persist their actual records. It does not replace the simulated `/api/v1/flows` response; that is roadmap item 7. NetFlow v9/IPFIX templates, sFlow, sampling correction, exporter ownership/failover, interface mapping, dashboards, and production vendor certification are also out of scope. The packet layout follows [Cisco's NetFlow Export Datagram Formats](https://www.cisco.com/c/en/us/td/docs/net_mgmt/netflow_collection_engine/5-0-3/user/guide/format.html).
 
 ## Current boundary
 
@@ -30,6 +30,6 @@ Flow records need an independent, configurable retention policy; do not apply me
 - Apply a forward-only Prisma migration. Existing queued protocol events remain valid with no flow batch. Run focused tests, full relevant checks, and migration validation.
 - Keep `/api/v1/flows` output and simulation behavior unchanged; verify existing flow API tests remain green.
 
-## Open review point
+## Review decision
 
-Approve or adjust the proposed 14-day default and the inclusion of a scheduled prune path in item 4 before implementation planning. No implementation is authorized by this design approval alone.
+Approved 2026-09-23: use a 14-day default and a server-owned scheduled prune path. Keep `/api/v1/flows` simulation unchanged as roadmap item 7. Implementation remains gated on review of the implementation plan.

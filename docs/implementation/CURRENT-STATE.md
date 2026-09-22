@@ -20,7 +20,7 @@
 | ARM64 container certification / GHCR | PARTIAL — PUBLISH FAILED | Both publish attempts in run `35678367826` failed at the multi-architecture build/push step after 20–23 minutes (under its 45-minute timeout). ARM64 build/runtime/scan passed; logs return `BlobNotFound`, artifacts are empty, and no immutable image digest is verified. |
 | Release evidence manifest (N0-002) | IMPLEMENTED — BASELINE SNAPSHOT RECORDED | [`release-evidence-5671bc5.json`](release-evidence-5671bc5.json) records CI/SBOM provenance for merged remote-main SHA `5671bc5`; it also records failed OCI publication, skipped staging, and absent hardware evidence. It is not a release approval or a snapshot of the dirty local checkout. See `docs/runbooks/release-evidence.md`. |
 | Staging / OCI | NOT VERIFIED | Staging workflows were last recorded skipped; no live staging or production deployment is claimed. |
-| NetFlow v5 records | SPEC REVIEW PENDING | Design is in `docs/superpowers/specs/2026-09-23-netflow-v5-record-ingestion.md`; no implementation is claimed. `/api/v1/flows` simulation remains separate roadmap work. |
+| NetFlow v5 records | SPEC APPROVED — PLAN IN REVIEW | Approved design: `docs/superpowers/specs/2026-09-23-netflow-v5-record-ingestion.md`; implementation plan: `docs/superpowers/plans/2026-09-23-netflow-v5-ingestion.md`. No implementation is claimed. `/api/v1/flows` simulation remains separate roadmap work. |
 | Hardware certification | BLOCKED — EXTERNAL | No physical-vendor lab evidence is recorded; do not promote harness/simulator results to hardware certification. |
 | Production readiness | NOT CERTIFIED | External governance, deployment, lab, and disaster-recovery evidence remains outstanding. |
 
