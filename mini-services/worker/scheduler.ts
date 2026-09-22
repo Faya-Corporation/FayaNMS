@@ -50,9 +50,10 @@ async function tick(): Promise<boolean> {
         requeued?: number;
         deadLettered?: number;
         queueDepth?: number;
+        flowRecordsPersisted?: number;
       };
       drainSummary =
-        `protocolQueue claimed=${drain?.claimed ?? "?"} delivered=${drain?.delivered ?? "?"} requeued=${drain?.requeued ?? "?"} dead=${drain?.deadLettered ?? "?"} depth=${drain?.queueDepth ?? "?"}`;
+        `protocolQueue claimed=${drain?.claimed ?? "?"} delivered=${drain?.delivered ?? "?"} flowRecordsPersisted=${drain?.flowRecordsPersisted ?? "?"} requeued=${drain?.requeued ?? "?"} dead=${drain?.deadLettered ?? "?"} depth=${drain?.queueDepth ?? "?"}`;
     } catch (error) {
       await log(
         `protocol queue drain failed (tick remains healthy): ${(error as Error).message}`,

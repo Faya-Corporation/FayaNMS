@@ -5,6 +5,8 @@ import {
   protocolQueueFailure,
   sanitizeProtocolQueueError,
 } from "@/lib/protocol/queue";
+import { flowRecordsForQueue } from "@/lib/protocol/flow-records";
+import { netFlowV5BatchSchema } from "@/lib/protocol/netflow-v5-schema";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -22,11 +24,13 @@ type ClaimedProtocolEvent = {
   sourceIp: string;
   sourcePort: number;
   receivedAt: Date;
+  createdAt: Date;
   eventType: string;
   severity: string;
   message: string;
   protocolVersion: string | null;
   securityLevel: string | null;
+  flowBatchJson: string | null;
   deviceId: string | null;
   attributesJson: string;
   correlationId: string;
@@ -129,9 +133,40 @@ async function claimDueEvents(limit: number, now: Date) {
   });
 }
 
-async function deliverEvent(row: ClaimedProtocolEvent): Promise<boolean> {
+function queuedFlowBatch(row: ClaimedProtocolEvent) {
+  if (row.flowBatchJson === null) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(row.flowBatchJson);
+  } catch {
+    throw new Error("queued NetFlow batch is not valid JSON");
+  }
+  const parsed = netFlowV5BatchSchema.safeParse(value);
+  if (!parsed.success || row.protocol !== "netflow" || row.protocolVersion !== "NETFLOW_V5") {
+    throw new Error("queued NetFlow batch failed validation");
+  }
+  return parsed.data;
+}
+
+async function deliverEvent(row: ClaimedProtocolEvent): Promise<number> {
+  const batch = queuedFlowBatch(row);
+  const records = batch
+    ? flowRecordsForQueue(batch, {
+        queueId: row.id,
+        deviceId: row.deviceId,
+        collectorId: row.collectorId,
+        exporterAddress: row.sourceIp,
+        exporterPort: row.sourcePort,
+        receivedAt: row.createdAt,
+      })
+    : [];
   const deliveredAt = new Date();
   return db.$transaction(async (tx) => {
+    let persisted = 0;
+    if (records.length > 0) {
+      const inserted = await tx.flowRecord.createMany({ data: records, skipDuplicates: true });
+      persisted = inserted.count;
+    }
     const updated = await tx.protocolEventQueue.updateMany({
       where: { id: row.id, status: "IN_FLIGHT" },
       data: {
@@ -141,7 +176,7 @@ async function deliverEvent(row: ClaimedProtocolEvent): Promise<boolean> {
         lastError: null,
       },
     });
-    if (updated.count !== 1) return false;
+    if (updated.count !== 1) throw new Error("protocol queue lease was lost");
     await tx.auditEvent.create({
       data: {
         actorName: "worker:protocol-event-drain",
@@ -151,10 +186,12 @@ async function deliverEvent(row: ClaimedProtocolEvent): Promise<boolean> {
         resourceLabel: row.deviceId ?? row.sourceIp,
         result: "SUCCESS",
         correlationId: row.correlationId,
-        afterJson: eventAuditJson(row, "DELIVERED", row.attempts),
+        afterJson: eventAuditJson(row, "DELIVERED", row.attempts, {
+          flowRecordsPersisted: persisted,
+        }),
       },
     });
-    return true;
+    return persisted;
   });
 }
 
@@ -224,23 +261,20 @@ export async function POST(request: Request) {
 
   const claimed = await claimDueEvents(parsed.data.limit, new Date());
   let delivered = 0;
+  let flowRecordsPersisted = 0;
   let requeued = 0;
   let deadLettered = 0;
   for (const row of claimed) {
     try {
-      if (await deliverEvent(row)) {
-        delivered += 1;
-        continue;
-      }
+      flowRecordsPersisted += await deliverEvent(row);
+      delivered += 1;
+      continue;
     } catch (error) {
       const result = await recordFailure(row, error);
       if (result === "QUEUED") requeued += 1;
       if (result === "DEAD") deadLettered += 1;
       continue;
     }
-    const result = await recordFailure(row, new Error("protocol event delivery lease was lost"));
-    if (result === "QUEUED") requeued += 1;
-    if (result === "DEAD") deadLettered += 1;
   }
 
   const queueDepth = await db.protocolEventQueue.count({
@@ -249,6 +283,7 @@ export async function POST(request: Request) {
   return ok({
     claimed: claimed.length,
     delivered,
+    flowRecordsPersisted,
     requeued,
     deadLettered,
     queueDepth,

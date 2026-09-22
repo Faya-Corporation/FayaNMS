@@ -148,6 +148,11 @@ export async function POST(request: Request) {
           protocolVersion: event.protocolVersion,
           securityLevel: event.securityLevel,
           attributes: event.attributes,
+          flowBatch: input.flowBatch ? {
+            recordCount: input.flowBatch.header.count,
+            flowSequence: input.flowBatch.header.flowSequence,
+            unixSeconds: input.flowBatch.header.unixSeconds,
+          } : undefined,
           association: {
             method: association.method,
             deviceId: association.device?.id ?? null,
