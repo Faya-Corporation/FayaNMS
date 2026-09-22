@@ -7,6 +7,7 @@ import {
 } from "../../scripts/protocol-lab/snmpv3";
 import { normalizeEngineIdHex } from "../../src/lib/protocol/snmpv3-policy";
 import { PROTOCOLS, type ProtocolName } from "../../src/lib/protocol/ingest";
+import { decodeNetFlowV5Datagram, type NetFlowV5Batch } from "../../src/lib/protocol/netflow-v5";
 
 const DEFAULT_PORTS: Record<ProtocolName, number> = {
   syslog: 5514,
@@ -73,6 +74,7 @@ interface DecodedProtocolPayload {
   securityLevel?: "authPriv" | "community" | "unknown";
   deviceHint?: { hostname: string; credentialProfileId?: string };
   attributes: Record<string, string | number | boolean | null>;
+  flowBatch?: NetFlowV5Batch;
 }
 
 
@@ -126,6 +128,18 @@ function parseBinary(protocol: ProtocolName, packet: Buffer): DecodedProtocolPay
       protocolVersion: "BER",
       securityLevel: "unknown",
       attributes: { bytes: packet.length },
+    };
+  }
+  if (protocol === "netflow" && packet.length >= 2 && packet.readUInt16BE(0) === 5) {
+    const flowBatch = decodeNetFlowV5Datagram(packet);
+    if (!flowBatch) return null;
+    return {
+      eventType: "FLOW_RECORD_BATCH",
+      severity: "INFO",
+      message: "NetFlow v5 packet received",
+      protocolVersion: "NETFLOW_V5",
+      attributes: { version: 5, count: flowBatch.header.count },
+      flowBatch,
     };
   }
   const version = readVersion(packet);

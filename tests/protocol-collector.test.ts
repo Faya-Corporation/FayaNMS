@@ -28,6 +28,33 @@ test("protocol collector validates binary flow and sFlow versions", () => {
   expect(sflow?.protocolVersion).toBe("SFLOW_V5");
 });
 
+test("protocol collector relays decoded v5 records with exporter peer identity", () => {
+  const packet = Buffer.alloc(72);
+  packet.writeUInt16BE(5, 0);
+  packet.writeUInt16BE(1, 2);
+  packet.writeUInt32BE(900, 4);
+  packet.writeUInt32BE(1_758_412_800, 8);
+  packet.writeUInt32BE(0, 12);
+  packet.writeUInt32BE(7, 16);
+  packet.set([192, 0, 2, 1, 198, 51, 100, 2, 203, 0, 113, 1], 24);
+  packet.writeUInt16BE(80, 56);
+  packet.writeUInt16BE(52_000, 58);
+  packet[62] = 6;
+
+  const event = decodeProtocolPacket("netflow", packet, { address: "192.0.2.200", port: 2055 });
+  expect(event?.protocolVersion).toBe("NETFLOW_V5");
+  expect(event?.sourceIp).toBe("192.0.2.200");
+  expect(event?.sourcePort).toBe(2055);
+  expect(event?.flowBatch?.records[0]?.sourceIp).toBe("192.0.2.1");
+});
+
+test("protocol collector rejects malformed v5 before creating a relay event", () => {
+  const packet = Buffer.alloc(72);
+  packet.writeUInt16BE(5, 0);
+  packet.writeUInt16BE(1, 2);
+  expect(decodeProtocolPacket("netflow", packet.subarray(0, 71), { address: "192.0.2.15", port: 2055 })).toBeNull();
+});
+
 test("protocol collector rejects malformed binary packets", () => {
   expect(decodeProtocolPacket("snmp-trap", Buffer.from([0x01, 0x02]), { address: "192.0.2.14", port: 1162 })).toBeNull();
   expect(decodeProtocolPacket("netflow", Buffer.from([0, 0, 0, 7]), { address: "192.0.2.15", port: 2055 })).toBeNull();
