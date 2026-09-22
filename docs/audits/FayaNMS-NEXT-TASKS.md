@@ -1,4 +1,4 @@
-# FayaNMS — NEXT TASKS (i18n tranche history and cross-program status, updated 2026-09-22)
+# FayaNMS — NEXT TASKS (i18n tranche history and cross-program status, updated 2026-09-23)
 
 The R80–R102 i18n tranche program is complete, but it is not the repository's only remaining work. A detailed independent production roadmap is present as an untracked workspace input; its first items cover the cloud ledger, post-merge release evidence, repository governance, real flow decoding, and topology/collector gaps. Several remaining items are repository-actionable.
 
@@ -6,8 +6,9 @@ The R80–R102 i18n tranche program is complete, but it is not the repository's 
 
 - GitHub and local `origin/main` were verified at `5671bc5`; local `main` contains the focused ledger updates in `9a6775f` and `59efaa9`. These commits have not been pushed.
 - Roadmap task 1 (cloud-ledger reconciliation) is complete in `9a6775f`.
-- Roadmap task 2 is partial: post-merge CI passed, but immutable GHCR publication failed; no image digests were verified and staging was skipped. Evidence is recorded in `FayaNMS-CLOUD-IMPLEMENTATION-PROGRESS.md` and commit `59efaa9`.
+- Roadmap task 2 is partial: post-merge CI and ARM64 certification passed, but immutable GHCR publication failed. An exact-merge-SHA retry (run `35678367826`, attempt 2) was still in progress at the latest readback; its active job logs are unavailable and no digest is verified. Staging remains skipped. Evidence is recorded in `FayaNMS-CLOUD-IMPLEMENTATION-PROGRESS.md`.
 - Roadmap task 3 (branch protection) is owner-controlled. Later telemetry, topology, HA, and lab tasks are not complete merely because the i18n tranche ledger is empty.
+- Roadmap task 4 has a committed, review-pending NetFlow v5 ingestion spec (`docs/superpowers/specs/2026-09-23-netflow-v5-record-ingestion.md`, commit `83996eb`); no implementation is claimed. The separate `/flows` replacement remains item 7.
 
 ## Completed i18n Tranche History
 

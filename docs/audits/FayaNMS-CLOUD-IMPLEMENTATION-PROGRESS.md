@@ -67,6 +67,12 @@ GitHub Actions readback for merge commit `5671bc5` found CI run `35677691852` (`
 
 The failed container run's job timestamps narrow the issue without identifying its cause: ARM64 certification succeeded from 02:09:35Z to 02:34:26Z; the GHCR publish job ran from 02:34:37Z to 02:55:23Z and failed while `Build and push immutable multi-architecture image` was still reported in progress. This is shorter than the job's configured 45-minute timeout, so timeout is not established as the cause. The step logs remain unavailable (404), and the local environment has no Docker CLI for an exact-build reproduction. Do not change the workflow or claim publication success until a retained log or successful exact-SHA rerun identifies the failure boundary.
 
+### Exact-SHA GHCR retry and NetFlow design — 2026-09-23
+
+The failed publish job was retried without rerunning successful jobs. At 2026-09-22 21:14:56Z, workflow run `35678367826`, attempt 2, was still `in_progress` on merge SHA `5671bc5b5067d1503b6e10be73101f006b3af794`; its multi-architecture application image build/push step was active and its ARM64 certification job remained successful. The attempt-2 job-log endpoint also returned `BlobNotFound`; no publication conclusion, artifact, or immutable digest is available. Recheck this exact run before updating CLOUD-04.
+
+Roadmap item 4 now has a committed design, `docs/superpowers/specs/2026-09-23-netflow-v5-record-ingestion.md` (commit `83996eb`). It specifies bounded NetFlow v5 decoding into the existing durable queue and idempotent persisted records, while leaving `/api/v1/flows` simulation for item 7. This is design-only progress; implementation planning awaits user review of the spec, including the proposed independent 14-day retention default and pruning path.
+
 ## Round log
 
 ### Round 0 — baseline and branch
