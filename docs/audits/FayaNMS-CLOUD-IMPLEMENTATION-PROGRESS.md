@@ -3,9 +3,9 @@
 **Repository:** `fayafatehi/FayaNMS`  
 **Execution branch:** `codex/fayanms-cloud-platform`  
 **Initial main SHA:** `7aef0a330dc8f965fb496b735eb8a97b8d2c5149`  
-**Current main readback:** `3ab5c7eb3118b9b37c6286058de99b41bb67cac0`  
-**Current implementation HEAD:** `256fa786023b2b12e8233a9efe200b6ce3650fad`
-**Execution date:** 2026-09-21  
+**Current local `main` HEAD:** `7d9d18fde998f3c837978fc36ae220ed9ccb40bf`
+**Cloud implementation PR head (historical):** `f70bbef04b5cea96133e6e5215c1bb157df1c58d`
+**Execution date:** 2026-09-22
 **Authoritative inputs:** Cloud Development/CICD/OCI Implementation Plan, Executive Production Review, Full Independent Production Audit, Production Remediation Roadmap, Competitive Benchmark, Production Gap Register.
 
 ## Operating contract
@@ -14,19 +14,20 @@ This ledger records repository implementation evidence separately from external 
 
 Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TECHNICAL`, `DONE`, `DEFERRED — APPROVED`.
 
-## Baseline evidence
+## PR #12 merge-time baseline evidence (historical)
 
 | Item | Evidence |
 |---|---|
-| Current branch | Remote `codex/fayanms-cloud-platform` at `256fa786023b2b12e8233a9efe200b6ce3650fad`; no local checkout was available in the execution workspace |
-| `main` HEAD | `3ab5c7eb3118b9b37c6286058de99b41bb67cac0` |
-| Remote protection | Live branch readback: `protected:false`, `protection.enabled:false`, required checks enforcement `off` |
-| Latest CI | Run `35669619525` on exact HEAD `256fa786`: gate `106563110436`, scan `106563898555`, e2e `106563898705`, and browser `106563898515` all PASS; authenticated SNMPv3 polling/IF-MIB harness tests included |
-| Browser evidence | Run `35575582829` browser job `106257462989` PASS; prior first-attempt B5 diagnostics remain retained as an intermittent-risk record. |
-| ARM64 container | Run `35669619540` job `106562927250` on exact HEAD `256fa786`: app/worker/migrator ARM64 builds, direct Prisma CLI smoke, architecture/runtime checks, and strict HIGH/CRITICAL Trivy scans with `ignore-unfixed: false`; GHCR publication skipped for draft PR |
-| Open PRs | Draft PR #12: `codex/fayanms-cloud-platform` → `main` |
-| Repository access | GitHub connector has authenticated repository read/write access; plain Git clone is unavailable in this execution container |
-| Security note | Prior audit reports an exposed PAT; rotation/revocation remains an owner action and no token is copied into this repository |
+| Current checkout | Local `main` at `7d9d18fde998f3c837978fc36ae220ed9ccb40bf`; this is 17 commits beyond the supplied `origin/main` tracking ref |
+| Cloud implementation merge | PR #12 is included in merge commit `5671bc5b5067d1503b6e10be73101f006b3af794`; the local `origin/main` tracking ref currently points to that merge |
+| Live remote readback | Not performed in this reconciliation; the SHA above describes the local checkout/ref state only |
+| Remote protection | Merge-time GitHub readback: `protected:false`, `protection.enabled:false`, required checks enforcement `off`; not rechecked in this reconciliation |
+| PR-head CI | Merge-time audit recorded run `35676041512` on `f70bbef`: gate, e2e, browser, and scan all PASS; this result was not re-fetched during reconciliation |
+| PR-head ARM64 container | Merge-time audit recorded run `35676041500`: ARM64 build/runtime/scan PASS; immutable GHCR publication was correctly skipped on the PR branch |
+| Earlier browser evidence | Run `35575582829` browser job `106257462989` PASS; first-attempt B5 diagnostics were retained as an intermittent-risk record. |
+| Cloud implementation PR | PR #12 (`codex/fayanms-cloud-platform` → `main`) was merged by `5671bc5`; no claim is made about other currently open PRs |
+| Execution environment | The original cloud implementation session used authenticated GitHub access and lacked a local checkout; this ledger is now being reconciled in the repository checkout |
+| Security note | A prior audit reported an exposed PAT; rotation/revocation remains an owner action and was not reverified here. No token is copied into this repository. |
 
 ## Task status
 
@@ -45,12 +46,18 @@ Allowed statuses: `TODO`, `IN PROGRESS`, `BLOCKED — EXTERNAL`, `BLOCKED — TE
 | CLOUD-08 | Automated staging deploy | P0 | BLOCKED — EXTERNAL | CLOUD-07 | Codex + owner | Exact-SHA protected-environment SSH workflow committed | Owner configures staging secrets/approval and runs deployment |
 | CLOUD-09 | Health/smoke gate | P0 | BLOCKED — EXTERNAL | CLOUD-08 | Codex | Fail-closed health script and release evidence runbook committed; no staging endpoint exists here | Run against OCI staging and retain smoke evidence |
 | CLOUD-10 | Observability | P1 | IN PROGRESS | CLOUD-09 | App /api/metrics and worker /api/metrics contracts are implemented with token gating; Prometheus/OTel configs now use reviewed SHA-256 image references and a regression test; staging architecture/scan/alert proof remains open | Owner validates the selected monitoring digests on the OCI host architecture and runs a controlled staging alert test |
-| CLOUD-11 | Network protocol lab | P1 | IN PROGRESS | CLOUD-10 | CI-certified SNMPv3 authPriv harness, worker-side vault-resolved verification, durable engine-ID enrollment, boots/time replay policy, bounded verified metadata relay, bounded TCP/reverse-DNS discovery, and authenticated SNMPv3 polling/initial IF-MIB persistence are implemented | Certify real-device polling in isolated staging/lab; durable queue/HA, continuous discovery/topology, and physical-vendor evidence remain open |
+| CLOUD-11 | Network protocol lab | P1 | IN PROGRESS | CLOUD-10 | Current `main` includes authenticated SNMPv3 polling/initial IF-MIB persistence, durable protocol-event queue/retry/dead-letter state, and bounded continuous discovery/reconciliation. See `mini-services/worker/snmpv3-poller.ts`, `src/lib/protocol/queue.ts`, `prisma/schema.prisma`, and the discovery API/worker paths. | Keep telemetry listeners closed; certify real-device polling in an isolated lab, implement collector ownership/failover, and provide DLQ operator alert/replay. Physical-vendor evidence remains open |
 | CLOUD-12 | Controlled telemetry ports | P1 | BLOCKED — EXTERNAL | CLOUD-11 | Codex + owner | Least-privilege port policy committed; no listeners should be opened yet | Apply only after receiver implementation and owner NSG/firewall review |
 | CLOUD-13 | VPN/physical device lab | P1 | BLOCKED — EXTERNAL | CLOUD-12 | Codex + owner | Hardware certification matrix and isolated-lab runbook committed | Owner supplies lab VPN/devices and executes matrix |
 | CLOUD-14 | Database backup/DR | P1 | BLOCKED — EXTERNAL | CLOUD-13 | Codex + owner | Encrypted backup and isolated restore-drill scripts/runbook committed; no off-host target/key exists here | Configure object storage/key custody and run restore drill |
 | CLOUD-15 | Security/governance | P1 | BLOCKED — EXTERNAL | CLOUD-14 | Codex + owner | CODEOWNERS, least-privilege workflows, secret boundary gate, and governance runbook committed | Owner enables branch protection/ruleset and staging environment; read back live state |
 | CLOUD-16 | Release promotion | P1 | BLOCKED — EXTERNAL | CLOUD-15 | Codex + owner | Exact-SHA promotion workflow/runbook committed; no OCI target or production approval exists here | Execute staging promotion, burn-in, and independent release gate |
+
+## Current-main reconciliation — 2026-09-22
+
+The earlier `3ab5c7e` main readback and the Round 14 instruction to merge PR #12 are historical. PR #12 is already included by merge commit `5671bc5`; the current local `main` is `7d9d18f` after 17 subsequent commits. The checked-out `origin/main` ref remains at `5671bc5`, so this is not a live GitHub readback.
+
+CLOUD-11 remains `IN PROGRESS`, not `DONE`: current source confirms the durable protocol queue and bounded continuous-discovery/reconciliation path, in addition to authenticated SNMPv3 polling. No real-device/vendor certification or staging evidence is inferred from those repository implementations. Collector ownership/failover and DLQ operator alert/replay remain repository work; physical-device interoperability remains an isolated-lab task. Keep externally reachable telemetry listeners closed until the owner reviews the network boundary.
 
 ## Round log
 
@@ -267,4 +274,4 @@ Never fabricate OCI, DNS, VPN, physical-device, GitHub-owner, or secret-manager 
 - Newly discovered findings: discovery evidence currently proves bounded TCP/reverse-DNS observations only; SNMP identity, LLDP/CDP/ARP/FDB, physical-vendor interoperability, and live topology edges remain unproven. The policy surface is an authenticated API/runbook rather than an operator UI, and dead-letter replay/alerting remains a follow-up.
 - Blockers: prior PAT rotation, branch protection/ruleset, live Codespaces proof, OCI tenancy/VM/NSG/SSH/DNS, staging approval, VPN, off-host backup key/target, and physical hardware remain owner-controlled actions.
 - Remaining risks: collector HA/ownership fencing, metric rate derivation/retention, monitoring alert proof, staging, physical-vendor certification, live topology/identity, and production evidence remain open. External telemetry listeners remain opt-in and loopback-default.
-- Exact next task: after exact-head certification, record the final branch state, merge PR #12 to main if repository protection permits, verify the resulting main SHA, and stop for continuation in the user’s Codex desktop environment.
+- Historical next task: after exact-head certification, merge PR #12 if repository protection permits. This recommendation was superseded when PR #12 landed in merge commit `5671bc5`; current-main status is recorded in the reconciliation above.
