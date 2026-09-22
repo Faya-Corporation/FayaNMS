@@ -36,7 +36,10 @@ COPY package.json bun.lock ./
 COPY prisma ./prisma
 RUN bun install --frozen-lockfile
 COPY scripts/ci/prepare-prisma-runtime.sh /usr/local/bin/prepare-prisma-runtime.sh
-RUN chmod 0755 /usr/local/bin/prepare-prisma-runtime.sh \
+# Git checkouts on Windows may materialize this shell helper with CRLF line
+# endings. Normalize it inside the Linux build stage before executing it.
+RUN sed -i 's/\r$//' /usr/local/bin/prepare-prisma-runtime.sh \
+ && chmod 0755 /usr/local/bin/prepare-prisma-runtime.sh \
  && apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libgcc-s1 openssl \
  && rm -rf /var/lib/apt/lists/*
