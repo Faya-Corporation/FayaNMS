@@ -3970,9 +3970,9 @@
       "policies": "السياسات"
     },
     "cron": {
-      "everyMinutes": "كل {count} {suffix} من الدقائق",
+      "everyMinutes": "{count, plural, =1 {كل دقيقة} =2 {كل دقيقتين} few {كل # دقائق} many {كل # دقيقة} other {كل # دقيقة}}",
       "hourly": "كل ساعة عند :{minute}",
-      "everyHours": "كل {count} {suffix} من الساعات عند :{minute}",
+      "everyHours": "{count, plural, =1 {كل ساعة} =2 {كل ساعتين} few {كل # ساعات} many {كل # ساعة} other {كل # ساعة}} عند :{minute}",
       "daily": "يوميًا عند {hour}:{minute}",
       "weekly": "أسبوعيًا يوم {day} عند {hour}:{minute}",
       "days": {
