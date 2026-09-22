@@ -3839,3 +3839,9 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (alerts removed) + R95 backlog/worklog/audit report; **7 entries / 335 candidates** remain. r81–r94 governance pins now reflect the current ledger and dictionary total.
 - Tests: R95 isolated **5 pass / 0 fail / 115 expectations**; combined r56+r80–r95 governance **181 pass / 0 fail / 7,412 expectations** across 17 files. Full application gate and live browser evidence remain unavailable in this environment.
 - Docs: `docs/audits/FayaNMS-R95-I18n-Tranche6k-Alerts-Keyed-2026-09-22.md`, NEXT-TASKS R95 update. db/, .env, PAT never staged.
+
+## R96 — i18n tranche 6l: maintenance keyed; ledger 7 → 6 (2026-09-22)
+- R96 tranche: **Maintenance fully keyed by hand** through NEW `maintenanceView` (65 leaves en = ar deep parity; dictionary 2,250 → **2,315 = 2,315**). The 38-candidate ledger item is zero in the shallow sweep; the visible surface covers page/KPI/status/filter chrome, the maintenance CRUD form, overlap warning, row actions and scope/status badges, pagination, and the delete confirmation dialog. Device/site names, change numbers, dates, hostnames, and date-fns relative time remain data/format values.
+- Governance: r56 sweep ledger −1 entry (maintenance removed) + R96 backlog/worklog/audit report; **6 entries / 297 candidates** remain. r81–r95 governance pins now reflect the current ledger and dictionary total.
+- Tests: R96 isolated **5 pass / 0 fail / 146 expectations**; combined r56+r80–r96 governance **186 pass / 0 fail / 7,686 expectations** across 18 files. Full application gate and live browser evidence remain unavailable in this environment.
+- Docs: `docs/audits/FayaNMS-R96-I18n-Tranche6l-Maintenance-Keyed-2026-09-22.md`, NEXT-TASKS R96 update. db/, .env, PAT never staged.

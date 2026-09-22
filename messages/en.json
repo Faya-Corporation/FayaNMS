@@ -3173,5 +3173,102 @@
       "footer": {
         "engine": "The evaluation engine runs in the worker every ~3 minutes: dedup by fingerprint, maintenance-window + root-alert suppression, auto-resolve and incident auto-creation."
       }
+    },
+  "maintenanceView": {
+    "page": {
+      "title": "Maintenance Windows",
+      "description": "Planned windows during which alerts are suppressed for the scoped device or site",
+      "newWindow": "New window"
+    },
+    "kpi": {
+      "active": {
+        "description": "Windows covering now and suppressing alerts",
+        "label": "Active now"
+      },
+      "live": "live",
+      "upcoming": {
+        "description": "Starting within the next 24 hours",
+        "label": "Upcoming 24 h"
+      },
+      "past": {
+        "description": "Ended in the last 7 days",
+        "label": "Past 7 days"
+      }
+    },
+    "statusFilter": {
+      "ALL": "All",
+      "ACTIVE": "Active",
+      "UPCOMING": "Upcoming",
+      "PAST": "Past"
+    },
+    "status": {
+      "ACTIVE": "Active",
+      "UPCOMING": "Upcoming",
+      "PAST": "Past"
+    },
+    "scope": {
+      "fleetWide": "Fleet-wide"
+    },
+    "form": {
+      "title": {
+        "edit": "Edit maintenance window",
+        "new": "New maintenance window"
+      },
+      "description": "While an active window covers a device (or its site), the alert engine suppresses new alerts for that scope instead of firing.",
+      "nameLabel": "Name *",
+      "siteLabel": "Site",
+      "deviceLabel": "Device",
+      "startsLabel": "Starts *",
+      "endsLabel": "Ends *",
+      "reasonLabel": "Reason",
+      "linkedChangeLabel": "Linked change (optional)",
+      "suppressionActive": "Suppression active",
+      "namePlaceholder": "BR2-Access-SW-01 firmware prep (MW-2026-011)",
+      "reasonPlaceholder": "AOS-CX 10.10 → 10.13 upgrade prep; alert suppression active.",
+      "fleetNoSite": "Fleet-wide (no site)",
+      "wholeSite": "Whole site",
+      "filteredSite": "Filtered to the selected site.",
+      "allSitesShown": "All sites shown.",
+      "noLinkedChange": "No linked change",
+      "overlap": "Overlaps {count, plural, one {# active same-scope window} other {# active same-scope windows}}: {names}. Saving is allowed — the most specific scope suppresses first.",
+      "suppressionHelp": "Pause to keep the window for planning without suppressing alerts.",
+      "cancel": "Cancel",
+      "save": "Save changes",
+      "create": "Create window"
+    },
+    "filters": {
+      "searchSrOnly": "Search windows",
+      "searchPlaceholder": "Search name or reason…",
+      "siteAria": "Site",
+      "anySite": "Any site",
+      "deviceAria": "Device",
+      "anyDevice": "Any device",
+      "reset": "Reset"
+    },
+    "list": {
+      "title": "Windows",
+      "titleCount": "Windows — {count}",
+      "error": "Maintenance windows could not be loaded",
+      "emptyDescription": "No maintenance windows match the current filter. Create one to suppress alerts during planned work.",
+      "emptyTitle": "No maintenance windows to show"
+    },
+    "row": {
+      "paused": "Suppression paused",
+      "togglePause": "Pause suppression for {name}",
+      "toggleEnable": "Enable suppression for {name}",
+      "edit": "Edit {name}",
+      "delete": "Delete {name}"
+    },
+    "pagination": {
+      "summary": "Page {page} of {totalPages} · {count} windows",
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "delete": {
+      "title": "Delete “{name}”?",
+      "description": "The window is removed permanently. Alerts for its scope fire normally again immediately — existing alerts and incidents are untouched.",
+      "cancel": "Cancel",
+      "action": "Delete window"
     }
+  }
 }

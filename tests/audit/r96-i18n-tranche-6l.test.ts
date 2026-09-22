@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** R88 — i18n tranche 6d: admin-api-clients keyed. */
+/** R96 — i18n tranche 6l: maintenance view keyed. */
 
 const REPO = join(import.meta.dir, "..", "..");
-const VIEW = "src/components/views/admin-api-clients-view.tsx";
+const VIEW = "src/components/views/maintenance-view.tsx";
 
 type Messages = Record<string, unknown>;
 
@@ -37,15 +37,15 @@ function candidates(src: string): string[] {
   ];
 }
 
-describe("R88 — admin API clients namespace", () => {
-  test("has 48 non-empty leaves with deep EN/AR parity", () => {
+describe("R96 — maintenance namespace", () => {
+  test("has 65 non-empty leaves with deep EN/AR parity", () => {
     const en = readJson("messages/en.json") as Record<string, Messages>;
     const ar = readJson("messages/ar.json") as Record<string, Messages>;
-    expect(leaves(en.adminApiClients).length).toBe(48);
-    expect(leaves(ar.adminApiClients).length).toBe(48);
-    expect(new Set(leaves(en.adminApiClients))).toEqual(new Set(leaves(ar.adminApiClients)));
+    expect(leaves(en.maintenanceView).length).toBe(65);
+    expect(leaves(ar.maintenanceView).length).toBe(65);
+    expect(new Set(leaves(en.maintenanceView))).toEqual(new Set(leaves(ar.maintenanceView)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).adminApiClients;
+      const namespace = (readJson(file) as Record<string, Messages>).maintenanceView;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -53,51 +53,38 @@ describe("R88 — admin API clients namespace", () => {
         }
         expect(typeof node === "string" && node.length > 0, `${file}:${path}`).toBe(true);
       };
-      walk(namespace, "adminApiClients");
+      walk(namespace, "maintenanceView");
     }
   });
 
-  test("checks dictionary totals at current HEAD after R96", () => {
+  test("updates dictionary totals from R95's 2,250 leaves to 2,315", () => {
     expect(leaves(readJson("messages/en.json")).length).toBe(2315);
     expect(leaves(readJson("messages/ar.json")).length).toBe(2315);
   });
 });
 
-describe("R88 — view keying and ledger", () => {
-  test("consumes adminApiClients and has zero shallow sweep candidates", () => {
+describe("R96 — view keying and ledger", () => {
+  test("consumes maintenanceView and has zero shallow sweep candidates", () => {
     const src = readRepo(VIEW);
-    expect(src).toContain('useTranslations("adminApiClients")');
+    expect(src).toContain('useTranslations("maintenanceView")');
     expect(candidates(src)).toEqual([]);
   });
 
-  test("removes the pre-tranche candidate literals", () => {
+  test("keeps row, overlap, and delete-dialog interpolation shapes", () => {
     const src = readRepo(VIEW);
-    for (const gone of [
-      'title="API Clients"',
-      'description="Scoped bearer tokens for integrations',
-      'label="Registered clients"',
-      'label="Scopes in use"',
-      'title="Clients"',
-      'title="Could not load API clients"',
-      'title="No API clients yet"',
-      'aria-label="API clients —',
-      ">New client<",
-      ">Client<",
-      ">Last used<",
-      ">Rotate<",
-      ">New API client<",
-      ">Client name<",
-      ">Shown once. Treat it like a password",
-      ">Done — I saved it<",
-    ]) {
-      expect(src.includes(gone), `must be gone: ${gone}`).toBe(false);
-    }
+    const en = readJson("messages/en.json") as Record<string, Messages>;
+    expect(src).toContain('"row.togglePause"');
+    expect(src).toContain('t("form.overlap"');
+    expect(src).toContain('t("delete.title"');
+    expect(en.maintenanceView.row.togglePause).toContain("{name}");
+    expect(en.maintenanceView.form.overlap).toContain("{count, plural");
+    expect(en.maintenanceView.delete.title).toContain("{name}");
   });
 
   test("updates the R56 ledger to 6 views and 297 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
-    expect(block).not.toMatch(/"admin-api-clients-view\.tsx":\s*\d/);
+    expect(block).not.toMatch(/"maintenance-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
     expect(entries.length).toBe(6);
     expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(297);

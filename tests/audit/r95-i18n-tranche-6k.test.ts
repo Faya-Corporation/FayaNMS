@@ -58,8 +58,8 @@ describe("R95 — alerts namespace", () => {
   });
 
   test("updates dictionary totals from R94's 2,201 leaves to 2,250", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(2250);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(2250);
+    expect(leaves(readJson("messages/en.json")).length).toBe(2315);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(2315);
   });
 });
 
@@ -82,12 +82,12 @@ describe("R95 — view keying and ledger", () => {
     expect(en.alertsView.pagination.summary).toContain("{count, plural");
   });
 
-  test("updates the R56 ledger to 7 views and 335 candidates", () => {
+  test("updates the R56 ledger to 6 views and 297 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     expect(block).not.toMatch(/"alerts-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(7);
-    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(335);
+    expect(entries.length).toBe(6);
+    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(297);
   });
 });

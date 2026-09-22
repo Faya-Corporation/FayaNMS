@@ -5,6 +5,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format, formatDistanceToNow } from "date-fns";
+import { useTranslations } from "next-intl";
 import {
   CalendarClock,
   CalendarRange,
@@ -77,10 +78,10 @@ import type {
  */
 
 const STATUS_FILTERS = [
-  { key: "ALL", label: "All" },
-  { key: "ACTIVE", label: "Active" },
-  { key: "UPCOMING", label: "Upcoming" },
-  { key: "PAST", label: "Past" },
+  { key: "ALL" },
+  { key: "ACTIVE" },
+  { key: "UPCOMING" },
+  { key: "PAST" },
 ] as const;
 
 const BADGE_CLASSES: Record<MaintenanceStatus, string> = {
@@ -105,13 +106,14 @@ function fmtRelative(iso: string): string {
 }
 
 function WindowStatusBadge({ status }: { status: MaintenanceStatus }) {
+  const t = useTranslations("maintenanceView");
   const config: Record<
     MaintenanceStatus,
-    { label: string; token: "success" | "info" | "neutral"; pulse: boolean }
+    { token: "success" | "info" | "neutral"; pulse: boolean }
   > = {
-    ACTIVE: { label: "Active", token: "success", pulse: true },
-    UPCOMING: { label: "Upcoming", token: "info", pulse: false },
-    PAST: { label: "Past", token: "neutral", pulse: false },
+    ACTIVE: { token: "success", pulse: true },
+    UPCOMING: { token: "info", pulse: false },
+    PAST: { token: "neutral", pulse: false },
   };
   const entry = config[status];
   return (
@@ -122,13 +124,14 @@ function WindowStatusBadge({ status }: { status: MaintenanceStatus }) {
       )}
     >
       <StatusDot pulse={entry.pulse} token={entry.token} />
-      {entry.label}
+      {t(`status.${status}`)}
     </span>
   );
 }
 
 /** Scope chip: site code, hostname, or "Fleet" when nothing is scoped. */
 function ScopeChip({ row }: { row: MaintenanceRow }) {
+  const t = useTranslations("maintenanceView");
   if (row.device) {
     return (
       <span className="inline-flex max-w-[22ch] shrink-0 items-center gap-1 rounded-full border bg-muted px-2 py-0.5 text-[11px] font-tech ltr-technical">
@@ -146,7 +149,7 @@ function ScopeChip({ row }: { row: MaintenanceRow }) {
   }
   return (
     <span className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-      Fleet-wide
+      {t("scope.fleetWide")}
     </span>
   );
 }
@@ -188,6 +191,7 @@ function WindowFormDialog({
   row: MaintenanceRow | null;
   loadedWindows: MaintenanceRow[];
 }) {
+  const t = useTranslations("maintenanceView");
   const meta = useMeta();
   const createWindow = useCreateMaintenanceWindow();
   const updateWindow = useUpdateMaintenanceWindow();
@@ -283,21 +287,20 @@ function WindowFormDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{editing ? "Edit maintenance window" : "New maintenance window"}</DialogTitle>
+          <DialogTitle>{editing ? t("form.title.edit") : t("form.title.new")}</DialogTitle>
           <DialogDescription>
-            While an active window covers a device (or its site), the alert
-            engine suppresses new alerts for that scope instead of firing.
+            {t("form.description")}
           </DialogDescription>
         </DialogHeader>
 
         <form className="flex flex-col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="mw-name">Name *</Label>
+            <Label htmlFor="mw-name">{t("form.nameLabel")}</Label>
             <Input
               {...form.register("name")}
               aria-invalid={Boolean(form.formState.errors.name)}
               id="mw-name"
-              placeholder="BR2-Access-SW-01 firmware prep (MW-2026-011)"
+              placeholder={t("form.namePlaceholder")}
             />
             {form.formState.errors.name && (
               <p className="text-xs text-danger">{form.formState.errors.name.message}</p>
@@ -306,7 +309,7 @@ function WindowFormDialog({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label>Site</Label>
+              <Label>{t("form.siteLabel")}</Label>
               <Select
                 onValueChange={(value) => {
                   form.setValue("siteId", value === "__none__" ? "" : value);
@@ -315,11 +318,11 @@ function WindowFormDialog({
                 }}
                 value={watchedSiteId || "__none__"}
               >
-                <SelectTrigger aria-label="Site">
+                <SelectTrigger aria-label={t("form.siteLabel")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">Fleet-wide (no site)</SelectItem>
+                  <SelectItem value="__none__">{t("form.fleetNoSite")}</SelectItem>
                   {(meta.data?.sites ?? []).map((site) => (
                     <SelectItem key={site.id} value={site.id}>
                       {site.name} ({site.code})
@@ -329,19 +332,19 @@ function WindowFormDialog({
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Device</Label>
+              <Label>{t("form.deviceLabel")}</Label>
               <Select
                 onValueChange={(value) =>
                   form.setValue("deviceId", value === "__none__" ? "" : value)
                 }
                 value={watchedDeviceId || "__none__"}
               >
-                <SelectTrigger aria-label="Device">
+                <SelectTrigger aria-label={t("form.deviceLabel")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
                   <SelectItem value="__none__">
-                    {watchedSiteId ? "Whole site" : "Fleet-wide"}
+                    {watchedSiteId ? t("form.wholeSite") : t("scope.fleetWide")}
                   </SelectItem>
                   {(devices.data?.data ?? []).map((device) => (
                     <SelectItem key={device.id} value={device.id}>
@@ -351,14 +354,14 @@ function WindowFormDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {watchedSiteId ? "Filtered to the selected site." : "All sites shown."}
+                {watchedSiteId ? t("form.filteredSite") : t("form.allSitesShown")}
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="mw-starts">Starts *</Label>
+              <Label htmlFor="mw-starts">{t("form.startsLabel")}</Label>
               <Input
                 {...form.register("startsAt")}
                 aria-invalid={Boolean(form.formState.errors.startsAt)}
@@ -370,7 +373,7 @@ function WindowFormDialog({
               )}
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="mw-ends">Ends *</Label>
+              <Label htmlFor="mw-ends">{t("form.endsLabel")}</Label>
               <Input
                 {...form.register("endsAt")}
                 aria-invalid={Boolean(form.formState.errors.endsAt)}
@@ -385,34 +388,35 @@ function WindowFormDialog({
 
           {overlaps.length > 0 && (
             <div className="rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-xs text-warning" role="status">
-              Overlaps {overlaps.length} active same-scope window
-              {overlaps.length === 1 ? "" : "s"}: {overlaps.map((entry) => entry.name).join(", ")}. Saving is
-              allowed — the most specific scope suppresses first.
+              {t("form.overlap", {
+                count: overlaps.length,
+                names: overlaps.map((entry) => entry.name).join(", "),
+              })}
             </div>
           )}
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="mw-reason">Reason</Label>
+            <Label htmlFor="mw-reason">{t("form.reasonLabel")}</Label>
             <Input
               {...form.register("reason")}
               id="mw-reason"
-              placeholder="AOS-CX 10.10 → 10.13 upgrade prep; alert suppression active."
+              placeholder={t("form.reasonPlaceholder")}
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>Linked change (optional)</Label>
+            <Label>{t("form.linkedChangeLabel")}</Label>
             <Select
               onValueChange={(value) =>
                 form.setValue("changeId", value === "__none__" ? "" : value)
               }
               value={watchedChangeId || "__none__"}
             >
-              <SelectTrigger aria-label="Linked change">
+              <SelectTrigger aria-label={t("form.linkedChangeLabel")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-h-60">
-                <SelectItem value="__none__">No linked change</SelectItem>
+                <SelectItem value="__none__">{t("form.noLinkedChange")}</SelectItem>
                 {(changes.data?.data ?? []).map((change) => (
                   <SelectItem key={change.id} value={change.id}>
                     {change.number} — {change.title}
@@ -424,13 +428,13 @@ function WindowFormDialog({
 
           <label className="flex items-center justify-between gap-3 rounded-md border bg-surface-subtle px-3 py-2.5">
             <span className="text-sm font-medium">
-              Suppression active
+              {t("form.suppressionActive")}
               <span className="block text-xs font-normal text-muted-foreground">
-                Pause to keep the window for planning without suppressing alerts.
+                {t("form.suppressionHelp")}
               </span>
             </span>
             <Switch
-              aria-label="Suppression active"
+              aria-label={t("form.suppressionActive")}
               checked={watchedIsActive}
               onCheckedChange={(checked) => form.setValue("isActive", checked)}
             />
@@ -438,10 +442,10 @@ function WindowFormDialog({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("form.cancel")}
             </Button>
             <Button disabled={pending} type="submit">
-              {editing ? "Save changes" : "Create window"}
+              {editing ? t("form.save") : t("form.create")}
             </Button>
           </DialogFooter>
         </form>
@@ -451,6 +455,7 @@ function WindowFormDialog({
 }
 
 export function MaintenanceView() {
+  const t = useTranslations("maintenanceView");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [siteId, setSiteId] = useState<string>("ALL");
   const [deviceId, setDeviceId] = useState<string>("ALL");
@@ -509,7 +514,7 @@ export function MaintenanceView() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        description="Planned windows during which alerts are suppressed for the scoped device or site"
+        description={t("page.description")}
         primaryAction={
           <Button
             onClick={() => {
@@ -518,33 +523,33 @@ export function MaintenanceView() {
             }}
           >
             <Plus aria-hidden="true" />
-            New window
+            {t("page.newWindow")}
           </Button>
         }
-        title="Maintenance Windows"
+        title={t("page.title")}
       />
 
       {/* KPI row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard
-          description="Windows covering now and suppressing alerts"
+          description={t("kpi.active.description")}
           icon={Wrench}
-          label="Active now"
+          label={t("kpi.active.label")}
           loading={windows.isLoading}
-          status={{ label: "live", token: "info", pulse: true }}
+          status={{ label: t("kpi.live"), token: "info", pulse: true }}
           value={listMeta?.activeNow ?? "—"}
         />
         <KpiCard
-          description="Starting within the next 24 hours"
+          description={t("kpi.upcoming.description")}
           icon={CalendarClock}
-          label="Upcoming 24 h"
+          label={t("kpi.upcoming.label")}
           loading={windows.isLoading}
           value={listMeta?.upcoming24h ?? "—"}
         />
         <KpiCard
-          description="Ended in the last 7 days"
+          description={t("kpi.past.description")}
           icon={History}
-          label="Past 7 days"
+          label={t("kpi.past.label")}
           loading={windows.isLoading}
           value={listMeta?.past7d ?? "—"}
         />
@@ -567,7 +572,7 @@ export function MaintenanceView() {
             }}
             type="button"
           >
-            {entry.label}
+            {t(`statusFilter.${entry.key}`)}
             {entry.key === "ACTIVE" && listMeta ? ` · ${listMeta.activeNow}` : ""}
           </button>
         ))}
@@ -576,7 +581,7 @@ export function MaintenanceView() {
       {/* Toolbar: site, device, search */}
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative">
-          <span className="sr-only">Search windows</span>
+          <span className="sr-only">{t("filters.searchSrOnly")}</span>
           <Search
             aria-hidden
             className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -584,7 +589,7 @@ export function MaintenanceView() {
           <Input
             className="w-full ps-8 sm:w-64"
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search name or reason…"
+            placeholder={t("filters.searchPlaceholder")}
             value={searchInput}
           />
         </label>
@@ -596,11 +601,11 @@ export function MaintenanceView() {
           }}
           value={siteId}
         >
-          <SelectTrigger aria-label="Site" className="w-[150px]">
+          <SelectTrigger aria-label={t("filters.siteAria")} className="w-[150px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">Any site</SelectItem>
+            <SelectItem value="ALL">{t("filters.anySite")}</SelectItem>
             {sites.map((site) => (
               <SelectItem key={site.id} value={site.id}>
                 {site.code}
@@ -615,11 +620,11 @@ export function MaintenanceView() {
           }}
           value={deviceId}
         >
-          <SelectTrigger aria-label="Device" className="w-[190px]">
+          <SelectTrigger aria-label={t("filters.deviceAria")} className="w-[190px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="max-h-60">
-            <SelectItem value="ALL">Any device</SelectItem>
+            <SelectItem value="ALL">{t("filters.anyDevice")}</SelectItem>
             {(devices.data?.data ?? []).map((device) => (
               <SelectItem key={device.id} value={device.id}>
                 {device.hostname}
@@ -629,21 +634,21 @@ export function MaintenanceView() {
         </Select>
         {hasFilters && (
           <Button onClick={resetFilters} size="sm" variant="ghost">
-            Reset
+            {t("filters.reset")}
           </Button>
         )}
       </div>
 
       <SectionCard
         contentClassName="p-0"
-        title={`Windows${listMeta ? ` — ${listMeta.total}` : ""}`}
+        title={listMeta ? t("list.titleCount", { count: listMeta.total }) : t("list.title")}
       >
         {windows.isError ? (
           <div className="p-4">
             <ErrorState
               onRetry={() => void windows.refetch()}
               reason={windows.error.message}
-              title="Maintenance windows could not be loaded"
+              title={t("list.error")}
             />
           </div>
         ) : windows.isLoading ? (
@@ -655,9 +660,9 @@ export function MaintenanceView() {
         ) : rows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="No maintenance windows match the current filter. Create one to suppress alerts during planned work."
+              description={t("list.emptyDescription")}
               icon={CalendarRange}
-              title="No maintenance windows to show"
+              title={t("list.emptyTitle")}
             />
           </div>
         ) : (
@@ -693,12 +698,12 @@ export function MaintenanceView() {
                 )}
                 {!row.isActive && (
                   <span className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                    Suppression paused
+                    {t("row.paused")}
                   </span>
                 )}
                 <div className="ms-auto flex shrink-0 items-center gap-1">
                   <Switch
-                    aria-label={`${row.isActive ? "Pause" : "Enable"} suppression for ${row.name}`}
+                    aria-label={t(row.isActive ? "row.togglePause" : "row.toggleEnable", { name: row.name })}
                     checked={row.isActive}
                     disabled={toggleWindow.isPending}
                     onCheckedChange={(checked) =>
@@ -706,7 +711,7 @@ export function MaintenanceView() {
                     }
                   />
                   <Button
-                    aria-label={`Edit ${row.name}`}
+                    aria-label={t("row.edit", { name: row.name })}
                     onClick={() => {
                       setEditRow(row);
                       setFormOpen(true);
@@ -717,7 +722,7 @@ export function MaintenanceView() {
                     <Pencil aria-hidden="true" />
                   </Button>
                   <Button
-                    aria-label={`Delete ${row.name}`}
+                    aria-label={t("row.delete", { name: row.name })}
                     disabled={deleteWindow.isPending}
                     onClick={() => setDeleteTarget(row)}
                     size="icon"
@@ -733,7 +738,11 @@ export function MaintenanceView() {
         {listMeta && listMeta.totalPages > 1 && (
           <div className="flex items-center justify-between border-t px-4 py-2 text-xs text-muted-foreground">
             <span>
-              Page {listMeta.page} of {listMeta.totalPages} · {listMeta.total} windows
+              {t("pagination.summary", {
+                count: listMeta.total,
+                page: listMeta.page,
+                totalPages: listMeta.totalPages,
+              })}
             </span>
             <div className="flex gap-2">
               <Button
@@ -742,7 +751,7 @@ export function MaintenanceView() {
                 size="sm"
                 variant="outline"
               >
-                Previous
+                {t("pagination.previous")}
               </Button>
               <Button
                 disabled={listMeta.page >= listMeta.totalPages}
@@ -750,7 +759,7 @@ export function MaintenanceView() {
                 size="sm"
                 variant="outline"
               >
-                Next
+                {t("pagination.next")}
               </Button>
             </div>
           </div>
@@ -770,15 +779,15 @@ export function MaintenanceView() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete “{deleteTarget?.name}”?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("delete.title", { name: deleteTarget?.name ?? "" })}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              The window is removed permanently. Alerts for its scope fire
-              normally again immediately — existing alerts and incidents are
-              untouched.
+              {t("delete.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("delete.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-danger text-white hover:bg-danger/90"
               onClick={() => {
@@ -788,7 +797,7 @@ export function MaintenanceView() {
                 });
               }}
             >
-              Delete window
+              {t("delete.action")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
