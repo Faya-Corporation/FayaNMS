@@ -165,11 +165,11 @@ describe("R81 — sweep governance moved with the tranche", () => {
     }
   });
 
-  test("E: the numeric ledger carries EXACTLY 1 entry at current HEAD (R101 removed change detail)", () => {
+  test("E: the numeric ledger carries EXACTLY 0 entries at current HEAD (R102 removed backups)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"[a-z-]+-view\.tsx":\s*\d/g));
-      expect(entries.length).toBe(1);
+      expect(entries.length).toBe(0);
   });
 
   test("E: the unsaved-changes ICU plural exists with locale-appropriate categories", () => {

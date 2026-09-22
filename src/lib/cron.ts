@@ -67,6 +67,8 @@ const DAY_NAMES = [
   "Saturday",
 ] as const;
 
+type TranslateFn = (key: string, values?: Record<string, string | number>) => string;
+
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
@@ -77,7 +79,7 @@ function pad2(n: number): string {
  * "Hourly at :00"). Returns null when the expression does not match a
  * well-known shape — callers then show only the raw cron string.
  */
-export function cronHint(expr: string): string | null {
+export function cronHint(expr: string, t?: TranslateFn): string | null {
   const fields = expr.trim().split(/\s+/);
   if (fields.length !== 5) return null;
   const [m, h, dom, mon, dow] = fields;
@@ -86,15 +88,19 @@ export function cronHint(expr: string): string | null {
   const isInt = (v: string) => /^\d+$/.test(v);
   const isStep = (v: string) => /^\*\/(\d+)$/.test(v);
   const stepOf = (v: string) => Number.parseInt(v.slice(2), 10);
+  const translate = (key: string, values: Record<string, string | number>, fallback: string) =>
+    t ? t(key, values) : fallback;
 
   // */n * * * * — every n minutes
   if (isStep(m) && isStar(h) && isStar(dom) && isStar(mon) && isStar(dow)) {
     const n = stepOf(m);
-    return n > 0 && n < 60 ? `Every ${n} minute${n === 1 ? "" : "s"}` : null;
+    return n > 0 && n < 60
+      ? translate("cron.everyMinutes", { count: n, suffix: n === 1 ? "" : "s" }, `Every ${n} minute${n === 1 ? "" : "s"}`)
+      : null;
   }
   // m * * * * — hourly
   if (isInt(m) && isStar(h) && isStar(dom) && isStar(mon) && isStar(dow)) {
-    return `Hourly at :${pad2(Number(m))}`;
+    return translate("cron.hourly", { minute: pad2(Number(m)) }, `Hourly at :${pad2(Number(m))}`);
   }
   // m */n * * * — every n hours
   if (
@@ -106,17 +112,19 @@ export function cronHint(expr: string): string | null {
   ) {
     const n = stepOf(h);
     return n > 0 && n <= 24
-      ? `Every ${n} hour${n === 1 ? "" : "s"} at :${pad2(Number(m))}`
+      ? translate("cron.everyHours", { count: n, suffix: n === 1 ? "" : "s", minute: pad2(Number(m)) }, `Every ${n} hour${n === 1 ? "" : "s"} at :${pad2(Number(m))}`)
       : null;
   }
   // m h * * * — daily
   if (isInt(m) && isInt(h) && isStar(dom) && isStar(mon) && isStar(dow)) {
-    return `Daily at ${pad2(Number(h))}:${pad2(Number(m))}`;
+    return translate("cron.daily", { hour: pad2(Number(h)), minute: pad2(Number(m)) }, `Daily at ${pad2(Number(h))}:${pad2(Number(m))}`);
   }
   // m h * * dow — weekly
   if (isInt(m) && isInt(h) && isStar(dom) && isStar(mon) && /^\d$/.test(dow)) {
     const day = DAY_NAMES[Number(dow) % 7];
-    return `Weekly on ${day} at ${pad2(Number(h))}:${pad2(Number(m))}`;
+    const dayKey = day.toLowerCase();
+    const localizedDay = t ? t(`cron.days.${dayKey}`) : day;
+    return translate("cron.weekly", { day: localizedDay, hour: pad2(Number(h)), minute: pad2(Number(m)) }, `Weekly on ${day} at ${pad2(Number(h))}:${pad2(Number(m))}`);
   }
   return null;
 }

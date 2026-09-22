@@ -96,11 +96,11 @@ describe("R85 — tranche 6a namespace exists and is balanced", () => {
     expect(leaves(ar.perfOverview).length).toBe(76);
   });
 
-  test("A: dictionary totals are 2,733 = 2,733 at current HEAD (+101 R101)", () => {
+  test("A: dictionary totals are 2,850 = 2,850 at current HEAD (+117 R102)", () => {
     const en = readJson("messages/en.json");
     const ar = readJson("messages/ar.json");
-    expect(leaves(en).length).toBe(2733);
-    expect(leaves(ar).length).toBe(2733);
+    expect(leaves(en).length).toBe(2850);
+    expect(leaves(ar).length).toBe(2850);
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {
@@ -319,14 +319,14 @@ describe("R85 — ledger governance", () => {
     expect(/"perf-overview-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 1 entry at current HEAD (R101 removed change detail)", () => {
+  test("E: the numeric ledger carries EXACTLY 0 entries at current HEAD (R102 removed backups)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-      expect(entries.length).toBe(1);
+      expect(entries.length).toBe(0);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 61 at current HEAD (R101 removed change detail)", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 0 at current HEAD (R102 removed backups)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -334,7 +334,7 @@ describe("R85 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-    expect(sum).toBe(61);
+    expect(sum).toBe(0);
   });
 });
 

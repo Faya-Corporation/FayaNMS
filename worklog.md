@@ -3875,3 +3875,9 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (change-detail removed) + R101 backlog/worklog/audit report; **1 entry / 61 candidates** remains. Earlier governance pins now reflect the current dictionary total and ledger truth.
 - Tests: R101 isolated **5 pass / 0 fail / 217 expectations**; combined r56+r80–r101 governance **211 pass / 0 fail / 9,424 expectations** across 23 files. Full application gate and live browser evidence remain unavailable in this environment.
 - Docs: `docs/audits/FayaNMS-R101-I18n-Tranche6q-ChangeDetail-Keyed-2026-09-22.md`, NEXT-TASKS R101 update. db/, .env, PAT never staged.
+
+## R102 — i18n tranche 6r: backups keyed; ledger 1 → 0 (2026-09-22)
+- R102 tranche: **Backups fully keyed by hand** through NEW `backups` (117 leaves en = ar deep parity; dictionary 2,733 → **2,850 = 2,850**). All 61 shallow candidates are zero across backup history, download controls, pagination, policy forms and validation, scope chips, policy tables, policy actions, and the delete dialog. Shared cron hints accept an optional translator while preserving existing English callers.
+- Governance: r56 sweep ledger −1 entry (backups removed) + R102 backlog/worklog/audit report; **0 entries / 0 candidates** remain. The empty-ledger sweep now forbids any future unledgered candidate.
+- Tests: R102 isolated **5 pass / 0 fail / 248 expectations**; combined r56+r80–r102 governance **216 pass / 0 fail / 9,904 expectations** across 24 files. Full application gate and live browser evidence remain unavailable in this environment.
+- Docs: `docs/audits/FayaNMS-R102-I18n-Tranche6r-Backups-Keyed-2026-09-22.md`, NEXT-TASKS R102 update. db/, .env, PAT never staged.

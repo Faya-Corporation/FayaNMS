@@ -49,9 +49,9 @@ describe("R101 — change detail namespace", () => {
     }
   });
 
-  test("updates dictionary totals from R100's 2,632 leaves to 2,733", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(2733);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(2733);
+  test("checks dictionary totals at current HEAD after R102", () => {
+    expect(leaves(readJson("messages/en.json")).length).toBe(2850);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(2850);
   });
 });
 
@@ -72,12 +72,12 @@ describe("R101 — view keying and ledger", () => {
     expect(en.changeDetail.execute.title).toContain("{number}");
   });
 
-  test("updates the R56 ledger to 1 view and 61 candidates", () => {
+  test("updates the R56 ledger to 0 views and 0 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     expect(block).not.toMatch(/"change-detail-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(1);
-    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(61);
+    expect(entries.length).toBe(0);
+    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(0);
   });
 });

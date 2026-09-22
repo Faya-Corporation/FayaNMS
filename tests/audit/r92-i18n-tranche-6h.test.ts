@@ -57,9 +57,9 @@ describe("R92 — drift namespace", () => {
     }
   });
 
-  test("checks dictionary totals at current HEAD after R101", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(2733);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(2733);
+  test("checks dictionary totals at current HEAD after R102", () => {
+    expect(leaves(readJson("messages/en.json")).length).toBe(2850);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(2850);
   });
 });
 
@@ -81,12 +81,12 @@ describe("R92 — view keying and ledger", () => {
     expect(en.driftView.pagination.summary).toContain("{total, plural,");
   });
 
-  test("updates the R56 ledger to 1 view and 61 candidates", () => {
+  test("updates the R56 ledger to 0 views and 0 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     expect(block).not.toMatch(/"drift-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(1);
-    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(61);
+    expect(entries.length).toBe(0);
+    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(0);
   });
 });

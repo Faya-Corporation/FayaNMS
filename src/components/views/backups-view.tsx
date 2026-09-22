@@ -5,6 +5,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format, formatDistanceToNow } from "date-fns";
+import { useTranslations } from "next-intl";
 import {
   CalendarClock,
   ChevronLeft,
@@ -98,26 +99,28 @@ const ALL = "ALL";
 const PAGE_SIZE = 25;
 
 const CRITICALITY_OPTIONS = [
-  { value: "LOW", label: "Low" },
-  { value: "MEDIUM", label: "Medium" },
-  { value: "HIGH", label: "High" },
-  { value: "CRITICAL", label: "Critical" },
+  { value: "LOW" },
+  { value: "MEDIUM" },
+  { value: "HIGH" },
+  { value: "CRITICAL" },
 ];
 
 // OFFLINE/UNMANAGED are never scheduled by the worker, so the scope
 // include-filter does not offer them.
 const STATUS_OPTIONS = [
-  { value: "ONLINE", label: "Online" },
-  { value: "DEGRADED", label: "Degraded" },
-  { value: "MAINTENANCE", label: "Maintenance" },
-  { value: "UNKNOWN", label: "Unknown" },
+  { value: "ONLINE" },
+  { value: "DEGRADED" },
+  { value: "MAINTENANCE" },
+  { value: "UNKNOWN" },
 ];
 
 const CRON_PRESETS = [
-  { label: "Daily 02:00", value: "0 2 * * *" },
-  { label: "Every 6h", value: "0 */6 * * *" },
-  { label: "Weekly Sun 03:00", value: "0 3 * * 0" },
+  { key: "daily", value: "0 2 * * *" },
+  { key: "everySixHours", value: "0 */6 * * *" },
+  { key: "weekly", value: "0 3 * * 0" },
 ];
+
+type TranslateFn = (key: string, values?: Record<string, string | number>) => string;
 
 function formatSize(sizeBytes: number): string {
   return `${(sizeBytes / 1024).toFixed(1)} KB`;
@@ -128,6 +131,7 @@ function formatSize(sizeBytes: number): string {
 /* ------------------------------------------------------------------ */
 
 function HistoryTab() {
+  const t = useTranslations("backups");
   const { toast } = useToast();
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   // Status labels resolve in the active locale (falls back to config.label).
@@ -194,13 +198,17 @@ function HistoryTab() {
       anchor.remove();
       URL.revokeObjectURL(url);
       toast({
-        title: "Download started — recorded in audit log",
-        description: `${row.hostname} v${row.version} · ${filename}`,
+        title: t("download.started"),
+        description: t("download.startedDescription", {
+          hostname: row.hostname,
+          version: row.version,
+          filename,
+        }),
       });
     } catch (error) {
       toast({
-        title: "Download failed",
-        description: error instanceof Error ? error.message : "Unknown error",
+        title: t("download.failed"),
+        description: error instanceof Error ? error.message : t("download.unknownError"),
         variant: "destructive",
       });
     } finally {
@@ -216,11 +224,11 @@ function HistoryTab() {
       }}
       value={status}
     >
-      <SelectTrigger aria-label="Filter by snapshot status" className="h-8 w-36 text-xs">
+      <SelectTrigger aria-label={t("history.filterStatus")} className="h-8 w-36 text-xs">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={ALL}>All statuses</SelectItem>
+        <SelectItem value={ALL}>{t("history.allStatuses")}</SelectItem>
         {Object.values(SNAPSHOT_STATUS).map((config) => (
           <SelectItem key={config.key} value={config.key}>
             {resolveStatusLabel(config)}
@@ -238,11 +246,11 @@ function HistoryTab() {
       }}
       value={source}
     >
-      <SelectTrigger aria-label="Filter by capture source" className="h-8 w-36 text-xs">
+      <SelectTrigger aria-label={t("history.filterSource")} className="h-8 w-36 text-xs">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={ALL}>All sources</SelectItem>
+        <SelectItem value={ALL}>{t("history.allSources")}</SelectItem>
         {Object.values(SNAPSHOT_SOURCE).map((config) => (
           <SelectItem key={config.key} value={config.key}>
             {resolveStatusLabel(config)}
@@ -255,8 +263,8 @@ function HistoryTab() {
   return (
     <SectionCard
       contentClassName="p-0"
-      description="Every configuration version captured across the fleet — raw downloads are audited"
-      title="Backup history"
+      description={t("history.description")}
+      title={t("history.title")}
     >
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
@@ -266,10 +274,10 @@ function HistoryTab() {
             className="absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
           />
           <Input
-            aria-label="Search by device hostname or IP"
+            aria-label={t("history.searchAria")}
             className="h-8 ps-8 text-xs"
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search device…"
+            placeholder={t("history.searchPlaceholder")}
             value={searchInput}
           />
         </div>
@@ -285,7 +293,7 @@ function HistoryTab() {
           size="sm"
           variant="ghost"
         >
-          Reset
+          {t("history.reset")}
         </Button>
         <Button
           className="ms-auto"
@@ -293,7 +301,7 @@ function HistoryTab() {
           size="sm"
           variant="outline"
         >
-          Backup now — open Devices
+          {t("history.backupNow")}
         </Button>
       </div>
 
@@ -302,7 +310,7 @@ function HistoryTab() {
           <ErrorState
             onRetry={() => void snapshots.refetch()}
             reason={snapshots.error.message}
-            title="Backup history could not be loaded"
+            title={t("history.errorTitle")}
           />
         </div>
       ) : snapshots.isLoading ? (
@@ -314,38 +322,38 @@ function HistoryTab() {
       ) : rows.length === 0 ? (
         <div className="p-4">
           <EmptyState
-            description="Trigger “Backup now” from a device, or let a schedule run — captured configurations appear here."
+            description={t("history.emptyDescription")}
             icon={CloudUpload}
-            title="No backup snapshots found"
+            title={t("history.emptyTitle")}
           />
         </div>
       ) : (
         <div className="max-h-[600px] overflow-y-auto">
           <div className="min-w-[980px]">
-            <Table aria-label="Backup history — device, captured-at, source, version, size and checksum per snapshot">
+            <Table aria-label={t("history.tableAria")}>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Time</TableHead>
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Device</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("history.time")}</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("history.device")}</TableHead>
                   <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) md:table-cell">
-                    Site
+                    {t("history.site")}
                   </TableHead>
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Version</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("history.version")}</TableHead>
                   <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
-                    Source
+                    {t("history.source")}
                   </TableHead>
                   <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
-                    Size
+                    {t("history.size")}
                   </TableHead>
                   <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) lg:table-cell">
-                    SHA-256
+                    {t("history.checksum")}
                   </TableHead>
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Status</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("history.status")}</TableHead>
                   <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) lg:table-cell">
-                    Correlation
+                    {t("history.correlation")}
                   </TableHead>
                   <TableHead className="h-(--density-row-h) px-(--density-cell-x) text-end">
-                    Action
+                    {t("history.action")}
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -357,7 +365,7 @@ function HistoryTab() {
                     </TableCell>
                     <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
                       <button
-                        aria-label={`Open ${row.hostname} device detail`}
+                        aria-label={t("history.openDevice", { hostname: row.hostname })}
                         className="text-sm font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
                         onClick={() =>
                           setActiveView("network.device-detail", { deviceId: row.deviceId })
@@ -399,7 +407,7 @@ function HistoryTab() {
                     </TableCell>
                     <TableCell className="h-(--density-row-h) px-(--density-cell-x) text-end">
                       <Button
-                        aria-label={`Download ${row.hostname} configuration v${row.version}`}
+                        aria-label={t("history.download", { hostname: row.hostname, version: row.version })}
                         disabled={downloadingId === row.id}
                         onClick={() => void handleDownload(row)}
                         size="sm"
@@ -410,7 +418,7 @@ function HistoryTab() {
                         ) : (
                           <Download aria-hidden="true" />
                         )}
-                        <span className="sr-only sm:not-sr-only">Download</span>
+                        <span className="sr-only sm:not-sr-only">{t("history.downloadText")}</span>
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -425,28 +433,31 @@ function HistoryTab() {
       {metaInfo && rows.length > 0 && (
         <div className="flex items-center justify-between gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
           <span className="tabular-nums">
-            {metaInfo.total} snapshot{metaInfo.total === 1 ? "" : "s"} · page{" "}
-            {metaInfo.page} of {metaInfo.totalPages}
+            {t("history.pagination", {
+              total: metaInfo.total,
+              page: metaInfo.page,
+              totalPages: metaInfo.totalPages,
+            })}
           </span>
           <div className="flex items-center gap-1">
             <Button
-              aria-label="Previous page"
+              aria-label={t("history.previousPage")}
               disabled={metaInfo.page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               size="sm"
               variant="outline"
             >
               <ChevronLeft aria-hidden="true" />
-              Prev
+              {t("history.prev")}
             </Button>
             <Button
-              aria-label="Next page"
+              aria-label={t("history.nextPage")}
               disabled={metaInfo.page >= metaInfo.totalPages}
               onClick={() => setPage((p) => p + 1)}
               size="sm"
               variant="outline"
             >
-              Next
+              {t("history.next")}
               <ChevronRight aria-hidden="true" />
             </Button>
           </div>
@@ -460,14 +471,14 @@ function HistoryTab() {
 /* Policy form dialog (create + edit)                                   */
 /* ------------------------------------------------------------------ */
 
-const policyFormSchema = z.object({
-  name: z.string().trim().min(1, "Name is required").max(120),
+const policyFormSchema = (t: TranslateFn) => z.object({
+  name: z.string().trim().min(1, t("validation.nameRequired")).max(120),
   cronExpr: z
     .string()
     .trim()
-    .min(1, "Cron expression is required")
+    .min(1, t("validation.cronRequired"))
     .refine(isValidCronExpr, {
-      message: "Use a 5-field numeric cron expression, e.g. 0 2 * * *",
+      message: t("validation.cronFormat", { example: "0 2 * * *" }),
     }),
   siteCodes: z.array(z.string()),
   criticalities: z.array(z.string()),
@@ -477,16 +488,16 @@ const policyFormSchema = z.object({
   retentionDays: z
     .string()
     .trim()
-    .min(1, "Retention is required")
-    .regex(/^\d+$/, "Whole days only")
+    .min(1, t("validation.retentionRequired"))
+    .regex(/^\d+$/, t("validation.wholeDays"))
     .refine((value) => {
       const n = Number(value);
       return n >= 1 && n <= 3650;
-    }, "Retention must be between 1 and 3650 days"),
+    }, t("validation.retentionRange")),
   isActive: z.boolean(),
 });
 
-type PolicyFormValues = z.infer<typeof policyFormSchema>;
+type PolicyFormValues = z.infer<ReturnType<typeof policyFormSchema>>;
 
 interface CheckboxGroupProps {
   label: string;
@@ -494,6 +505,7 @@ interface CheckboxGroupProps {
   options: { value: string; label: string }[];
   value: string[];
   onChange: (next: string[]) => void;
+  optionAriaLabel: (option: { value: string; label: string }) => string;
   error?: string;
 }
 
@@ -503,6 +515,7 @@ function CheckboxGroup({
   options,
   value,
   onChange,
+  optionAriaLabel,
   error,
 }: CheckboxGroupProps) {
   return (
@@ -517,7 +530,7 @@ function CheckboxGroup({
               key={option.value}
             >
               <Checkbox
-                aria-label={`Scope ${label}: ${option.label}`}
+                aria-label={optionAriaLabel(option)}
                 checked={checked}
                 onCheckedChange={(checkedState) =>
                   onChange(
@@ -548,6 +561,7 @@ function PolicyFormDialog({
   /** When provided the dialog edits this policy instead of creating one. */
   policy?: BackupPolicyRow | null;
 }) {
+  const t = useTranslations("backups");
   const meta = useMeta();
   const createPolicy = useCreateBackupPolicy();
   const updatePolicy = useUpdateBackupPolicy();
@@ -579,7 +593,7 @@ function PolicyFormDialog({
 
   const form = useForm<PolicyFormValues>({
     defaultValues,
-    resolver: zodResolver(policyFormSchema),
+    resolver: zodResolver(policyFormSchema(t)),
     mode: "onSubmit",
   });
 
@@ -622,7 +636,7 @@ function PolicyFormDialog({
 
   const sites = meta.data?.sites ?? [];
   const siteOptions = [
-    { value: "*", label: "All sites (fleet-wide)" },
+    { value: "*", label: t("form.allSites") },
     ...sites.map((site) => ({ value: site.code, label: `${site.name} (${site.code})` })),
   ];
 
@@ -641,27 +655,26 @@ function PolicyFormDialog({
     );
   };
 
-  const hint = cronHint(cronExpr ?? "");
+  const hint = cronHint(cronExpr ?? "", t);
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{editing ? "Edit backup policy" : "New backup policy"}</DialogTitle>
+          <DialogTitle>{editing ? t("form.editTitle") : t("form.newTitle")}</DialogTitle>
           <DialogDescription>
-            The worker scheduler evaluates active policies every 30 seconds —
-            saved changes become live schedules automatically.
+            {t("form.description")}
           </DialogDescription>
         </DialogHeader>
 
         <form className="flex flex-col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="policy-name">Name *</Label>
+            <Label htmlFor="policy-name">{t("form.nameLabel")}</Label>
             <Input
               {...form.register("name")}
               aria-invalid={Boolean(form.formState.errors.name)}
               id="policy-name"
-              placeholder="Daily Full Fleet 02:00"
+              placeholder={t("form.namePlaceholder")}
             />
             {form.formState.errors.name && (
               <p className="text-xs text-danger">{form.formState.errors.name.message}</p>
@@ -669,7 +682,7 @@ function PolicyFormDialog({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="policy-cron">Schedule (cron) *</Label>
+            <Label htmlFor="policy-cron">{t("form.scheduleLabel")}</Label>
             <div className="flex flex-wrap gap-1.5">
               {CRON_PRESETS.map((preset) => (
                 <Button
@@ -681,7 +694,7 @@ function PolicyFormDialog({
                   type="button"
                   variant={cronExpr === preset.value ? "secondary" : "outline"}
                 >
-                  {preset.label}
+                  {t(`form.cronPreset.${preset.key}`)}
                 </Button>
               ))}
             </div>
@@ -690,7 +703,7 @@ function PolicyFormDialog({
               aria-invalid={Boolean(form.formState.errors.cronExpr)}
               className="font-tech ltr-technical"
               id="policy-cron"
-              placeholder="0 2 * * *"
+              placeholder={t("form.cronPlaceholder")}
             />
             {hint && !form.formState.errors.cronExpr && (
               <p className="text-xs text-info">{hint}</p>
@@ -702,36 +715,39 @@ function PolicyFormDialog({
 
           <CheckboxGroup
             error={form.formState.errors.siteCodes?.message}
-            hint="Devices from the selected sites. Leave empty for all sites."
-            label="Sites"
+            hint={t("form.sitesHint")}
+            label={t("form.sitesLabel")}
             onChange={handleSiteCodesChange}
+            optionAriaLabel={(option) => t("form.scopeOption", { scope: t("form.sitesLabel"), option: option.label })}
             options={siteOptions}
             value={siteCodes ?? []}
           />
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <CheckboxGroup
-              label="Criticalities"
+              label={t("form.criticalitiesLabel")}
               onChange={(next) =>
                 form.setValue("criticalities", next, { shouldValidate: true })
               }
               options={criticalityOptions}
+              optionAriaLabel={(option) => t("form.scopeOption", { scope: t("form.criticalitiesLabel"), option: option.label })}
               value={criticalities ?? []}
             />
             <CheckboxGroup
-              hint="Offline and unmanaged devices are never scheduled."
-              label="Statuses"
+              hint={t("form.offlineHint")}
+              label={t("form.statusesLabel")}
               onChange={(next) =>
                 form.setValue("statuses", next, { shouldValidate: true })
               }
               options={statusOptions}
+              optionAriaLabel={(option) => t("form.scopeOption", { scope: t("form.statusesLabel"), option: option.label })}
               value={statuses ?? []}
             />
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="policy-retention">Retention (days) *</Label>
+              <Label htmlFor="policy-retention">{t("form.retentionLabel")}</Label>
               <Input
                 {...form.register("retentionDays")}
                 aria-invalid={Boolean(form.formState.errors.retentionDays)}
@@ -739,7 +755,7 @@ function PolicyFormDialog({
                 inputMode="numeric"
               />
               <p className="text-xs text-muted-foreground">
-                Historical versions older than this are pruned by the scheduler.
+                {t("form.retentionHint")}
               </p>
               {form.formState.errors.retentionDays && (
                 <p className="text-xs text-danger">
@@ -748,16 +764,16 @@ function PolicyFormDialog({
               )}
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="policy-active">Active</Label>
+              <Label htmlFor="policy-active">{t("form.activeLabel")}</Label>
               <div className="flex h-9 items-center gap-2">
                 <Switch
-                  aria-label="Policy active"
+                  aria-label={t("form.activeAria")}
                   checked={isActive}
                   id="policy-active"
                   onCheckedChange={(checked) => form.setValue("isActive", checked)}
                 />
                 <span className="text-sm text-muted-foreground">
-                  {isActive ? "Scheduler runs this policy" : "Paused"}
+                  {isActive ? t("form.activeRunning") : t("form.paused")}
                 </span>
               </div>
             </div>
@@ -770,11 +786,11 @@ function PolicyFormDialog({
               type="button"
               variant="outline"
             >
-              Cancel
+              {t("form.cancel")}
             </Button>
             <Button disabled={pending} type="submit">
               {pending && <LoaderCircle aria-hidden="true" className="animate-spin" />}
-              {editing ? "Save changes" : "Create policy"}
+              {editing ? t("form.save") : t("form.create")}
             </Button>
           </DialogFooter>
         </form>
@@ -788,6 +804,7 @@ function PolicyFormDialog({
 /* ------------------------------------------------------------------ */
 
 function ScopeChips({ policy }: { policy: BackupPolicyRow }) {
+  const t = useTranslations("backups");
   const { scope } = policy;
   // Status/criticality chip values resolve in the active locale through the
   // same status maps the rest of the app uses (SEVERITY / DEVICE_STATUS).
@@ -796,21 +813,21 @@ function ScopeChips({ policy }: { policy: BackupPolicyRow }) {
 
   if (scope.siteCodes.length > 0) {
     chips.push({
-      label: "Sites",
+      label: t("scope.sites"),
       value: scope.siteCodes.includes("*")
-        ? "All sites"
+        ? t("scope.allSites")
         : scope.siteCodes.join(", "),
     });
   }
   for (const criticality of scope.criticalities) {
     chips.push({
-      label: "Criticality",
+      label: t("scope.criticality"),
       value: resolveStatusLabel(getStatusConfig(SEVERITY, criticality)),
     });
   }
   for (const status of scope.statuses) {
     chips.push({
-      label: "Status",
+      label: t("scope.status"),
       value: resolveStatusLabel(getStatusConfig(DEVICE_STATUS, status)),
     });
   }
@@ -818,7 +835,7 @@ function ScopeChips({ policy }: { policy: BackupPolicyRow }) {
   if (chips.length === 0) {
     return (
       <span className="text-xs text-muted-foreground">
-        Fleet-wide — all manageable devices
+        {t("scope.fleetWide")}
       </span>
     );
   }
@@ -833,6 +850,7 @@ function ScopeChips({ policy }: { policy: BackupPolicyRow }) {
 }
 
 function PoliciesTab() {
+  const t = useTranslations("backups");
   const policies = useBackupPolicies();
   const updatePolicy = useUpdateBackupPolicy();
   const deletePolicy = useDeleteBackupPolicy();
@@ -856,18 +874,18 @@ function PoliciesTab() {
             size="sm"
           >
             <Plus aria-hidden="true" />
-            New policy
+            {t("policies.newPolicy")}
           </Button>
         }
-        description="Schedules evaluated by the worker every 30 seconds; retention pruning runs on each tick"
-        title="Backup policies"
+        description={t("policies.description")}
+        title={t("policies.title")}
       >
         {policies.isError ? (
           <div className="p-4">
             <ErrorState
               onRetry={() => void policies.refetch()}
               reason={policies.error.message}
-              title="Backup policies could not be loaded"
+              title={t("policies.errorTitle")}
             />
           </div>
         ) : policies.isLoading ? (
@@ -879,39 +897,39 @@ function PoliciesTab() {
         ) : rows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="Create a policy with a cron schedule and scope — it starts enqueueing backup jobs on the next tick."
+              description={t("policies.emptyDescription")}
               icon={CalendarClock}
-              title="No backup policies yet"
+              title={t("policies.emptyTitle")}
             />
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table aria-label="Backup policies — schedule, scope, retention and last run per policy" className="min-w-[900px]">
+            <Table aria-label={t("policies.tableAria")} className="min-w-[900px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Policy</TableHead>
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Schedule</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("policies.policy")}</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("policies.schedule")}</TableHead>
                   <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) lg:table-cell">
-                    Scope
+                    {t("policies.scope")}
                   </TableHead>
                   <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
-                    Devices
+                    {t("policies.devices")}
                   </TableHead>
                   <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) md:table-cell">
-                    Retention
+                    {t("policies.retention")}
                   </TableHead>
                   <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) xl:table-cell">
-                    Last enqueued
+                    {t("policies.lastEnqueued")}
                   </TableHead>
-                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Active</TableHead>
+                  <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("policies.active")}</TableHead>
                   <TableHead className="h-(--density-row-h) px-(--density-cell-x) text-end">
-                    Actions
+                    {t("policies.actions")}
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.map((policy) => {
-                  const hint = cronHint(policy.cronExpr);
+                  const hint = cronHint(policy.cronExpr, t);
                   return (
                     <TableRow key={policy.id}>
                       <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
@@ -934,18 +952,21 @@ function PoliciesTab() {
                         {policy.scopedDeviceCount}
                       </TableCell>
                       <TableCell className="hidden h-(--density-row-h) px-(--density-cell-x) text-xs tabular-nums md:table-cell">
-                        {policy.retentionDays} days
+                        {t("policies.days", { count: policy.retentionDays })}
                       </TableCell>
                       <TableCell className="hidden h-(--density-row-h) px-(--density-cell-x) text-xs text-muted-foreground tabular-nums xl:table-cell">
                         {policy.lastEnqueuedAt
                           ? formatDistanceToNow(new Date(policy.lastEnqueuedAt), {
                               addSuffix: true,
                             })
-                          : "never"}
+                          : t("policies.never")}
                       </TableCell>
                       <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
                         <Switch
-                          aria-label={`${policy.isActive ? "Pause" : "Enable"} policy ${policy.name}`}
+                          aria-label={t("policies.toggle", {
+                            action: policy.isActive ? t("policies.pause") : t("policies.enable"),
+                            name: policy.name,
+                          })}
                           checked={policy.isActive}
                           disabled={updatePolicy.isPending}
                           onCheckedChange={(checked) =>
@@ -959,7 +980,7 @@ function PoliciesTab() {
                       <TableCell className="h-(--density-row-h) px-(--density-cell-x) text-end">
                         <div className="flex items-center justify-end gap-1">
                           <Button
-                            aria-label={`Edit policy ${policy.name}`}
+                            aria-label={t("policies.editAria", { name: policy.name })}
                             onClick={() => {
                               setEditing(policy);
                               setFormOpen(true);
@@ -968,16 +989,16 @@ function PoliciesTab() {
                             variant="ghost"
                           >
                             <Pencil aria-hidden="true" />
-                            <span className="sr-only">Edit</span>
+                            <span className="sr-only">{t("policies.edit")}</span>
                           </Button>
                           <Button
-                            aria-label={`Delete policy ${policy.name}`}
+                            aria-label={t("policies.deleteAria", { name: policy.name })}
                             onClick={() => setDeleting(policy)}
                             size="sm"
                             variant="ghost"
                           >
                             <Trash2 aria-hidden="true" className="text-danger" />
-                            <span className="sr-only">Delete</span>
+                            <span className="sr-only">{t("policies.delete")}</span>
                           </Button>
                         </div>
                       </TableCell>
@@ -1002,15 +1023,13 @@ function PoliciesTab() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete backup policy?</AlertDialogTitle>
+            <AlertDialogTitle>{t("policies.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              “{deleting?.name}” will stop enqueueing scheduled backups. Existing
-              snapshots, jobs and audit history are kept. This action is recorded
-              in the audit log.
+              {t("policies.deleteDescription", { name: deleting?.name ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("policies.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className={cn("bg-danger text-white hover:bg-danger/90")}
               onClick={() => {
@@ -1018,7 +1037,7 @@ function PoliciesTab() {
                 setDeleting(null);
               }}
             >
-              Delete policy
+              {t("policies.deletePolicy")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1032,14 +1051,15 @@ function PoliciesTab() {
 /* ------------------------------------------------------------------ */
 
 export function BackupsView() {
+  const t = useTranslations("backups");
   const [tab, setTab] = useState("history");
 
   return (
     <div className="flex flex-col gap-4">
       <div data-tour="backups-header">
         <PageHeader
-          description="Fleet-wide configuration backup history, policies and retention"
-          title="Backups"
+          description={t("page.description")}
+          title={t("page.title")}
         />
       </div>
       <Tabs
@@ -1047,8 +1067,8 @@ export function BackupsView() {
         value={tab}
       >
         <TabsList>
-          <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="policies">Policies</TabsTrigger>
+          <TabsTrigger value="history">{t("page.history")}</TabsTrigger>
+          <TabsTrigger value="policies">{t("page.policies")}</TabsTrigger>
         </TabsList>
         <TabsContent className="mt-4" value="history">
           <HistoryTab />

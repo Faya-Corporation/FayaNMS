@@ -222,9 +222,7 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
  * every view. Counts use the documented shallow regexes above —
  * regenerate with the same extractors when editing.
  */
-const PENDING_VIEWS: Record<string, number> = {
-  "backups-view.tsx": 61,
-};
+const PENDING_VIEWS: Record<string, number> = {};
 
 describe("HC-4 — dictionary parity is machine-enforced", () => {
   test("en and ar leaf-key sets are identical in BOTH directions", () => {
