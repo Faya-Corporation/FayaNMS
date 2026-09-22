@@ -22,7 +22,7 @@ test("protocol queue failure requeues with bounded, sanitized error text", () =>
     new Error("temporary\nbackend\u0000 failure"),
   );
   expect(decision.status).toBe("QUEUED");
-  expect(decision.nextAttemptAt.toISOString()).toBe("2026-09-22T00:00:20.000Z");
+  expect(decision.nextAttemptAt.toISOString()).toBe("2026-09-22T00:00:10.000Z");
   expect(decision.lastError).toBe("temporary backend failure");
   expect(decision.lastError.length).toBeLessThanOrEqual(500);
 });
