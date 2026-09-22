@@ -3711,5 +3711,140 @@
       "emailInvalid": "Enter a valid email address",
       "passwordMin": "At least 8 characters"
     }
+  },
+  "changeDetail": {
+    "approvals": {
+      "approveAria": "Approve {level}",
+      "description": "Levels required by the risk policy — decide under your signed-in account",
+      "distinct": "distinct approvals",
+      "draftRows": "Draft changes carry no approval rows — they are created on submit per the {risk} policy ({levels}) for approvers to action in the approvals queue.",
+      "entitlementHint": "Requires the \"{permission}\" permission, which your role does not hold.",
+      "missingRows": "No approval rows yet for: {rows} — submit the change to create them.",
+      "notEntitled": "Not entitled for this level",
+      "recordedAccount": "Decisions are recorded under your signed-in account",
+      "rejectAria": "Reject {level}",
+      "sodBlocked": "Blocked by separation of duties — the requester cannot {action} a {risk} change",
+      "sodSwitch": "SoD — switch the acting user to decide",
+      "title": "Approvals",
+      "unassigned": "unassigned",
+      "validUntil": "valid until"
+    },
+    "banners": {
+      "executionProgress": "Execution in progress — the step timeline below live-updates every 2 s.",
+      "failed": "The change failed during execution. Correlate an incident so the response is tracked.",
+      "rollbackFailed": "The change failed AND the rollback could not be completed — investigate before re-attempting.",
+      "success": "All steps passed — the change completed successfully. Mark it closed to sign off the record."
+    },
+    "common": {
+      "allChanges": "All Changes",
+      "approve": "Approve",
+      "cancel": "Cancel",
+      "cancelChange": "Cancel change",
+      "createIncident": "Create incident from failed change",
+      "edit": "Edit",
+      "execute": "Execute",
+      "keepAsIs": "Keep as is",
+      "markClosed": "Mark closed",
+      "reject": "Reject",
+      "submit": "Submit",
+      "submitForApproval": "Submit for approval"
+    },
+    "confirm": {
+      "cancelDescription": "The change is marked CANCELLED and leaves every planning queue. Execution states cannot be cancelled once the engine starts.",
+      "cancelTitle": "Cancel {number}?",
+      "closeDescription": "The successful change is signed off as CLOSED. Closed changes leave every active queue.",
+      "closeTitle": "Mark {number} closed?",
+      "submitDescription": "The draft moves to AWAITING_APPROVAL and PENDING approval rows are created per the {risk} policy: {levels}.",
+      "submitTitle": "Submit {number} for approval?"
+    },
+    "decision": {
+      "approvedDescription": "Recorded under your signed-in account — a comment is optional.",
+      "commentAria": "Decision comment",
+      "commentLabel": "Comment {requirement}",
+      "optional": "(optional)",
+      "rejectedDescription": "Recorded under your signed-in account — a short reason (min 4 characters) is required.",
+      "required": "(required)"
+    },
+    "details": {
+      "created": "Created",
+      "executeAvailability": "Execute is available while the change is APPROVED or SCHEDULED.",
+      "owner": "Owner",
+      "requester": "Requester",
+      "scheduleWindow": "Schedule window",
+      "site": "Site",
+      "technicalOwner": "Technical owner",
+      "title": "Details",
+      "unscheduled": "Unscheduled"
+    },
+    "devices": {
+      "description": "{count, plural, one {# device targeted} other {# devices targeted}}",
+      "emptyDescription": "This change has no device links.",
+      "emptyTitle": "No devices",
+      "noSite": "no site",
+      "title": "Devices"
+    },
+    "empty": {
+      "noChangeDescription": "Open a change from the All Changes list.",
+      "noChangeTitle": "No change selected"
+    },
+    "error": {
+      "loadTitle": "Change could not be loaded"
+    },
+    "execute": {
+      "apply": "APPLY — simulated apply failure",
+      "demoHint": "Demo control — forces the engine down its rollback path (restore pre-change config, post-rollback validation + backup).",
+      "description": "Queues a CHANGE_EXECUTE job — the worker drives each step (pre-checks, pre-change backup, apply, validation). The run is attributed to your signed-in account.",
+      "failAtLabel": "Simulate failure at",
+      "none": "None — run the happy path",
+      "queue": "Queue execution",
+      "stepsPreview": "Steps preview ({count})",
+      "title": "Execute {number}?",
+      "validate": "VALIDATE — simulated validation failure"
+    },
+    "kpi": {
+      "approvalsLabel": "Approvals pending",
+      "devicesLabel": "Devices in scope",
+      "missingRows": "Missing rows: {rows}",
+      "perRiskPolicy": "Per risk policy",
+      "riskDescription": "{score}/100 score",
+      "riskLabel": "Risk",
+      "stepsDescription": "{done}/{total} passed or skipped",
+      "stepsLabel": "Steps done"
+    },
+    "linked": {
+      "description": "Pre/post-change snapshots and correlated incidents",
+      "incidents": "Incidents ({count})",
+      "incidentsEmpty": "No incidents correlated to this change.",
+      "snapshots": "Snapshots ({count})",
+      "snapshotsEmpty": "None yet — pre/post-change backups appear here when the executor runs.",
+      "title": "Linked records"
+    },
+    "plans": {
+      "description": "Prose plans are rendered as written — no pre-formatting",
+      "implementation": "Implementation",
+      "notDocumented": "Not documented yet",
+      "rollback": "Rollback",
+      "title": "Plans",
+      "validation": "Validation"
+    },
+    "preChecks": {
+      "description": "Engine pre-check results merge into this list per device",
+      "title": "Pre-checks"
+    },
+    "steps": {
+      "description": "Ordered execution plan — appended rollback steps appear after a failure",
+      "emptyDescription": "This change has no execution steps.",
+      "emptyTitle": "No steps",
+      "liveDescription": "Live — statuses stream from the execution engine",
+      "title": "Steps"
+    },
+    "timeline": {
+      "errorDetail": "error detail",
+      "finished": "finished {value}",
+      "output": "output",
+      "running": "running…",
+      "started": "started {value}",
+      "took": " · took {value}"
+    }
   }
 }

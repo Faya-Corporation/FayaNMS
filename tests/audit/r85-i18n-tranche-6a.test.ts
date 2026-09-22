@@ -96,11 +96,11 @@ describe("R85 — tranche 6a namespace exists and is balanced", () => {
     expect(leaves(ar.perfOverview).length).toBe(76);
   });
 
-  test("A: dictionary totals are 2,632 = 2,632 at current HEAD (+78 R100)", () => {
+  test("A: dictionary totals are 2,733 = 2,733 at current HEAD (+101 R101)", () => {
     const en = readJson("messages/en.json");
     const ar = readJson("messages/ar.json");
-    expect(leaves(en).length).toBe(2632);
-    expect(leaves(ar).length).toBe(2632);
+    expect(leaves(en).length).toBe(2733);
+    expect(leaves(ar).length).toBe(2733);
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {
@@ -319,14 +319,14 @@ describe("R85 — ledger governance", () => {
     expect(/"perf-overview-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 2 entries at current HEAD (R100 removed admin users)", () => {
+  test("E: the numeric ledger carries EXACTLY 1 entry at current HEAD (R101 removed change detail)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-      expect(entries.length).toBe(2);
+      expect(entries.length).toBe(1);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 113 at current HEAD (R100 removed admin users)", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 61 at current HEAD (R101 removed change detail)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -334,7 +334,7 @@ describe("R85 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-    expect(sum).toBe(113);
+    expect(sum).toBe(61);
   });
 });
 

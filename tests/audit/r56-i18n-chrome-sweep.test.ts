@@ -224,7 +224,6 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
  */
 const PENDING_VIEWS: Record<string, number> = {
   "backups-view.tsx": 61,
-  "change-detail-view.tsx": 52,
 };
 
 describe("HC-4 — dictionary parity is machine-enforced", () => {

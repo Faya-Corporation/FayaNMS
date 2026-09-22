@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
+import { useTranslations } from "next-intl";
 import {
   ArrowLeft,
   CalendarClock,
@@ -98,6 +99,8 @@ import {
 } from "@/components/views/status-extras";
 import type { ChangeDetailStep } from "@/lib/api-client";
 
+type TranslateFn = (key: string, values?: Record<string, string | number>) => string;
+
 /** Statuses whose detail still offers Edit/Submit (mirrors the API guard). */
 const EDITABLE_STATUSES = ["DRAFT"];
 const CANCELLABLE_STATUSES = ["DRAFT", "AWAITING_APPROVAL", "APPROVED", "SCHEDULED"];
@@ -127,7 +130,7 @@ function stepDuration(step: ChangeDetailStep): string | null {
 }
 
 /** One prose plan block (plans are normal text, pre-wrapped). */
-function PlanBlock({ label, text }: { label: string; text: string | null }) {
+function PlanBlock({ label, text, emptyLabel }: { label: string; text: string | null; emptyLabel: string }) {
   return (
     <div className="flex flex-col gap-1">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
@@ -138,7 +141,7 @@ function PlanBlock({ label, text }: { label: string; text: string | null }) {
       ) : (
         <p className="flex items-center gap-1.5 rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
           <CircleAlert aria-hidden="true" className="size-3.5" />
-          Not documented yet
+          {emptyLabel}
         </p>
       )}
     </div>
@@ -146,7 +149,7 @@ function PlanBlock({ label, text }: { label: string; text: string | null }) {
 }
 
 /** Expandable font-tech block for step output/error lines. */
-function StepOutputBlock({ text, tone }: { text: string; tone: "output" | "error" }) {
+function StepOutputBlock({ text, tone, t }: { text: string; tone: "output" | "error"; t: TranslateFn }) {
   return (
     <details className="mt-1">
       <summary
@@ -156,7 +159,7 @@ function StepOutputBlock({ text, tone }: { text: string; tone: "output" | "error
             : "cursor-pointer text-xs font-medium text-muted-foreground"
         }
       >
-        {tone === "error" ? "error detail" : "output"}
+        {tone === "error" ? t("timeline.errorDetail") : t("timeline.output")}
       </summary>
       <pre
         className={`font-tech ltr-technical mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border px-2 py-1.5 text-xs leading-relaxed ${
@@ -172,7 +175,7 @@ function StepOutputBlock({ text, tone }: { text: string; tone: "output" | "error
 }
 
 /** Vertical step timeline — live-updates while the engine drives the change. */
-function StepTimeline({ steps }: { steps: ChangeDetailStep[] }) {
+function StepTimeline({ steps, t }: { steps: ChangeDetailStep[]; t: TranslateFn }) {
   return (
     <ol className="relative flex flex-col gap-0 ps-1">
       {steps.map((step, index) => {
@@ -215,20 +218,20 @@ function StepTimeline({ steps }: { steps: ChangeDetailStep[] }) {
                       aria-hidden="true"
                       className="size-1.5 animate-pulse rounded-full bg-info"
                     />
-                    running…
+                     {t("timeline.running")}
                   </span>
                 )}
               </div>
               {(step.startedAt || step.finishedAt) && (
                 <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-                  {step.startedAt && `started ${formatDate(step.startedAt, "MMM d HH:mm")}`}
+                  {step.startedAt && t("timeline.started", { value: formatDate(step.startedAt, "MMM d HH:mm") })}
                   {step.startedAt && step.finishedAt && " · "}
-                  {step.finishedAt && `finished ${formatDate(step.finishedAt, "MMM d HH:mm")}`}
-                  {duration && ` · took ${duration}`}
+                  {step.finishedAt && t("timeline.finished", { value: formatDate(step.finishedAt, "MMM d HH:mm") })}
+                  {duration && t("timeline.took", { value: duration })}
                 </p>
               )}
-              {step.error && <StepOutputBlock text={step.error} tone="error" />}
-              {step.output && <StepOutputBlock text={step.output} tone="output" />}
+              {step.error && <StepOutputBlock text={step.error} tone="error" t={t} />}
+              {step.output && <StepOutputBlock text={step.output} tone="output" t={t} />}
             </div>
           </li>
         );
@@ -246,6 +249,7 @@ function StepTimeline({ steps }: { steps: ChangeDetailStep[] }) {
  * with incident creation and the Mark-closed sign-off.
  */
 export function ChangeDetailView() {
+  const t = useTranslations("changeDetail");
   const params = useNavigationStore((state) => state.params);
   const setActiveView = useNavigationStore((state) => state.setActiveView);
   // Status labels resolve in the active locale (falls back to config.label).
@@ -293,15 +297,17 @@ export function ChangeDetailView() {
   const levelEntitled = (level: string): boolean =>
     LEVEL_ENTITLED[level as ApprovalLevel] ?? false;
   const levelEntitlementHint = (level: string): string =>
-    `Requires the "${APPROVAL_LEVEL_PERMISSIONS[level as ApprovalLevel]}" permission, which your role does not hold.`;
+    t("approvals.entitlementHint", {
+      permission: APPROVAL_LEVEL_PERMISSIONS[level as ApprovalLevel],
+    });
 
   if (!changeId) {
     return (
       <div className="flex flex-col gap-4">
         <EmptyState
-          description="Open a change from the All Changes list."
+          description={t("empty.noChangeDescription")}
           icon={GitPullRequest}
-          title="No change selected"
+          title={t("empty.noChangeTitle")}
         />
       </div>
     );
@@ -312,7 +318,7 @@ export function ChangeDetailView() {
       <ErrorState
         onRetry={() => void detail.refetch()}
         reason={detail.error.message}
-        title="Change could not be loaded"
+        title={t("error.loadTitle")}
       />
     );
   }
@@ -424,7 +430,7 @@ export function ChangeDetailView() {
             variant="ghost"
           >
             <ArrowLeft aria-hidden="true" />
-            All Changes
+            {t("common.allChanges")}
           </Button>
         </div>
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -459,7 +465,7 @@ export function ChangeDetailView() {
                   variant="outline"
                 >
                   <Pencil aria-hidden="true" />
-                  Edit
+                  {t("common.edit")}
                 </Button>
                 <Button
                   onClick={() => setConfirmAction("SUBMIT")}
@@ -467,14 +473,14 @@ export function ChangeDetailView() {
                   variant="outline"
                 >
                   <Send aria-hidden="true" />
-                  Submit for approval
+                  {t("common.submitForApproval")}
                 </Button>
               </>
             )}
             {canExecute && (
               <Button onClick={() => setExecuteOpen(true)} size="sm">
                 <Play aria-hidden="true" />
-                Execute
+                {t("common.execute")}
               </Button>
             )}
             {canClose && (
@@ -484,7 +490,7 @@ export function ChangeDetailView() {
                 variant="outline"
               >
                 <CheckCircle2 aria-hidden="true" />
-                Mark closed
+                {t("common.markClosed")}
               </Button>
             )}
             {canCancel && (
@@ -494,7 +500,7 @@ export function ChangeDetailView() {
                 variant="ghost"
               >
                 <Trash2 aria-hidden="true" className="text-danger" />
-                Cancel change
+                {t("common.cancelChange")}
               </Button>
             )}
           </div>
@@ -506,7 +512,7 @@ export function ChangeDetailView() {
               aria-hidden="true"
               className="mt-0.5 size-3.5 shrink-0 animate-spin"
             />
-            Execution in progress — the step timeline below live-updates every 2 s.
+            {t("banners.executionProgress")}
           </p>
         )}
       </div>
@@ -515,8 +521,7 @@ export function ChangeDetailView() {
       {change.status === "SUCCESSFUL" && (
         <div className="flex items-start gap-2 rounded-lg border border-success/25 bg-success-subtle px-3 py-2 text-xs text-success">
           <CheckCircle2 aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
-          All steps passed — the change completed successfully. Mark it closed to
-          sign off the record.
+          {t("banners.success")}
         </div>
       )}
       {showFailedBanner && (
@@ -524,8 +529,8 @@ export function ChangeDetailView() {
           <CircleX aria-hidden="true" className="size-3.5 shrink-0" />
           <span className="min-w-0 flex-1">
             {change.status === "ROLLBACK_FAILED"
-              ? "The change failed AND the rollback could not be completed — investigate before re-attempting."
-              : "The change failed during execution. Correlate an incident so the response is tracked."}
+              ? t("banners.rollbackFailed")
+              : t("banners.failed")}
           </span>
           <Button
             disabled={createIncident.isPending}
@@ -539,7 +544,7 @@ export function ChangeDetailView() {
             variant="outline"
           >
             <Siren aria-hidden="true" />
-            Create incident from failed change
+            {t("common.createIncident")}
           </Button>
         </div>
       )}
@@ -547,59 +552,59 @@ export function ChangeDetailView() {
       {/* KPI strip */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
-          description={`${change.riskScore}/100 score`}
+          description={t("kpi.riskDescription", { score: change.riskScore })}
           icon={ClipboardList}
-          label="Risk"
+          label={t("kpi.riskLabel")}
           value={change.riskLevel}
         />
         <KpiCard
           icon={GitPullRequest}
-          label="Devices in scope"
+          label={t("kpi.devicesLabel")}
           value={change.devices.length}
         />
         <KpiCard
-          description={`${stepsDone}/${change.steps.length} passed or skipped`}
+          description={t("kpi.stepsDescription", { done: stepsDone, total: change.steps.length })}
           icon={Play}
-          label="Steps done"
+          label={t("kpi.stepsLabel")}
           value={`${stepsDone}/${change.steps.length}`}
         />
         <KpiCard
           description={
             missingApprovalRows.length > 0
-              ? `Missing rows: ${missingApprovalRows.join(", ")}`
-              : "Per risk policy"
+              ? t("kpi.missingRows", { rows: missingApprovalRows.join(", ") })
+              : t("kpi.perRiskPolicy")
           }
           icon={ClipboardList}
-          label="Approvals pending"
+          label={t("kpi.approvalsLabel")}
           value={pendingApprovals}
         />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
         {/* Details */}
-        <SectionCard title="Details">
+        <SectionCard title={t("details.title")}>
           <dl className="flex flex-col gap-2 text-sm">
             {[
               {
-                label: "Site",
+                label: t("details.site"),
                 value: change.site
                   ? `${change.site.name} (${change.site.code})`
                   : "—",
               },
               {
-                label: "Requester",
+                label: t("details.requester"),
                 value: change.requester?.name ?? change.requester?.email ?? "—",
               },
               {
-                label: "Owner",
+                label: t("details.owner"),
                 value: change.owner?.name ?? "—",
               },
               {
-                label: "Technical owner",
+                label: t("details.technicalOwner"),
                 value: change.technicalOwner?.name ?? "—",
               },
               {
-                label: "Created",
+                label: t("details.created"),
                 value: formatDate(change.createdAt),
               },
             ].map((row) => (
@@ -611,7 +616,7 @@ export function ChangeDetailView() {
             <div className="mt-1 rounded-lg border bg-surface-subtle/60 p-3">
               <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <CalendarClock aria-hidden="true" className="size-3.5" />
-                Schedule window
+                {t("details.scheduleWindow")}
               </p>
               {change.scheduledStart ? (
                 <>
@@ -619,11 +624,11 @@ export function ChangeDetailView() {
                     {formatDate(change.scheduledStart)} → {formatDate(change.scheduledEnd)}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Execute is available while the change is APPROVED or SCHEDULED.
+                    {t("details.executeAvailability")}
                   </p>
                 </>
               ) : (
-                <p className="mt-1 text-sm text-muted-foreground">Unscheduled</p>
+                <p className="mt-1 text-sm text-muted-foreground">{t("details.unscheduled")}</p>
               )}
             </div>
           </dl>
@@ -631,27 +636,27 @@ export function ChangeDetailView() {
 
         {/* Plans */}
         <SectionCard
-          description="Prose plans are rendered as written — no pre-formatting"
-          title="Plans"
+          description={t("plans.description")}
+          title={t("plans.title")}
         >
           <div className="flex flex-col gap-4">
-            <PlanBlock label="Implementation" text={change.implementationPlan} />
-            <PlanBlock label="Validation" text={change.validationPlan} />
-            <PlanBlock label="Rollback" text={change.rollbackPlan} />
+            <PlanBlock label={t("plans.implementation")} text={change.implementationPlan} emptyLabel={t("plans.notDocumented")} />
+            <PlanBlock label={t("plans.validation")} text={change.validationPlan} emptyLabel={t("plans.notDocumented")} />
+            <PlanBlock label={t("plans.rollback")} text={change.rollbackPlan} emptyLabel={t("plans.notDocumented")} />
           </div>
         </SectionCard>
       </div>
 
       {/* Devices */}
       <SectionCard
-        description={`${change.devices.length} device${change.devices.length === 1 ? "" : "s"} targeted`}
-        title="Devices"
+        description={t("devices.description", { count: change.devices.length })}
+        title={t("devices.title")}
       >
         {change.devices.length === 0 ? (
           <EmptyState
-            description="This change has no device links."
+            description={t("devices.emptyDescription")}
             icon={GitPullRequest}
-            title="No devices"
+            title={t("devices.emptyTitle")}
           />
         ) : (
           <ul className="max-h-96 divide-y overflow-y-auto">
@@ -667,7 +672,7 @@ export function ChangeDetailView() {
                   {device.hostname}
                 </button>
                 <span className="hidden text-xs text-muted-foreground sm:inline">
-                  {device.siteCode ?? "no site"}
+                  {device.siteCode ?? t("devices.noSite")}
                 </span>
                 <StatusBadge config={getStatusConfig(SEVERITY, device.criticality)} />
                 {device.result && (
@@ -685,20 +690,20 @@ export function ChangeDetailView() {
       <SectionCard
         description={
           executing
-            ? "Live — statuses stream from the execution engine"
-            : "Ordered execution plan — appended rollback steps appear after a failure"
+            ? t("steps.liveDescription")
+            : t("steps.description")
         }
-        title="Steps"
+        title={t("steps.title")}
       >
         {change.steps.length === 0 ? (
           <EmptyState
-            description="This change has no execution steps."
+            description={t("steps.emptyDescription")}
             icon={Play}
-            title="No steps"
+            title={t("steps.emptyTitle")}
           />
         ) : (
           <div className="max-h-[480px] overflow-y-auto pt-1">
-            <StepTimeline steps={change.steps} />
+            <StepTimeline steps={change.steps} t={t} />
           </div>
         )}
       </SectionCard>
@@ -709,12 +714,12 @@ export function ChangeDetailView() {
           actions={
             change.status === "AWAITING_APPROVAL" && (
               <span className="text-xs text-muted-foreground">
-                Decisions are recorded under your signed-in account
+                {t("approvals.recordedAccount")}
               </span>
             )
           }
-          description="Levels required by the risk policy — decide under your signed-in account"
-          title="Approvals"
+          description={t("approvals.description")}
+          title={t("approvals.title")}
         >
           <div className="flex flex-col gap-2">
             {requiredLevels.map((level) => {
@@ -734,7 +739,7 @@ export function ChangeDetailView() {
                   <span className="text-sm font-medium">{resolveStatusLabel(levelConfig)}</span>
                   <StatusBadge config={statusConfig} />
                   <span className="ms-auto text-xs text-muted-foreground">
-                    {approval?.approverName ?? "unassigned"}
+                    {approval?.approverName ?? t("approvals.unassigned")}
                     {approval?.decidedAt
                       ? ` · ${formatDate(approval.decidedAt, "MMM d HH:mm")}`
                       : ""}
@@ -749,14 +754,14 @@ export function ChangeDetailView() {
                           d.decision === "APPROVED" &&
                           d.expiresAt !== null &&
                           new Date(d.expiresAt).getTime() > Date.now()
-                      ).length}/{approval.quorumRequired} distinct approvals
+                      ).length}/{approval.quorumRequired} {t("approvals.distinct")}
                     </span>
                   )}
                   {/* POL-003 — validity horizon of the latest APPROVED
                       decision, surfaced so approvers see the expiry. */}
                   {approval?.decisions.some((d) => d.decision === "APPROVED" && d.expiresAt) && (
                     <span className="text-xs text-muted-foreground">
-                      valid until{" "}
+                      {t("approvals.validUntil")} {" "}
                       {formatDate(
                         approval.decisions
                           .filter((d) => d.decision === "APPROVED" && d.expiresAt)
@@ -780,7 +785,7 @@ export function ChangeDetailView() {
                         <TooltipTrigger asChild>
                           <span className="inline-block">
                             <Button
-                              aria-label={`Approve ${resolveStatusLabel(levelConfig)}`}
+                              aria-label={t("approvals.approveAria", { level: resolveStatusLabel(levelConfig) })}
                               className="h-8"
                               disabled={
                                 sodBlocked ||
@@ -796,14 +801,13 @@ export function ChangeDetailView() {
                               type="button"
                               variant="outline"
                             >
-                              Approve
+                              {t("common.approve")}
                             </Button>
                           </span>
                         </TooltipTrigger>
                         {sodBlocked ? (
                           <TooltipContent>
-                            Blocked by separation of duties — the requester cannot
-                            approve a {change.riskLevel} change
+                            {t("approvals.sodBlocked", { action: t("common.approve"), risk: change.riskLevel })}
                           </TooltipContent>
                         ) : (
                           !levelEntitled(level) && (
@@ -817,7 +821,7 @@ export function ChangeDetailView() {
                         <TooltipTrigger asChild>
                           <span className="inline-block">
                             <Button
-                              aria-label={`Reject ${resolveStatusLabel(levelConfig)}`}
+                              aria-label={t("approvals.rejectAria", { level: resolveStatusLabel(levelConfig) })}
                               className="h-8"
                               disabled={
                                 sodBlocked ||
@@ -834,14 +838,13 @@ export function ChangeDetailView() {
                               variant="outline"
                             >
                               <XCircle aria-hidden="true" className="text-danger" />
-                              Reject
+                              {t("common.reject")}
                             </Button>
                           </span>
                         </TooltipTrigger>
                         {sodBlocked ? (
                           <TooltipContent>
-                            Blocked by separation of duties — the requester cannot
-                            reject a {change.riskLevel} change
+                            {t("approvals.sodBlocked", { action: t("common.reject"), risk: change.riskLevel })}
                           </TooltipContent>
                         ) : (
                           !levelEntitled(level) && (
@@ -853,12 +856,12 @@ export function ChangeDetailView() {
                       </Tooltip>
                       {sodBlocked && (
                         <span className="text-xs text-warning">
-                          SoD — switch the acting user to decide
+                          {t("approvals.sodSwitch")}
                         </span>
                       )}
                       {!levelEntitled(level) && !sodBlocked && (
                         <span className="text-xs text-muted-foreground">
-                          Not entitled for this level
+                          {t("approvals.notEntitled")}
                         </span>
                       )}
                     </div>
@@ -869,15 +872,12 @@ export function ChangeDetailView() {
             {missingApprovalRows.length > 0 && (
               <p className="flex items-center gap-1.5 text-xs text-warning">
                 <CircleAlert aria-hidden="true" className="size-3.5" />
-                No approval rows yet for: {missingApprovalRows.join(", ")} — submit the
-                change to create them.
+                {t("approvals.missingRows", { rows: missingApprovalRows.join(", ") })}
               </p>
             )}
             {change.status === "DRAFT" && (
               <p className="text-xs text-muted-foreground">
-                Draft changes carry no approval rows — they are created on submit per the
-                {` ${change.riskLevel}`} policy ({requiredLevels.join(" → ")}) for
-                approvers to action in the approvals queue.
+                {t("approvals.draftRows", { risk: change.riskLevel, levels: requiredLevels.join(" → ") })}
               </p>
             )}
           </div>
@@ -885,17 +885,17 @@ export function ChangeDetailView() {
 
         {/* Linked records */}
         <SectionCard
-          description="Pre/post-change snapshots and correlated incidents"
-          title="Linked records"
+          description={t("linked.description")}
+          title={t("linked.title")}
         >
           <div className="flex flex-col gap-4">
             <div>
               <p className="mb-2 text-xs font-medium text-muted-foreground">
-                Snapshots ({change.snapshots.length})
+                {t("linked.snapshots", { count: change.snapshots.length })}
               </p>
               {change.snapshots.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  None yet — pre/post-change backups appear here when the executor runs.
+                  {t("linked.snapshotsEmpty")}
                 </p>
               ) : (
                 <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto text-sm">
@@ -920,11 +920,11 @@ export function ChangeDetailView() {
             </div>
             <div>
               <p className="mb-2 text-xs font-medium text-muted-foreground">
-                Incidents ({change.incidents.length})
+                {t("linked.incidents", { count: change.incidents.length })}
               </p>
               {change.incidents.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No incidents correlated to this change.
+                  {t("linked.incidentsEmpty")}
                 </p>
               ) : (
                 <ul className="flex flex-col gap-1 text-sm">
@@ -952,8 +952,8 @@ export function ChangeDetailView() {
       {/* Pre-checks (when seeded or produced by the engine) */}
       {change.preChecks.length > 0 && (
         <SectionCard
-          description="Engine pre-check results merge into this list per device"
-          title="Pre-checks"
+          description={t("preChecks.description")}
+          title={t("preChecks.title")}
         >
           <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto text-sm">
             {change.preChecks.map((preCheck, index) => (
@@ -997,18 +997,16 @@ export function ChangeDetailView() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              Execute <span className="font-tech ltr-technical">{change.number}</span>?
+              {t("execute.title", { number: change.number })}
             </DialogTitle>
             <DialogDescription>
-              Queues a CHANGE_EXECUTE job — the worker drives each step
-              (pre-checks, pre-change backup, apply, validation). The run is
-              attributed to your signed-in account.
+              {t("execute.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">
             <div>
               <p className="text-xs font-medium text-muted-foreground">
-                Steps preview ({change.steps.length})
+                {t("execute.stepsPreview", { count: change.steps.length })}
               </p>
               <ol className="mt-1 flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border bg-surface-subtle/60 p-2 text-sm">
                 {change.steps.map((step) => (
@@ -1025,23 +1023,22 @@ export function ChangeDetailView() {
               </ol>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="fail-at-select">Simulate failure at</Label>
+              <Label htmlFor="fail-at-select">{t("execute.failAtLabel")}</Label>
               <Select onValueChange={setFailAt} value={failAt}>
                 <SelectTrigger id="fail-at-select">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="NONE">None — run the happy path</SelectItem>
-                  <SelectItem value="APPLY">APPLY — simulated apply failure</SelectItem>
+                  <SelectItem value="NONE">{t("execute.none")}</SelectItem>
+                  <SelectItem value="APPLY">{t("execute.apply")}</SelectItem>
                   <SelectItem value="VALIDATE">
-                    VALIDATE — simulated validation failure
+                    {t("execute.validate")}
                   </SelectItem>
                 </SelectContent>
               </Select>
               <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                 <Info aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
-                Demo control — forces the engine down its rollback path (restore
-                pre-change config, post-rollback validation + backup).
+                {t("execute.demoHint")}
               </p>
             </div>
           </div>
@@ -1051,7 +1048,7 @@ export function ChangeDetailView() {
               type="button"
               variant="ghost"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               disabled={executeChange.isPending}
@@ -1061,7 +1058,7 @@ export function ChangeDetailView() {
               {executeChange.isPending && (
                 <LoaderCircle aria-hidden="true" className="animate-spin" />
               )}
-              Queue execution
+              {t("execute.queue")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1077,21 +1074,21 @@ export function ChangeDetailView() {
             <>
               <DialogHeader>
                 <DialogTitle>
-                  {decision.decision === "APPROVED" ? "Approve" : "Reject"}{" "}
+                  {decision.decision === "APPROVED" ? t("common.approve") : t("common.reject")} {" "}
                   {resolveStatusLabel(lookupStatusConfig(CHANGE_APPROVAL_LEVEL_UI, decision.level))}
                 </DialogTitle>
                 <DialogDescription>
-                  {decision.decision === "APPROVED"
-                    ? "Recorded under your signed-in account — a comment is optional."
-                    : "Recorded under your signed-in account — a short reason (min 4 characters) is required."}
+                    {decision.decision === "APPROVED"
+                      ? t("decision.approvedDescription")
+                      : t("decision.rejectedDescription")}
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="detail-approval-comment">
-                  Comment {decision.decision === "APPROVED" ? "(optional)" : "(required)"}
+                  {t("decision.commentLabel", { requirement: decision.decision === "APPROVED" ? t("decision.optional") : t("decision.required") })}
                 </Label>
                 <Textarea
-                  aria-label="Decision comment"
+                  aria-label={t("decision.commentAria")}
                   id="detail-approval-comment"
                   onChange={(event) => setComment(event.target.value)}
                   rows={3}
@@ -1099,8 +1096,8 @@ export function ChangeDetailView() {
                 />
               </div>
               <DialogFooter>
-                <Button onClick={() => setDecision(null)} type="button" variant="ghost">
-                  Cancel
+                  <Button onClick={() => setDecision(null)} type="button" variant="ghost">
+                  {t("common.cancel")}
                 </Button>
                 <Button
                   className={
@@ -1115,7 +1112,7 @@ export function ChangeDetailView() {
                   onClick={submitDecision}
                   type="button"
                 >
-                  {decision.decision === "APPROVED" ? "Approve" : "Reject"}
+                  {decision.decision === "APPROVED" ? t("common.approve") : t("common.reject")}
                 </Button>
               </DialogFooter>
             </>
@@ -1132,21 +1129,21 @@ export function ChangeDetailView() {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {confirmAction === "SUBMIT"
-                ? `Submit ${change.number} for approval?`
+                ? t("confirm.submitTitle", { number: change.number })
                 : confirmAction === "CLOSE"
-                  ? `Mark ${change.number} closed?`
-                  : `Cancel ${change.number}?`}
+                  ? t("confirm.closeTitle", { number: change.number })
+                  : t("confirm.cancelTitle", { number: change.number })}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmAction === "SUBMIT"
-                ? `The draft moves to AWAITING_APPROVAL and PENDING approval rows are created per the ${change.riskLevel} policy: ${requiredLevels.join(", ")}.`
+                ? t("confirm.submitDescription", { risk: change.riskLevel, levels: requiredLevels.join(", ") })
                 : confirmAction === "CLOSE"
-                  ? "The successful change is signed off as CLOSED. Closed changes leave every active queue."
-                  : "The change is marked CANCELLED and leaves every planning queue. Execution states cannot be cancelled once the engine starts."}
+                  ? t("confirm.closeDescription")
+                  : t("confirm.cancelDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep as is</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.keepAsIs")}</AlertDialogCancel>
             <AlertDialogAction
               className={
                 confirmAction === "CANCEL"
@@ -1163,10 +1160,10 @@ export function ChangeDetailView() {
                 <LoaderCircle aria-hidden="true" className="animate-spin" />
               )}
               {confirmAction === "SUBMIT"
-                ? "Submit"
+                ? t("common.submit")
                 : confirmAction === "CLOSE"
-                  ? "Mark closed"
-                  : "Cancel change"}
+                  ? t("common.markClosed")
+                  : t("common.cancelChange")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

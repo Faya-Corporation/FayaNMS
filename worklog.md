@@ -3869,3 +3869,9 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (admin-users removed) + R100 backlog/worklog/audit report; **2 entries / 113 candidates** remain. Earlier governance pins now reflect the current dictionary total and ledger truth.
 - Tests: R100 isolated **5 pass / 0 fail / 172 expectations**; combined r56+r80–r100 governance **206 pass / 0 fail / 9,007 expectations** across 22 files. Full application gate and live browser evidence remain unavailable in this environment.
 - Docs: `docs/audits/FayaNMS-R100-I18n-Tranche6p-AdminUsers-Keyed-2026-09-22.md`, NEXT-TASKS R100 update. db/, .env, PAT never staged.
+
+## R101 — i18n tranche 6q: change detail keyed; ledger 2 → 1 (2026-09-22)
+- R101 tranche: **Change Detail fully keyed by hand** through NEW `changeDetail` (101 leaves en = ar deep parity; dictionary 2,632 → **2,733 = 2,733**). All 52 shallow candidates are zero across the change header/actions, KPI and detail panels, plans/devices/steps, approval actions, linked records, pre-checks, execute/decision/confirmation dialogs, and timeline output helpers. Change numbers, names, risk/status tokens, device and step data, timestamps, and command output remain data or technical values.
+- Governance: r56 sweep ledger −1 entry (change-detail removed) + R101 backlog/worklog/audit report; **1 entry / 61 candidates** remains. Earlier governance pins now reflect the current dictionary total and ledger truth.
+- Tests: R101 isolated **5 pass / 0 fail / 217 expectations**; combined r56+r80–r101 governance **211 pass / 0 fail / 9,424 expectations** across 23 files. Full application gate and live browser evidence remain unavailable in this environment.
+- Docs: `docs/audits/FayaNMS-R101-I18n-Tranche6q-ChangeDetail-Keyed-2026-09-22.md`, NEXT-TASKS R101 update. db/, .env, PAT never staged.

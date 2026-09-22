@@ -3711,5 +3711,140 @@
       "emailInvalid": "أدخل عنوان بريد إلكتروني صالحًا",
       "passwordMin": "8 أحرف على الأقل"
     }
+  },
+  "changeDetail": {
+    "approvals": {
+      "approveAria": "اعتماد {level}",
+      "description": "المستويات المطلوبة حسب سياسة المخاطر — اتخذ القرار بحسابك المسجّل",
+      "distinct": "اعتمادات مميزة",
+      "draftRows": "لا تحمل التغييرات المسودة صفوف اعتماد — تُنشأ عند الإرسال حسب سياسة {risk} ({levels}) ليعالجها المعتمدون في قائمة الاعتمادات.",
+      "entitlementHint": "يتطلب إذن «{permission}» الذي لا يملكه دورك.",
+      "missingRows": "لا توجد صفوف اعتماد بعد لـ: {rows} — أرسل التغيير لإنشائها.",
+      "notEntitled": "لا تملك صلاحية هذا المستوى",
+      "recordedAccount": "تُسجّل القرارات بحسابك المسجّل",
+      "rejectAria": "رفض {level}",
+      "sodBlocked": "حظر فصل المهام — لا يستطيع مقدم الطلب {action} تغيير {risk}",
+      "sodSwitch": "فصل المهام — بدّل المستخدم المنفّذ لاتخاذ القرار",
+      "title": "الاعتمادات",
+      "unassigned": "غير معيّن",
+      "validUntil": "صالح حتى"
+    },
+    "banners": {
+      "executionProgress": "التنفيذ جارٍ — يُحدّث المخطط الزمني للخطوات كل ثانيتين.",
+      "failed": "فشل التغيير أثناء التنفيذ. اربط حادثة لتتبع الاستجابة.",
+      "rollbackFailed": "فشل التغيير AND تعذر إكمال التراجع — تحقّق قبل إعادة المحاولة.",
+      "success": "نجحت كل الخطوات — اكتمل التغيير بنجاح. أغلقه لاعتماد السجل."
+    },
+    "common": {
+      "allChanges": "كل التغييرات",
+      "approve": "اعتماد",
+      "cancel": "إلغاء",
+      "cancelChange": "إلغاء التغيير",
+      "createIncident": "إنشاء حادثة من التغيير الفاشل",
+      "edit": "تعديل",
+      "execute": "تنفيذ",
+      "keepAsIs": "الإبقاء كما هو",
+      "markClosed": "تحديد كمغلق",
+      "reject": "رفض",
+      "submit": "إرسال",
+      "submitForApproval": "إرسال للاعتماد"
+    },
+    "confirm": {
+      "cancelDescription": "يُعلّم التغيير كملغى ويغادر قوائم التخطيط. لا يمكن إلغاء حالات التنفيذ بعد بدء المحرك.",
+      "cancelTitle": "إلغاء {number}؟",
+      "closeDescription": "يُعتمد التغيير الناجح كـ CLOSED. تغادر التغييرات المغلقة كل قائمة نشطة.",
+      "closeTitle": "تحديد {number} كمغلق؟",
+      "submitDescription": "ينتقل المسودّة إلى AWAITING_APPROVAL وتُنشأ صفوف اعتماد PENDING حسب سياسة {risk}: {levels}.",
+      "submitTitle": "إرسال {number} للاعتماد؟"
+    },
+    "decision": {
+      "approvedDescription": "يُسجّل بحسابك المسجّل — التعليق اختياري.",
+      "commentAria": "تعليق القرار",
+      "commentLabel": "التعليق {requirement}",
+      "optional": "(اختياري)",
+      "rejectedDescription": "يُسجّل بحسابك المسجّل — يلزم سبب قصير (4 أحرف على الأقل).",
+      "required": "(مطلوب)"
+    },
+    "details": {
+      "created": "أُنشئ",
+      "executeAvailability": "يتاح التنفيذ عندما يكون التغيير APPROVED أو SCHEDULED.",
+      "owner": "المالك",
+      "requester": "مقدم الطلب",
+      "scheduleWindow": "نافذة الجدولة",
+      "site": "الموقع",
+      "technicalOwner": "المالك التقني",
+      "title": "التفاصيل",
+      "unscheduled": "غير مجدول"
+    },
+    "devices": {
+      "description": "{count, plural, zero {لم يُستهدف أي جهاز} one {جهاز واحد مستهدف} two {جهازان مستهدفان} few {# أجهزة مستهدفة} many {# جهازًا مستهدفًا} other {# جهاز مستهدف}}",
+      "emptyDescription": "لا يحتوي هذا التغيير على روابط أجهزة.",
+      "emptyTitle": "لا توجد أجهزة",
+      "noSite": "دون موقع",
+      "title": "الأجهزة"
+    },
+    "empty": {
+      "noChangeDescription": "افتح تغييرًا من قائمة كل التغييرات.",
+      "noChangeTitle": "لم يُحدد تغيير"
+    },
+    "error": {
+      "loadTitle": "تعذر تحميل التغيير"
+    },
+    "execute": {
+      "apply": "APPLY — فشل تطبيق محاكى",
+      "demoHint": "عنصر تجريبي — يجبر المحرك على مسار التراجع (استعادة الإعداد السابق، والتحقق والنسخ الاحتياطي بعد التراجع).",
+      "description": "يضع مهمة CHANGE_EXECUTE في القائمة — يقود العامل كل خطوة (الفحوصات المسبقة والنسخ الاحتياطي قبل التغيير والتطبيق والتحقق). يُنسب التشغيل إلى حسابك المسجّل.",
+      "failAtLabel": "محاكاة الفشل عند",
+      "none": "لا شيء — تشغيل المسار الناجح",
+      "queue": "وضع التنفيذ في القائمة",
+      "stepsPreview": "معاينة الخطوات ({count})",
+      "title": "تنفيذ {number}؟",
+      "validate": "VALIDATE — فشل تحقق محاكى"
+    },
+    "kpi": {
+      "approvalsLabel": "الاعتمادات المعلقة",
+      "devicesLabel": "الأجهزة ضمن النطاق",
+      "missingRows": "الصفوف المفقودة: {rows}",
+      "perRiskPolicy": "حسب سياسة المخاطر",
+      "riskDescription": "درجة {score}/100",
+      "riskLabel": "المخاطر",
+      "stepsDescription": "تم اجتياز {done} من {total} أو تخطيها",
+      "stepsLabel": "الخطوات المكتملة"
+    },
+    "linked": {
+      "description": "لقطات ما قبل/بعد التغيير والحوادث المرتبطة",
+      "incidents": "الحوادث ({count})",
+      "incidentsEmpty": "لا توجد حوادث مرتبطة بهذا التغيير.",
+      "snapshots": "اللقطات ({count})",
+      "snapshotsEmpty": "لا شيء بعد — تظهر نسخ ما قبل/بعد التغيير هنا عند تشغيل المنفّذ.",
+      "title": "السجلات المرتبطة"
+    },
+    "plans": {
+      "description": "تُعرض خطط النثر كما كُتبت — دون تنسيق مسبق",
+      "implementation": "التنفيذ",
+      "notDocumented": "غير موثق بعد",
+      "rollback": "التراجع",
+      "title": "الخطط",
+      "validation": "التحقق"
+    },
+    "preChecks": {
+      "description": "تُدمج نتائج الفحوصات المسبقة للمحرك في هذه القائمة لكل جهاز",
+      "title": "الفحوصات المسبقة"
+    },
+    "steps": {
+      "description": "خطة تنفيذ مرتبة — تظهر خطوات التراجع المضافة بعد الفشل",
+      "emptyDescription": "لا يحتوي هذا التغيير على خطوات تنفيذ.",
+      "emptyTitle": "لا توجد خطوات",
+      "liveDescription": "مباشر — تتدفق الحالات من محرك التنفيذ",
+      "title": "الخطوات"
+    },
+    "timeline": {
+      "errorDetail": "تفاصيل الخطأ",
+      "finished": "انتهت {value}",
+      "output": "المخرجات",
+      "running": "جارٍ التنفيذ…",
+      "started": "بدأت {value}",
+      "took": " · استغرقت {value}"
+    }
   }
 }

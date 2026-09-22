@@ -57,9 +57,9 @@ describe("R93 — backup compliance namespace", () => {
     }
   });
 
-  test("checks dictionary totals at current HEAD after R100", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(2632);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(2632);
+  test("checks dictionary totals at current HEAD after R101", () => {
+    expect(leaves(readJson("messages/en.json")).length).toBe(2733);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(2733);
   });
 });
 
@@ -80,12 +80,12 @@ describe("R93 — view keying and ledger", () => {
     expect(en.backupCompliance.site.percent).toContain("{percent}");
   });
 
-  test("updates the R56 ledger to 2 views and 113 candidates", () => {
+  test("updates the R56 ledger to 1 view and 61 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     expect(block).not.toMatch(/"backup-compliance-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(2);
-    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(113);
+    expect(entries.length).toBe(1);
+    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(61);
   });
 });
