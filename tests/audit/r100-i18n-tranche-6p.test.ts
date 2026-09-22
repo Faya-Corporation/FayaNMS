@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** R91 — i18n tranche 6g: snapshots view keyed. */
+/** R100 — i18n tranche 6p: admin users view keyed. */
 
 const REPO = join(import.meta.dir, "..", "..");
-const VIEW = "src/components/views/snapshots-view.tsx";
+const VIEW = "src/components/views/admin-users-view.tsx";
 
 type Messages = Record<string, unknown>;
 
@@ -37,15 +37,15 @@ function candidates(src: string): string[] {
   ];
 }
 
-describe("R91 — snapshots namespace", () => {
-  test("has 39 non-empty leaves with deep EN/AR parity", () => {
+describe("R100 — admin users namespace", () => {
+  test("has 78 non-empty leaves with deep EN/AR parity", () => {
     const en = readJson("messages/en.json") as Record<string, Messages>;
     const ar = readJson("messages/ar.json") as Record<string, Messages>;
-    expect(leaves(en.snapshotsView).length).toBe(39);
-    expect(leaves(ar.snapshotsView).length).toBe(39);
-    expect(new Set(leaves(en.snapshotsView))).toEqual(new Set(leaves(ar.snapshotsView)));
+    expect(leaves(en.adminUsers).length).toBe(78);
+    expect(leaves(ar.adminUsers).length).toBe(78);
+    expect(new Set(leaves(en.adminUsers))).toEqual(new Set(leaves(ar.adminUsers)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).snapshotsView;
+      const namespace = (readJson(file) as Record<string, Messages>).adminUsers;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -53,38 +53,38 @@ describe("R91 — snapshots namespace", () => {
         }
         expect(typeof node === "string" && node.length > 0, `${file}:${path}`).toBe(true);
       };
-      walk(namespace, "snapshotsView");
+      walk(namespace, "adminUsers");
     }
   });
 
-  test("checks dictionary totals at current HEAD after R100", () => {
+  test("updates dictionary totals from R99's 2,554 leaves to 2,632", () => {
     expect(leaves(readJson("messages/en.json")).length).toBe(2632);
     expect(leaves(readJson("messages/ar.json")).length).toBe(2632);
   });
 });
 
-describe("R91 — view keying and ledger", () => {
-  test("consumes snapshotsView and has zero shallow sweep candidates", () => {
+describe("R100 — view keying and ledger", () => {
+  test("consumes adminUsers and has zero shallow sweep candidates", () => {
     const src = readRepo(VIEW);
-    expect(src).toContain('useTranslations("snapshotsView")');
+    expect(src).toContain('useTranslations("adminUsers")');
     expect(candidates(src)).toEqual([]);
   });
 
-  test("keeps selection and dialog interpolation shapes", () => {
+  test("keeps user and role interpolation shapes", () => {
     const src = readRepo(VIEW);
     const en = readJson("messages/en.json") as Record<string, Messages>;
-    expect(src).toContain('t("selection.ready"');
-    expect(src).toContain('t("dialog.title"');
-    expect(en.snapshotsView.selection.ready).toContain("{hostname}");
-    expect(en.snapshotsView.selection.ready).toContain("{from}");
-    expect(en.snapshotsView.selection.ready).toContain("{to}");
-    expect(en.snapshotsView.dialog.description).toContain("raw");
+    expect(src).toContain('t("row.roleAria"');
+    expect(src).toContain('t("kpi.activeDescription"');
+    expect(en.adminUsers.row.roleAria).toContain("{email}");
+    expect(en.adminUsers.row.deactivateAria).toContain("{email}");
+    expect(en.adminUsers.row.activateAria).toContain("{email}");
+    expect(en.adminUsers.reset.descriptionWithUser).toContain("{email}");
   });
 
   test("updates the R56 ledger to 2 views and 113 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
-    expect(block).not.toMatch(/"snapshots-view\.tsx":\s*\d/);
+    expect(block).not.toMatch(/"admin-users-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
     expect(entries.length).toBe(2);
     expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(113);

@@ -3607,5 +3607,109 @@
       "title": "حذف القناة؟",
       "description": "لن يتلقى «{name}» الإشعارات بعد الآن."
     }
+  },
+  "adminUsers": {
+    "page": {
+      "breadcrumbAdministration": "الإدارة",
+      "breadcrumbUsersRoles": "المستخدمون والأدوار",
+      "description": "الحسابات والأدوار والأذونات — يُحظر على المدققين والحسابات المعطلة كل إجراء كتابة على مستوى واجهة API",
+      "readOnlyCreate": "جلسة للقراءة فقط — تتطلب تغييرات الحساب مسؤولًا",
+      "title": "المستخدمون والأدوار"
+    },
+    "common": {
+      "cancel": "إلغاء",
+      "createUser": "إنشاء مستخدم",
+      "resetPassword": "إعادة تعيين كلمة المرور"
+    },
+    "kpi": {
+      "totalDescription": "حسابات تملك صلاحية تسجيل الدخول",
+      "totalLabel": "إجمالي المستخدمين",
+      "activeDescription": "{count} معطّل",
+      "activeLabel": "نشط",
+      "rolesDescription": "قوالب الأذونات",
+      "rolesLabel": "الأدوار",
+      "roleCount": "{role} {count}",
+      "byRoleLabel": "حسب الدور"
+    },
+    "filters": {
+      "searchAria": "البحث عن المستخدمين",
+      "searchPlaceholder": "ابحث بالاسم أو البريد الإلكتروني…",
+      "roleAria": "التصفية حسب الدور",
+      "allRoles": "كل الأدوار"
+    },
+    "accounts": {
+      "title": "الحسابات",
+      "description": "{total} مستخدم · {breakdown}",
+      "loading": "جارٍ التحميل…",
+      "roleCount": "{count} {role}",
+      "errorReason": "تعذر تحميل قائمة المستخدمين.",
+      "errorTitle": "تعذر تحميل المستخدمين",
+      "emptyDescription": "عدّل البحث أو مرشح الدور، أو أنشئ الحساب الأول.",
+      "emptyTitle": "لا يطابق أي مستخدم",
+      "tableAria": "حسابات المستخدمين — البريد الإلكتروني والدور والحالة وآخر نشاط لكل مستخدم",
+      "columns": {
+        "user": "المستخدم",
+        "role": "الدور",
+        "active": "نشط",
+        "created": "أُنشئ",
+        "actions": "الإجراءات"
+      }
+    },
+    "roleCatalog": {
+      "title": "دليل الأدوار",
+      "description": "مفاتيح الأذونات المقدمة من /api/v1/auth/session والمطبقة عبر المنصة",
+      "errorTitle": "تعذر تحميل الأدوار",
+      "roleOption": "{role} ({count})",
+      "userCount": "{count, plural, zero {# مستخدم} one {مستخدم واحد} two {مستخدمان} few {# مستخدمين} many {# مستخدمًا} other {# مستخدم}}"
+    },
+    "roles": {
+      "admin": "مسؤول",
+      "operator": "مشغّل",
+      "engineer": "مهندس",
+      "manager": "مدير",
+      "auditor": "مدقق",
+      "viewer": "مشاهد"
+    },
+    "row": {
+      "roleAria": "دور {email}",
+      "ownRole": "لا يمكنك تغيير دورك الخاص",
+      "readonlyRole": "جلسة للقراءة فقط — تتطلب تغييرات الأدوار مسؤولًا",
+      "deactivateAria": "تعطيل {email}",
+      "activateAria": "تفعيل {email}",
+      "activeAria": "حالة نشاط {email}",
+      "ownAccount": "لا يمكنك تعطيل حسابك الخاص",
+      "readonlyActivation": "جلسة للقراءة فقط — تتطلب تغييرات التفعيل مسؤولًا",
+      "you": "أنت",
+      "disabled": "معطّل",
+      "readonlyReset": "تتطلب إعادة تعيين كلمات المرور مسؤولًا"
+    },
+    "create": {
+      "description": "تُجزّأ كلمة المرور باستخدام scrypt قبل تخزينها — لا تُحفظ كنص واضح. ويُسجّل الإجراء (USER_CREATED).",
+      "fullNameLabel": "الاسم الكامل",
+      "fullNamePlaceholder": "مثل: ليلى المطيري",
+      "emailLabel": "البريد الإلكتروني",
+      "emailPlaceholder": "name@faya.local",
+      "roleLabel": "الدور",
+      "roleAria": "الدور",
+      "passwordLabel": "كلمة المرور الأولية",
+      "passwordPlaceholder": "8 أحرف على الأقل",
+      "accountActiveLabel": "الحساب نشط",
+      "accountInactive": "لا يمكن للحسابات غير النشطة تسجيل الدخول.",
+      "accountActiveAria": "الحساب نشط"
+    },
+    "reset": {
+      "descriptionWithUser": "عيّن كلمة مرور جديدة لـ {email}. ستتوقف كلمة المرور الحالية عن العمل فورًا. سُجّل الإجراء كـ USER_PASSWORD_RESET.",
+      "descriptionGeneric": "عيّن كلمة مرور جديدة. سُجّل الإجراء كـ USER_PASSWORD_RESET.",
+      "newPasswordLabel": "كلمة المرور الجديدة",
+      "generate": "توليد",
+      "confirmPasswordLabel": "تأكيد كلمة المرور",
+      "passwordMismatch": "كلمتا المرور غير متطابقتين.",
+      "securityHint": "شارك كلمة المرور الجديدة عبر قناة آمنة — تظهر هنا فقط وتُخزّن كقيمة scrypt مجزأة."
+    },
+    "validation": {
+      "nameRequired": "الاسم مطلوب",
+      "emailInvalid": "أدخل عنوان بريد إلكتروني صالحًا",
+      "passwordMin": "8 أحرف على الأقل"
+    }
   }
 }

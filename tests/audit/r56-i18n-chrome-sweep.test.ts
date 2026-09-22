@@ -223,7 +223,6 @@ const KEYED_SURVIVORS: Record<string, string[]> = {
  * regenerate with the same extractors when editing.
  */
 const PENDING_VIEWS: Record<string, number> = {
-  "admin-users-view.tsx": 51,
   "backups-view.tsx": 61,
   "change-detail-view.tsx": 52,
 };

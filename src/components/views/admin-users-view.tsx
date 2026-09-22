@@ -5,6 +5,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow, parseISO } from "date-fns";
+import { useTranslations } from "next-intl";
 import {
   BadgeCheck,
   KeyRound,
@@ -59,7 +60,7 @@ import { PageHeader } from "@/components/domain/page-header";
 import { SectionCard } from "@/components/domain/section-card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { ROLE_LABELS, USER_ROLES, type UserRole } from "@/lib/auth/roles";
+import { USER_ROLES, type UserRole } from "@/lib/auth/roles";
 import type { AdminRoleRow, AdminUserRow } from "@/lib/api-client";
 import { useCanWrite, useCurrentUserId } from "@/stores/permissions";
 
@@ -81,17 +82,24 @@ const ROLE_TONE: Record<string, string> = {
   viewer: "bg-muted text-muted-foreground",
 };
 
-const createUserSchema = z.object({
-  name: z.string().trim().min(1, "Name is required").max(80),
-  email: z.string().trim().email("Enter a valid email address").max(160),
+type TranslateFn = (key: string, values?: Record<string, string | number>) => string;
+
+function roleLabel(role: string, t: TranslateFn): string {
+  return t(`roles.${role}`);
+}
+
+const createUserSchema = (t: TranslateFn) => z.object({
+  name: z.string().trim().min(1, t("validation.nameRequired")).max(80),
+  email: z.string().trim().email(t("validation.emailInvalid")).max(160),
   role: z.enum(USER_ROLES),
-  password: z.string().min(8, "At least 8 characters").max(128),
+  password: z.string().min(8, t("validation.passwordMin")).max(128),
   isActive: z.boolean(),
 });
 
-type CreateUserForm = z.infer<typeof createUserSchema>;
+type CreateUserForm = z.infer<ReturnType<typeof createUserSchema>>;
 
 export function AdminUsersView() {
+  const t = useTranslations("adminUsers");
   const canWrite = useCanWrite();
   const currentUserId = useCurrentUserId();
 
@@ -120,18 +128,23 @@ export function AdminUsersView() {
   }, [users, roleFilter]);
 
   const disabledCount = (counts?.total ?? 0) - (counts?.active ?? 0);
+  const roleBreakdown = counts
+    ? Object.entries(counts.byRole)
+        .map(([role, count]) => t("accounts.roleCount", { role: roleLabel(role, t), count }))
+        .join(", ")
+    : "";
 
   return (
     <div className="flex flex-col gap-4">
       <div data-tour="admin-users-header">
         <PageHeader
-          breadcrumbs={[{ label: "Administration" }, { label: "Users & Roles" }]}
-          description="Accounts, roles and permissions — auditors and disabled accounts are blocked from every write at the API layer"
+          breadcrumbs={[{ label: t("page.breadcrumbAdministration") }, { label: t("page.breadcrumbUsersRoles") }]}
+          description={t("page.description")}
           primaryAction={
             canWrite ? (
               <Button onClick={() => setCreateOpen(true)}>
                 <UserPlus aria-hidden="true" className="size-4" />
-                Create user
+                {t("common.createUser")}
               </Button>
             ) : (
               <Tooltip>
@@ -139,40 +152,40 @@ export function AdminUsersView() {
                   <span className="inline-flex">
                     <Button disabled>
                       <UserPlus aria-hidden="true" className="size-4" />
-                      Create user
+                      {t("common.createUser")}
                     </Button>
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Read-only session — account changes require an administrator
+                  {t("page.readOnlyCreate")}
                 </TooltipContent>
               </Tooltip>
             )
           }
-          title="Users & Roles"
+          title={t("page.title")}
         />
       </div>
 
       {/* KPI row */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          description="Accounts with sign-in access"
+          description={t("kpi.totalDescription")}
           icon={Users}
-          label="Total users"
+          label={t("kpi.totalLabel")}
           loading={usersQuery.isLoading}
           value={counts?.total ?? "—"}
         />
         <KpiCard
-          description={`${disabledCount} disabled`}
+          description={t("kpi.activeDescription", { count: disabledCount })}
           icon={BadgeCheck}
-          label="Active"
+          label={t("kpi.activeLabel")}
           loading={usersQuery.isLoading}
           value={counts?.active ?? "—"}
         />
         <KpiCard
-          description="Permission templates"
+          description={t("kpi.rolesDescription")}
           icon={ShieldCheck}
-          label="Roles"
+          label={t("kpi.rolesLabel")}
           loading={rolesQuery.isLoading}
           value={roleCount || "—"}
         />
@@ -182,25 +195,23 @@ export function AdminUsersView() {
               ? Object.entries(counts.byRole)
                   .sort((a, b) => b[1] - a[1])
                   .slice(0, 3)
-                  .map(([role, count]) => `${role} ${count}`)
+                  .map(([role, count]) => t("kpi.roleCount", { role: roleLabel(role, t), count }))
                   .join(" · ")
               : undefined
           }
           icon={UserCog}
-          label="By role"
+          label={t("kpi.byRoleLabel")}
           loading={usersQuery.isLoading}
           value={counts ? Object.keys(counts.byRole).length : "—"}
         />
       </div>
 
       <SectionCard
-        title="Accounts"
+        title={t("accounts.title")}
         description={
           counts
-            ? `${counts.total} users · ${Object.entries(counts.byRole)
-                .map(([role, count]) => `${count} ${role}`)
-                .join(", ")}`
-            : "Loading…"
+            ? t("accounts.description", { total: counts.total, breakdown: roleBreakdown })
+            : t("accounts.loading")
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -210,9 +221,9 @@ export function AdminUsersView() {
                 className="absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
               />
               <Input
-                aria-label="Search users"
+                aria-label={t("filters.searchAria")}
                 className="w-full ps-8 sm:w-64"
-                placeholder="Search name or email…"
+                placeholder={t("filters.searchPlaceholder")}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
@@ -221,14 +232,14 @@ export function AdminUsersView() {
               value={roleFilter}
               onValueChange={setRoleFilter}
             >
-              <SelectTrigger aria-label="Filter by role" className="w-40">
+              <SelectTrigger aria-label={t("filters.roleAria")} className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All roles</SelectItem>
+                <SelectItem value="all">{t("filters.allRoles")}</SelectItem>
                 {roles.map((role) => (
                   <SelectItem key={role.id} value={role.name}>
-                    {role.name} ({role.userCount})
+                    {t("roleCatalog.roleOption", { role: roleLabel(role.name, t), count: role.userCount })}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -241,26 +252,26 @@ export function AdminUsersView() {
             reason={
               usersQuery.error instanceof Error
                 ? usersQuery.error.message
-                : "The user list could not be loaded."
+                : t("accounts.errorReason")
             }
-            title="Could not load users"
+            title={t("accounts.errorTitle")}
           />
         ) : visibleUsers.length === 0 && !usersQuery.isLoading ? (
           <EmptyState
-            description="Adjust the search or role filter, or create the first account."
+            description={t("accounts.emptyDescription")}
             icon={Users}
-            title="No users match"
+            title={t("accounts.emptyTitle")}
           />
         ) : (
           <div className="overflow-x-auto">
-            <Table aria-label="User accounts — email, role, active state and last activity per user">
+            <Table aria-label={t("accounts.tableAria")}>
               <TableHeader>
                 <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Active</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-end">Actions</TableHead>
+                  <TableHead>{t("accounts.columns.user")}</TableHead>
+                  <TableHead>{t("accounts.columns.role")}</TableHead>
+                  <TableHead>{t("accounts.columns.active")}</TableHead>
+                  <TableHead>{t("accounts.columns.created")}</TableHead>
+                  <TableHead className="text-end">{t("accounts.columns.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -296,11 +307,11 @@ export function AdminUsersView() {
 
       {/* Role catalog */}
       <SectionCard
-        title="Role catalog"
-        description="Permission keys served by /api/v1/auth/session and enforced across the platform"
+        title={t("roleCatalog.title")}
+        description={t("roleCatalog.description")}
       >
         {rolesQuery.isError ? (
-          <ErrorState title="Could not load roles" />
+          <ErrorState title={t("roleCatalog.errorTitle")} />
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {rolesQuery.isLoading
@@ -322,10 +333,10 @@ export function AdminUsersView() {
                           ROLE_TONE[role.name] ?? "bg-muted text-muted-foreground"
                         )}
                       >
-                        {role.name}
+                        {roleLabel(role.name, t)}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {role.userCount} user{role.userCount === 1 ? "" : "s"}
+                        {t("roleCatalog.userCount", { count: role.userCount })}
                       </span>
                     </div>
                     {role.description && (
@@ -402,6 +413,7 @@ function UserRow({
   onToggleActive,
   onResetPassword,
 }: UserRowProps) {
+  const t = useTranslations("adminUsers");
   const roleTone = ROLE_TONE[user.role] ?? "bg-muted text-muted-foreground";
   const createdAt = user.createdAt ? parseISO(user.createdAt) : null;
 
@@ -412,7 +424,7 @@ function UserRow({
       onValueChange={onUpdateRole}
     >
       <SelectTrigger
-        aria-label={`Role for ${user.email}`}
+        aria-label={t("row.roleAria", { email: user.email })}
         className="h-8 w-32"
         size="sm"
       >
@@ -421,7 +433,7 @@ function UserRow({
       <SelectContent>
         {USER_ROLES.map((role) => (
           <SelectItem key={role} value={role}>
-            {ROLE_LABELS[role]}
+            {roleLabel(role, t)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -440,15 +452,15 @@ function UserRow({
       </TooltipTrigger>
       <TooltipContent>
         {isSelf
-          ? "You cannot change your own role"
-          : "Read-only session — role changes require an administrator"}
+          ? t("row.ownRole")
+          : t("row.readonlyRole")}
       </TooltipContent>
     </Tooltip>
   );
 
   const activeControl = canWrite && !isSelf ? (
     <Switch
-      aria-label={user.isActive ? `Deactivate ${user.email}` : `Activate ${user.email}`}
+      aria-label={user.isActive ? t("row.deactivateAria", { email: user.email }) : t("row.activateAria", { email: user.email })}
       checked={user.isActive}
       onCheckedChange={onToggleActive}
     />
@@ -456,13 +468,13 @@ function UserRow({
     <Tooltip>
       <TooltipTrigger asChild>
         <span className="inline-flex">
-          <Switch aria-label={`${user.email} active state`} checked={user.isActive} disabled />
+          <Switch aria-label={t("row.activeAria", { email: user.email })} checked={user.isActive} disabled />
         </span>
       </TooltipTrigger>
       <TooltipContent>
         {isSelf
-          ? "You cannot deactivate your own account"
-          : "Read-only session — activation changes require an administrator"}
+          ? t("row.ownAccount")
+          : t("row.readonlyActivation")}
       </TooltipContent>
     </Tooltip>
   );
@@ -478,7 +490,7 @@ function UserRow({
                 className="rounded-full px-1.5 py-0 text-[10px]"
                 variant="secondary"
               >
-                You
+                {t("row.you")}
               </Badge>
             )}
           </span>
@@ -495,7 +507,7 @@ function UserRow({
                 roleTone
               )}
             >
-              {user.role}
+            {roleLabel(user.role, t)}
             </span>
           ) : null}
         </div>
@@ -504,7 +516,7 @@ function UserRow({
         <div className="flex items-center gap-2">
           {activeControl}
           {!user.isActive && (
-            <span className="text-xs text-danger">Disabled</span>
+            <span className="text-xs text-danger">{t("row.disabled")}</span>
           )}
         </div>
       </TableCell>
@@ -521,7 +533,7 @@ function UserRow({
             variant="outline"
           >
             <KeyRound aria-hidden="true" className="size-3.5" />
-            Reset password
+            {t("common.resetPassword")}
           </Button>
         ) : (
           <Tooltip>
@@ -529,12 +541,12 @@ function UserRow({
               <span className="inline-flex">
                 <Button disabled size="sm" variant="outline">
                   <KeyRound aria-hidden="true" className="size-3.5" />
-                  Reset password
+                  {t("common.resetPassword")}
                 </Button>
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              Password resets require an administrator
+              {t("row.readonlyReset")}
             </TooltipContent>
           </Tooltip>
         )}
@@ -560,6 +572,7 @@ function CreateUserDialog({
   onSubmit,
   pending,
 }: CreateUserDialogProps) {
+  const t = useTranslations("adminUsers");
   const {
     register,
     handleSubmit,
@@ -568,7 +581,7 @@ function CreateUserDialog({
     control,
     formState: { errors },
   } = useForm<CreateUserForm>({
-    resolver: zodResolver(createUserSchema),
+    resolver: zodResolver(createUserSchema(t)),
     defaultValues: {
       name: "",
       email: "",
@@ -597,10 +610,9 @@ function CreateUserDialog({
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Create user</DialogTitle>
+          <DialogTitle>{t("common.createUser")}</DialogTitle>
           <DialogDescription>
-            The password is hashed with scrypt before it is stored — plaintext
-            is never persisted. The action is audited (USER_CREATED).
+            {t("create.description")}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -608,10 +620,10 @@ function CreateUserDialog({
           onSubmit={handleSubmit((values) => onSubmit(values))}
         >
           <div className="flex flex-col gap-2">
-            <Label htmlFor="create-user-name">Full name</Label>
+            <Label htmlFor="create-user-name">{t("create.fullNameLabel")}</Label>
             <Input
               id="create-user-name"
-              placeholder="e.g. Layla Al-Mutairi"
+              placeholder={t("create.fullNamePlaceholder")}
               {...register("name")}
             />
             {errors.name && (
@@ -619,10 +631,10 @@ function CreateUserDialog({
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="create-user-email">Email</Label>
+            <Label htmlFor="create-user-email">{t("create.emailLabel")}</Label>
             <Input
               id="create-user-email"
-              placeholder="name@faya.local"
+              placeholder={t("create.emailPlaceholder")}
               type="email"
               {...register("email")}
             />
@@ -631,21 +643,21 @@ function CreateUserDialog({
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <Label>Role</Label>
+            <Label>{t("create.roleLabel")}</Label>
             <Select
               value={role}
               onValueChange={(value) =>
                 setValue("role", value as CreateUserForm["role"])
               }
             >
-              <SelectTrigger aria-label="Role">
+              <SelectTrigger aria-label={t("create.roleAria")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {(availableRoles.length > 0 ? availableRoles : USER_ROLES).map(
                   (roleOption) => (
                     <SelectItem key={roleOption} value={roleOption}>
-                      {ROLE_LABELS[roleOption]}
+                      {roleLabel(roleOption, t)}
                     </SelectItem>
                   )
                 )}
@@ -653,10 +665,10 @@ function CreateUserDialog({
             </Select>
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="create-user-password">Initial password</Label>
+            <Label htmlFor="create-user-password">{t("create.passwordLabel")}</Label>
             <Input
               id="create-user-password"
-              placeholder="At least 8 characters"
+              placeholder={t("create.passwordPlaceholder")}
               type="text"
               {...register("password")}
             />
@@ -666,13 +678,13 @@ function CreateUserDialog({
           </div>
           <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
             <div>
-              <Label htmlFor="create-user-active">Account active</Label>
+              <Label htmlFor="create-user-active">{t("create.accountActiveLabel")}</Label>
               <p className="text-xs text-muted-foreground">
-                Inactive accounts cannot sign in.
+                {t("create.accountInactive")}
               </p>
             </div>
             <Switch
-              aria-label="Account active"
+              aria-label={t("create.accountActiveAria")}
               checked={isActive}
               id="create-user-active"
               onCheckedChange={(checked) => setValue("isActive", checked)}
@@ -685,13 +697,13 @@ function CreateUserDialog({
               type="button"
               variant="outline"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button disabled={pending} type="submit">
               {pending && (
                 <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
               )}
-              Create user
+              {t("common.createUser")}
             </Button>
           </DialogFooter>
         </form>
@@ -722,6 +734,7 @@ function ResetPasswordDialog({
   onSubmit,
   pending,
 }: ResetPasswordDialogProps) {
+  const t = useTranslations("adminUsers");
   // State initializes empty; the parent keys this dialog by the target user,
   // so every open mounts a fresh instance (no clear-on-open effect needed).
   const [password, setPassword] = useState("");
@@ -743,17 +756,17 @@ function ResetPasswordDialog({
     >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Reset password</DialogTitle>
+          <DialogTitle>{t("common.resetPassword")}</DialogTitle>
           <DialogDescription>
             {user
-              ? `Set a new password for ${user.email}. The current password stops working immediately. Audited as USER_PASSWORD_RESET.`
-              : "Set a new password. Audited as USER_PASSWORD_RESET."}
+              ? t("reset.descriptionWithUser", { email: user.email })
+              : t("reset.descriptionGeneric")}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="reset-password-value">New password</Label>
+              <Label htmlFor="reset-password-value">{t("reset.newPasswordLabel")}</Label>
               <button
                 className="text-xs font-medium text-primary hover:underline"
                 type="button"
@@ -763,18 +776,18 @@ function ResetPasswordDialog({
                   setConfirm(generated);
                 }}
               >
-                Generate
+                {t("reset.generate")}
               </button>
             </div>
             <Input
               id="reset-password-value"
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="At least 8 characters"
+              placeholder={t("create.passwordPlaceholder")}
               value={password}
             />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="reset-password-confirm">Confirm password</Label>
+            <Label htmlFor="reset-password-confirm">{t("reset.confirmPasswordLabel")}</Label>
             <Input
               id="reset-password-confirm"
               onChange={(event) => setConfirm(event.target.value)}
@@ -782,13 +795,12 @@ function ResetPasswordDialog({
             />
             {mismatch && (
               <p className="text-xs text-danger">
-                Passwords do not match.
+                {t("reset.passwordMismatch")}
               </p>
             )}
           </div>
           <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-            Share the new password over a secure channel — it is shown only
-            here and stored as a scrypt hash.
+            {t("reset.securityHint")}
           </p>
         </div>
         <DialogFooter>
@@ -798,7 +810,7 @@ function ResetPasswordDialog({
             type="button"
             variant="outline"
           >
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             disabled={pending || !valid}
@@ -808,7 +820,7 @@ function ResetPasswordDialog({
             {pending && (
               <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
             )}
-            Reset password
+            {t("common.resetPassword")}
           </Button>
         </DialogFooter>
       </DialogContent>

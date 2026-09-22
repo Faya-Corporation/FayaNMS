@@ -3863,3 +3863,9 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (admin-integrations removed) + R99 backlog/worklog/audit report; **3 entries / 164 candidates** remain. Earlier governance pins now reflect the current dictionary total and ledger truth.
 - Tests: R99 isolated **5 pass / 0 fail / 144 expectations**; combined r56+r80–r99 governance **201 pass / 0 fail / 8,681 expectations** across 21 files. Full application gate and live browser evidence remain unavailable in this environment.
 - Docs: `docs/audits/FayaNMS-R99-I18n-Tranche6o-AdminIntegrations-Keyed-2026-09-22.md`, NEXT-TASKS R99 update. db/, .env, PAT never staged.
+
+## R100 — i18n tranche 6p: admin users keyed; ledger 3 → 2 (2026-09-22)
+- R100 tranche: **Admin users fully keyed by hand** through NEW `adminUsers` (78 leaves en = ar deep parity; dictionary 2,554 → **2,632 = 2,632**). All 51 shallow candidates are zero across the administration header, KPI strip, account filters/table, role catalog, row permission controls, create-user validation and dialog, and reset-password dialog. User and role data, permission keys, relative timestamps, and audit event tokens remain data or technical values.
+- Governance: r56 sweep ledger −1 entry (admin-users removed) + R100 backlog/worklog/audit report; **2 entries / 113 candidates** remain. Earlier governance pins now reflect the current dictionary total and ledger truth.
+- Tests: R100 isolated **5 pass / 0 fail / 172 expectations**; combined r56+r80–r100 governance **206 pass / 0 fail / 9,007 expectations** across 22 files. Full application gate and live browser evidence remain unavailable in this environment.
+- Docs: `docs/audits/FayaNMS-R100-I18n-Tranche6p-AdminUsers-Keyed-2026-09-22.md`, NEXT-TASKS R100 update. db/, .env, PAT never staged.

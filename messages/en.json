@@ -3607,5 +3607,109 @@
       "title": "Delete channel?",
       "description": "“{name}” will no longer receive notifications."
     }
+  },
+  "adminUsers": {
+    "page": {
+      "breadcrumbAdministration": "Administration",
+      "breadcrumbUsersRoles": "Users & Roles",
+      "description": "Accounts, roles and permissions — auditors and disabled accounts are blocked from every write at the API layer",
+      "readOnlyCreate": "Read-only session — account changes require an administrator",
+      "title": "Users & Roles"
+    },
+    "common": {
+      "cancel": "Cancel",
+      "createUser": "Create user",
+      "resetPassword": "Reset password"
+    },
+    "kpi": {
+      "totalDescription": "Accounts with sign-in access",
+      "totalLabel": "Total users",
+      "activeDescription": "{count} disabled",
+      "activeLabel": "Active",
+      "rolesDescription": "Permission templates",
+      "rolesLabel": "Roles",
+      "roleCount": "{role} {count}",
+      "byRoleLabel": "By role"
+    },
+    "filters": {
+      "searchAria": "Search users",
+      "searchPlaceholder": "Search name or email…",
+      "roleAria": "Filter by role",
+      "allRoles": "All roles"
+    },
+    "accounts": {
+      "title": "Accounts",
+      "description": "{total} users · {breakdown}",
+      "loading": "Loading…",
+      "roleCount": "{count} {role}",
+      "errorReason": "The user list could not be loaded.",
+      "errorTitle": "Could not load users",
+      "emptyDescription": "Adjust the search or role filter, or create the first account.",
+      "emptyTitle": "No users match",
+      "tableAria": "User accounts — email, role, active state and last activity per user",
+      "columns": {
+        "user": "User",
+        "role": "Role",
+        "active": "Active",
+        "created": "Created",
+        "actions": "Actions"
+      }
+    },
+    "roleCatalog": {
+      "title": "Role catalog",
+      "description": "Permission keys served by /api/v1/auth/session and enforced across the platform",
+      "errorTitle": "Could not load roles",
+      "roleOption": "{role} ({count})",
+      "userCount": "{count, plural, one {# user} other {# users}}"
+    },
+    "roles": {
+      "admin": "Administrator",
+      "operator": "Operator",
+      "engineer": "Engineer",
+      "manager": "Manager",
+      "auditor": "Auditor",
+      "viewer": "Viewer"
+    },
+    "row": {
+      "roleAria": "Role for {email}",
+      "ownRole": "You cannot change your own role",
+      "readonlyRole": "Read-only session — role changes require an administrator",
+      "deactivateAria": "Deactivate {email}",
+      "activateAria": "Activate {email}",
+      "activeAria": "{email} active state",
+      "ownAccount": "You cannot deactivate your own account",
+      "readonlyActivation": "Read-only session — activation changes require an administrator",
+      "you": "You",
+      "disabled": "Disabled",
+      "readonlyReset": "Password resets require an administrator"
+    },
+    "create": {
+      "description": "The password is hashed with scrypt before it is stored — plaintext is never persisted. The action is audited (USER_CREATED).",
+      "fullNameLabel": "Full name",
+      "fullNamePlaceholder": "e.g. Layla Al-Mutairi",
+      "emailLabel": "Email",
+      "emailPlaceholder": "name@faya.local",
+      "roleLabel": "Role",
+      "roleAria": "Role",
+      "passwordLabel": "Initial password",
+      "passwordPlaceholder": "At least 8 characters",
+      "accountActiveLabel": "Account active",
+      "accountInactive": "Inactive accounts cannot sign in.",
+      "accountActiveAria": "Account active"
+    },
+    "reset": {
+      "descriptionWithUser": "Set a new password for {email}. The current password stops working immediately. Audited as USER_PASSWORD_RESET.",
+      "descriptionGeneric": "Set a new password. Audited as USER_PASSWORD_RESET.",
+      "newPasswordLabel": "New password",
+      "generate": "Generate",
+      "confirmPasswordLabel": "Confirm password",
+      "passwordMismatch": "Passwords do not match.",
+      "securityHint": "Share the new password over a secure channel — it is shown only here and stored as a scrypt hash."
+    },
+    "validation": {
+      "nameRequired": "Name is required",
+      "emailInvalid": "Enter a valid email address",
+      "passwordMin": "At least 8 characters"
+    }
   }
 }
