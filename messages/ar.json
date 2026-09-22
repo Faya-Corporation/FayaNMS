@@ -3508,5 +3508,104 @@
     "common": {
       "cancel": "إلغاء"
     }
+  },
+  "adminIntegrations": {
+    "page": {
+      "title": "التكاملات",
+      "description": "خطافات ويب موقعة وقنوات تسليم الإشعارات"
+    },
+    "sections": {
+      "webhooks": {
+        "title": "خطافات الويب",
+        "description": "تسليمات موقعة بـ HMAC-SHA256 — X-Faya-Signature: sha256=<hex> على الجسم الخام",
+        "error": "تعذر تحميل خطافات الويب",
+        "emptyTitle": "لا توجد خطافات ويب مُعدّة",
+        "emptyDescription": "اشترك في نقطة نهاية لتنبيهات التنبيه والحوادث والتغييرات — التسليمات موقعة.",
+        "tableAria": "نقاط نهاية خطافات الويب — العنوان والأحداث والحالة وآخر نتيجة تسليم"
+      },
+      "channels": {
+        "title": "قنوات الإشعارات",
+        "description": "وجهات البريد الإلكتروني (في قائمة العرض التجريبي) وخطافات الويب لإشعارات المنصة",
+        "error": "تعذر تحميل القنوات",
+        "emptyTitle": "لا توجد قنوات إشعارات",
+        "emptyDescription": "أضف عنوان بريد إلكتروني أو عنوان خطاف ويب لتوجيه إشعارات المنصة.",
+        "tableAria": "قنوات الإشعارات — النوع والوجهة والحالة وآخر نتيجة اختبار"
+      }
+    },
+    "webhooks": {
+      "columns": {
+        "endpoint": "نقطة النهاية",
+        "events": "الأحداث",
+        "secret": "السر",
+        "lastDelivery": "آخر تسليم",
+        "active": "نشطة",
+        "actions": "الإجراءات"
+      }
+    },
+    "channels": {
+      "columns": {
+        "channel": "القناة",
+        "type": "النوع",
+        "target": "الهدف",
+        "lastTest": "آخر اختبار",
+        "active": "نشطة",
+        "actions": "الإجراءات"
+      }
+    },
+    "delivery": {
+      "neverDelivered": "لم يتم التسليم بعد",
+      "delivered": "تم التسليم{code}",
+      "failed": "فشل",
+      "neverTested": "لم تُختبر بعد"
+    },
+    "row": {
+      "toggleAria": "تبديل {name}"
+    },
+    "common": {
+      "cancel": "إلغاء",
+      "done": "تم — حفظته",
+      "test": "اختبار",
+      "delete": "حذف",
+      "creating": "جارٍ الإنشاء…",
+      "deleting": "جارٍ الحذف…",
+      "newChannel": "قناة جديدة",
+      "newWebhook": "خطاف ويب جديد",
+      "createWebhook": "إنشاء خطاف ويب",
+      "createChannel": "إنشاء قناة"
+    },
+    "webhookDialog": {
+      "title": "خطاف ويب جديد",
+      "description": "تُوقّع التسليمات بسر HMAC يُنشئه الخادم (يظهر مرة واحدة بعد الإنشاء).",
+      "nameLabel": "الاسم",
+      "namePlaceholder": "soc-ticketing",
+      "endpointLabel": "عنوان نقطة النهاية",
+      "endpointPlaceholder": "https://hooks.example.com/fayanms",
+      "eventsLabel": "الاشتراك في الأحداث ({count})"
+    },
+    "secretDialog": {
+      "title": "سر التوقيع — «{name}»",
+      "description": "يظهر مرة واحدة. تحقّق من التسليمات بإعادة حساب HMAC-SHA256 على الجسم الخام."
+    },
+    "deleteWebhook": {
+      "title": "حذف خطاف الويب؟",
+      "description": "سيتوقف «{name}» عن تلقي الأحداث فورًا. لا يمكن التراجع عن ذلك."
+    },
+    "channelDialog": {
+      "title": "قناة إشعارات جديدة",
+      "description": "تُضاف اختبارات البريد إلى قائمة العرض التجريبي؛ وتُرسل اختبارات خطاف الويب كطلبات POST موقعة.",
+      "nameLabel": "الاسم",
+      "namePlaceholder": "noc-mailing-list",
+      "typeLabel": "النوع",
+      "email": "EMAIL",
+      "webhook": "WEBHOOK",
+      "recipientLabel": "عنوان المستلم",
+      "recipientPlaceholder": "noc@example.com",
+      "webhookUrlLabel": "عنوان خطاف الويب",
+      "webhookUrlPlaceholder": "https://hooks.example.com/notify"
+    },
+    "deleteChannel": {
+      "title": "حذف القناة؟",
+      "description": "لن يتلقى «{name}» الإشعارات بعد الآن."
+    }
   }
 }

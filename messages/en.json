@@ -3508,5 +3508,104 @@
     "common": {
       "cancel": "Cancel"
     }
+  },
+  "adminIntegrations": {
+    "page": {
+      "title": "Integrations",
+      "description": "Signed webhooks and notification delivery channels"
+    },
+    "sections": {
+      "webhooks": {
+        "title": "Webhooks",
+        "description": "HMAC-SHA256 signed deliveries — X-Faya-Signature: sha256=<hex> over the raw body",
+        "error": "Could not load webhooks",
+        "emptyTitle": "No webhooks configured",
+        "emptyDescription": "Subscribe an endpoint to alert, incident and change events — deliveries are signed.",
+        "tableAria": "Webhook endpoints — URL, events, enabled state and last delivery outcome"
+      },
+      "channels": {
+        "title": "Notification channels",
+        "description": "Email (demo-queued) and webhook delivery targets for platform notifications",
+        "error": "Could not load channels",
+        "emptyTitle": "No notification channels",
+        "emptyDescription": "Add an email address or a webhook URL to route platform notifications.",
+        "tableAria": "Notification channels — type, destination, enabled state and last test outcome"
+      }
+    },
+    "webhooks": {
+      "columns": {
+        "endpoint": "Endpoint",
+        "events": "Events",
+        "secret": "Secret",
+        "lastDelivery": "Last delivery",
+        "active": "Active",
+        "actions": "Actions"
+      }
+    },
+    "channels": {
+      "columns": {
+        "channel": "Channel",
+        "type": "Type",
+        "target": "Target",
+        "lastTest": "Last test",
+        "active": "Active",
+        "actions": "Actions"
+      }
+    },
+    "delivery": {
+      "neverDelivered": "never delivered",
+      "delivered": "delivered{code}",
+      "failed": "failed",
+      "neverTested": "never tested"
+    },
+    "row": {
+      "toggleAria": "Toggle {name}"
+    },
+    "common": {
+      "cancel": "Cancel",
+      "done": "Done — I saved it",
+      "test": "Test",
+      "delete": "Delete",
+      "creating": "Creating…",
+      "deleting": "Deleting…",
+      "newChannel": "New channel",
+      "newWebhook": "New webhook",
+      "createWebhook": "Create webhook",
+      "createChannel": "Create channel"
+    },
+    "webhookDialog": {
+      "title": "New webhook",
+      "description": "Deliveries are signed with a server-generated HMAC secret (shown once after creation).",
+      "nameLabel": "Name",
+      "namePlaceholder": "soc-ticketing",
+      "endpointLabel": "Endpoint URL",
+      "endpointPlaceholder": "https://hooks.example.com/fayanms",
+      "eventsLabel": "Subscribe to events ({count})"
+    },
+    "secretDialog": {
+      "title": "Signing secret — “{name}”",
+      "description": "Shown once. Verify deliveries by recomputing HMAC-SHA256 over the raw body."
+    },
+    "deleteWebhook": {
+      "title": "Delete webhook?",
+      "description": "“{name}” stops receiving events immediately. This cannot be undone."
+    },
+    "channelDialog": {
+      "title": "New notification channel",
+      "description": "Email tests queue in demo mode; webhook tests deliver signed POSTs.",
+      "nameLabel": "Name",
+      "namePlaceholder": "noc-mailing-list",
+      "typeLabel": "Type",
+      "email": "EMAIL",
+      "webhook": "WEBHOOK",
+      "recipientLabel": "Recipient address",
+      "recipientPlaceholder": "noc@example.com",
+      "webhookUrlLabel": "Webhook URL",
+      "webhookUrlPlaceholder": "https://hooks.example.com/notify"
+    },
+    "deleteChannel": {
+      "title": "Delete channel?",
+      "description": "“{name}” will no longer receive notifications."
+    }
   }
 }

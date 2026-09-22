@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { Bell, Globe, Mail, Plus, Send, Trash2, Webhook } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import {
   useCreateNotificationChannel,
@@ -60,21 +61,27 @@ import { useCanWrite } from "@/stores/permissions";
  * unreachable receiver is a recorded result, never an error dialog.
  */
 
-function deliveryBadge(row: { lastStatus: string | null; lastStatusCode: number | null }) {
+type TranslateFn = (key: string, values?: Record<string, string | number>) => string;
+
+function deliveryBadge(
+  row: { lastStatus: string | null; lastStatusCode: number | null },
+  t: TranslateFn,
+) {
   if (!row.lastStatus) {
-    return <Badge variant="outline" className="text-muted-foreground">never delivered</Badge>;
+    return <Badge variant="outline" className="text-muted-foreground">{t("delivery.neverDelivered")}</Badge>;
   }
   if (row.lastStatus === "DELIVERED") {
     return (
       <Badge className="bg-success/10 text-success">
-        delivered {row.lastStatusCode ? `· ${row.lastStatusCode}` : ""}
+        {t("delivery.delivered", { code: row.lastStatusCode ? ` · ${row.lastStatusCode}` : "" })}
       </Badge>
     );
   }
-  return <Badge className="bg-danger-orange/10 text-danger-orange">failed</Badge>;
+  return <Badge className="bg-danger-orange/10 text-danger-orange">{t("delivery.failed")}</Badge>;
 }
 
 export function AdminIntegrationsView() {
+  const t = useTranslations("adminIntegrations");
   const canWrite = useCanWrite();
 
   const webhooksQuery = useWebhooks();
@@ -138,16 +145,16 @@ export function AdminIntegrationsView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Integrations"
-        description="Signed webhooks and notification delivery channels"
+        title={t("page.title")}
+        description={t("page.description")}
         actions={
           canWrite ? (
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => setChannelOpen(true)}>
-                <Bell className="mr-2 size-4" /> New channel
+                <Bell className="mr-2 size-4" /> {t("common.newChannel")}
               </Button>
               <Button size="sm" onClick={() => setWebhookOpen(true)}>
-                <Webhook className="mr-2 size-4" /> New webhook
+                <Webhook className="mr-2 size-4" /> {t("common.newWebhook")}
               </Button>
             </div>
           ) : undefined
@@ -155,8 +162,8 @@ export function AdminIntegrationsView() {
       />
 
       <SectionCard
-        title="Webhooks"
-        description="HMAC-SHA256 signed deliveries — X-Faya-Signature: sha256=<hex> over the raw body"
+        title={t("sections.webhooks.title")}
+        description={t("sections.webhooks.description")}
       >
         {webhooksQuery.isLoading ? (
           <div className="space-y-2 p-4">
@@ -165,23 +172,23 @@ export function AdminIntegrationsView() {
             ))}
           </div>
         ) : webhooksQuery.isError ? (
-          <ErrorState title="Could not load webhooks" reason="Try again." onRetry={() => void webhooksQuery.refetch()} />
+          <ErrorState title={t("sections.webhooks.error")} reason="Try again." onRetry={() => void webhooksQuery.refetch()} />
         ) : webhooks.length === 0 ? (
           <EmptyState
             icon={Webhook}
-            title="No webhooks configured"
-            description="Subscribe an endpoint to alert, incident and change events — deliveries are signed."
+            title={t("sections.webhooks.emptyTitle")}
+            description={t("sections.webhooks.emptyDescription")}
           />
         ) : (
-          <Table aria-label="Webhook endpoints — URL, events, enabled state and last delivery outcome">
+          <Table aria-label={t("sections.webhooks.tableAria")}>
             <TableHeader>
               <TableRow>
-                <TableHead>Endpoint</TableHead>
-                <TableHead>Events</TableHead>
-                <TableHead>Secret</TableHead>
-                <TableHead>Last delivery</TableHead>
-                <TableHead>Active</TableHead>
-                {canWrite && <TableHead className="text-right">Actions</TableHead>}
+                <TableHead>{t("webhooks.columns.endpoint")}</TableHead>
+                <TableHead>{t("webhooks.columns.events")}</TableHead>
+                <TableHead>{t("webhooks.columns.secret")}</TableHead>
+                <TableHead>{t("webhooks.columns.lastDelivery")}</TableHead>
+                <TableHead>{t("webhooks.columns.active")}</TableHead>
+                {canWrite && <TableHead className="text-right">{t("webhooks.columns.actions")}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -218,7 +225,7 @@ export function AdminIntegrationsView() {
                     </code>
                   </TableCell>
                   <TableCell>
-                    {deliveryBadge(webhook)}
+                    {deliveryBadge(webhook, t)}
                     {webhook.lastDeliveredAt && (
                       <div className="text-xs text-muted-foreground">
                         {formatDistanceToNow(parseISO(webhook.lastDeliveredAt), { addSuffix: true })}
@@ -232,7 +239,7 @@ export function AdminIntegrationsView() {
                       onCheckedChange={(checked) =>
                         void updateWebhookMut.mutateAsync({ id: webhook.id, isActive: checked })
                       }
-                      aria-label={`Toggle ${webhook.name}`}
+                      aria-label={t("row.toggleAria", { name: webhook.name })}
                     />
                   </TableCell>
                   {canWrite && (
@@ -244,7 +251,7 @@ export function AdminIntegrationsView() {
                           onClick={() => void testWebhookMut.mutateAsync(webhook.id)}
                           disabled={testWebhookMut.isPending}
                         >
-                          <Send className="mr-1 size-3" /> Test
+                          <Send className="mr-1 size-3" /> {t("common.test")}
                         </Button>
                         <Button
                           variant="outline"
@@ -265,31 +272,31 @@ export function AdminIntegrationsView() {
       </SectionCard>
 
       <SectionCard
-        title="Notification channels"
-        description="Email (demo-queued) and webhook delivery targets for platform notifications"
+        title={t("sections.channels.title")}
+        description={t("sections.channels.description")}
       >
         {channelsQuery.isLoading ? (
           <div className="space-y-2 p-4">
             <div className="h-10 animate-pulse rounded bg-muted" />
           </div>
         ) : channelsQuery.isError ? (
-          <ErrorState title="Could not load channels" reason="Try again." onRetry={() => void channelsQuery.refetch()} />
+          <ErrorState title={t("sections.channels.error")} reason="Try again." onRetry={() => void channelsQuery.refetch()} />
         ) : channels.length === 0 ? (
           <EmptyState
             icon={Bell}
-            title="No notification channels"
-            description="Add an email address or a webhook URL to route platform notifications."
+            title={t("sections.channels.emptyTitle")}
+            description={t("sections.channels.emptyDescription")}
           />
         ) : (
-          <Table aria-label="Notification channels — type, destination, enabled state and last test outcome">
+          <Table aria-label={t("sections.channels.tableAria")}>
             <TableHeader>
               <TableRow>
-                <TableHead>Channel</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Last test</TableHead>
-                <TableHead>Active</TableHead>
-                {canWrite && <TableHead className="text-right">Actions</TableHead>}
+                <TableHead>{t("channels.columns.channel")}</TableHead>
+                <TableHead>{t("channels.columns.type")}</TableHead>
+                <TableHead>{t("channels.columns.target")}</TableHead>
+                <TableHead>{t("channels.columns.lastTest")}</TableHead>
+                <TableHead>{t("channels.columns.active")}</TableHead>
+                {canWrite && <TableHead className="text-right">{t("channels.columns.actions")}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -299,11 +306,11 @@ export function AdminIntegrationsView() {
                   <TableCell>
                     {channel.type === "EMAIL" ? (
                       <Badge className="bg-info/10 text-info">
-                        <Mail className="mr-1 size-3" /> EMAIL
+                        <Mail className="mr-1 size-3" /> {t("channelDialog.email")}
                       </Badge>
                     ) : (
                       <Badge className="bg-warning/10 text-warning">
-                        <Globe className="mr-1 size-3" /> WEBHOOK
+                        <Globe className="mr-1 size-3" /> {t("channelDialog.webhook")}
                       </Badge>
                     )}
                   </TableCell>
@@ -314,7 +321,7 @@ export function AdminIntegrationsView() {
                     {channel.lastTestResult ? (
                       <span className="text-xs text-muted-foreground">{channel.lastTestResult}</span>
                     ) : (
-                      <span className="text-xs text-muted-foreground">never tested</span>
+                      <span className="text-xs text-muted-foreground">{t("delivery.neverTested")}</span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -324,7 +331,7 @@ export function AdminIntegrationsView() {
                       onCheckedChange={(checked) =>
                         void updateChannelMut.mutateAsync({ id: channel.id, isActive: checked })
                       }
-                      aria-label={`Toggle ${channel.name}`}
+                      aria-label={t("row.toggleAria", { name: channel.name })}
                     />
                   </TableCell>
                   {canWrite && (
@@ -336,7 +343,7 @@ export function AdminIntegrationsView() {
                           onClick={() => void testChannelMut.mutateAsync(channel.id)}
                           disabled={testChannelMut.isPending}
                         >
-                          <Send className="mr-1 size-3" /> Test
+                          <Send className="mr-1 size-3" /> {t("common.test")}
                         </Button>
                         <Button
                           variant="outline"
@@ -360,22 +367,20 @@ export function AdminIntegrationsView() {
       <Dialog open={webhookOpen} onOpenChange={setWebhookOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>New webhook</DialogTitle>
-            <DialogDescription>
-              Deliveries are signed with a server-generated HMAC secret (shown once after creation).
-            </DialogDescription>
+            <DialogTitle>{t("webhookDialog.title")}</DialogTitle>
+            <DialogDescription>{t("webhookDialog.description")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="wh-name">Name</Label>
-              <Input id="wh-name" value={whName} onChange={(e) => setWhName(e.target.value)} placeholder="soc-ticketing" maxLength={80} />
+              <Label htmlFor="wh-name">{t("webhookDialog.nameLabel")}</Label>
+              <Input id="wh-name" value={whName} onChange={(e) => setWhName(e.target.value)} placeholder={t("webhookDialog.namePlaceholder")} maxLength={80} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="wh-url">Endpoint URL</Label>
-              <Input id="wh-url" value={whUrl} onChange={(e) => setWhUrl(e.target.value)} placeholder="https://hooks.example.com/fayanms" />
+              <Label htmlFor="wh-url">{t("webhookDialog.endpointLabel")}</Label>
+              <Input id="wh-url" value={whUrl} onChange={(e) => setWhUrl(e.target.value)} placeholder={t("webhookDialog.endpointPlaceholder")} />
             </div>
             <div className="space-y-2">
-              <Label>Subscribe to events ({whEvents.length})</Label>
+              <Label>{t("webhookDialog.eventsLabel", { count: whEvents.length })}</Label>
               <div className="grid max-h-40 grid-cols-2 gap-1.5 overflow-y-auto rounded-md border p-2">
                 {eventCatalog.map((event) => {
                   const checked = whEvents.includes(event);
@@ -402,12 +407,12 @@ export function AdminIntegrationsView() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setWebhookOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setWebhookOpen(false)}>{t("common.cancel")}</Button>
             <Button
               onClick={() => void handleCreateWebhook()}
               disabled={!whName.trim() || !whUrl.trim() || whEvents.length === 0 || createWebhookMut.isPending}
             >
-              {createWebhookMut.isPending ? "Creating…" : "Create webhook"}
+              {createWebhookMut.isPending ? t("common.creating") : t("common.createWebhook")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -417,12 +422,12 @@ export function AdminIntegrationsView() {
       <Dialog open={Boolean(secretReveal)} onOpenChange={(open) => !open && setSecretReveal(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Signing secret — “{secretReveal?.name}”</DialogTitle>
-            <DialogDescription>Shown once. Verify deliveries by recomputing HMAC-SHA256 over the raw body.</DialogDescription>
+            <DialogTitle>{t("secretDialog.title", { name: secretReveal?.name ?? "" })}</DialogTitle>
+            <DialogDescription>{t("secretDialog.description")}</DialogDescription>
           </DialogHeader>
           <code className="break-all rounded bg-muted p-2 font-mono text-xs">{secretReveal?.secret}</code>
           <DialogFooter>
-            <Button onClick={() => setSecretReveal(null)}>Done — I saved it</Button>
+            <Button onClick={() => setSecretReveal(null)}>{t("common.done")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -431,11 +436,11 @@ export function AdminIntegrationsView() {
       <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete webhook?</DialogTitle>
-            <DialogDescription>“{deleteTarget?.name}” stops receiving events immediately. This cannot be undone.</DialogDescription>
+            <DialogTitle>{t("deleteWebhook.title")}</DialogTitle>
+            <DialogDescription>{t("deleteWebhook.description", { name: deleteTarget?.name ?? "" })}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>{t("common.cancel")}</Button>
             <Button
               variant="destructive"
               onClick={async () => {
@@ -444,7 +449,7 @@ export function AdminIntegrationsView() {
               }}
               disabled={deleteWebhookMut.isPending}
             >
-              {deleteWebhookMut.isPending ? "Deleting…" : "Delete"}
+              {deleteWebhookMut.isPending ? t("common.deleting") : t("common.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -454,38 +459,38 @@ export function AdminIntegrationsView() {
       <Dialog open={channelOpen} onOpenChange={setChannelOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>New notification channel</DialogTitle>
-            <DialogDescription>Email tests queue in demo mode; webhook tests deliver signed POSTs.</DialogDescription>
+            <DialogTitle>{t("channelDialog.title")}</DialogTitle>
+            <DialogDescription>{t("channelDialog.description")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="ch-name">Name</Label>
-              <Input id="ch-name" value={chName} onChange={(e) => setChName(e.target.value)} placeholder="noc-mailing-list" maxLength={80} />
+              <Label htmlFor="ch-name">{t("channelDialog.nameLabel")}</Label>
+              <Input id="ch-name" value={chName} onChange={(e) => setChName(e.target.value)} placeholder={t("channelDialog.namePlaceholder")} maxLength={80} />
             </div>
             <div className="space-y-2">
-              <Label>Type</Label>
+              <Label>{t("channelDialog.typeLabel")}</Label>
               <Select value={chType} onValueChange={setChType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="EMAIL">EMAIL</SelectItem>
-                  <SelectItem value="WEBHOOK">WEBHOOK</SelectItem>
+                  <SelectItem value="EMAIL">{t("channelDialog.email")}</SelectItem>
+                  <SelectItem value="WEBHOOK">{t("channelDialog.webhook")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {chType === "EMAIL" ? (
               <div className="space-y-2">
-                <Label htmlFor="ch-address">Recipient address</Label>
-                <Input id="ch-address" type="email" value={chAddress} onChange={(e) => setChAddress(e.target.value)} placeholder="noc@example.com" />
+                <Label htmlFor="ch-address">{t("channelDialog.recipientLabel")}</Label>
+                <Input id="ch-address" type="email" value={chAddress} onChange={(e) => setChAddress(e.target.value)} placeholder={t("channelDialog.recipientPlaceholder")} />
               </div>
             ) : (
               <div className="space-y-2">
-                <Label htmlFor="ch-url">Webhook URL</Label>
-                <Input id="ch-url" value={chUrl} onChange={(e) => setChUrl(e.target.value)} placeholder="https://hooks.example.com/notify" />
+                <Label htmlFor="ch-url">{t("channelDialog.webhookUrlLabel")}</Label>
+                <Input id="ch-url" value={chUrl} onChange={(e) => setChUrl(e.target.value)} placeholder={t("channelDialog.webhookUrlPlaceholder")} />
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setChannelOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setChannelOpen(false)}>{t("common.cancel")}</Button>
             <Button
               onClick={() => void handleCreateChannel()}
               disabled={
@@ -494,7 +499,7 @@ export function AdminIntegrationsView() {
                 createChannelMut.isPending
               }
             >
-              {createChannelMut.isPending ? "Creating…" : "Create channel"}
+              {createChannelMut.isPending ? t("common.creating") : t("common.createChannel")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -504,11 +509,11 @@ export function AdminIntegrationsView() {
       <Dialog open={Boolean(channelDeleteTarget)} onOpenChange={(open) => !open && setChannelDeleteTarget(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete channel?</DialogTitle>
-            <DialogDescription>“{channelDeleteTarget?.name}” will no longer receive notifications.</DialogDescription>
+            <DialogTitle>{t("deleteChannel.title")}</DialogTitle>
+            <DialogDescription>{t("deleteChannel.description", { name: channelDeleteTarget?.name ?? "" })}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setChannelDeleteTarget(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setChannelDeleteTarget(null)}>{t("common.cancel")}</Button>
             <Button
               variant="destructive"
               onClick={async () => {
@@ -517,7 +522,7 @@ export function AdminIntegrationsView() {
               }}
               disabled={deleteChannelMut.isPending}
             >
-              {deleteChannelMut.isPending ? "Deleting…" : "Delete"}
+              {deleteChannelMut.isPending ? t("common.deleting") : t("common.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

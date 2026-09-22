@@ -3857,3 +3857,9 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (incident-detail removed) + R98 backlog/worklog/audit report; **4 entries / 211 candidates** remain. Earlier governance pins now reflect the current dictionary total and ledger truth.
 - Tests: R98 isolated **5 pass / 0 fail / 226 expectations**; combined r56+r80–r98 governance **196 pass / 0 fail / 8,409 expectations** across 20 files. Full application gate and live browser evidence remain unavailable in this environment.
 - Docs: `docs/audits/FayaNMS-R98-I18n-Tranche6n-IncidentDetail-Keyed-2026-09-22.md`, NEXT-TASKS R98 update. db/, .env, PAT never staged.
+
+## R99 — i18n tranche 6o: admin integrations keyed; ledger 4 → 3 (2026-09-22)
+- R99 tranche: **Admin integrations fully keyed by hand** through NEW `adminIntegrations` (65 leaves en = ar deep parity; dictionary 2,489 → **2,554 = 2,554**). All 47 shallow candidates are zero across the page header, webhook and notification-channel sections, delivery states, table headers, accessibility labels, and create/reveal/delete dialogs. HMAC signature syntax, event catalog values, URLs, masked secrets, raw test results, and relative timestamps remain technical or data-plane values.
+- Governance: r56 sweep ledger −1 entry (admin-integrations removed) + R99 backlog/worklog/audit report; **3 entries / 164 candidates** remain. Earlier governance pins now reflect the current dictionary total and ledger truth.
+- Tests: R99 isolated **5 pass / 0 fail / 144 expectations**; combined r56+r80–r99 governance **201 pass / 0 fail / 8,681 expectations** across 21 files. Full application gate and live browser evidence remain unavailable in this environment.
+- Docs: `docs/audits/FayaNMS-R99-I18n-Tranche6o-AdminIntegrations-Keyed-2026-09-22.md`, NEXT-TASKS R99 update. db/, .env, PAT never staged.

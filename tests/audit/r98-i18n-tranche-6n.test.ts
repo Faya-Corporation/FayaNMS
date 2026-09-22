@@ -57,9 +57,9 @@ describe("R98 — incident detail namespace", () => {
     }
   });
 
-  test("updates dictionary totals from R97's 2,384 leaves to 2,489", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(2489);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(2489);
+  test("updates dictionary totals at current HEAD after R99", () => {
+    expect(leaves(readJson("messages/en.json")).length).toBe(2554);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(2554);
   });
 });
 
@@ -81,12 +81,12 @@ describe("R98 — view keying and ledger", () => {
     expect(en.incidentDetail.header.created).toContain("{time}");
   });
 
-  test("updates the R56 ledger to 4 views and 211 candidates", () => {
+  test("updates the R56 ledger to 3 views and 164 candidates", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     expect(block).not.toMatch(/"incident-detail-view\.tsx":\s*\d/);
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(4);
-    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(211);
+    expect(entries.length).toBe(3);
+    expect(entries.reduce((sum, [, , count]) => sum + Number(count), 0)).toBe(164);
   });
 });
