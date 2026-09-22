@@ -1,8 +1,15 @@
-# FayaNMS — NEXT TASKS (execution backlog, updated 2026-09-22, R102 LANDED/main — Phase HC complete; i18n debt tranche program closed, single-branch repo)
+# FayaNMS — NEXT TASKS (i18n tranche history and cross-program status, updated 2026-09-22)
 
-Derived from `FayaNMS-Independent-Current-Main-Audit-2026-09-15.md` + `FayaNMS-Production-Remediation-Roadmap-2026-09-15.md`, executed through the single-session remediation program (R34–R47), then the R50 program on branch `z_ai_v2`. ✅ LANDED entries are COMPLETED HISTORY — kept below for the audit trail, NOT active work. The ACTIVE backlog is everything still open, ALL of it outside the sandbox's control:
+The R80–R102 i18n tranche program is complete, but it is not the repository's only remaining work. The full independent production roadmap at `docs/audits/FayaNMS-Full-Independent-Production-Audit-and-Enterprise-Enhancement-Roadmap-2026-09-22 (1).md` is the current cross-program backlog; several items remain repository-actionable.
 
-## ACTIVE (only genuinely remaining work)
+## Current Cross-Program Status
+
+- Current local `main`: `59efaa9`; GitHub and local `origin/main`: `5671bc5`. The two focused ledger updates are local and not pushed.
+- Roadmap task 1 (cloud-ledger reconciliation) is complete in `9a6775f`.
+- Roadmap task 2 is partial: post-merge CI passed, but immutable GHCR publication failed; no image digests were verified and staging was skipped. Evidence is recorded in `FayaNMS-CLOUD-IMPLEMENTATION-PROGRESS.md` and commit `59efaa9`.
+- Roadmap task 3 (branch protection) is owner-controlled. Later telemetry, topology, HA, and lab tasks are not complete merely because the i18n tranche ledger is empty.
+
+## Completed i18n Tranche History
 
 **R102 UPDATE — the i18n tranche program is complete on single-branch main.** **Tranche 6r LANDED (R102)** — backups keyed by hand: NEW `backups` namespace (117 leaves; en = ar deep parity; dictionary 2,733 → **2,850 = 2,850**). The final 61 shallow candidates are now zero across backup history, download controls, pagination, policy forms/validation, scope chips, policy tables, policy actions, and the delete dialog. Shared cron hints now accept an optional translator while preserving existing English callers. Governance: ledger 1 → **0 entries / 0 candidates**; the R56 sweep now forbids any future unledgered candidate. Evidence: `docs/audits/FayaNMS-R102-I18n-Tranche6r-Backups-Keyed-2026-09-22.md`. No i18n tranche remains; full application/live browser reruns remain environment-dependent.
 
