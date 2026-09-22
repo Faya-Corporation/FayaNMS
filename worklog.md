@@ -3797,3 +3797,9 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (admin-api-clients removed) + R88 backlog/worklog/audit report; **14 entries / 547 candidates** remain. The prior tranche pins now reflect 1,938 dictionary leaves and the 14-entry ledger.
 - Tests: R88 isolated **5 pass / 0 fail / 122 expectations**; combined r56+r80–r88 i18n governance **145 pass / 0 fail / 6,068 expectations** across 10 files. Full application gate and live browser evidence were not rerun because dependencies/operator runtime were unavailable.
 - Docs: `docs/audits/FayaNMS-R88-I18n-Tranche6d-AdminApiClients-Keyed-2026-09-22.md`, NEXT-TASKS R88 update. db/, .env, PAT never staged.
+
+## R89 — i18n tranche 6e: changes keyed; ledger 14 → 13 (2026-09-22)
+- R89 tranche: **Changes and My Changes fully keyed by hand** through NEW `changesView` (44 leaves en = ar deep parity; dictionary 1,938 → **1,982 = 1,982**). All 27 swept literals cover page mode descriptions/titles, KPIs, status chips, filters, empty/error states, table chrome, row summaries, actions, and pagination. Dynamic status-chip keys and existing localized risk labels resolve at render time; device/step counts use locale-appropriate ICU plurals.
+- Governance: r56 sweep ledger −1 entry (changes removed) + R89 backlog/worklog/audit report; **13 entries / 520 candidates** remain. r81–r88 governance pins now reflect the current ledger.
+- Tests: R89 isolated **6 pass / 0 fail / 104 expectations**; combined r56+r80–r89 governance **151 pass / 0 fail / 6,258 expectations** across 11 files. Full application gate and live browser evidence remain unavailable in this environment.
+- Docs: `docs/audits/FayaNMS-R89-I18n-Tranche6e-Changes-Keyed-2026-09-22.md`, NEXT-TASKS R89 update. db/, .env, PAT never staged.

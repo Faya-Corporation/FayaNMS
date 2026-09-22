@@ -2667,5 +2667,73 @@
       "never": "أبدًا",
       "toggle": "تبديل {name}"
     }
+  },
+  "changesView": {
+    "page": {
+      "title": "التغييرات",
+      "mineTitle": "تغييراتي",
+      "description": "طلبات التغيير عبر دورة الحياة",
+      "mineDescription": "التغييرات التي طلبتها — هوية العرض: admin"
+    },
+    "actions": {
+      "newChange": "تغيير جديد",
+      "reset": "إعادة تعيين"
+    },
+    "kpi": {
+      "pendingLabel": "الموافقات المعلقة",
+      "pendingDescription": "تغييرات تنتظر قرارًا",
+      "executingLabel": "قيد التنفيذ الآن",
+      "executingDescription": "الفحص المسبق أو التنفيذ أو التحقق الجاري الآن",
+      "successLabel": "معدل النجاح (30 يومًا)",
+      "successDescription": "عبر {count} تغييرًا مُغلقًا",
+      "matchingLabel": "التغييرات المطابقة",
+      "matchingDescription": "الصفحة {page} من {totalPages}"
+    },
+    "statusChip": {
+      "ALL": "الكل",
+      "AWAITING_APPROVAL": "بانتظار الموافقة",
+      "UPCOMING": "قادمة",
+      "EXECUTION": "قيد التنفيذ",
+      "CLOSED": "مغلقة",
+      "FAILED": "فاشلة وتراجع"
+    },
+    "section": {
+      "title": "طلبات التغيير"
+    },
+    "filter": {
+      "searchAria": "البحث في التغييرات",
+      "searchPlaceholder": "ابحث عن الرقم أو العنوان…",
+      "riskAria": "مستوى المخاطر",
+      "anyRisk": "أي مخاطر"
+    },
+    "error": {
+      "title": "تعذّر تحميل التغييرات"
+    },
+    "empty": {
+      "title": "لا توجد تغييرات لعرضها",
+      "description": "لا تطابق طلبات التغيير المرشح الحالي. أنشئ طلبًا باستخدام «تغيير جديد»."
+    },
+    "table": {
+      "aria": "طلبات التغيير — الرقم والعنوان والنوع والمخاطر والحالة والجدولة لكل تغيير",
+      "number": "الرقم",
+      "title": "العنوان",
+      "type": "النوع",
+      "risk": "المخاطر",
+      "status": "الحالة",
+      "requester": "الطالب",
+      "approvals": "الموافقات",
+      "scheduled": "المجدول"
+    },
+    "row": {
+      "devices": "{count, plural, zero {# جهاز} one {جهاز واحد} two {جهازان} few {# أجهزة} many {# جهازًا} other {# جهاز}}",
+      "steps": "{count, plural, zero {# خطوة} one {خطوة واحدة} two {خطوتان} few {# خطوات} many {# خطوة} other {# خطوة}}",
+      "pending": "{count} معلقة",
+      "unscheduled": "غير مجدول",
+      "emptyValue": "—"
+    },
+    "pagination": {
+      "previous": "السابق",
+      "next": "التالي"
+    }
   }
 }

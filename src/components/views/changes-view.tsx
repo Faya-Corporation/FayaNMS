@@ -50,18 +50,17 @@ import { lookupStatusConfig, CHANGE_STATUS_UI, CHANGE_TYPE_UI } from "./status-e
 
 interface StatusChip {
   key: string;
-  label: string;
   /** Comma-separated status list sent to the API. */
   values?: string;
 }
 
 const STATUS_CHIPS: StatusChip[] = [
-  { key: "ALL", label: "All" },
-  { key: "AWAITING_APPROVAL", label: "Awaiting Approval", values: "AWAITING_APPROVAL" },
-  { key: "UPCOMING", label: "Upcoming", values: "APPROVED,SCHEDULED,PRE_CHECK" },
-  { key: "EXECUTION", label: "In Execution", values: "EXECUTING,VALIDATING" },
-  { key: "CLOSED", label: "Closed", values: "CLOSED,SUCCESSFUL,PARTIAL_SUCCESS" },
-  { key: "FAILED", label: "Failed & Rollback", values: "FAILED,ROLLBACK,ROLLBACK_FAILED" },
+  { key: "ALL" },
+  { key: "AWAITING_APPROVAL", values: "AWAITING_APPROVAL" },
+  { key: "UPCOMING", values: "APPROVED,SCHEDULED,PRE_CHECK" },
+  { key: "EXECUTION", values: "EXECUTING,VALIDATING" },
+  { key: "CLOSED", values: "CLOSED,SUCCESSFUL,PARTIAL_SUCCESS" },
+  { key: "FAILED", values: "FAILED,ROLLBACK,ROLLBACK_FAILED" },
 ];
 
 const PAGE_SIZE = 25;
@@ -74,6 +73,8 @@ const PAGE_SIZE = 25;
  */
 export function ChangesView({ mine = false }: { mine?: boolean }) {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
+  const t = useTranslations("changesView");
+  const tRoot = useTranslations();
   const tAi = useTranslations("ai.changeDraft");
 
   const [chip, setChip] = useState<string>("ALL");
@@ -118,8 +119,8 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
         <PageHeader
           description={
             mine
-              ? "Changes you requested — demo identity: admin"
-              : "Change requests across the lifecycle"
+              ? t("page.mineDescription")
+              : t("page.description")
           }
           primaryAction={
             <div className="flex flex-wrap items-center gap-2">
@@ -137,43 +138,48 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
                 }}
               >
                 <Plus aria-hidden="true" />
-                New change
+                {t("actions.newChange")}
               </Button>
             </div>
           }
-          title={mine ? "My Changes" : "Changes"}
+          title={mine ? t("page.mineTitle") : t("page.title")}
         />
       </div>
 
       {/* KPI mini-row */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
-          description="Changes waiting for a decision"
+          description={t("kpi.pendingDescription")}
           icon={ShieldAlert}
-          label="Pending approvals"
+          label={t("kpi.pendingLabel")}
           loading={!summary && changes.isLoading}
           value={summary?.awaitingApproval ?? 0}
         />
         <KpiCard
-          description="Pre-check, executing or validating right now"
+          description={t("kpi.executingDescription")}
           icon={Timer}
-          label="Executing now"
+          label={t("kpi.executingLabel")}
           loading={!summary && changes.isLoading}
           value={summary?.executingNow ?? 0}
         />
         <KpiCard
-          description={`Across ${summary?.closedChanges30d ?? 0} closed-out changes`}
+          description={t("kpi.successDescription", {
+            count: summary?.closedChanges30d ?? 0,
+          })}
           icon={TrendingUp}
-          label="Success rate (30d)"
+          label={t("kpi.successLabel")}
           loading={!summary && changes.isLoading}
           value={
             summary?.successRate30d != null ? `${summary.successRate30d}%` : "—"
           }
         />
         <KpiCard
-          description={`Page ${listMeta?.page ?? 1} of ${listMeta?.totalPages ?? 1}`}
+          description={t("kpi.matchingDescription", {
+            page: listMeta?.page ?? 1,
+            totalPages: listMeta?.totalPages ?? 1,
+          })}
           icon={GitPullRequest}
-          label="Matching changes"
+          label={t("kpi.matchingLabel")}
           loading={changes.isLoading}
           value={listMeta?.total ?? 0}
         />
@@ -196,12 +202,12 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
             }}
             type="button"
           >
-            {entry.label}
+            {t(`statusChip.${entry.key}`)}
           </button>
         ))}
       </div>
 
-      <SectionCard contentClassName="p-0" title="Change Requests">
+      <SectionCard contentClassName="p-0" title={t("section.title")}>
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-2 border-b p-3">
           <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
@@ -210,10 +216,10 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
               className="absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
             />
             <Input
-              aria-label="Search changes"
+              aria-label={t("filter.searchAria")}
               className="ps-8"
               onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Search number or title…"
+              placeholder={t("filter.searchPlaceholder")}
               value={searchInput}
             />
           </div>
@@ -224,14 +230,14 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
             }}
             value={riskLevel}
           >
-            <SelectTrigger aria-label="Risk level" className="w-[150px]">
+            <SelectTrigger aria-label={t("filter.riskAria")} className="w-[150px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">Any risk</SelectItem>
+              <SelectItem value="ALL">{t("filter.anyRisk")}</SelectItem>
               {["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((level) => (
                 <SelectItem key={level} value={level}>
-                  {level}
+                  {tRoot(`status.risk.${level}`)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -248,7 +254,7 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
               type="button"
               variant="ghost"
             >
-              Reset
+              {t("actions.reset")}
             </Button>
           )}
         </div>
@@ -258,7 +264,7 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
             <ErrorState
               onRetry={() => void changes.refetch()}
               reason={changes.error.message}
-              title="Changes could not be loaded"
+              title={t("error.title")}
             />
           </div>
         ) : changes.isLoading ? (
@@ -270,24 +276,24 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
         ) : rows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="No change requests match the current filter. Create one with “New change”."
+              description={t("empty.description")}
               icon={GitPullRequest}
-              title="No changes to show"
+              title={t("empty.title")}
             />
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table aria-label="Change requests — number, title, type, risk, status and schedule per change" className="min-w-[860px]">
+            <Table aria-label={t("table.aria")} className="min-w-[860px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Number</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Risk</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Requester</TableHead>
-                  <TableHead>Approvals</TableHead>
-                  <TableHead>Scheduled</TableHead>
+                  <TableHead>{t("table.number")}</TableHead>
+                  <TableHead>{t("table.title")}</TableHead>
+                  <TableHead>{t("table.type")}</TableHead>
+                  <TableHead>{t("table.risk")}</TableHead>
+                  <TableHead>{t("table.status")}</TableHead>
+                  <TableHead className="hidden md:table-cell">{t("table.requester")}</TableHead>
+                  <TableHead>{t("table.approvals")}</TableHead>
+                  <TableHead>{t("table.scheduled")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -307,8 +313,8 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
                         {change.title}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {change._count.devices} device{change._count.devices === 1 ? "" : "s"} ·{" "}
-                        {change._count.steps} step{change._count.steps === 1 ? "" : "s"}
+                        {t("row.devices", { count: change._count.devices })} ·{" "}
+                        {t("row.steps", { count: change._count.steps })}
                       </span>
                     </TableCell>
                     <TableCell className="px-(--density-cell-x)">
@@ -330,21 +336,21 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
                       />
                     </TableCell>
                     <TableCell className="hidden whitespace-nowrap px-(--density-cell-x) md:table-cell">
-                      {change.requester?.name ?? change.requester?.email ?? "—"}
+                      {change.requester?.name ?? change.requester?.email ?? t("row.emptyValue")}
                     </TableCell>
                     <TableCell className="px-(--density-cell-x)">
                       {change.pendingApprovals ? (
                         <Badge variant="outline">
-                          {change.pendingApprovals} pending
+                          {t("row.pending", { count: change.pendingApprovals })}
                         </Badge>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">{t("row.emptyValue")}</span>
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap px-(--density-cell-x) text-xs tabular-nums text-muted-foreground">
                       {change.scheduledStart
                         ? format(new Date(change.scheduledStart), "MMM d, HH:mm")
-                        : "unscheduled"}
+                        : t("row.unscheduled")}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -364,7 +370,7 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
               variant="outline"
             >
               <ChevronLeft aria-hidden="true" />
-              Prev
+              {t("pagination.previous")}
             </Button>
             <span className="tabular-nums">
               {listMeta.page}/{listMeta.totalPages}
@@ -376,7 +382,7 @@ export function ChangesView({ mine = false }: { mine?: boolean }) {
               type="button"
               variant="outline"
             >
-              Next
+              {t("pagination.next")}
               <ChevronRight aria-hidden="true" />
             </Button>
           </div>

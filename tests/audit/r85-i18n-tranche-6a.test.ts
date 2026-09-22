@@ -96,11 +96,11 @@ describe("R85 — tranche 6a namespace exists and is balanced", () => {
     expect(leaves(ar.perfOverview).length).toBe(76);
   });
 
-  test("A: dictionary totals are 1,938 = 1,938 at current HEAD (+48 R88)", () => {
+  test("A: dictionary totals are 1,982 = 1,982 at current HEAD (+44 R89)", () => {
     const en = readJson("messages/en.json");
     const ar = readJson("messages/ar.json");
-    expect(leaves(en).length).toBe(1938);
-    expect(leaves(ar).length).toBe(1938);
+    expect(leaves(en).length).toBe(1982);
+    expect(leaves(ar).length).toBe(1982);
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {
@@ -319,14 +319,14 @@ describe("R85 — ledger governance", () => {
     expect(/"perf-overview-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 14 entries at current HEAD (R88 removed admin-api-clients)", () => {
+  test("E: the numeric ledger carries EXACTLY 13 entries at current HEAD (R89 removed changes)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-    expect(entries.length).toBe(14);
+    expect(entries.length).toBe(13);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 547 at current HEAD (R88 removed 27)", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 520 at current HEAD (R89 removed 27)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -334,7 +334,7 @@ describe("R85 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-    expect(sum).toBe(547);
+    expect(sum).toBe(520);
   });
 });
 

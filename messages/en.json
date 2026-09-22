@@ -2667,5 +2667,73 @@
       "never": "never",
       "toggle": "Toggle {name}"
     }
+  },
+  "changesView": {
+    "page": {
+      "title": "Changes",
+      "mineTitle": "My Changes",
+      "description": "Change requests across the lifecycle",
+      "mineDescription": "Changes you requested — demo identity: admin"
+    },
+    "actions": {
+      "newChange": "New change",
+      "reset": "Reset"
+    },
+    "kpi": {
+      "pendingLabel": "Pending approvals",
+      "pendingDescription": "Changes waiting for a decision",
+      "executingLabel": "Executing now",
+      "executingDescription": "Pre-check, executing or validating right now",
+      "successLabel": "Success rate (30d)",
+      "successDescription": "Across {count} closed-out changes",
+      "matchingLabel": "Matching changes",
+      "matchingDescription": "Page {page} of {totalPages}"
+    },
+    "statusChip": {
+      "ALL": "All",
+      "AWAITING_APPROVAL": "Awaiting Approval",
+      "UPCOMING": "Upcoming",
+      "EXECUTION": "In Execution",
+      "CLOSED": "Closed",
+      "FAILED": "Failed & Rollback"
+    },
+    "section": {
+      "title": "Change Requests"
+    },
+    "filter": {
+      "searchAria": "Search changes",
+      "searchPlaceholder": "Search number or title…",
+      "riskAria": "Risk level",
+      "anyRisk": "Any risk"
+    },
+    "error": {
+      "title": "Changes could not be loaded"
+    },
+    "empty": {
+      "title": "No changes to show",
+      "description": "No change requests match the current filter. Create one with “New change”."
+    },
+    "table": {
+      "aria": "Change requests — number, title, type, risk, status and schedule per change",
+      "number": "Number",
+      "title": "Title",
+      "type": "Type",
+      "risk": "Risk",
+      "status": "Status",
+      "requester": "Requester",
+      "approvals": "Approvals",
+      "scheduled": "Scheduled"
+    },
+    "row": {
+      "devices": "{count, plural, one {# device} other {# devices}}",
+      "steps": "{count, plural, one {# step} other {# steps}}",
+      "pending": "{count} pending",
+      "unscheduled": "unscheduled",
+      "emptyValue": "—"
+    },
+    "pagination": {
+      "previous": "Prev",
+      "next": "Next"
+    }
   }
 }
