@@ -753,6 +753,40 @@ async function runMetricRetentionJob(job: ClaimedJob): Promise<void> {
   }
 }
 
+interface FlowRetentionResult {
+  outcome: "pruned" | "disabled";
+  flowRecordsDeleted: number;
+  durationMs: number;
+  retentionDays: number;
+  cutoff: string;
+  correlationId: string;
+}
+
+async function runFlowRetentionJob(job: ClaimedJob): Promise<void> {
+  await reportProgress(job.id, 10, "Loading 14-day flow retention policy");
+  const result = (await nextPost(
+    "/api/v1/flows/retention/prune",
+    { triggeredBy: "SCHEDULE" },
+    60_000,
+  )) as FlowRetentionResult;
+  await reportProgress(
+    job.id,
+    80,
+    `Pruned flow records=${result.flowRecordsDeleted} outcome=${result.outcome}`,
+  );
+  await nextPost(
+    "/api/v1/worker/complete",
+    { jobId: job.id, outcome: "SUCCEEDED", result },
+    15_000,
+  );
+  counters.completed += 1;
+  counters.completedByType.FLOW_RETENTION =
+    (counters.completedByType.FLOW_RETENTION ?? 0) + 1;
+  await log(
+    `job ${job.id} [${job.correlationId}] SUCCEEDED: flow-retention deleted=${result.flowRecordsDeleted} days=${result.retentionDays} in ${result.durationMs}ms`,
+  );
+}
+
 /* ───────────────── FIRMWARE_UPGRADE driver (Phase 13-b) ─────────────── */
 
 /**
@@ -1090,6 +1124,8 @@ async function executeJob(job: ClaimedJob): Promise<void> {
       await raceTimeout(runAlertEvaluationJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "METRIC_RETENTION") {
       await raceTimeout(runMetricRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "FLOW_RETENTION") {
+      await raceTimeout(runFlowRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "REPORT_RUN") {
       await raceTimeout(runReportJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "FIRMWARE_UPGRADE") {
@@ -1135,7 +1171,22 @@ async function claimTick(): Promise<"ok" | "failed" | "busy"> {
     try {
       jobs = (await nextPost(
         "/api/v1/worker/claim",
-        { types: ["CONFIG_BACKUP", "DISCOVERY", "SNMP_POLL", "DRIFT_CHECK", "CHANGE_EXECUTE", "ALERT_EVALUATION", "METRIC_RETENTION", "REPORT_RUN", "FIRMWARE_UPGRADE", "ZTP_PROVISION"], limit: Math.min(CLAIM_BATCH, free) },
+        {
+          types: [
+            "CONFIG_BACKUP",
+            "DISCOVERY",
+            "SNMP_POLL",
+            "DRIFT_CHECK",
+            "CHANGE_EXECUTE",
+            "ALERT_EVALUATION",
+            "METRIC_RETENTION",
+            "FLOW_RETENTION",
+            "REPORT_RUN",
+            "FIRMWARE_UPGRADE",
+            "ZTP_PROVISION",
+          ],
+          limit: Math.min(CLAIM_BATCH, free),
+        },
         10_000
       )) as ClaimedJob[];
     } catch (e) {

@@ -81,7 +81,8 @@ export const dynamic = "force-dynamic";
  *   the rollback-or-fail decision).
  *
  * Returns { enqueued, discoveryEnqueued, driftEnqueued, alertEvalEnqueued,
- * metricRetentionEnqueued, reapedOrphans, pruned, evaluatedAt, policies }.
+ * metricRetentionEnqueued, flowRetentionEnqueued, reapedOrphans, pruned,
+ * evaluatedAt, policies }.
  */
 
 const tickSchema = z.object({
@@ -96,6 +97,7 @@ const DRIFT_CHECK_CAP_PER_TICK = 20;
 const DRIFT_CHECK_DEDUPE_MIN = 30;
 const ALERT_EVALUATION_DEDUPE_MIN = 3;
 const METRIC_RETENTION_DEDUPE_HOURS = 24;
+const FLOW_RETENTION_DEDUPE_HOURS = 24;
 
 /* ── tiny 5-field cron matcher ──────────────────────────────────────────── */
 
@@ -504,6 +506,9 @@ export async function POST(request: Request) {
   // job per 24 h — the worker triggers the evaluate-in-Next prune.
   const metricRetentionEnqueued = await enqueueMetricRetention(now);
 
+  // Flow retention uses an independent 24-hour policy and bounded prune job.
+  const flowRetentionEnqueued = await enqueueFlowRetention(now);
+
   // Reaper: RUNNING jobs whose startedAt is older than the stale threshold
   // were orphaned (worker crash / backend restart mid-flight — the
   // in-memory runner state is gone) and would otherwise stay RUNNING
@@ -613,6 +618,7 @@ export async function POST(request: Request) {
     driftEnqueued: driftTargets,
     alertEvalEnqueued,
     metricRetentionEnqueued,
+    flowRetentionEnqueued,
     reapedOrphans: reapedCount,
     pruned: prune.pruned,
     prunedDevices: prune.prunedDevices,
@@ -647,6 +653,39 @@ async function enqueueMetricRetention(now: Date): Promise<number> {
   await db.jobExecution.create({
     data: {
       type: "METRIC_RETENTION",
+      targetType: "SYSTEM",
+      status: "QUEUED",
+      progress: 0,
+      priority: 7,
+      maxAttempts: 3,
+      payloadJson: JSON.stringify({ triggeredBy: "SCHEDULE" }),
+      correlationId: newJobCorrelationId(),
+    },
+  });
+  return 1;
+}
+
+async function enqueueFlowRetention(now: Date): Promise<number> {
+  const recent = await db.jobExecution.findFirst({
+    where: {
+      type: "FLOW_RETENTION",
+      OR: [
+        { status: { in: ["QUEUED", "RUNNING"] } },
+        {
+          status: { in: ["SUCCEEDED", "FAILED", "DEAD", "CANCELLED"] },
+          finishedAt: {
+            gte: new Date(now.getTime() - FLOW_RETENTION_DEDUPE_HOURS * 3_600_000),
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  if (recent) return 0;
+
+  await db.jobExecution.create({
+    data: {
+      type: "FLOW_RETENTION",
       targetType: "SYSTEM",
       status: "QUEUED",
       progress: 0,

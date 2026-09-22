@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
  */
 
 const claimSchema = z.object({
-  types: z.array(z.string().trim().min(1)).min(1).max(10),
+  types: z.array(z.string().trim().min(1)).min(1).max(12),
   limit: z.number().int().min(1).max(10).default(3),
 });
 

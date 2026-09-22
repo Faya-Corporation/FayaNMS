@@ -346,6 +346,43 @@ export async function POST(request: Request) {
       });
     }
 
+    if (job.type === "FLOW_RETENTION") {
+      const flowRetentionShape = z.object({
+        outcome: z.enum(["pruned", "disabled"]),
+        flowRecordsDeleted: z.number().int().nonnegative(),
+        durationMs: z.number().int().nonnegative(),
+        retentionDays: z.number().int().min(1).max(3650),
+        cutoff: z.string().datetime(),
+        correlationId: z.string().trim().min(1).max(120),
+        triggeredBy: z.string().trim().min(1).max(40).optional(),
+        prunedAt: z.string().datetime().optional(),
+      }).strict();
+      const parsedFlowRetention = flowRetentionShape.safeParse(result);
+      if (!parsedFlowRetention.success) {
+        return fail(
+          "INVALID_RESULT",
+          "SUCCEEDED FLOW_RETENTION completion requires a valid prune summary",
+          400,
+        );
+      }
+      await db.jobExecution.update({
+        where: { id: job.id },
+        data: {
+          status: "SUCCEEDED",
+          progress: 100,
+          finishedAt: now,
+          error: null,
+          resultJson: JSON.stringify(parsedFlowRetention.data),
+        },
+      });
+      return ok({
+        jobId,
+        updated: true,
+        status: "SUCCEEDED",
+        outcome: parsedFlowRetention.data.outcome,
+      });
+    }
+
     // ── FIRMWARE_UPGRADE (Phase 13-b): the upgrade endpoint persisted the
     // device.firmware flip + FIRMWARE_UPGRADED audit — store the summary
     // verbatim in resultJson (Job Center shows before → after). ──
