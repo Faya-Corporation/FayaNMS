@@ -91,11 +91,11 @@ describe("R86 — namespace growth is balanced", () => {
     }
   });
 
-  test("A: dictionary totals are 2,024 = 2,024 at current HEAD (+42 R90)", () => {
+  test("A: dictionary totals are 2,063 = 2,063 at current HEAD (+39 R91)", () => {
     const en = readJson("messages/en.json");
     const ar = readJson("messages/ar.json");
-    expect(leaves(en).length).toBe(2024);
-    expect(leaves(ar).length).toBe(2024);
+    expect(leaves(en).length).toBe(2063);
+    expect(leaves(ar).length).toBe(2063);
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {
@@ -233,14 +233,14 @@ describe("R86 — ledger governance", () => {
     expect(/"admin-collectors-view\.tsx":\s*\d/.test(sweep)).toBe(false);
   });
 
-  test("E: the numeric ledger carries EXACTLY 12 entries at current HEAD (R90 removed events)", () => {
+  test("E: the numeric ledger carries EXACTLY 11 entries at current HEAD (R91 removed snapshots)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
-      expect(entries.length).toBe(12);
+    expect(entries.length).toBe(11);
   });
 
-  test("E: the LIVE candidate sum over ledgered files is EXACTLY 493 at current HEAD (R90 removed 27)", () => {
+  test("E: the LIVE candidate sum over ledgered files is EXACTLY 464 at current HEAD (R91 removed 29)", () => {
     const sweep = readRepo("tests/audit/r56-i18n-chrome-sweep.test.ts");
     const block = sweep.slice(sweep.indexOf("const PENDING_VIEWS"));
     const entries = Array.from(block.matchAll(/"([a-z-]+-view\.tsx)":\s*(\d+)/g));
@@ -248,7 +248,7 @@ describe("R86 — ledger governance", () => {
     for (const [, file] of entries) {
       sum += candidates(readRepo(`${VIEWS}/${file}`)).length;
     }
-      expect(sum).toBe(493);
+    expect(sum).toBe(464);
   });
 });
 

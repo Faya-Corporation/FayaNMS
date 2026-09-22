@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { format } from "date-fns";
 import {
   ChevronLeft,
@@ -71,6 +72,7 @@ function formatSize(bytes: number): string {
 
 export function SnapshotsView() {
   const setActiveView = useNavigationStore((state) => state.setActiveView);
+  const t = useTranslations("snapshotsView");
   // Status labels resolve in the active locale (falls back to config.label).
   const resolveStatusLabel = useStatusLabel();
 
@@ -149,14 +151,14 @@ export function SnapshotsView() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        description="Configuration version history across the fleet — select two versions of the same device to compare"
-        title="Snapshots"
+        description={t("page.description")}
+        title={t("page.title")}
       />
 
       <SectionCard
         contentClassName="p-0"
-        description="Every version captured fleet-wide · raw downloads remain audited in the Backups view"
-        title="Version browser"
+        description={t("card.description")}
+        title={t("card.title")}
       >
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
@@ -166,10 +168,10 @@ export function SnapshotsView() {
               className="absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
             />
             <Input
-              aria-label="Search by device hostname or IP"
+              aria-label={t("filter.searchAria")}
               className="h-8 ps-8 text-xs"
               onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Search device…"
+              placeholder={t("filter.searchPlaceholder")}
               value={searchInput}
             />
           </div>
@@ -180,11 +182,11 @@ export function SnapshotsView() {
             }}
             value={status}
           >
-            <SelectTrigger aria-label="Filter by snapshot status" className="h-8 w-36 text-xs">
+            <SelectTrigger aria-label={t("filter.statusAria")} className="h-8 w-36 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL}>All statuses</SelectItem>
+              <SelectItem value={ALL}>{t("filter.allStatuses")}</SelectItem>
               {Object.values(SNAPSHOT_STATUS).map((config) => (
                 <SelectItem key={config.key} value={config.key}>
                   {resolveStatusLabel(config)}
@@ -199,11 +201,11 @@ export function SnapshotsView() {
             }}
             value={source}
           >
-            <SelectTrigger aria-label="Filter by capture source" className="h-8 w-36 text-xs">
+            <SelectTrigger aria-label={t("filter.sourceAria")} className="h-8 w-36 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL}>All sources</SelectItem>
+              <SelectItem value={ALL}>{t("filter.allSources")}</SelectItem>
               {Object.values(SNAPSHOT_SOURCE).map((config) => (
                 <SelectItem key={config.key} value={config.key}>
                   {resolveStatusLabel(config)}
@@ -221,7 +223,7 @@ export function SnapshotsView() {
             size="sm"
             variant="ghost"
           >
-            Reset
+            {t("filter.reset")}
           </Button>
 
           <div className="ms-auto flex items-center gap-2">
@@ -235,7 +237,7 @@ export function SnapshotsView() {
               ) : (
                 <GitCompareArrows aria-hidden="true" />
               )}
-              Compare selected
+              {t("filter.compareSelected")}
             </Button>
           </div>
         </div>
@@ -244,25 +246,23 @@ export function SnapshotsView() {
         <div aria-live="polite" className="border-b bg-surface-subtle px-4 py-1.5">
           {selectedRows.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              Tick two versions of one device, then press “Compare selected”.
+              {t("selection.empty")}
             </p>
           ) : !selectionFull ? (
             <p className="text-xs text-muted-foreground">
-              Comparisons are per-device — first selected:{" "}
-              <span className="font-medium text-foreground">{lockedHostname}</span>. Pick a
-              second version of it.
+              {t("selection.firstSelected", { hostname: lockedHostname })}
             </p>
           ) : selectionValid ? (
             <p className="text-xs text-muted-foreground">
-              <span className="font-tech ltr-technical">
-                v{fromVersion} → v{toVersion}
-              </span>{" "}
-              of <span className="font-medium text-foreground">{lockedHostname}</span> ready to
-              compare.
+              {t("selection.ready", {
+                from: fromVersion,
+                to: toVersion,
+                hostname: lockedHostname,
+              })}
             </p>
           ) : (
             <p className="text-xs text-warning">
-              Comparisons are per-device — first selected: {lockedHostname}.
+              {t("selection.mismatch", { hostname: lockedHostname })}
             </p>
           )}
         </div>
@@ -272,7 +272,7 @@ export function SnapshotsView() {
             <ErrorState
               onRetry={() => void snapshots.refetch()}
               reason={snapshots.error.message}
-              title="Snapshot history could not be loaded"
+              title={t("error.title")}
             />
           </div>
         ) : snapshots.isLoading ? (
@@ -284,38 +284,38 @@ export function SnapshotsView() {
         ) : rows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              description="Trigger “Backup now” from a device, or let a schedule run — captured configurations appear here."
+              description={t("empty.description")}
               icon={History}
-              title="No snapshots found"
+              title={t("empty.title")}
             />
           </div>
         ) : (
           <div className="max-h-[600px] overflow-y-auto">
             <div className="min-w-[1020px]">
-              <Table aria-label="Snapshot version browser — timestamp, version, source, size, checksum and status per snapshot">
+              <Table aria-label={t("table.aria")}>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="h-(--density-row-h) w-10 px-(--density-cell-x)">
-                      <span className="sr-only">Select for comparison</span>
+                      <span className="sr-only">{t("table.select")}</span>
                     </TableHead>
-                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Time</TableHead>
-                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Device</TableHead>
+                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("table.time")}</TableHead>
+                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("table.device")}</TableHead>
                     <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) md:table-cell">
-                      Site
+                      {t("table.site")}
                     </TableHead>
-                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Version</TableHead>
+                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("table.version")}</TableHead>
                     <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
-                      Source
+                      {t("table.source")}
                     </TableHead>
                     <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) sm:table-cell">
-                      Size
+                      {t("table.size")}
                     </TableHead>
                     <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) lg:table-cell">
-                      SHA-256
+                      {t("table.sha256")}
                     </TableHead>
-                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Status</TableHead>
+                    <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("table.status")}</TableHead>
                     <TableHead className="hidden h-(--density-row-h) px-(--density-cell-x) lg:table-cell">
-                      Correlation
+                      {t("table.correlation")}
                     </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -334,7 +334,10 @@ export function SnapshotsView() {
                       >
                         <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
                           <Checkbox
-                            aria-label={`Select ${row.hostname} v${row.version} for comparison`}
+                            aria-label={t("row.selectAria", {
+                              hostname: row.hostname,
+                              version: row.version,
+                            })}
                             checked={isSelected}
                             disabled={checkboxDisabled}
                             onCheckedChange={() => toggleRow(row)}
@@ -345,7 +348,7 @@ export function SnapshotsView() {
                         </TableCell>
                         <TableCell className="h-(--density-row-h) px-(--density-cell-x)">
                           <button
-                            aria-label={`Open ${row.hostname} device detail`}
+                            aria-label={t("row.openDeviceAria", { hostname: row.hostname })}
                             className="text-sm font-medium text-foreground underline-offset-4 hover:text-primary hover:underline"
                             onClick={() =>
                               setActiveView("network.device-detail", { deviceId: row.deviceId })
@@ -398,28 +401,31 @@ export function SnapshotsView() {
         {meta && rows.length > 0 && (
           <div className="flex items-center justify-between gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
             <span className="tabular-nums">
-              {meta.total} snapshot{meta.total === 1 ? "" : "s"} · page{" "}
-              {meta.page} of {meta.totalPages}
+              {t("pagination.summary", {
+                total: meta.total,
+                page: meta.page,
+                totalPages: meta.totalPages,
+              })}
             </span>
             <div className="flex items-center gap-1">
               <Button
-                aria-label="Previous page"
+                aria-label={t("pagination.previousAria")}
                 disabled={meta.page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 size="sm"
                 variant="outline"
               >
                 <ChevronLeft aria-hidden="true" />
-                Prev
+                {t("pagination.previous")}
               </Button>
               <Button
-                aria-label="Next page"
+                aria-label={t("pagination.nextAria")}
                 disabled={meta.page >= meta.totalPages}
                 onClick={() => setPage((p) => p + 1)}
                 size="sm"
                 variant="outline"
               >
-                Next
+                {t("pagination.next")}
                 <ChevronRight aria-hidden="true" />
               </Button>
             </div>
@@ -432,10 +438,14 @@ export function SnapshotsView() {
         <DialogContent className="flex max-h-[90vh] flex-col gap-0 sm:max-w-[min(95vw,1100px)]">
           <DialogHeader className="border-b">
             <DialogTitle className="font-tech ltr-technical">
-              Config diff — {lockedHostname} v{fromVersion} → v{toVersion}
+              {t("dialog.title", {
+                hostname: lockedHostname,
+                from: fromVersion,
+                to: toVersion,
+              })}
             </DialogTitle>
             <DialogDescription>
-              Secrets are masked; switch to raw mode to see the untouched text.
+              {t("dialog.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">

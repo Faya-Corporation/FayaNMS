@@ -3809,3 +3809,9 @@ Stage Summary:
 - Governance: r56 sweep ledger −1 entry (events removed) + R90 backlog/worklog/audit report; **12 entries / 493 candidates** remain. r81–r89 governance pins now reflect the current ledger and dictionary total.
 - Tests: R90 isolated **5 pass / 0 fail / 98 expectations**; combined r56+r80–r90 governance **156 pass / 0 fail / 6,438 expectations** across 12 files. Full application gate and live browser evidence remain unavailable in this environment.
 - Docs: `docs/audits/FayaNMS-R90-I18n-Tranche6f-Events-Keyed-2026-09-22.md`, NEXT-TASKS R90 update. db/, .env, PAT never staged.
+
+## R91 — i18n tranche 6g: snapshots keyed; ledger 12 → 11 (2026-09-22)
+- R91 tranche: **Snapshots fully keyed by hand** through NEW `snapshotsView` (39 leaves en = ar deep parity; dictionary 2,024 → **2,063 = 2,063**). All 29 swept literals cover page/card/filter chrome, compare-selection guidance, table and row accessibility labels, pagination, empty/error states, and the compare dialog. Shared `useStatusLabel` remains the status-option path; device data and technical formatting remain untouched.
+- Governance: r56 sweep ledger −1 entry (snapshots removed) + R91 backlog/worklog/audit report; **11 entries / 464 candidates** remain. r81–r90 governance pins now reflect the current ledger and dictionary total.
+- Tests: R91 isolated **5 pass / 0 fail / 94 expectations**; combined r56+r80–r91 governance **161 pass / 0 fail / 6,608 expectations** across 13 files. Full application gate and live browser evidence remain unavailable in this environment.
+- Docs: `docs/audits/FayaNMS-R91-I18n-Tranche6g-Snapshots-Keyed-2026-09-22.md`, NEXT-TASKS R91 update. db/, .env, PAT never staged.

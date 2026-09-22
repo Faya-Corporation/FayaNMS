@@ -2797,5 +2797,66 @@
       "allTime": "All time",
       "timeRange": "Time range"
     }
+  },
+  "snapshotsView": {
+    "page": {
+      "title": "Snapshots",
+      "description": "Configuration version history across the fleet — select two versions of the same device to compare"
+    },
+    "card": {
+      "title": "Version browser",
+      "description": "Every version captured fleet-wide · raw downloads remain audited in the Backups view"
+    },
+    "filter": {
+      "searchAria": "Search by device hostname or IP",
+      "searchPlaceholder": "Search device…",
+      "statusAria": "Filter by snapshot status",
+      "allStatuses": "All statuses",
+      "sourceAria": "Filter by capture source",
+      "allSources": "All sources",
+      "reset": "Reset",
+      "compareSelected": "Compare selected"
+    },
+    "selection": {
+      "empty": "Tick two versions of one device, then press “Compare selected”.",
+      "firstSelected": "Comparisons are per-device — first selected: {hostname}. Pick a second version of it.",
+      "ready": "v{from} → v{to} of {hostname} ready to compare.",
+      "mismatch": "Comparisons are per-device — first selected: {hostname}."
+    },
+    "error": {
+      "title": "Snapshot history could not be loaded"
+    },
+    "empty": {
+      "title": "No snapshots found",
+      "description": "Trigger “Backup now” from a device, or let a schedule run — captured configurations appear here."
+    },
+    "table": {
+      "aria": "Snapshot version browser — timestamp, version, source, size, checksum and status per snapshot",
+      "select": "Select for comparison",
+      "time": "Time",
+      "device": "Device",
+      "site": "Site",
+      "version": "Version",
+      "source": "Source",
+      "size": "Size",
+      "sha256": "SHA-256",
+      "status": "Status",
+      "correlation": "Correlation"
+    },
+    "row": {
+      "selectAria": "Select {hostname} v{version} for comparison",
+      "openDeviceAria": "Open {hostname} device detail"
+    },
+    "pagination": {
+      "summary": "{total, plural, one {# snapshot} other {# snapshots}} · page {page} of {totalPages}",
+      "previousAria": "Previous page",
+      "previous": "Prev",
+      "nextAria": "Next page",
+      "next": "Next"
+    },
+    "dialog": {
+      "title": "Config diff — {hostname} v{from} → v{to}",
+      "description": "Secrets are masked; switch to raw mode to see the untouched text."
+    }
   }
 }

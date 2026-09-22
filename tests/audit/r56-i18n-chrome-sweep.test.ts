@@ -234,7 +234,6 @@ const PENDING_VIEWS: Record<string, number> = {
   "drift-view.tsx": 30,
   "incident-detail-view.tsx": 43,
   "maintenance-view.tsx": 38,
-  "snapshots-view.tsx": 29,
 };
 
 describe("HC-4 — dictionary parity is machine-enforced", () => {
