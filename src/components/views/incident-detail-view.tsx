@@ -351,7 +351,7 @@ export function IncidentDetailView() {
                 {t("header.created", {
                   time: formatDistanceToNow(new Date(detail.createdAt), { addSuffix: true }),
                 })}
-                {detail.owner ? ` · ${t("header.owner", { name: detail.owner.name })}` : ""}
+                {detail.owner?.name ? ` · ${t("header.owner", { name: detail.owner.name })}` : ""}
 
               </p>
             </div>
