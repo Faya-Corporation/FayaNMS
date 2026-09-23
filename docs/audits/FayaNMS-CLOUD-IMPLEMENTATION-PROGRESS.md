@@ -3,7 +3,7 @@
 **Repository:** `fayafatehi/FayaNMS`  
 **Execution branch:** `codex/fayanms-cloud-platform`  
 **Initial main SHA:** `7aef0a330dc8f965fb496b735eb8a97b8d2c5149`  
-**Current local `main` HEAD:** `7d9d18fde998f3c837978fc36ae220ed9ccb40bf`
+**Current local `main` HEAD:** `7e4436183f337b52115fbb1ae0326dd8c3907627`
 **Cloud implementation PR head (historical):** `f70bbef04b5cea96133e6e5215c1bb157df1c58d`
 **Execution date:** 2026-09-22
 **Authoritative inputs:** Cloud Development/CICD/OCI Implementation Plan, Executive Production Review, Full Independent Production Audit, Production Remediation Roadmap, Competitive Benchmark, Production Gap Register.
@@ -16,6 +16,18 @@
 - NetFlow v5 decoding, bounded ingest, durable queue persistence, and audited 14-day retention are implemented and deployed to the local Docker stack. `/api/v1/flows` remains simulated; physical-exporter compatibility is unverified.
 - At 2026-09-23 00:31 UTC, the local app, worker, and PostgreSQL containers were healthy; Compose config validated and Prisma reported all 13 migrations applied. The ignored host `.env.production` DB credential was reconciled to the running app without displaying it or restarting services. The PostgreSQL volume was not changed.
 - Historical task rows and CI IDs below describe their recorded SHAs only. Consult `CURRENT-STATE.md` before treating any snapshot as current certification.
+
+## Local Docker provenance rollout (2026-09-23 01:01 UTC)
+
+- Commit `7e4436183f337b52115fbb1ae0326dd8c3907627` was pushed to `main`; its app and worker OCI revision labels were inspected on the running containers and match the commit SHA.
+- Only app and worker were rebuilt/recreated. App, worker, and PostgreSQL report healthy; `/api/v1/meta` returned HTTP 200; the read-only Prisma status check found all 13 migrations applied.
+- PostgreSQL remains on volume `fayanms_fayanms-pgdata`; the DB service was not recreated. The source label and image IDs are recorded in `docs/implementation/release-evidence-7e44361.json`.
+- Exact-head CI/ARM64 workflow, GHCR publication, staging/OCI, branch-protection, and physical-vendor evidence remain unverified. The app build artifacts completed successfully; Bun 1.3.14 emitted its known teardown segfault afterward, which the existing Dockerfile artifact check tolerated.
+
+## Backlog handoff (2026-09-23)
+
+- N1-001 and N1-002 are implemented locally: `FlowRecord` schema/migration, strict NetFlow v5 decoding, durable queue delivery, idempotent persistence, and audited 14-day retention. These do not make `/api/v1/flows` real; roadmap N1-007 remains separate.
+- Next repository task: **N1-003 — NetFlow v9 template/data decoding**, with bounded template state and fixtures. Continue to keep unsupported IPFIX/sFlow formats and unverified exporter compatibility explicit.
 
 ## Operating contract
 

@@ -23,6 +23,7 @@ type SbomArtifactEvidence = {
 type LocalDockerServiceEvidence = {
   imageId: string;
   status: "healthy" | "unhealthy" | "starting" | "unknown";
+  sourceRevision?: string | null;
 };
 
 type LocalDockerDeploymentEvidence = {
@@ -188,16 +189,37 @@ export function parseExternalEvidence(value: unknown = {}): ExternalEvidence {
     for (const serviceName of ["app", "worker", "postgres"] as const) {
       const service = services[serviceName];
       if (!isRecord(service)) throw new Error(`localDockerDeployment.services.${serviceName} is required`);
-      assertOnlyKeys(service, new Set(["imageId", "status"]), `localDockerDeployment.services.${serviceName}`);
+      assertOnlyKeys(service, new Set(["imageId", "status", "sourceRevision"]), `localDockerDeployment.services.${serviceName}`);
+      const rawSourceRevision = service.sourceRevision;
+      let sourceRevision: string | null | undefined;
+      if (rawSourceRevision === undefined) {
+        sourceRevision = undefined;
+      } else if (rawSourceRevision === null) {
+        sourceRevision = null;
+      } else if (typeof rawSourceRevision === "string" && /^[a-f0-9]{40}$/i.test(rawSourceRevision)) {
+        sourceRevision = rawSourceRevision.toLowerCase();
+      } else {
+        throw new Error(`localDockerDeployment.services.${serviceName} sourceRevision must be a full Git SHA or null`);
+      }
       if (
         typeof service.imageId !== "string" || !/^sha256:[a-f0-9]{64}$/i.test(service.imageId) ||
         !["healthy", "unhealthy", "starting", "unknown"].includes(String(service.status))
       ) {
         throw new Error(`localDockerDeployment.services.${serviceName} requires a sha256 imageId and valid health status`);
       }
+      if (
+        (serviceName === "app" || serviceName === "worker") &&
+        sourceRevision !== undefined && sourceRevision !== null &&
+        sourceRevision !== (rawLocalDocker.sourceSha as string).toLowerCase()
+      ) {
+        throw new Error(`${serviceName} sourceRevision must match localDockerDeployment.sourceSha`);
+      }
       parsedServices[serviceName] = {
         imageId: service.imageId.toLowerCase(),
         status: service.status as LocalDockerServiceEvidence["status"],
+        ...(sourceRevision === undefined
+          ? {}
+          : { sourceRevision }),
       };
     }
 

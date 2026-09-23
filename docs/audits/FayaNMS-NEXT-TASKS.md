@@ -6,12 +6,13 @@ The R80–R102 i18n tranche program is complete, but it is not the repository's 
 
 ## Current Cross-Program Status
 
-- The Docker build source is `2170a53ecf3de88f335ac00ffa69d2f73d575302`; the newer documentation/status snapshot is `7c5f069e4ec5229f2d3aafc98ddafeeada760600`. Local refs matched for that snapshot; this does not substitute for a fresh remote GitHub readback.
-- Local Docker app, worker, and PostgreSQL are healthy; Compose config validates and Prisma reports all 13 migrations applied. `.env.production` was reconciled to the running app's DB credential without exposing the secret or restarting services. The existing PostgreSQL volume remains intact.
-- N0-002 now has a local deployment snapshot in [`release-evidence-7c5f069.json`](../implementation/release-evidence-7c5f069.json). It records local Docker IDs and database/probe evidence separately from registry digests and leaves unavailable CI/SBOM/staging evidence explicitly absent.
+- The current code and Docker image source is `7e4436183f337b52115fbb1ae0326dd8c3907627`; local `main` and `origin/main` matched after push, but no fresh GitHub API readback was made.
+- The app, worker, and PostgreSQL are healthy; Compose validates, `/api/v1/meta` returns 200, and Prisma reports all 13 migrations applied. App/worker source labels match the pushed SHA; the existing PostgreSQL container and volume were not restarted or replaced.
+- N0-002's current local deployment snapshot is [`release-evidence-7e44361.json`](../implementation/release-evidence-7e44361.json). It records image IDs and observed source labels separately from registry digests; exact-head CI, GHCR publication, branch protection, staging, and hardware gates remain open.
 - NetFlow v5 ingestion is implemented and deployed locally, including durable queue persistence and approved 14-day retention. The distinct `/api/v1/flows` simulation remains unchanged; physical exporter interoperability is not certified.
 - The earlier cloud-ledger reconciliation remains historical. Use [`CURRENT-STATE.md`](../implementation/CURRENT-STATE.md) for the current evidence-qualified summary.
 - Last recorded CI and ARM64 workflow evidence targets older SHAs; exact-head CI, GHCR publication, staging, owner-controlled branch protection, and physical-vendor certification remain unverified or open.
+- NetFlow backlog: N1-001 schema and N1-002 v5 ingestion/retention are implemented locally. Next repository task is N1-003 NetFlow v9 template/data decoding; IPFIX, sFlow, flow rollups, and switching `/flows` from simulation remain later backlog items.
 
 ## Completed i18n Tranche History
 

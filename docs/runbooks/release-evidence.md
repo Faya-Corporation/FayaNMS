@@ -29,9 +29,9 @@ The optional `--evidence` file is JSON with only these fields:
     "sourceSha": "cccccccccccccccccccccccccccccccccccccccc",
     "composeConfigValidated": true,
     "services": {
-      "app": { "imageId": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "status": "healthy" },
-      "worker": { "imageId": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "status": "healthy" },
-      "postgres": { "imageId": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "status": "healthy" }
+      "app": { "imageId": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "status": "healthy", "sourceRevision": "cccccccccccccccccccccccccccccccccccccccc" },
+      "worker": { "imageId": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "status": "healthy", "sourceRevision": "cccccccccccccccccccccccccccccccccccccccc" },
+      "postgres": { "imageId": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "status": "healthy", "sourceRevision": null }
     },
     "applicationProbe": { "path": "/api/v1/meta", "statusCode": 200 },
     "database": {
@@ -61,7 +61,7 @@ Replace every example value with evidence read from the exact candidate SHA. Omi
 ## Handling and interpretation
 
 - Keep the input and output outside the checkout where practical; the source cleanliness field is captured before the artifact is written.
-- `localDockerDeployment` is an optional, timestamped operator readback. Record the app/worker/PostgreSQL Docker image IDs, health, a non-authenticated application probe, Compose validation, applied migration count/head, and named database volume. Docker image IDs are local image identities, not registry distribution digests; keep `imageDigests` empty until immutable registry digests are verified. `sourceSha` identifies the deployed build source and may differ from the manifest commit for documentation-only commits. The generator validates fields but does not query Docker or verify that source SHA.
+- `localDockerDeployment` is an optional, timestamped operator readback. Record the app/worker/PostgreSQL Docker image IDs, health, source revision labels when present, a non-authenticated application probe, Compose validation, applied migration count/head, and named database volume. When app or worker `sourceRevision` is supplied, the generator requires it to match the deployment `sourceSha`. Docker image IDs are local image identities, not registry distribution digests; keep `imageDigests` empty until immutable registry digests are verified. The generator validates fields but does not query Docker; the operator must inspect the live containers and confirm the source labels.
 - Do not put credentials, tokens, private URLs, or raw device/configuration data in evidence fields or blockers.
 - Preserve the JSON with the release record. The SBOM hash identifies an artifact/archive or local file bytes, depending on the input path; it does not embed or authenticate the SBOM's publisher.
 - A manifest is a snapshot, not a substitute for required CI, image publication, staging, backup/restore, governance, security, or vendor-lab acceptance. Re-generate after the candidate SHA or evidence changes.

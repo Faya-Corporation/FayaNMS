@@ -222,9 +222,9 @@ test("accepts bounded, secret-free local Docker deployment evidence", () => {
       sourceSha,
       composeConfigValidated: true,
       services: {
-        app: { imageId, status: "healthy" },
-        worker: { imageId, status: "healthy" },
-        postgres: { imageId, status: "healthy" },
+        app: { imageId, status: "healthy", sourceRevision: sourceSha },
+        worker: { imageId, status: "healthy", sourceRevision: sourceSha },
+        postgres: { imageId, status: "healthy", sourceRevision: null },
       },
       applicationProbe: { path: "/api/v1/meta", statusCode: 200 },
       database: {
@@ -240,9 +240,9 @@ test("accepts bounded, secret-free local Docker deployment evidence", () => {
     sourceSha,
     composeConfigValidated: true,
     services: {
-      app: { imageId, status: "healthy" },
-      worker: { imageId, status: "healthy" },
-      postgres: { imageId, status: "healthy" },
+      app: { imageId, status: "healthy", sourceRevision: sourceSha },
+      worker: { imageId, status: "healthy", sourceRevision: sourceSha },
+      postgres: { imageId, status: "healthy", sourceRevision: null },
     },
     applicationProbe: { path: "/api/v1/meta", statusCode: 200 },
     database: {
@@ -251,6 +251,27 @@ test("accepts bounded, secret-free local Docker deployment evidence", () => {
       volumeName: "fayanms_fayanms-pgdata",
     },
   });
+});
+
+test("rejects a Docker source revision that does not match the deployed source SHA", () => {
+  const imageId = `sha256:${"a".repeat(64)}`;
+  assert.throws(
+    () => parseExternalEvidence({
+      localDockerDeployment: {
+        observedAt: "2026-09-23T00:31:00.000Z",
+        sourceSha: "c".repeat(40),
+        composeConfigValidated: true,
+        services: {
+          app: { imageId, status: "healthy", sourceRevision: "d".repeat(40) },
+          worker: { imageId, status: "healthy", sourceRevision: "c".repeat(40) },
+          postgres: { imageId, status: "healthy", sourceRevision: null },
+        },
+        applicationProbe: { path: "/api/v1/meta", statusCode: 200 },
+        database: { migrationCount: 13, migrationHead: "20260923010000_netflow_v5_records", volumeName: "fayanms_fayanms-pgdata" },
+      },
+    }),
+    /app sourceRevision must match localDockerDeployment.sourceSha/i,
+  );
 });
 
 test("rejects incomplete Docker health or secret-bearing local deployment evidence", () => {

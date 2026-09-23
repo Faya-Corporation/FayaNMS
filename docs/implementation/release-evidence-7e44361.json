@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-23T01:03:27.845Z",
+  "source": {
+    "sha": "7e4436183f337b52115fbb1ae0326dd8c3907627",
+    "branch": "main",
+    "worktreeClean": false
+  },
+  "pullRequestNumber": null,
+  "ciRunIds": [],
+  "imageDigests": {},
+  "localDockerDeployment": {
+    "observedAt": "2026-09-23T01:01:27.000Z",
+    "sourceSha": "7e4436183f337b52115fbb1ae0326dd8c3907627",
+    "composeConfigValidated": true,
+    "services": {
+      "app": {
+        "imageId": "sha256:65b764e0114472ca2cbd16c857c30f91fbb7c287f256958e768f68fac3e1fea5",
+        "status": "healthy",
+        "sourceRevision": "7e4436183f337b52115fbb1ae0326dd8c3907627"
+      },
+      "worker": {
+        "imageId": "sha256:3bd02b6963ac4efc8cc66d3afbcd04082d872b78a4a454436257f75733f4596c",
+        "status": "healthy",
+        "sourceRevision": "7e4436183f337b52115fbb1ae0326dd8c3907627"
+      },
+      "postgres": {
+        "imageId": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+        "status": "healthy",
+        "sourceRevision": null
+      }
+    },
+    "applicationProbe": {
+      "path": "/api/v1/meta",
+      "statusCode": 200
+    },
+    "database": {
+      "migrationCount": 13,
+      "migrationHead": "20260923010000_netflow_v5_records",
+      "volumeName": "fayanms_fayanms-pgdata"
+    }
+  },
+  "migrationHead": "20260923010000_netflow_v5_records",
+  "sbomArtifactHash": null,
+  "sbomArtifactProvenance": null,
+  "certificationTierSummary": {
+    "matrix": "docs/certification/MATRIX.md",
+    "vendorCount": 6,
+    "highestRecordedTier": "T2",
+    "vendorTopTiers": {
+      "cisco-ios": "T2",
+      "fortinet-fortios": "T2",
+      "hpe-aos-cx": "T2",
+      "juniper-junos": "T2",
+      "palo-panos": "T2",
+      "sophos (SFOS WebAPI)": "T1"
+    }
+  },
+  "branchProtectionReadback": null,
+  "externalBlockers": [
+    "Exact-head CI and ARM64 container certification for 7e4436183f337b52115fbb1ae0326dd8c3907627 are not verified",
+    "GHCR publication and immutable registry image digests are not verified",
+    "Branch protection has not been rechecked at this snapshot",
+    "OCI/staging deployment, off-host backup/restore, and physical-vendor certification remain unverified"
+  ]
+}
