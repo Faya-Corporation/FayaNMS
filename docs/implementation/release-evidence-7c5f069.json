@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-23T00:46:43.108Z",
+  "source": {
+    "sha": "7c5f069e4ec5229f2d3aafc98ddafeeada760600",
+    "branch": "main",
+    "worktreeClean": false
+  },
+  "pullRequestNumber": null,
+  "ciRunIds": [],
+  "imageDigests": {},
+  "localDockerDeployment": {
+    "observedAt": "2026-09-23T00:46:02.000Z",
+    "sourceSha": "2170a53ecf3de88f335ac00ffa69d2f73d575302",
+    "composeConfigValidated": true,
+    "services": {
+      "app": {
+        "imageId": "sha256:fb476fc1af19bd0f4883ae80c14165f57578784f78a9283e3cc9a3610c40bc3f",
+        "status": "healthy"
+      },
+      "worker": {
+        "imageId": "sha256:08af5c8067aa29d6779524c23b5e63d8c0b11d6b60f93551b3d50881917ec5c5",
+        "status": "healthy"
+      },
+      "postgres": {
+        "imageId": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+        "status": "healthy"
+      }
+    },
+    "applicationProbe": {
+      "path": "/api/v1/meta",
+      "statusCode": 200
+    },
+    "database": {
+      "migrationCount": 13,
+      "migrationHead": "20260923010000_netflow_v5_records",
+      "volumeName": "fayanms_fayanms-pgdata"
+    }
+  },
+  "migrationHead": "20260923010000_netflow_v5_records",
+  "sbomArtifactHash": null,
+  "sbomArtifactProvenance": null,
+  "certificationTierSummary": {
+    "matrix": "docs/certification/MATRIX.md",
+    "vendorCount": 6,
+    "highestRecordedTier": "T2",
+    "vendorTopTiers": {
+      "cisco-ios": "T2",
+      "fortinet-fortios": "T2",
+      "hpe-aos-cx": "T2",
+      "juniper-junos": "T2",
+      "palo-panos": "T2",
+      "sophos (SFOS WebAPI)": "T1"
+    }
+  },
+  "branchProtectionReadback": {
+    "protected": false,
+    "observedAt": "2026-09-22T21:36:31.000Z",
+    "source": "https://api.github.com/repos/fayafatehi/FayaNMS/branches/main"
+  },
+  "externalBlockers": [
+    "Exact-head CI certification for 7c5f069 is not recorded; the latest recorded pass is for older SHA 5671bc5.",
+    "No successful immutable GHCR publication or registry image digest is verified; prior publication attempts failed.",
+    "Staging and production deployment evidence is unavailable.",
+    "Physical-vendor certification is not recorded.",
+    "Branch protection was last read as false on 2026-09-22 and has not been rechecked; owner action remains."
+  ]
+}

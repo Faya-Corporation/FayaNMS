@@ -12,9 +12,10 @@ describe("N0-001 canonical current-state ledger", () => {
   const state = readRepoFile("docs/implementation/CURRENT-STATE.md");
   const nextTasks = readRepoFile("docs/audits/FayaNMS-NEXT-TASKS.md");
   const cloudProgress = readRepoFile("docs/audits/FayaNMS-CLOUD-IMPLEMENTATION-PROGRESS.md");
+  const dockerEvidence = JSON.parse(readRepoFile("docs/implementation/release-evidence-7c5f069.json"));
 
   test("records the reviewed code baseline and avoids stale remote or push claims", () => {
-    expect(state).toContain("2170a53ecf3de88f335ac00ffa69d2f73d575302");
+    expect(state).toContain("7c5f069e4ec5229f2d3aafc98ddafeeada760600");
     expect(state).toContain("local `origin/main` and `HEAD` matched");
     expect(state).toContain("Worktree is not clean");
     expect(state).not.toContain("Local main contains unpushed commits");
@@ -37,6 +38,13 @@ describe("N0-001 canonical current-state ledger", () => {
     expect(state).toContain("Prisma reported all 13 migrations applied");
     expect(state).toContain("named PostgreSQL volume remains attached");
     expect(state).toContain("Compose config and one-off migration status now pass");
+    expect(dockerEvidence.localDockerDeployment.services.app.status).toBe("healthy");
+    expect(dockerEvidence.localDockerDeployment.applicationProbe.statusCode).toBe(200);
+    expect(dockerEvidence.localDockerDeployment.database.migrationCount).toBe(13);
+    expect(dockerEvidence.localDockerDeployment.database.volumeName).toBe("fayanms_fayanms-pgdata");
+    expect(dockerEvidence.imageDigests).toEqual({});
+    expect(dockerEvidence.source.worktreeClean).toBe(false);
+    expect(dockerEvidence.localDockerDeployment.sourceSha).toBe("2170a53ecf3de88f335ac00ffa69d2f73d575302");
   });
 
   test("marks NetFlow v5 implemented while preserving the simulated flows API boundary", () => {

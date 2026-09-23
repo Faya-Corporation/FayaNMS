@@ -24,6 +24,22 @@ The optional `--evidence` file is JSON with only these fields:
   "imageDigests": {
     "app": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
+  "localDockerDeployment": {
+    "observedAt": "2026-09-23T00:31:00.000Z",
+    "sourceSha": "cccccccccccccccccccccccccccccccccccccccc",
+    "composeConfigValidated": true,
+    "services": {
+      "app": { "imageId": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "status": "healthy" },
+      "worker": { "imageId": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "status": "healthy" },
+      "postgres": { "imageId": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "status": "healthy" }
+    },
+    "applicationProbe": { "path": "/api/v1/meta", "statusCode": 200 },
+    "database": {
+      "migrationCount": 13,
+      "migrationHead": "20260923010000_netflow_v5_records",
+      "volumeName": "fayanms_fayanms-pgdata"
+    }
+  },
   "sbomArtifact": {
     "artifactId": 10673822610,
     "workflowRunId": "35677691852",
@@ -45,6 +61,7 @@ Replace every example value with evidence read from the exact candidate SHA. Omi
 ## Handling and interpretation
 
 - Keep the input and output outside the checkout where practical; the source cleanliness field is captured before the artifact is written.
+- `localDockerDeployment` is an optional, timestamped operator readback. Record the app/worker/PostgreSQL Docker image IDs, health, a non-authenticated application probe, Compose validation, applied migration count/head, and named database volume. Docker image IDs are local image identities, not registry distribution digests; keep `imageDigests` empty until immutable registry digests are verified. `sourceSha` identifies the deployed build source and may differ from the manifest commit for documentation-only commits. The generator validates fields but does not query Docker or verify that source SHA.
 - Do not put credentials, tokens, private URLs, or raw device/configuration data in evidence fields or blockers.
 - Preserve the JSON with the release record. The SBOM hash identifies an artifact/archive or local file bytes, depending on the input path; it does not embed or authenticate the SBOM's publisher.
 - A manifest is a snapshot, not a substitute for required CI, image publication, staging, backup/restore, governance, security, or vendor-lab acceptance. Re-generate after the candidate SHA or evidence changes.

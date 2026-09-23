@@ -63,6 +63,7 @@ test("builds a verifiable snapshot without inventing absent external release evi
     assert.equal(manifest.pullRequestNumber, null);
     assert.deepEqual(manifest.ciRunIds, []);
     assert.deepEqual(manifest.imageDigests, {});
+    assert.equal(manifest.localDockerDeployment, null);
     assert.equal(manifest.branchProtectionReadback, null);
     assert.equal(manifest.sbomArtifactHash, null);
     assert.equal(manifest.sbomArtifactProvenance, null);
@@ -210,6 +211,74 @@ test("rejects malformed digests and branch-protection claims without dated prove
     /without credentials, query parameters or fragments/i,
   );
   assert.throws(() => parseExternalEvidence({ token: "must-not-be-accepted" }), /unexpected field/i);
+});
+
+test("accepts bounded, secret-free local Docker deployment evidence", () => {
+  const imageId = `sha256:${"a".repeat(64)}`;
+  const sourceSha = "c".repeat(40);
+  const evidence = parseExternalEvidence({
+    localDockerDeployment: {
+      observedAt: "2026-09-23T00:31:00.000Z",
+      sourceSha,
+      composeConfigValidated: true,
+      services: {
+        app: { imageId, status: "healthy" },
+        worker: { imageId, status: "healthy" },
+        postgres: { imageId, status: "healthy" },
+      },
+      applicationProbe: { path: "/api/v1/meta", statusCode: 200 },
+      database: {
+        migrationCount: 13,
+        migrationHead: "20260923010000_netflow_v5_records",
+        volumeName: "fayanms_fayanms-pgdata",
+      },
+    },
+  });
+
+  assert.deepEqual(evidence.localDockerDeployment, {
+    observedAt: "2026-09-23T00:31:00.000Z",
+    sourceSha,
+    composeConfigValidated: true,
+    services: {
+      app: { imageId, status: "healthy" },
+      worker: { imageId, status: "healthy" },
+      postgres: { imageId, status: "healthy" },
+    },
+    applicationProbe: { path: "/api/v1/meta", statusCode: 200 },
+    database: {
+      migrationCount: 13,
+      migrationHead: "20260923010000_netflow_v5_records",
+      volumeName: "fayanms_fayanms-pgdata",
+    },
+  });
+});
+
+test("rejects incomplete Docker health or secret-bearing local deployment evidence", () => {
+  assert.throws(
+    () => parseExternalEvidence({ localDockerDeployment: { observedAt: "2026-09-23T00:31:00.000Z" } }),
+    /localDockerDeployment/i,
+  );
+  assert.throws(
+    () => parseExternalEvidence({
+      localDockerDeployment: {
+        observedAt: "2026-09-23T00:31:00.000Z",
+        sourceSha: "c".repeat(40),
+        composeConfigValidated: true,
+        services: {
+          app: { imageId: "latest", status: "healthy" },
+          worker: { imageId: `sha256:${"a".repeat(64)}`, status: "healthy" },
+          postgres: { imageId: `sha256:${"a".repeat(64)}`, status: "healthy" },
+        },
+        applicationProbe: { path: "/api/v1/meta", statusCode: 200 },
+        database: { migrationCount: 13, migrationHead: null, volumeName: "pgdata" },
+      },
+    }),
+    /imageId/i,
+  );
+  assert.throws(
+    () => parseExternalEvidence({ localDockerDeployment: { password: "must-not-be-accepted" } }),
+    /unexpected field/i,
+  );
 });
 
 test("writes artifacts exclusively and does not overwrite an earlier evidence snapshot", () => {

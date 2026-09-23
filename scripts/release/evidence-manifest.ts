@@ -20,11 +20,30 @@ type SbomArtifactEvidence = {
   source: string;
 };
 
+type LocalDockerServiceEvidence = {
+  imageId: string;
+  status: "healthy" | "unhealthy" | "starting" | "unknown";
+};
+
+type LocalDockerDeploymentEvidence = {
+  observedAt: string;
+  sourceSha: string;
+  composeConfigValidated: boolean;
+  services: {
+    app: LocalDockerServiceEvidence;
+    worker: LocalDockerServiceEvidence;
+    postgres: LocalDockerServiceEvidence;
+  };
+  applicationProbe: { path: string; statusCode: number };
+  database: { migrationCount: number; migrationHead: string | null; volumeName: string };
+};
+
 type ExternalEvidence = {
   pullRequestNumber: number | null;
   ciRunIds: string[];
   imageDigests: Record<string, string>;
   sbomArtifact: SbomArtifactEvidence | null;
+  localDockerDeployment: LocalDockerDeploymentEvidence | null;
   branchProtectionReadback: BranchProtectionReadback | null;
   externalBlockers: string[] | null;
 };
@@ -47,6 +66,7 @@ export type EvidenceManifest = {
   pullRequestNumber: number | null;
   ciRunIds: string[];
   imageDigests: Record<string, string>;
+  localDockerDeployment: LocalDockerDeploymentEvidence | null;
   migrationHead: string | null;
   sbomArtifactHash: string | null;
   sbomArtifactProvenance: Omit<SbomArtifactEvidence, "sha256"> | null;
@@ -67,6 +87,7 @@ const EVIDENCE_KEYS = new Set([
   "ciRunIds",
   "imageDigests",
   "sbomArtifact",
+  "localDockerDeployment",
   "branchProtectionReadback",
   "externalBlockers",
 ]);
@@ -143,6 +164,76 @@ export function parseExternalEvidence(value: unknown = {}): ExternalEvidence {
     };
   }
 
+  const rawLocalDocker = value.localDockerDeployment ?? null;
+  let localDockerDeployment: LocalDockerDeploymentEvidence | null = null;
+  if (rawLocalDocker !== null) {
+    if (!isRecord(rawLocalDocker)) throw new Error("localDockerDeployment must be an object or null");
+    assertOnlyKeys(
+      rawLocalDocker,
+      new Set(["observedAt", "sourceSha", "composeConfigValidated", "services", "applicationProbe", "database"]),
+      "localDockerDeployment",
+    );
+    if (
+      typeof rawLocalDocker.observedAt !== "string" || Number.isNaN(Date.parse(rawLocalDocker.observedAt)) ||
+      typeof rawLocalDocker.sourceSha !== "string" || !/^[a-f0-9]{40}$/i.test(rawLocalDocker.sourceSha) ||
+      typeof rawLocalDocker.composeConfigValidated !== "boolean" ||
+      !isRecord(rawLocalDocker.services) || !isRecord(rawLocalDocker.applicationProbe) || !isRecord(rawLocalDocker.database)
+    ) {
+      throw new Error("localDockerDeployment requires a dated source SHA, Compose result, services, probe and database evidence");
+    }
+
+    const services = rawLocalDocker.services;
+    assertOnlyKeys(services, new Set(["app", "worker", "postgres"]), "localDockerDeployment.services");
+    const parsedServices = {} as LocalDockerDeploymentEvidence["services"];
+    for (const serviceName of ["app", "worker", "postgres"] as const) {
+      const service = services[serviceName];
+      if (!isRecord(service)) throw new Error(`localDockerDeployment.services.${serviceName} is required`);
+      assertOnlyKeys(service, new Set(["imageId", "status"]), `localDockerDeployment.services.${serviceName}`);
+      if (
+        typeof service.imageId !== "string" || !/^sha256:[a-f0-9]{64}$/i.test(service.imageId) ||
+        !["healthy", "unhealthy", "starting", "unknown"].includes(String(service.status))
+      ) {
+        throw new Error(`localDockerDeployment.services.${serviceName} requires a sha256 imageId and valid health status`);
+      }
+      parsedServices[serviceName] = {
+        imageId: service.imageId.toLowerCase(),
+        status: service.status as LocalDockerServiceEvidence["status"],
+      };
+    }
+
+    const probe = rawLocalDocker.applicationProbe;
+    assertOnlyKeys(probe, new Set(["path", "statusCode"]), "localDockerDeployment.applicationProbe");
+    if (
+      typeof probe.path !== "string" || !/^\/[A-Za-z0-9/_-]{0,127}$/.test(probe.path) ||
+      !Number.isInteger(probe.statusCode) || (probe.statusCode as number) < 100 || (probe.statusCode as number) > 599
+    ) {
+      throw new Error("localDockerDeployment.applicationProbe requires a local path and HTTP status code");
+    }
+
+    const database = rawLocalDocker.database;
+    assertOnlyKeys(database, new Set(["migrationCount", "migrationHead", "volumeName"]), "localDockerDeployment.database");
+    if (
+      !Number.isSafeInteger(database.migrationCount) || (database.migrationCount as number) < 0 ||
+      (database.migrationHead !== null && (typeof database.migrationHead !== "string" || !/^\d{14}_[A-Za-z0-9_-]+$/.test(database.migrationHead))) ||
+      typeof database.volumeName !== "string" || !/^[A-Za-z0-9_.-]{1,128}$/.test(database.volumeName)
+    ) {
+      throw new Error("localDockerDeployment.database requires bounded migration and volume evidence");
+    }
+
+    localDockerDeployment = {
+      observedAt: new Date(rawLocalDocker.observedAt).toISOString(),
+      sourceSha: rawLocalDocker.sourceSha.toLowerCase(),
+      composeConfigValidated: rawLocalDocker.composeConfigValidated,
+      services: parsedServices,
+      applicationProbe: { path: probe.path, statusCode: probe.statusCode as number },
+      database: {
+        migrationCount: database.migrationCount as number,
+        migrationHead: database.migrationHead as string | null,
+        volumeName: database.volumeName,
+      },
+    };
+  }
+
   const rawProtection = value.branchProtectionReadback ?? null;
   let branchProtectionReadback: BranchProtectionReadback | null = null;
   if (rawProtection !== null) {
@@ -176,6 +267,7 @@ export function parseExternalEvidence(value: unknown = {}): ExternalEvidence {
       Object.entries(imageDigests).map(([name, digest]) => [name, (digest as string).toLowerCase()]),
     ),
     sbomArtifact,
+    localDockerDeployment,
     branchProtectionReadback,
     externalBlockers: externalBlockers === null
       ? null
@@ -248,6 +340,7 @@ export function buildEvidenceManifest(options: BuildEvidenceOptions): EvidenceMa
     pullRequestNumber: external.pullRequestNumber,
     ciRunIds: external.ciRunIds,
     imageDigests: external.imageDigests,
+    localDockerDeployment: external.localDockerDeployment,
     migrationHead: collectMigrationHead(repoRoot),
     sbomArtifactHash,
     sbomArtifactProvenance: external.sbomArtifact
