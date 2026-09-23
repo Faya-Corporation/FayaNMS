@@ -19,6 +19,11 @@ build
 .git
 .github
 
+# Local deployment checkout and workstation-only helpers are not image inputs.
+FAYA-NMS-Main
+Deploy-FayaNMS.ps1
+*.code-workspace
+
 # runtime state — NEVER bake these into an image (P19-REP lesson: the live DB
 # churned 475 MB of git history once; it does not get to poison images too)
 db

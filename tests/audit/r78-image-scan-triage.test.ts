@@ -48,6 +48,12 @@ describe("R78-A: both runtime images use the hardened distroless base", () => {
     expect(runtime).not.toContain("apt-get");
     expect(runtime).not.toContain("apk");
   });
+
+  test("the worker runtime includes the discovery policy imported by its runner", () => {
+    expect(WORKER).toContain(
+      "COPY --chown=10001:10001 src/lib/discovery/policy.ts /src/lib/discovery/policy.ts"
+    );
+  });
 });
 
 describe("R78-B: the image-scan gate is strict", () => {
@@ -127,5 +133,26 @@ describe("R78-D: Prisma native runtime closure is explicit and non-root", () => 
     );
     expect(migratorRuntime).not.toContain("apt-get");
     expect(migratorRuntime).toContain("USER 10001");
+  });
+
+  test("the staged OpenSSL closure follows shared-library symlinks and includes zlib", () => {
+    expect(PRISMA_RUNTIME_HELPER).toContain("find -L /lib /usr/lib");
+    expect(PRISMA_RUNTIME_HELPER).toContain('test -s "${output}/lib/libz.so.1"');
+    expect(PRISMA_RUNTIME_HELPER).toContain("libzstd.so.1");
+  });
+
+  test("Prisma can discover OpenSSL from standard system library paths", () => {
+    expect(DOCKERFILE).toContain(
+      "COPY --from=build --chown=10001:10001 /prisma-runtime/lib/libssl.so.3 /usr/lib/libssl.so.3"
+    );
+    expect(DOCKERFILE).toContain(
+      "COPY --from=build --chown=10001:10001 /prisma-runtime/lib/libcrypto.so.3 /usr/lib/libcrypto.so.3"
+    );
+    expect(MIGRATOR).toContain(
+      "COPY --from=deps --chown=10001:10001 /prisma-runtime/lib/libssl.so.3 /usr/lib/libssl.so.3"
+    );
+    expect(MIGRATOR).toContain(
+      "COPY --from=deps --chown=10001:10001 /prisma-runtime/lib/libcrypto.so.3 /usr/lib/libcrypto.so.3"
+    );
   });
 });

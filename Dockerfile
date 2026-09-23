@@ -95,6 +95,10 @@ ENV NODE_ENV=production \
 # the minimal Prisma/OpenSSL native runtime closure.
 
 COPY --from=build --chown=10001:10001 /app/.next/standalone ./
+# Keep browser assets available even if Bun exits after `next build` but before
+# the package script's trailing copy commands complete.
+COPY --from=build --chown=10001:10001 /app/.next/static ./.next/static
+COPY --from=build --chown=10001:10001 /app/public ./public
 # Prisma client + query engine: explicit copy as a standalone-tracing safety
 # net — boot fails fast without them, so prove presence on a clean machine,
 # not just the build host (runbook T1 acceptance criteria).
@@ -105,6 +109,10 @@ COPY --from=build --chown=10001:10001 /app/node_modules/@prisma  ./node_modules/
 # `provision` service.
 COPY --from=build --chown=10001:10001 /app/prisma ./prisma
 COPY --from=build --chown=10001:10001 /prisma-runtime ./prisma-runtime
+# Prisma platform detection scans system library paths; keep its OpenSSL probe
+# visible there while the complete native dependency closure stays staged above.
+COPY --from=build --chown=10001:10001 /prisma-runtime/lib/libssl.so.3 /usr/lib/libssl.so.3
+COPY --from=build --chown=10001:10001 /prisma-runtime/lib/libcrypto.so.3 /usr/lib/libcrypto.so.3
 
 USER 10001
 EXPOSE 3000
