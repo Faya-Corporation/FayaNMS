@@ -10,6 +10,13 @@
 
 > **Current consolidated status:** see [`docs/implementation/CURRENT-STATE.md`](../implementation/CURRENT-STATE.md). This page retains its dated task history and workflow evidence; timestamped snapshots are not live readbacks.
 
+## Checkout reconciliation (2026-09-23)
+
+- Reviewed code baseline: `2170a53ecf3de88f335ac00ffa69d2f73d575302`; local `origin/main` matched `HEAD` at review time. This is not a fresh remote GitHub readback.
+- NetFlow v5 decoding, bounded ingest, durable queue persistence, and audited 14-day retention are implemented and deployed to the local Docker stack. `/api/v1/flows` remains simulated; physical-exporter compatibility is unverified.
+- At 2026-09-23 00:31 UTC, the local app, worker, and PostgreSQL containers were healthy; Compose config validated and Prisma reported all 13 migrations applied. The ignored host `.env.production` DB credential was reconciled to the running app without displaying it or restarting services. The PostgreSQL volume was not changed.
+- Historical task rows and CI IDs below describe their recorded SHAs only. Consult `CURRENT-STATE.md` before treating any snapshot as current certification.
+
 ## Operating contract
 
 This ledger records repository implementation evidence separately from external OCI, DNS, VPN, physical hardware, and GitHub-owner actions. A task is `DONE` only when its repository acceptance criteria and available automated evidence are satisfied. No credentials, private keys, device secrets, production backups, or production data may be committed.

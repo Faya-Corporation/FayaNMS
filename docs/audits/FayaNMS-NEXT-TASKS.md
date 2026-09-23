@@ -2,15 +2,15 @@
 
 > **Current consolidated status:** see [`docs/implementation/CURRENT-STATE.md`](../implementation/CURRENT-STATE.md). The roadmap/backlog below is planning context; completion requires acceptance evidence.
 
-The R80–R102 i18n tranche program is complete, but it is not the repository's only remaining work. A detailed independent production roadmap is present as an untracked workspace input; its first items cover the cloud ledger, post-merge release evidence, repository governance, real flow decoding, and topology/collector gaps. Several remaining items are repository-actionable.
+The R80–R102 i18n tranche program is complete, but it is not the repository's only remaining work. A detailed independent production roadmap is present as an untracked workspace input; its N0–N25 items cover release evidence, repository governance, topology/collector gaps, and external validation. NetFlow v5 record ingestion is implemented; `/api/v1/flows` simulation replacement remains a separate roadmap item.
 
 ## Current Cross-Program Status
 
-- GitHub and local `origin/main` were verified at `5671bc5`; local `main` contains the focused ledger updates in `9a6775f` and `59efaa9`. These commits have not been pushed.
-- Roadmap task 1 (cloud-ledger reconciliation) is complete in `9a6775f`.
-- Roadmap task 2 is partial: post-merge CI and ARM64 certification passed, but immutable GHCR publication failed. An exact-merge-SHA retry (run `35678367826`, attempt 2) was still in progress at the latest readback; its active job logs are unavailable and no digest is verified. Staging remains skipped. Evidence is recorded in `FayaNMS-CLOUD-IMPLEMENTATION-PROGRESS.md`.
-- Roadmap task 3 (branch protection) is owner-controlled. Later telemetry, topology, HA, and lab tasks are not complete merely because the i18n tranche ledger is empty.
-- Roadmap task 4 has a committed, review-pending NetFlow v5 ingestion spec (`docs/superpowers/specs/2026-09-23-netflow-v5-record-ingestion.md`, commit `83996eb`); no implementation is claimed. The separate `/flows` replacement remains item 7.
+- Reviewed code baseline is `2170a53ecf3de88f335ac00ffa69d2f73d575302`; local `origin/main` matched `HEAD` at review time. This does not substitute for a fresh remote GitHub readback.
+- Local Docker app, worker, and PostgreSQL are healthy; Compose config validates and Prisma reports all 13 migrations applied. `.env.production` was reconciled to the running app's DB credential without exposing the secret or restarting services. The existing PostgreSQL volume remains intact.
+- NetFlow v5 ingestion is implemented and deployed locally, including durable queue persistence and approved 14-day retention. The distinct `/api/v1/flows` simulation remains unchanged; physical exporter interoperability is not certified.
+- The earlier cloud-ledger reconciliation remains historical. Use [`CURRENT-STATE.md`](../implementation/CURRENT-STATE.md) for the current evidence-qualified summary.
+- Last recorded CI and ARM64 workflow evidence targets older SHAs; exact-head CI, GHCR publication, staging, owner-controlled branch protection, and physical-vendor certification remain unverified or open.
 
 ## Completed i18n Tranche History
 
