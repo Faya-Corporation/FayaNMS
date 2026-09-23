@@ -545,8 +545,9 @@ jobs:
         run: |
           docker build \
             --build-arg NEXT_PUBLIC_SITE_URL=https://ci-gate.fayanms.example.com \
+            --build-arg FAYANMS_SOURCE_SHA=$GITHUB_SHA \
             -t fayanms-app:ci .
-          docker build -f Dockerfile.worker -t fayanms-worker:ci .
+          docker build -f Dockerfile.worker --build-arg FAYANMS_SOURCE_SHA=$GITHUB_SHA -t fayanms-worker:ci .
 
       - name: Image scan — app (trivy, HIGH/CRITICAL fail)
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0 (SHA-pinned 2026-09-11)

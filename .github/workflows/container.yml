@@ -51,16 +51,16 @@ jobs:
 
       - name: Build ARM64 application image
         run: |
-          docker buildx build             --platform linux/arm64             --load             --tag fayanms:arm64-${CANDIDATE_SHA}             --build-arg NEXT_PUBLIC_SITE_URL=https://fayanms.invalid             --label org.opencontainers.image.revision=${CANDIDATE_SHA}             --label org.opencontainers.image.source=https://github.com/fayafatehi/FayaNMS             --provenance=false             .
+          docker buildx build             --platform linux/arm64             --load             --tag fayanms:arm64-${CANDIDATE_SHA}             --build-arg NEXT_PUBLIC_SITE_URL=https://fayanms.invalid             --build-arg FAYANMS_SOURCE_SHA=${CANDIDATE_SHA}             --label org.opencontainers.image.revision=${CANDIDATE_SHA}             --label org.opencontainers.image.source=https://github.com/fayafatehi/FayaNMS             --provenance=false             .
 
       - name: Build ARM64 worker image
         run: |
-          docker buildx build --platform linux/arm64 --load --file Dockerfile.worker --tag fayanms-worker:arm64-${CANDIDATE_SHA} .
+          docker buildx build --platform linux/arm64 --load --file Dockerfile.worker --tag fayanms-worker:arm64-${CANDIDATE_SHA} --build-arg FAYANMS_SOURCE_SHA=${CANDIDATE_SHA} .
           docker run --rm fayanms-worker:arm64-${CANDIDATE_SHA} --version
 
       - name: Build ARM64 migration image
         run: |
-          docker buildx build --platform linux/arm64 --load --file Dockerfile.migrator --tag fayanms-migrator:arm64-${CANDIDATE_SHA} .
+          docker buildx build --platform linux/arm64 --load --file Dockerfile.migrator --tag fayanms-migrator:arm64-${CANDIDATE_SHA} --build-arg FAYANMS_SOURCE_SHA=${CANDIDATE_SHA} .
           docker run --rm fayanms-migrator:arm64-${CANDIDATE_SHA} run ./node_modules/prisma/build/index.js --version
 
       - name: Verify image architecture and runtime
@@ -176,6 +176,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             NEXT_PUBLIC_SITE_URL=https://fayanms.invalid
+            FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
           sbom: true
           provenance: mode=max
 
@@ -188,6 +189,8 @@ jobs:
           push: true
           tags: ${{ steps.worker-meta.outputs.tags }}
           labels: ${{ steps.worker-meta.outputs.labels }}
+          build-args: |
+            FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
           sbom: true
           provenance: mode=max
 
@@ -200,6 +203,8 @@ jobs:
           push: true
           tags: ${{ steps.migrator-meta.outputs.tags }}
           labels: ${{ steps.migrator-meta.outputs.labels }}
+          build-args: |
+            FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
           sbom: true
           provenance: mode=max
 

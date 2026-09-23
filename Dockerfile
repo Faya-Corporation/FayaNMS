@@ -45,6 +45,8 @@ RUN sed -i 's/\r$//' /usr/local/bin/prepare-prisma-runtime.sh \
  && rm -rf /var/lib/apt/lists/*
 
 FROM deps AS build
+ARG FAYANMS_SOURCE_SHA=unknown
+LABEL org.opencontainers.image.revision="${FAYANMS_SOURCE_SHA}"
 # Fail fast with a human message instead of a deep siteUrl()/next-build throw.
 ARG NEXT_PUBLIC_SITE_URL
 RUN test -n "$NEXT_PUBLIC_SITE_URL" || { \
@@ -82,6 +84,8 @@ RUN bunx prisma generate \
 RUN /usr/local/bin/prepare-prisma-runtime.sh /app /prisma-runtime
 
 FROM oven/bun:1.3.14-distroless@sha256:c28c51287af70bab8e0b66fc4b6a30cfb92a727ebc88045223adc9f4c9d09307 AS runtime
+ARG FAYANMS_SOURCE_SHA=unknown
+LABEL org.opencontainers.image.revision="${FAYANMS_SOURCE_SHA}"
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \

@@ -74,6 +74,7 @@ services:
     build:
       context: .
       args:
+        FAYANMS_SOURCE_SHA: "${FAYANMS_SOURCE_SHA:-unknown}"
         # Interpolated from the --env-file (e.g. .env.production). Public origin,
         # NOT a secret; baked into the client bundle at build time (Dockerfile T1).
         NEXT_PUBLIC_SITE_URL: "${NEXT_PUBLIC_SITE_URL:?Set NEXT_PUBLIC_SITE_URL in the --env-file — the real canonical origin; localhost and *.local are rejected in production}"
@@ -110,6 +111,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
+      args:
+        FAYANMS_SOURCE_SHA: "${FAYANMS_SOURCE_SHA:-unknown}"
     image: fayanms-worker:latest
     restart: unless-stopped
     # Own container on the compose bridge network (T5) — service DNS name
@@ -141,6 +144,7 @@ services:
       context: .
       target: build
       args:
+        FAYANMS_SOURCE_SHA: "${FAYANMS_SOURCE_SHA:-unknown}"
         NEXT_PUBLIC_SITE_URL: "${NEXT_PUBLIC_SITE_URL:?Set NEXT_PUBLIC_SITE_URL in the --env-file}"
     image: fayanms-provision:latest
     profiles: ["provision"]

@@ -412,6 +412,7 @@ git config core.autocrlf input          # guard against CRLF if checked out on W
 cp docs/deploy/env.production.example .env.production             # host-side: URL + POSTGRES_PASSWORD
 cp docs/deploy/env.app.production.example .env.production.app     # app zone: fill session/KEK/identity
 cp docs/deploy/env.worker.production.example .env.production.worker  # worker zone: fill identity/vault
+export FAYANMS_SOURCE_SHA="$(git rev-parse HEAD)"                 # stamp locally built images with this checkout
 docker compose --env-file .env.production build          # build args need the env-file
 docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
   -e FAYANMS_DEMO_MODE=true provision \
@@ -419,7 +420,12 @@ docker compose --env-file .env.production run --rm --no-deps -e NODE_ENV= \
                                                        # T7 demo path (pristine: migrate deploy only)
 docker compose --env-file .env.production up -d
 docker compose ps && docker compose logs -f app          # watch the startup policy pass
+unset FAYANMS_SOURCE_SHA
 ```
+
+In Windows PowerShell, set the build provenance variable before running Compose:
+`$env:FAYANMS_SOURCE_SHA = (git rev-parse HEAD).Trim()`. Clear it after building with
+`Remove-Item Env:FAYANMS_SOURCE_SHA`.
 
 - [ ] `curl -I http://localhost/` from WSL → 200 (sign-in gate).
 - [ ] From a LAN machine: `http://fayanms.<yourcorp>.com` renders the sign-in gate with
