@@ -8,7 +8,7 @@ const uint16 = z.number().int().min(0).max(65_535);
 const uint32 = z.number().int().min(0).max(4_294_967_295);
 const uint32Text = z.string()
   .regex(/^\d{1,10}$/)
-  .refine((value) => BigInt(value) <= 4_294_967_295n, "Expected an unsigned 32-bit integer");
+  .refine((value) => BigInt(value) <= BigInt("4294967295"), "Expected an unsigned 32-bit integer");
 const ipv4 = z.string().refine(isIPv4, "Expected IPv4 address");
 
 const headerSchema = z.object({
