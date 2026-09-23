@@ -69,8 +69,8 @@ describe("R74-B: the CI image build satisfies the production origin guard honest
     );
     expect(step).toContain("--build-arg NEXT_PUBLIC_SITE_URL=");
     expect(step).toContain("ci-gate.fayanms.example.com");
-    // the worker build stays arg-free (it has no origin guard)
-    expect(step).toContain("docker build -f Dockerfile.worker -t fayanms-worker:ci .");
+    // The worker has no origin guard, but still carries source provenance.
+    expect(step).toMatch(/docker build -f Dockerfile\.worker\b[^\r\n]*--build-arg FAYANMS_SOURCE_SHA=\$GITHUB_SHA[^\r\n]*-t fayanms-worker:ci \./);
   });
 
   test("the triage note records the guard provenance and the scan-target scope", () => {

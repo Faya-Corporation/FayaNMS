@@ -109,7 +109,7 @@ describe("SUPPLY-001-A: CI builds and scans the runtime images (image-level)", (
     expect(buildStep).toContain("- name: Build runtime images (app + worker)");
     expect(buildStep).toContain("--build-arg NEXT_PUBLIC_SITE_URL=https://ci-gate.fayanms.example.com");
     expect(buildStep).toContain("-t fayanms-app:ci .");
-    expect(ci).toContain("docker build -f Dockerfile.worker -t fayanms-worker:ci .");
+    expect(ci).toMatch(/docker build -f Dockerfile\.worker\b[^\r\n]*--build-arg FAYANMS_SOURCE_SHA=\$GITHUB_SHA[^\r\n]*-t fayanms-worker:ci \./);
   });
 
   test("trivy scans the IMAGES (not just the filesystem) and fails on HIGH/CRITICAL", () => {
