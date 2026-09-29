@@ -1,7 +1,7 @@
 # Audit State — GLM/full-audit-and-fix
 
 ## Current phase
-P5 i18n gap-closure FIXED: RT-005 55db23a (hook toasts/alerts) + RT-020 04534bc (sign-in gate) + RT-021 9117774 (high-risk dialog) + RT-022 19b91de (device form + CSV import) + RT-037 7e78c8f (ErrorState defaults); dictionary 3311 leaves/side, full suite 1453 pass/18 skip/2 env-fail, tsc 0, lint 0. Prior: Wave 0 P1s (RT-001 8c5200d, RT-002 fdb3dcf, RT-003 e97007e, RT-004 a2f2278); docs compiler + RT plan done (4881a96, 3517ce7). Baseline GREEN (lint 0, tsc 0, tests 1340 pass/18 skip/2 env-fail, build:gate exit 0), 5 module audits complete (67 raw findings), UX walk of unauthenticated surfaces done with 4 before-screenshots
+P5 Wave 1 data P2s FIXED: RT-011 5a22d36, RT-012 a2932e0, RT-013 0909ef9, RT-014 bbb5475, RT-015 f88e411 (additive index migration), RT-016 1668edf, retotal 38e2755; suite 1493 pass/18 skip/2 env-fail, tsc 0, lint 0. ENV CORRECTION: PostgreSQL IS running at localhost:5433 (seeded demo data; earlier 'no DB' assumption wrong — only CLI tools absent), post-auth UI walks possible. Prior: i18n RT-005 55db23a, RT-020 04534bc, RT-021 9117774, RT-022 19b91de, RT-037 7e78c8f (dict 3312/side); Wave 0 P1s RT-001 8c5200d, RT-002 fdb3dcf, RT-003 e97007e, RT-004 a2f2278; docs (4881a96, 3517ce7); baseline GREEN (1340 pass/18 skip/2 env-fail, build:gate exit 0), 5 module audits (67 raw), UX before-screenshots captured
 
 ## Ground truth
 - Repo: /home/z/faya-nms, branch GLM/full-audit-and-fix (from main @ 38fbdfb). Base branch NEVER touched.
