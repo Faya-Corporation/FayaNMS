@@ -39,13 +39,13 @@ function candidates(src: string): string[] {
 
 describe("R95 — alerts namespace", () => {
   test("has 49 non-empty leaves with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.alertsView).length).toBe(49);
     expect(leaves(ar.alertsView).length).toBe(49);
     expect(new Set(leaves(en.alertsView))).toEqual(new Set(leaves(ar.alertsView)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).alertsView;
+      const namespace = (readJson(file) as Record<string, any>).alertsView;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -72,7 +72,7 @@ describe("R95 — view keying and ledger", () => {
 
   test("keeps filter and pagination interpolation shapes", () => {
     const src = readRepo(VIEW);
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     expect(src).toContain('t(`filters.severity.${filter}`)');
     expect(src).toContain('t("stream.updated"');
     expect(src).toContain('t("pagination.summary"');

@@ -85,8 +85,8 @@ function candidates(src: string): string[] {
 
 describe("R84 — tranche 5 namespaces exist and are balanced", () => {
   test("A: incidents exists in both dictionaries with EXACTLY 38 leaves", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(en.incidents, "en.incidents").toBeDefined();
     expect(ar.incidents, "ar.incidents").toBeDefined();
     expect(leaves(en.incidents).length).toBe(38);
@@ -94,8 +94,8 @@ describe("R84 — tranche 5 namespaces exist and are balanced", () => {
   });
 
   test("A: perfAvailability exists in both dictionaries with EXACTLY 28 leaves", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(en.perfAvailability, "en.perfAvailability").toBeDefined();
     expect(ar.perfAvailability, "ar.perfAvailability").toBeDefined();
     expect(leaves(en.perfAvailability).length).toBe(28);
@@ -103,8 +103,8 @@ describe("R84 — tranche 5 namespaces exist and are balanced", () => {
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions (both namespaces)", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     for (const ns of ["incidents", "perfAvailability"]) {
       const enSet = new Set(leaves(en[ns]));
       const arSet = new Set(leaves(ar[ns]));
@@ -115,7 +115,7 @@ describe("R84 — tranche 5 namespaces exist and are balanced", () => {
 
   test("A: every tranche-5 leaf value is a non-empty string in both locales", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       for (const ns of ["incidents", "perfAvailability"]) {
         const walk = (node: unknown, path: string) => {
           if (node !== null && typeof node === "object") {
@@ -132,7 +132,7 @@ describe("R84 — tranche 5 namespaces exist and are balanced", () => {
   });
 
   test("F: interpolation placeholders are present in the dictionary values", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     const inc = en.incidents as Messages;
     const kpi = inc.kpi as Messages;
     expect(kpi.breachedDesc as string).toContain("{count}");
@@ -160,8 +160,8 @@ describe("R84 — tranche 5 namespaces exist and are balanced", () => {
   });
 
   test("F: the row.counts ICU plural carries locale-appropriate categories", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const enCounts = (en.incidents as Messages).row as Messages;
     const arCounts = (ar.incidents as Messages).row as Messages;
     // en: one/other (the R81 unsaved-changes en shape)

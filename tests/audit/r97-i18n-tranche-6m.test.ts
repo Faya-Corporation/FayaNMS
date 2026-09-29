@@ -39,13 +39,13 @@ function candidates(src: string): string[] {
 
 describe("R97 — discovery namespace", () => {
   test("has 69 non-empty leaves with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.discoveryView).length).toBe(69);
     expect(leaves(ar.discoveryView).length).toBe(69);
     expect(new Set(leaves(en.discoveryView))).toEqual(new Set(leaves(ar.discoveryView)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).discoveryView;
+      const namespace = (readJson(file) as Record<string, any>).discoveryView;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -72,7 +72,7 @@ describe("R97 — view keying and ledger", () => {
 
   test("keeps scan, candidate, and import interpolation shapes", () => {
     const src = readRepo(VIEW);
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     expect(src).toContain('t("candidates.summary"');
     expect(src).toContain('t("import.title"');
     expect(en.discoveryView.candidates.summary).toContain("{count, plural");

@@ -39,13 +39,13 @@ function candidates(src: string): string[] {
 
 describe("R89 — changes namespace", () => {
   test("has 44 non-empty leaves with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.changesView).length).toBe(44);
     expect(leaves(ar.changesView).length).toBe(44);
     expect(new Set(leaves(en.changesView))).toEqual(new Set(leaves(ar.changesView)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).changesView;
+      const namespace = (readJson(file) as Record<string, any>).changesView;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -77,8 +77,8 @@ describe("R89 — view keying and ledger", () => {
   });
 
   test("keeps locale-aware row plural shapes", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(en.changesView.row.devices).toContain("plural");
     expect(en.changesView.row.steps).toContain("plural");
     expect(ar.changesView.row.devices).toContain("zero");

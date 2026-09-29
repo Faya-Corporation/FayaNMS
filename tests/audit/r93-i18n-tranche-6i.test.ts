@@ -39,13 +39,13 @@ function candidates(src: string): string[] {
 
 describe("R93 — backup compliance namespace", () => {
   test("has 37 non-empty leaves with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.backupCompliance).length).toBe(37);
     expect(leaves(ar.backupCompliance).length).toBe(37);
     expect(new Set(leaves(en.backupCompliance))).toEqual(new Set(leaves(ar.backupCompliance)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).backupCompliance;
+      const namespace = (readJson(file) as Record<string, any>).backupCompliance;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -72,7 +72,7 @@ describe("R93 — view keying and ledger", () => {
 
   test("keeps KPI and row interpolation shapes", () => {
     const src = readRepo(VIEW);
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     expect(src).toContain('t("kpi.compliant.description"');
     expect(src).toContain('t("row.openDeviceAria"');
     expect(en.backupCompliance.kpi.compliant.description).toContain("{compliant}");

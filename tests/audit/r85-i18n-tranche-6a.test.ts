@@ -88,8 +88,8 @@ function candidates(src: string): string[] {
 
 describe("R85 — tranche 6a namespace exists and is balanced", () => {
   test("A: perfOverview exists in both dictionaries with EXACTLY 76 leaves", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(en.perfOverview, "en.perfOverview").toBeDefined();
     expect(ar.perfOverview, "ar.perfOverview").toBeDefined();
     expect(leaves(en.perfOverview).length).toBe(76);
@@ -104,8 +104,8 @@ describe("R85 — tranche 6a namespace exists and is balanced", () => {
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const enSet = new Set(leaves(en.perfOverview));
     const arSet = new Set(leaves(ar.perfOverview));
     expect(Array.from(enSet).filter((k) => !arSet.has(k)), "en-only").toEqual([]);
@@ -114,7 +114,7 @@ describe("R85 — tranche 6a namespace exists and is balanced", () => {
 
   test("A: every perfOverview leaf value is a non-empty string in both locales", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [k, v] of Object.entries(node as Messages)) {
@@ -340,7 +340,7 @@ describe("R85 — ledger governance", () => {
 
 describe("R85 — interpolation shape in BOTH locales", () => {
   test("F: EN placeholders match the values the view passes", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     const po = en.perfOverview as Messages;
     const gran = po.granularity as Messages;
     const kpi = po.kpi as Messages;
@@ -374,7 +374,7 @@ describe("R85 — interpolation shape in BOTH locales", () => {
   });
 
   test("F: AR carries the SAME placeholder shapes", () => {
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const po = ar.perfOverview as Messages;
     const gran = po.granularity as Messages;
     const kpi = po.kpi as Messages;

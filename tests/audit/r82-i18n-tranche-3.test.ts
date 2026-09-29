@@ -76,8 +76,8 @@ function candidates(src: string): string[] {
 
 describe("R82 — tranche 3 namespace exists and is balanced", () => {
   test("A: perfInterfaces exists in both dictionaries with EXACTLY 30 leaves", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(en.perfInterfaces, "en.perfInterfaces").toBeDefined();
     expect(ar.perfInterfaces, "ar.perfInterfaces").toBeDefined();
     expect(leaves(en.perfInterfaces).length).toBe(30);
@@ -85,8 +85,8 @@ describe("R82 — tranche 3 namespace exists and is balanced", () => {
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const enSet = new Set(leaves(en.perfInterfaces));
     const arSet = new Set(leaves(ar.perfInterfaces));
     expect(Array.from(enSet).filter((k) => !arSet.has(k))).toEqual([]);
@@ -95,7 +95,7 @@ describe("R82 — tranche 3 namespace exists and is balanced", () => {
 
   test("A: every perfInterfaces leaf value is a non-empty string in both locales", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [k, v] of Object.entries(node as Messages)) {
@@ -110,7 +110,7 @@ describe("R82 — tranche 3 namespace exists and is balanced", () => {
   });
 
   test("G: interpolation placeholders are present in the dictionary values", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     const ns = en.perfInterfaces as Messages;
     expect((ns.description as string)).toContain("{range}");
     expect(((ns.table as Messages).ariaLabel as string)).toContain("{range}");

@@ -82,7 +82,7 @@ function candidates(src: string): string[] {
 describe("R87 — namespace is balanced", () => {
   test("A: credentials exists with EXACTLY 39 leaves per locale", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       expect(json.credentials, `${file} credentials`).toBeDefined();
       expect(leaves(json.credentials).length, `${file} credentials leaves`).toBe(39);
     }
@@ -96,8 +96,8 @@ describe("R87 — namespace is balanced", () => {
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const enSet = new Set(leaves(en.credentials));
     const arSet = new Set(leaves(ar.credentials));
     expect(Array.from(enSet).filter((k) => !arSet.has(k)), "en-only").toEqual([]);
@@ -106,7 +106,7 @@ describe("R87 — namespace is balanced", () => {
 
   test("A: every credentials leaf value is a non-empty string in both locales", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [k, v] of Object.entries(node as Messages)) {
@@ -267,7 +267,7 @@ describe("R87 — ledger governance", () => {
 describe("R87 — value shapes and term consistency", () => {
   test("F: every credentials leaf is static EXCEPT row.ref and row.devices", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       const cred = json.credentials as Messages;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
@@ -287,15 +287,15 @@ describe("R87 — value shapes and term consistency", () => {
   });
 
   test("F: row.ref placeholder shape in both locales", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(((en.credentials as Messages).row as Messages).ref).toBe("ref: {ref}");
     expect(((ar.credentials as Messages).row as Messages).ref).toBe("المرجع: {ref}");
   });
 
   test("F: row.devices ICU plural — en one/other; ar zero/one/two/few/many/other", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const enPlural = ((en.credentials as Messages).row as Messages).devices as string;
     const arPlural = ((ar.credentials as Messages).row as Messages).devices as string;
     expect(enPlural).toContain("{count, plural,");
@@ -310,8 +310,8 @@ describe("R87 — value shapes and term consistency", () => {
   });
 
   test("F: the title is nav-verbatim in BOTH locales (بيانات الاعتماد)", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const enNav = ((en.nav as Messages).items as Messages) as Messages;
     const arNav = ((ar.nav as Messages).items as Messages) as Messages;
     const enCred = en.credentials as Messages;
@@ -324,8 +324,8 @@ describe("R87 — value shapes and term consistency", () => {
   });
 
   test("F: the breadcrumb reuses the established nav terms in BOTH locales", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const enCred = en.credentials as Messages;
     const arCred = ar.credentials as Messages;
     const enBc = enCred.breadcrumb as Messages;
@@ -339,7 +339,7 @@ describe("R87 — value shapes and term consistency", () => {
   });
 
   test("F: row.never reuses the established AR أبدًا term (R86)", () => {
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const cred = ((ar.credentials as Messages).row as Messages).never;
     const collectors = ((((ar.collectors as Messages).registry as Messages).row as Messages).never) as string;
     expect(cred).toBe("أبدًا");
@@ -348,7 +348,7 @@ describe("R87 — value shapes and term consistency", () => {
 
   test("G: SNMPv3/HTTPS stay Latin protocol names in BOTH locales", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       const auth = (json.credentials as Messages).authMethod as Messages;
       expect(auth.snmpv3, `${file} snmpv3`).toBe("SNMPv3");
       expect(auth.https, `${file} https`).toBe("HTTPS");
@@ -356,7 +356,7 @@ describe("R87 — value shapes and term consistency", () => {
   });
 
   test("G: the AR tokens KPI description keeps API_TOKEN Latin (OFFLINE precedent)", () => {
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const tokens = ((ar.credentials as Messages).kpi as Messages).tokens as Messages;
     expect(tokens.description as string).toContain("API_TOKEN");
     expect(tokens.description as string).toContain("HTTPS");

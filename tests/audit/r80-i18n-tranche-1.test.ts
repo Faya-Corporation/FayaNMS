@@ -80,8 +80,8 @@ function candidates(src: string): string[] {
 
 describe("R80 — tranche 1 namespaces exist and are balanced", () => {
   test("A: five new namespaces exist in both dictionaries with equal leaf counts", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     for (const ns of NAMESPACES) {
       expect(en[ns], `en.${ns}`).toBeDefined();
       expect(ar[ns], `ar.${ns}`).toBeDefined();
@@ -94,8 +94,8 @@ describe("R80 — tranche 1 namespaces exist and are balanced", () => {
   });
 
   test("B: new-namespace parity is deep — identical leaf paths both directions", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     for (const ns of NAMESPACES) {
       const enSet = new Set(leaves(en[ns]));
       const arSet = new Set(leaves(ar[ns]));
@@ -108,7 +108,7 @@ describe("R80 — tranche 1 namespaces exist and are balanced", () => {
 
   test("every new-namespace leaf value is a non-empty string in both locales", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       for (const ns of NAMESPACES) {
         const walk = (node: unknown, path: string) => {
           if (node !== null && typeof node === "object") {

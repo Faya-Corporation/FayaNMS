@@ -31,13 +31,13 @@ function candidates(src: string): string[] {
 
 describe("R102 — backups namespace", () => {
   test("has the complete balanced namespace with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.backups).length).toBe(117);
     expect(leaves(ar.backups).length).toBe(117);
     expect(new Set(leaves(en.backups))).toEqual(new Set(leaves(ar.backups)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).backups;
+      const namespace = (readJson(file) as Record<string, any>).backups;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -64,7 +64,7 @@ describe("R102 — view keying and empty-ledger governance", () => {
 
   test("keeps dynamic history, form, and policy interpolation shapes", () => {
     const src = readRepo(VIEW);
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     expect(src).toContain('t("history.pagination"');
     expect(src).toContain('t("policies.toggle"');
     expect(en.backups.history.pagination).toContain("{total, plural");

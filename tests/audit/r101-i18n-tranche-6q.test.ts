@@ -31,13 +31,13 @@ function candidates(src: string): string[] {
 
 describe("R101 — change detail namespace", () => {
   test("has 101 non-empty leaves with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.changeDetail).length).toBe(101);
     expect(leaves(ar.changeDetail).length).toBe(101);
     expect(new Set(leaves(en.changeDetail))).toEqual(new Set(leaves(ar.changeDetail)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).changeDetail;
+      const namespace = (readJson(file) as Record<string, any>).changeDetail;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -64,7 +64,7 @@ describe("R101 — view keying and ledger", () => {
 
   test("keeps change, level, and decision interpolation shapes", () => {
     const src = readRepo(VIEW);
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     expect(src).toContain('t("confirm.submitDescription"');
     expect(en.changeDetail.confirm.submitDescription).toContain("{risk}");
     expect(en.changeDetail.confirm.submitDescription).toContain("{levels}");

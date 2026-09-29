@@ -39,13 +39,13 @@ function candidates(src: string): string[] {
 
 describe("R90 — events namespace", () => {
   test("has 42 non-empty leaves with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.eventsView).length).toBe(42);
     expect(leaves(ar.eventsView).length).toBe(42);
     expect(new Set(leaves(en.eventsView))).toEqual(new Set(leaves(ar.eventsView)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).eventsView;
+      const namespace = (readJson(file) as Record<string, any>).eventsView;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);

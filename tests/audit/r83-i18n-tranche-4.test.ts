@@ -79,8 +79,8 @@ function candidates(src: string): string[] {
 
 describe("R83 — tranche 4 namespaces exist and are balanced", () => {
   test("A: perfDevices exists in both dictionaries with EXACTLY 36 leaves", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(en.perfDevices, "en.perfDevices").toBeDefined();
     expect(ar.perfDevices, "ar.perfDevices").toBeDefined();
     expect(leaves(en.perfDevices).length).toBe(36);
@@ -88,8 +88,8 @@ describe("R83 — tranche 4 namespaces exist and are balanced", () => {
   });
 
   test("A: baselines exists in both dictionaries with EXACTLY 37 leaves", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(en.baselines, "en.baselines").toBeDefined();
     expect(ar.baselines, "ar.baselines").toBeDefined();
     expect(leaves(en.baselines).length).toBe(37);
@@ -97,8 +97,8 @@ describe("R83 — tranche 4 namespaces exist and are balanced", () => {
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions (both namespaces)", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     for (const ns of ["perfDevices", "baselines"]) {
       const enSet = new Set(leaves(en[ns]));
       const arSet = new Set(leaves(ar[ns]));
@@ -109,7 +109,7 @@ describe("R83 — tranche 4 namespaces exist and are balanced", () => {
 
   test("A: every tranche-4 leaf value is a non-empty string in both locales", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       for (const ns of ["perfDevices", "baselines"]) {
         const walk = (node: unknown, path: string) => {
           if (node !== null && typeof node === "object") {
@@ -126,7 +126,7 @@ describe("R83 — tranche 4 namespaces exist and are balanced", () => {
   });
 
   test("F: interpolation placeholders are present in the dictionary values", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     const pd = en.perfDevices as Messages;
     expect(pd.description as string).toContain("{metric}");
     expect(pd.description as string).toContain("{range}");

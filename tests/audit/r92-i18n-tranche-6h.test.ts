@@ -39,13 +39,13 @@ function candidates(src: string): string[] {
 
 describe("R92 — drift namespace", () => {
   test("has 51 non-empty leaves with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.driftView).length).toBe(51);
     expect(leaves(ar.driftView).length).toBe(51);
     expect(new Set(leaves(en.driftView))).toEqual(new Set(leaves(ar.driftView)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).driftView;
+      const namespace = (readJson(file) as Record<string, any>).driftView;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -72,7 +72,7 @@ describe("R92 — view keying and ledger", () => {
 
   test("keeps dynamic row and dialog interpolation shapes", () => {
     const src = readRepo(VIEW);
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     expect(src).toContain('t("dialog.title"');
     expect(src).toContain('t("triage.acceptDescription"');
     expect(en.driftView.dialog.title).toContain("{hostname}");

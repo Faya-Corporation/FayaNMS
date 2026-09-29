@@ -39,13 +39,13 @@ function candidates(src: string): string[] {
 
 describe("R96 — maintenance namespace", () => {
   test("has 65 non-empty leaves with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.maintenanceView).length).toBe(65);
     expect(leaves(ar.maintenanceView).length).toBe(65);
     expect(new Set(leaves(en.maintenanceView))).toEqual(new Set(leaves(ar.maintenanceView)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).maintenanceView;
+      const namespace = (readJson(file) as Record<string, any>).maintenanceView;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -72,7 +72,7 @@ describe("R96 — view keying and ledger", () => {
 
   test("keeps row, overlap, and delete-dialog interpolation shapes", () => {
     const src = readRepo(VIEW);
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     expect(src).toContain('"row.togglePause"');
     expect(src).toContain('t("form.overlap"');
     expect(src).toContain('t("delete.title"');

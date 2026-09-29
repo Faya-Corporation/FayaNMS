@@ -39,13 +39,13 @@ function candidates(src: string): string[] {
 
 describe("R100 — admin users namespace", () => {
   test("has 78 non-empty leaves with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.adminUsers).length).toBe(78);
     expect(leaves(ar.adminUsers).length).toBe(78);
     expect(new Set(leaves(en.adminUsers))).toEqual(new Set(leaves(ar.adminUsers)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).adminUsers;
+      const namespace = (readJson(file) as Record<string, any>).adminUsers;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -72,7 +72,7 @@ describe("R100 — view keying and ledger", () => {
 
   test("keeps user and role interpolation shapes", () => {
     const src = readRepo(VIEW);
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     expect(src).toContain('t("row.roleAria"');
     expect(src).toContain('t("kpi.activeDescription"');
     expect(en.adminUsers.row.roleAria).toContain("{email}");

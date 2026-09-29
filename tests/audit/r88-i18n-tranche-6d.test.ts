@@ -39,13 +39,13 @@ function candidates(src: string): string[] {
 
 describe("R88 — admin API clients namespace", () => {
   test("has 48 non-empty leaves with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.adminApiClients).length).toBe(48);
     expect(leaves(ar.adminApiClients).length).toBe(48);
     expect(new Set(leaves(en.adminApiClients))).toEqual(new Set(leaves(ar.adminApiClients)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).adminApiClients;
+      const namespace = (readJson(file) as Record<string, any>).adminApiClients;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);

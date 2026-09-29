@@ -59,8 +59,8 @@ test("maps every batch record to its idempotent queue key and exporter context",
     exporterAddress: "192.0.2.200",
     exporterPort: 2055,
     sourceIp: "192.0.2.1",
-    flowSequence: 4_000_000_002n,
-    packets: 4_000_000_001n,
+    flowSequence: BigInt("4000000002"),
+    packets: BigInt("4000000001"),
   });
   expect(rows[0].receivedAt.toISOString()).toBe("2026-09-23T00:00:00.000Z");
   expect(rows[0].exportedAt.toISOString()).toBe("2025-09-21T00:00:00.123Z");

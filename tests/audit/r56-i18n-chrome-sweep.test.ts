@@ -252,8 +252,8 @@ describe("HC-4 — dictionary parity is machine-enforced", () => {
   });
 
   test("the new devices/deviceDetail namespaces exist and are balanced", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     for (const ns of ["devices", "deviceDetail"]) {
       expect(en[ns], `en.${ns}`).toBeDefined();
       expect(ar[ns], `ar.${ns}`).toBeDefined();

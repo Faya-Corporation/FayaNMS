@@ -39,13 +39,13 @@ function candidates(src: string): string[] {
 
 describe("R94 — change approvals namespace", () => {
   test("has 50 non-empty leaves with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.changeApprovals).length).toBe(50);
     expect(leaves(ar.changeApprovals).length).toBe(50);
     expect(new Set(leaves(en.changeApprovals))).toEqual(new Set(leaves(ar.changeApprovals)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).changeApprovals;
+      const namespace = (readJson(file) as Record<string, any>).changeApprovals;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -72,7 +72,7 @@ describe("R94 — view keying and ledger", () => {
 
   test("keeps decision interpolation and validation shapes", () => {
     const src = readRepo(VIEW);
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     expect(src).toContain('t("row.approveAria"');
     expect(src).toContain('t("dialog.rejectDescription"');
     expect(en.changeApprovals.row.approveAria).toContain("{level}");

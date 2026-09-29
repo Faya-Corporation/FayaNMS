@@ -39,13 +39,13 @@ function candidates(src: string): string[] {
 
 describe("R91 — snapshots namespace", () => {
   test("has 39 non-empty leaves with deep EN/AR parity", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     expect(leaves(en.snapshotsView).length).toBe(39);
     expect(leaves(ar.snapshotsView).length).toBe(39);
     expect(new Set(leaves(en.snapshotsView))).toEqual(new Set(leaves(ar.snapshotsView)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const namespace = (readJson(file) as Record<string, Messages>).snapshotsView;
+      const namespace = (readJson(file) as Record<string, any>).snapshotsView;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
           for (const [key, value] of Object.entries(node as Messages)) walk(value, `${path}.${key}`);
@@ -72,7 +72,7 @@ describe("R91 — view keying and ledger", () => {
 
   test("keeps selection and dialog interpolation shapes", () => {
     const src = readRepo(VIEW);
-    const en = readJson("messages/en.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
     expect(src).toContain('t("selection.ready"');
     expect(src).toContain('t("dialog.title"');
     expect(en.snapshotsView.selection.ready).toContain("{hostname}");

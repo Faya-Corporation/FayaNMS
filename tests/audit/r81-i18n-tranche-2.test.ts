@@ -86,8 +86,8 @@ function ns(obj: Messages, path: string): Messages {
 
 describe("R81 — tranche 2 namespaces exist and are balanced", () => {
   test("A: the two new namespaces exist in both dictionaries with equal leaf counts", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     for (const key of NEW_NAMESPACES) {
       expect(en[key], `en.${key}`).toBeDefined();
       expect(ar[key], `ar.${key}`).toBeDefined();
@@ -101,8 +101,8 @@ describe("R81 — tranche 2 namespaces exist and are balanced", () => {
   });
 
   test("A: capacity.chrome exists in both dictionaries with 35 balanced leaves", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const enChrome = leaves(ns(en, "capacity.chrome"));
     const arChrome = leaves(ns(ar, "capacity.chrome"));
     expect(enChrome.length).toBe(35);
@@ -110,8 +110,8 @@ describe("R81 — tranche 2 namespaces exist and are balanced", () => {
   });
 
   test("B: new-key parity is deep — identical leaf paths both directions", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     for (const key of [...NEW_NAMESPACES, "capacity.chrome"]) {
       const enSet = new Set(leaves(ns(en, key)));
       const arSet = new Set(leaves(ns(ar, key)));
@@ -124,7 +124,7 @@ describe("R81 — tranche 2 namespaces exist and are balanced", () => {
 
   test("every new-key leaf value is a non-empty string in both locales", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       for (const key of [...NEW_NAMESPACES, "capacity.chrome"]) {
         const walk = (node: unknown, path: string) => {
           if (node !== null && typeof node === "object") {
@@ -173,8 +173,8 @@ describe("R81 — sweep governance moved with the tranche", () => {
   });
 
   test("E: the unsaved-changes ICU plural exists with locale-appropriate categories", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const enPlural = (en.systemSettings as Messages).unsavedChanges as string;
     const arPlural = (ar.systemSettings as Messages).unsavedChanges as string;
     expect(enPlural).toContain("{count, plural,");

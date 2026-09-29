@@ -79,7 +79,7 @@ function candidates(src: string): string[] {
 describe("R86 — namespace growth is balanced", () => {
   test("A: collectors.kind/status/registry exist with EXACTLY 29 new leaves (82 total)", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       const col = json.collectors as Messages;
       expect(col.kind, `${file} kind`).toBeDefined();
       expect(col.status, `${file} status`).toBeDefined();
@@ -99,8 +99,8 @@ describe("R86 — namespace growth is balanced", () => {
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const enSet = new Set(leaves(en.collectors));
     const arSet = new Set(leaves(ar.collectors));
     expect(Array.from(enSet).filter((k) => !arSet.has(k)), "en-only").toEqual([]);
@@ -109,7 +109,7 @@ describe("R86 — namespace growth is balanced", () => {
 
   test("A: every new leaf value is a non-empty string in both locales", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       const col = json.collectors as Messages;
       for (const ns of ["kind", "status", "registry"] as const) {
         const walk = (node: unknown, path: string) => {
@@ -255,7 +255,7 @@ describe("R86 — ledger governance", () => {
 describe("R86 — value shapes and term consistency", () => {
   test("F: the new registry leaves are ALL static strings (no placeholders)", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
-      const json = readJson(file) as Record<string, Messages>;
+      const json = readJson(file) as Record<string, any>;
       const registry = (json.collectors as Messages).registry as Messages;
       const walk = (node: unknown, path: string) => {
         if (node !== null && typeof node === "object") {
@@ -274,7 +274,7 @@ describe("R86 — value shapes and term consistency", () => {
   });
 
   test("F: the AR card description keeps the OFFLINE token Latin (documented survivor)", () => {
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const registry = ((ar.collectors as Messages).registry as Messages);
     const card = registry.card as Messages;
     expect(card.description as string).toContain("OFFLINE");
@@ -282,8 +282,8 @@ describe("R86 — value shapes and term consistency", () => {
   });
 
   test("G: error.reason matches the drivers precedent verbatim in BOTH locales", () => {
-    const en = readJson("messages/en.json") as Record<string, Messages>;
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const en = readJson("messages/en.json") as Record<string, any>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const enDrivers = en.drivers as Messages;
     const arDrivers = ar.drivers as Messages;
     const enCollectors = en.collectors as Messages;
@@ -296,7 +296,7 @@ describe("R86 — value shapes and term consistency", () => {
   });
 
   test("G: lastSeen reuses the established AR term (آخر ظهور)", () => {
-    const ar = readJson("messages/ar.json") as Record<string, Messages>;
+    const ar = readJson("messages/ar.json") as Record<string, any>;
     const registry = ((ar.collectors as Messages).registry as Messages);
     expect(((registry.table as Messages).col as Messages).lastSeen).toBe("آخر ظهور");
   });
