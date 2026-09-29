@@ -190,3 +190,24 @@ build.
   global per role.
 - Service JWTs remain symmetric-secret; per-service keys / asymmetric
   signing are Phase 21 (audit SVC-101 §11.3/§11.4).
+
+### 5.1 CSRF origin control on cookie-session mutations (RT-008 / F-010)
+
+Every mutating request (POST/PUT/PATCH/DELETE) authenticated by the
+NextAuth cookie session carries a server-side Origin/Sec-Fetch-Site
+validation in `src/proxy.ts`, as a second factor behind the
+`SameSite=Lax` cookie policy:
+
+- `Sec-Fetch-Site: same-origin` (or `none`) → allowed;
+  `cross-site` AND `same-site` → 403 `CSRF_ORIGIN_REJECTED`
+  (`same-site` is rejected deliberately — sibling-subdomain risk).
+- No `Sec-Fetch-Site` but an `Origin` header → the Origin host must equal
+  the `Host` header (the NextAuth origin-check pattern); mismatch → 403.
+- Neither header → allowed (non-browser client; the cookie cannot be
+  carried cross-site in practice, and SameSite still guards it).
+
+The machine plane (verified service JWTs — they send no cookies) and the
+API-client opaque-bearer mutation plane are exempt by evaluation order;
+the public bootstrap surfaces (`/api/v1/meta`, `/api/v1/auth/*`) are
+untouched (`/api/v1/auth/*` mutations are NextAuth's own
+CSRF-protected endpoints).
