@@ -1,11 +1,8 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, newJobCorrelationId, ok } from "../../_lib/api";
 import { authenticateServiceRequest } from "@/lib/auth/service-auth";
-import {
-  parsePolicyScope,
-  scopeDeviceWhere,
-  type ParsedPolicyScope,
-} from "../../_lib/scope";
+import { parsePolicyScope, scopeDeviceWhere } from "../../_lib/scope";
+import { pruneRetention } from "@/lib/backups/retention";
 import { parseStoredDiscoveryPolicy } from "@/lib/discovery/policy";
 import { z } from "zod";
 
@@ -43,9 +40,21 @@ export const dynamic = "force-dynamic";
  *     - CURRENT and BASELINE snapshots are never touched;
  *     - a device's newest HISTORICAL version is never deleted;
  *     - at least 2 snapshots per device always remain;
- *     - max 50 deletes per tick (batch keeps transactions short on SQLite).
- *   A single summary CONFIG_RETENTION_PRUNED audit event is written per
- *   tick when rows were pruned (never one event per snapshot).
+ *     - max 50 deletes per tick (batch keeps transactions short).
+ *   RT-011 FK-cascade protection (engine in src/lib/backups/retention.ts):
+ *   a snapshot referenced by an OPEN DriftRecord (its current or baseline
+ *   snapshot) or by any ConfigBaseline is excluded from the delete set —
+ *   the onDelete: Cascade FKs would otherwise silently destroy the open
+ *   drift finding / approved baseline on a timer. Interaction with
+ *   drift-evaluate: an OPEN record holds the device's latest snapshot; the
+ *   next backup demotes it to HISTORICAL, so retention WAITS for the record
+ *   to be RESOLVED/ACCEPTED before pruning it (intended semantics — the
+ *   excluded ids simply are not deleted this tick and do not consume the
+ *   delete budget). Both protection counts are reported in the summary
+ *   CONFIG_RETENTION_PRUNED audit afterJson (protectedByOpenDrift /
+ *   protectedByBaseline; a zero-delete run that protected rows still writes
+ *   the summary). A single summary audit event is written per pruning tick
+ *   (never one event per snapshot).
  *
  * Drift scheduling (Task 3-c), after the backup enqueue block:
  *   Every device that HAS an approved ConfigBaseline gets a DRIFT_CHECK
@@ -106,8 +115,6 @@ const tickSchema = z.object({
 
 const PER_POLICY_CAP = 10;
 const DEDUPE_WINDOW_MIN = 10;
-const PRUNE_MAX_DELETES_PER_TICK = 50;
-const PRUNE_MIN_SNAPSHOTS_PER_DEVICE = 2;
 const DRIFT_CHECK_CAP_PER_TICK = 20;
 const DRIFT_CHECK_DEDUPE_MIN = 30;
 const ALERT_EVALUATION_DEDUPE_MIN = 3;
@@ -178,133 +185,6 @@ function cronDueWithin(expr: string, windowSec: number, now: Date): boolean {
     if (cronMatches(expr, new Date(mark * 60_000))) return true;
   }
   return false;
-}
-
-/* ── retention pruning ──────────────────────────────────────────────────── */
-
-interface PruneOutcome {
-  pruned: number;
-  prunedDevices: number;
-}
-
-/**
- * Prune HISTORICAL snapshots older than each scoped device's retention
- * window. See the route header for the safety caps. Returns the number of
- * rows deleted (0 when nothing was due for pruning).
- */
-async function pruneRetention(
-  policies: Array<{ id: string; retentionDays: number; scopeJson: string }>,
-  now: Date
-): Promise<PruneOutcome> {
-  if (policies.length === 0) return { pruned: 0, prunedDevices: 0 };
-
-  // Per-device retention window. Devices scoped by several policies keep
-  // the longest window (most generous retention wins).
-  const cutoffs = new Map<string, Date>();
-  for (const policy of policies) {
-    const scope: ParsedPolicyScope = parsePolicyScope(policy.scopeJson);
-    const scoped = await db.device.findMany({
-      where: scopeDeviceWhere(scope),
-      select: { id: true },
-    });
-    const cutoff = new Date(
-      now.getTime() - policy.retentionDays * 24 * 60 * 60 * 1000
-    );
-    for (const device of scoped) {
-      const existing = cutoffs.get(device.id);
-      if (!existing || cutoff < existing) {
-        cutoffs.set(device.id, cutoff);
-      }
-    }
-  }
-  if (cutoffs.size === 0) return { pruned: 0, prunedDevices: 0 };
-
-  // Cheap per-device totals in one grouped query (deviceId index).
-  const totals = await db.configSnapshot.groupBy({
-    by: ["deviceId"],
-    _count: { _all: true },
-    where: { deviceId: { in: Array.from(cutoffs.keys()) } },
-  });
-  const totalByDevice = new Map<string, number>(
-    totals.map((row) => [row.deviceId, row._count._all])
-  );
-
-  const deleteIds: string[] = [];
-  const touchedDevices = new Set<string>();
-
-  for (const [deviceId, cutoff] of cutoffs) {
-    if (deleteIds.length >= PRUNE_MAX_DELETES_PER_TICK) break;
-    const total = totalByDevice.get(deviceId) ?? 0;
-    // Hard safety cap: always keep at least 2 snapshots on the device.
-    const maxDeletable = total - PRUNE_MIN_SNAPSHOTS_PER_DEVICE;
-    if (maxDeletable <= 0) continue;
-
-    const budget = Math.min(
-      PRUNE_MAX_DELETES_PER_TICK - deleteIds.length,
-      maxDeletable
-    );
-    const candidates = await db.configSnapshot.findMany({
-      where: {
-        deviceId,
-        status: "HISTORICAL",
-        createdAt: { lt: cutoff },
-      },
-      orderBy: { createdAt: "desc" },
-      take: budget + 1,
-      select: { id: true, createdAt: true },
-    });
-    if (candidates.length === 0) continue;
-
-    // Never delete the device's newest HISTORICAL version: when a newer
-    // HISTORICAL row exists above the cutoff the global newest is outside
-    // this candidate list; otherwise candidates[0] IS the newest HISTORICAL.
-    const hasRecentHistorical =
-      (await db.configSnapshot.count({
-        where: {
-          deviceId,
-          status: "HISTORICAL",
-          createdAt: { gte: cutoff },
-        },
-      })) > 0;
-    const deletable = hasRecentHistorical ? candidates : candidates.slice(1);
-
-    for (const row of deletable) {
-      if (deleteIds.length >= PRUNE_MAX_DELETES_PER_TICK) break;
-      deleteIds.push(row.id);
-      touchedDevices.add(deviceId);
-    }
-  }
-
-  if (deleteIds.length === 0) return { pruned: 0, prunedDevices: 0 };
-
-  // One short interactive transaction: the delete is guarded by
-  // status = HISTORICAL so a snapshot promoted to BASELINE mid-flight
-  // (e.g. baseline approval) is never destroyed.
-  const result = await db.$transaction(
-    async (tx) => {
-      const deleted = await tx.configSnapshot.deleteMany({
-        where: { id: { in: deleteIds }, status: "HISTORICAL" },
-      });
-      await tx.auditEvent.create({
-        data: {
-          actorName: "system:backup-worker",
-          action: "CONFIG_RETENTION_PRUNED",
-          resourceType: "ConfigSnapshot",
-          result: "SUCCESS",
-          correlationId: newCorrelationId("RET"),
-          afterJson: JSON.stringify({
-            count: deleted.count,
-            devices: touchedDevices.size,
-            policies: policies.length,
-          }),
-        },
-      });
-      return deleted;
-    },
-    { maxWait: 5_000, timeout: 20_000 }
-  );
-
-  return { pruned: result.count, prunedDevices: touchedDevices.size };
 }
 
 /* ── continuous discovery scheduling ────────────────────────────────────── */
