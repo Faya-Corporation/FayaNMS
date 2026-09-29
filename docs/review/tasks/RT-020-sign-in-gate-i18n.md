@@ -66,3 +66,7 @@ bun run lint                                            # 0 errors
 ## Rollout & rollback notes
 
 Copy-only; revert-safe. Scope note (flagged during planning): this RT was not explicitly enumerated in the binding scope list — it is written because F-019 is a P2/S fixable finding left unassigned; the main agent can re-scope to BACKLOG by dropping the file and the plan row.
+
+## Status
+
+FIXED — commit 04534bc on GLM/full-audit-and-fix (Task 5-j). `auth.signIn.*` (13 keys ×2 locales) added; every F-019 literal keyed incl. the conditional show/hide aria and the CredentialsSignin→errorCredentials mapping (non-Credentials server errors render verbatim, with an explanatory comment); demo password hint via `t.rich` with the `faya123` code inside an `ltr-technical` <code>; demo persona DATA untranslated per the RT. Placeholders (`you@faya.local`, `••••••••`) intentionally kept as-is — example-formatting tokens, not copy. Totals 3193 → 3206 (all pinning tests retotaled). Test: `tests/audit/rt020-sign-in-gate-i18n.test.ts` (8 cases).
