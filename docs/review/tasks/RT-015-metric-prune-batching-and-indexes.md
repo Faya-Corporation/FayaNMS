@@ -73,3 +73,8 @@ DATABASE_URL=postgresql://fayanms:fayanms@localhost:5433/fayanms node_modules/pr
 ## Rollout & rollback notes
 
 Deploy order: migration first (`db:deploy` is the only migration path), then code — the code works with or without the indexes (batching is independent). Rollback of code = revert; do NOT drop the indexes (harmless, useful). DEPENDENCY: land this RT BEFORE the perf-sensitive RTs that benefit from it (RT-002 rollup volume, RT-018 monitoring validation) per REMEDIATION_PLAN.md ordering.
+
+
+## Status
+
+Fixed (f88e411)

@@ -65,3 +65,8 @@ bun run lint                                                # 0 errors
 ## Rollout & rollback notes
 
 Tick-route-only change; worst case a prune is delayed by the 24 h window (acceptable — windows move daily). Rollback = revert. Land AFTER RT-011 (the guard references the same code region; review both together).
+
+
+## Status
+
+Fixed (f0c16b1)

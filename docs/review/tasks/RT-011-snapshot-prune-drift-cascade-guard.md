@@ -65,3 +65,8 @@ bun run lint                                                    # 0 errors
 ## Rollout & rollback notes
 
 Contained in the tick route's prune helper; revert-safe. Follow-up (BACKLOG, not this RT): schema-level `SetNull` + scalar sha/version columns on DriftRecord to remove the FK-cascade hazard permanently — that is a migration with data backfill and deserves its own cycle.
+
+
+## Status
+
+Fixed (5a22d36)

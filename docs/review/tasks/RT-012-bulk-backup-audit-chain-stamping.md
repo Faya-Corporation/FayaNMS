@@ -70,3 +70,8 @@ bun run lint                                                    # 0 errors
 ## Rollout & rollback notes
 
 Small, self-contained; revert-safe. The db.ts tripwire is the only piece that could surprise another (future) call site — by design. Note: hash-VERIFY of historical rows already written unhashed still needs the existing manual backfill route once (operational step, not code).
+
+
+## Status
+
+Fixed (a2932e0)

@@ -70,3 +70,8 @@ bun run lint                                            # 0 errors
 ## Rollout & rollback notes
 
 Single-module change, no writes (verifier only). Rollback = revert. After rollout the admin chain view will (correctly) still say PARTIALLY_VERIFIED on big tables — the difference is the proven rows are now the recent ones; mention this in the PR so nobody mistakes the new wording for a regression.
+
+
+## Status
+
+Fixed (0909ef9)

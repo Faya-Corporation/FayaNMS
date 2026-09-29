@@ -64,3 +64,8 @@ bun run lint                                                  # 0 errors
 ## Rollout & rollback notes
 
 Behavior strictly improves on today's failure mode; revert-safe per-file. Related-but-separate: `src/lib/config/create-snapshot.ts:95-100` has the same max+1 race (A3-15/F-051) — deliberately NOT in this RT (deferred); mention in the PR so reviewers don't ask.
+
+
+## Status
+
+Fixed (bbb5475)
