@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+
 import { db } from "@/lib/db";
 import {
   csvParam,
@@ -259,7 +261,6 @@ export async function POST(request: Request) {
   const status = submit ? "AWAITING_APPROVAL" : "DRAFT";
   const correlationId = newCorrelationId("CHG");
 
-  const number = await nextChangeNumber();
   // Phase 19-C (audit AUTHZ-101D): change authoring is permission-gated —
   // the seeded matrix grants change.create to engineer (admin via wildcard);
   // operator/manager/viewer/auditor are denied server-side (403).
@@ -272,128 +273,167 @@ export async function POST(request: Request) {
     return authFail;
   }
 
-  const change = await db.$transaction(
-    async (tx) => {
-      const created = await tx.changeRequest.create({
-        data: {
-          number,
-          title: data.title,
-          description: data.description ?? null,
-          type: data.type,
-          status,
-          riskScore: risk.score,
-          riskLevel: risk.level,
-          requesterId: actor.id,
-          ownerId: actor.id,
-          siteId: data.siteId ?? null,
-          scheduledStart: data.scheduledStart ?? null,
-          scheduledEnd: data.scheduledEnd ?? null,
-          implementationPlan: data.implementationPlan ?? null,
-          validationPlan: data.validationPlan ?? null,
-          rollbackPlan: data.rollbackPlan ?? null,
-        },
-      });
-
-      await tx.changeDevice.createMany({
-        data: deviceIds.map((deviceId) => ({
-          changeId: created.id,
-          deviceId,
-          result: "PENDING",
-        })),
-      });
-
-      await tx.changeStep.createMany({
-        data: steps.map((step) => ({
-          changeId: created.id,
-          order: step.order,
-          name: step.name,
-          type: step.type,
-          status: "PENDING",
-        })),
-      });
-
-      if (submit) {
-        // One PENDING approval per policy level, each stamped with its
-        // quorum (POL-001 — CAB on CRITICAL changes requires two distinct
-        // approvers). Fresh change ⇒ no existing rows, so no skipDuplicates
-        // needed (unsupported on SQLite anyway).
-        await tx.changeApproval.createMany({
-          data: approvalLevelsFor(risk.level).map((level) => ({
-            changeId: created.id,
-            level,
-            status: "PENDING",
-            quorumRequired: quorumRequiredFor(level, risk.level),
-          })),
-        });
-      }
-
-      await tx.auditEvent.create({
-        data: {
-          actorId: actor.id,
-          actorName: actor.name ?? "Unknown user",
-          action: "CHANGE_CREATED",
-          resourceType: "ChangeRequest",
-          resourceId: created.id,
-          resourceLabel: created.number,
-          result: "SUCCESS",
-          correlationId,
-          afterJson: JSON.stringify({
-            changeNumber: created.number,
-            type: data.type,
-            status,
-            riskScore: risk.score,
-            riskLevel: risk.level,
-            riskPolicyVersion: BUSINESS_HOURS_POLICY_VERSION,
-            riskTimezone: BUSINESS_HOURS_TIMEZONE,
-            deviceCount: deviceIds.length,
-            stepCount: steps.length,
-            submit,
-          }),
-        },
-      });
-
-      if (submit) {
-        await tx.auditEvent.create({
-          data: {
-            actorId: actor.id,
-            actorName: actor.name ?? "Unknown user",
-            action: "CHANGE_SUBMITTED",
-            resourceType: "ChangeRequest",
-            resourceId: created.id,
-            resourceLabel: created.number,
-            result: "SUCCESS",
-            correlationId,
-            afterJson: JSON.stringify({
-              changeNumber: created.number,
+  // RT-014 — the number is allocated INSIDE the transaction via the tx
+  // client, and a @@unique([number]) collision (two concurrent creations
+  // read the same max) retries ONCE with a fresh read — the repo's cmdb
+  // pattern. A second consecutive conflict answers a typed 409 so the
+  // wizard shows a retryable error instead of a raw P2002/500; the failed
+  // tx rolls back atomically (devices/steps/approvals included).
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const change = await db.$transaction(
+        async (tx) => {
+          const number = await nextChangeNumber(tx);
+          const created = await tx.changeRequest.create({
+            data: {
+              number,
+              title: data.title,
+              description: data.description ?? null,
+              type: data.type,
+              status,
+              riskScore: risk.score,
               riskLevel: risk.level,
-              approvalLevels: approvalLevelsFor(risk.level),
-            }),
+              requesterId: actor.id,
+              ownerId: actor.id,
+              siteId: data.siteId ?? null,
+              scheduledStart: data.scheduledStart ?? null,
+              scheduledEnd: data.scheduledEnd ?? null,
+              implementationPlan: data.implementationPlan ?? null,
+              validationPlan: data.validationPlan ?? null,
+              rollbackPlan: data.rollbackPlan ?? null,
+            },
+          });
+
+          await tx.changeDevice.createMany({
+            data: deviceIds.map((deviceId) => ({
+              changeId: created.id,
+              deviceId,
+              result: "PENDING",
+            })),
+          });
+
+          await tx.changeStep.createMany({
+            data: steps.map((step) => ({
+              changeId: created.id,
+              order: step.order,
+              name: step.name,
+              type: step.type,
+              status: "PENDING",
+            })),
+          });
+
+          if (submit) {
+            // One PENDING approval per policy level, each stamped with its
+            // quorum (POL-001 — CAB on CRITICAL changes requires two distinct
+            // approvers). Fresh change ⇒ no existing rows, so no skipDuplicates
+            // needed (unsupported on SQLite anyway).
+            await tx.changeApproval.createMany({
+              data: approvalLevelsFor(risk.level).map((level) => ({
+                changeId: created.id,
+                level,
+                status: "PENDING",
+                quorumRequired: quorumRequiredFor(level, risk.level),
+              })),
+            });
+          }
+
+          await tx.auditEvent.create({
+            data: {
+              actorId: actor.id,
+              actorName: actor.name ?? "Unknown user",
+              action: "CHANGE_CREATED",
+              resourceType: "ChangeRequest",
+              resourceId: created.id,
+              resourceLabel: created.number,
+              result: "SUCCESS",
+              correlationId,
+              afterJson: JSON.stringify({
+                changeNumber: created.number,
+                type: data.type,
+                status,
+                riskScore: risk.score,
+                riskLevel: risk.level,
+                riskPolicyVersion: BUSINESS_HOURS_POLICY_VERSION,
+                riskTimezone: BUSINESS_HOURS_TIMEZONE,
+                deviceCount: deviceIds.length,
+                stepCount: steps.length,
+                submit,
+              }),
+            },
+          });
+
+          if (submit) {
+            await tx.auditEvent.create({
+              data: {
+                actorId: actor.id,
+                actorName: actor.name ?? "Unknown user",
+                action: "CHANGE_SUBMITTED",
+                resourceType: "ChangeRequest",
+                resourceId: created.id,
+                resourceLabel: created.number,
+                result: "SUCCESS",
+                correlationId,
+                afterJson: JSON.stringify({
+                  changeNumber: created.number,
+                  riskLevel: risk.level,
+                  approvalLevels: approvalLevelsFor(risk.level),
+                }),
+              },
+            });
+          }
+
+          return created;
+        },
+        { maxWait: 5_000, timeout: 20_000 }
+      );
+
+      return ok(
+        {
+          change: {
+            id: change.id,
+            number: change.number,
+            title: change.title,
+            type: change.type,
+            status: change.status,
+            riskScore: change.riskScore,
+            riskLevel: change.riskLevel,
           },
-        });
+          message: submit
+            ? "Change submitted — PENDING approvals created per the risk policy."
+            : "Change request created as a draft.",
+          audit: { action: "CHANGE_CREATED", correlationId },
+        },
+        undefined,
+        201
+      );
+    } catch (error) {
+      // Unique violation on number → another create took the number: retry once.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const target = error.meta?.target;
+        const targetText = Array.isArray(target)
+          ? target.join(",")
+          : String(target ?? "");
+        if (targetText.includes("number")) {
+          if (attempt === 0) continue;
+          return fail(
+            "CHANGE_NUMBER_CONFLICT",
+            "Concurrent change creation exhausted the number retry — retry the request",
+            409
+          );
+        }
       }
+      throw error;
+    }
+  }
 
-      return created;
-    },
-    { maxWait: 5_000, timeout: 20_000 }
-  );
-
-  return ok(
-    {
-      change: {
-        id: change.id,
-        number: change.number,
-        title: change.title,
-        type: change.type,
-        status: change.status,
-        riskScore: change.riskScore,
-        riskLevel: change.riskLevel,
-      },
-      message: submit
-        ? "Change submitted — PENDING approvals created per the risk policy."
-        : "Change request created as a draft.",
-      audit: { action: "CHANGE_CREATED", correlationId },
-    },
-    undefined,
-    201
+  // Unreachable — the loop returns or throws on every path; defensive
+  // fall-through keeps the type checker happy (mirrors cmdb items route).
+  return fail(
+    "CHANGE_NUMBER_CONFLICT",
+    "Concurrent change creation exhausted the number retry — retry the request",
+    409
   );
 }

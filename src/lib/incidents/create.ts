@@ -1,5 +1,17 @@
+import { Prisma } from "@prisma/client";
+
 import { db } from "@/lib/db";
 import { newCorrelationId } from "@/app/api/v1/_lib/api";
+
+/**
+ * The transaction client handed to interactive `db.$transaction` callbacks.
+ * Deliberately EXTRACTED from the client rather than spelled
+ * `Prisma.TransactionClient`: the exported `db` is an $extends-wrapped
+ * client (audit hash-chain stamping), and its tx delegates carry the
+ * extension's type parameters — the plain base type is not assignable
+ * (same convention as approval-gate.ts).
+ */
+type DbTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
 /**
  * Shared incident-creation module (Task 5-a) — ONE entry point used by:
@@ -34,9 +46,18 @@ export const SLA_HOURS_BY_INCIDENT_SEVERITY: Record<string, number> = {
   SEV4: 24,
 };
 
-/** Next incident number (INC-<year>-NNNNN, max existing +1, padded 5). */
-export async function nextIncidentNumber(now = new Date()): Promise<string> {
-  const maxIncident = await db.incident.findFirst({
+/**
+ * Next incident number (INC-<year>-NNNNN, max existing +1, padded 5).
+ * RT-014: the caller's CLIENT is required — inside a transaction the tx
+ * client must be passed so the max+1 read shares the tx snapshot; reading
+ * via the global client let two concurrent creations compute the same
+ * number (the @@unique P2002 is now retried by the caller instead).
+ */
+export async function nextIncidentNumber(
+  client: DbTx,
+  now = new Date()
+): Promise<string> {
+  const maxIncident = await client.incident.findFirst({
     orderBy: { number: "desc" },
     select: { number: true },
   });
@@ -44,6 +65,24 @@ export async function nextIncidentNumber(now = new Date()): Promise<string> {
   return `INC-${now.getFullYear()}-${String(
     (Number.isFinite(maxSeq) ? maxSeq : 0) + 1
   ).padStart(5, "0")}`;
+}
+
+/**
+ * RT-014 — both number-allocation retry attempts lost the @@unique([number])
+ * race. Typed so callers can answer 409 (the manual escalation route) and so
+ * the alert evaluation engine's per-alert isolation treats it as a failed
+ * creation for THAT alert only — the transaction rolled back atomically, no
+ * partial rows exist.
+ */
+export class IncidentNumberConflictError extends Error {
+  readonly code = "INCIDENT_NUMBER_CONFLICT";
+  readonly status = 409;
+  constructor() {
+    super(
+      "INCIDENT_NUMBER_CONFLICT: concurrent incident creation exhausted the number allocation retry — retry the request"
+    );
+    this.name = "IncidentNumberConflictError";
+  }
 }
 
 export interface CreateIncidentForAlertInput {
@@ -139,105 +178,134 @@ export async function createIncidentForAlert(
       (SLA_HOURS_BY_INCIDENT_SEVERITY[map.severity] ?? 24) * 60 * 60 * 1000
   );
 
-  const incident = await db.$transaction(
-    async (tx) => {
-      const number = await nextIncidentNumber(now);
-      const title =
-        input.title ??
-        `${input.device.hostname}: ${input.alert.message}`.slice(0, 160);
+  // RT-014 — the number is allocated INSIDE the transaction via the tx
+  // client, and a @@unique([number]) collision (two concurrent creations
+  // read the same max) retries ONCE with a fresh read — the repo's cmdb
+  // pattern. A second consecutive conflict surfaces as a typed 409 error;
+  // the failed tx rolls back atomically, so no partial linkage rows remain.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const incident = await db.$transaction(
+        async (tx) => {
+          const number = await nextIncidentNumber(tx, now);
+          const title =
+            input.title ??
+            `${input.device.hostname}: ${input.alert.message}`.slice(0, 160);
 
-      const created = await tx.incident.create({
-        data: {
-          number,
-          title,
-          description: [
-            `Alert: "${input.alert.message}".`,
-            `Device ${input.device.hostname} raised ${input.alert.severity}-level alert${
-              input.source === "MANUAL"
-                ? " — escalated manually by an operator."
-                : " — auto-created by the alert evaluation engine."
-            }`,
-          ].join("\n"),
-          severity: map.severity,
-          priority: map.priority,
-          status: "NEW",
-          source: input.source ?? "ALERT",
-          siteId: input.device.siteId ?? null,
-          slaDueAt,
+          const created = await tx.incident.create({
+            data: {
+              number,
+              title,
+              description: [
+                `Alert: "${input.alert.message}".`,
+                `Device ${input.device.hostname} raised ${input.alert.severity}-level alert${
+                  input.source === "MANUAL"
+                    ? " — escalated manually by an operator."
+                    : " — auto-created by the alert evaluation engine."
+                }`,
+              ].join("\n"),
+              severity: map.severity,
+              priority: map.priority,
+              status: "NEW",
+              source: input.source ?? "ALERT",
+              siteId: input.device.siteId ?? null,
+              slaDueAt,
+            },
+          });
+
+          await tx.incidentDevice.create({
+            data: { incidentId: created.id, deviceId: input.device.id },
+          });
+
+          await tx.incidentEvent.create({
+            data: {
+              incidentId: created.id,
+              kind: "SYSTEM",
+              message: `${
+                input.source === "MANUAL" ? "Escalated from alert" : "Auto-created from alert"
+              } "${input.alert.message}" (severity ${input.alert.severity}).`,
+              actorId: input.actorId ?? null,
+            },
+          });
+
+          await tx.alert.update({
+            where: { id: input.alert.id },
+            data: { incidentId: created.id },
+          });
+
+          await tx.auditEvent.create({
+            data: {
+              actorId: input.actorId ?? null,
+              actorName,
+              action: "INCIDENT_CREATED",
+              resourceType: "Incident",
+              resourceId: created.id,
+              resourceLabel: `${created.number} — ${input.device.hostname}`,
+              result: "SUCCESS",
+              correlationId,
+              afterJson: JSON.stringify({
+                alertId: input.alert.id,
+                severity: map.severity,
+                priority: map.priority,
+                source: input.source ?? "ALERT",
+                slaDueAt: slaDueAt.toISOString(),
+              }),
+            },
+          });
+
+          if (input.source === "MANUAL") {
+            await tx.auditEvent.create({
+              data: {
+                actorId: input.actorId ?? null,
+                actorName,
+                action: "ALERT_ESCALATED",
+                resourceType: "Alert",
+                resourceId: input.alert.id,
+                resourceLabel: input.device.hostname,
+                result: "SUCCESS",
+                correlationId,
+                afterJson: JSON.stringify({ incidentNumber: created.number }),
+              },
+            });
+          }
+
+          return created;
         },
-      });
+        { maxWait: 5_000, timeout: 20_000 }
+      );
 
-      await tx.incidentDevice.create({
-        data: { incidentId: created.id, deviceId: input.device.id },
-      });
-
-      await tx.incidentEvent.create({
-        data: {
-          incidentId: created.id,
-          kind: "SYSTEM",
-          message: `${
-            input.source === "MANUAL" ? "Escalated from alert" : "Auto-created from alert"
-          } "${input.alert.message}" (severity ${input.alert.severity}).`,
-          actorId: input.actorId ?? null,
+      return {
+        created: true,
+        incident: {
+          id: incident.id,
+          number: incident.number,
+          title: incident.title,
+          severity: incident.severity,
+          priority: incident.priority,
+          status: incident.status,
+          slaDueAt: (incident.slaDueAt ?? slaDueAt).toISOString(),
         },
-      });
-
-      await tx.alert.update({
-        where: { id: input.alert.id },
-        data: { incidentId: created.id },
-      });
-
-      await tx.auditEvent.create({
-        data: {
-          actorId: input.actorId ?? null,
-          actorName,
-          action: "INCIDENT_CREATED",
-          resourceType: "Incident",
-          resourceId: created.id,
-          resourceLabel: `${created.number} — ${input.device.hostname}`,
-          result: "SUCCESS",
-          correlationId,
-          afterJson: JSON.stringify({
-            alertId: input.alert.id,
-            severity: map.severity,
-            priority: map.priority,
-            source: input.source ?? "ALERT",
-            slaDueAt: slaDueAt.toISOString(),
-          }),
-        },
-      });
-
-      if (input.source === "MANUAL") {
-        await tx.auditEvent.create({
-          data: {
-            actorId: input.actorId ?? null,
-            actorName,
-            action: "ALERT_ESCALATED",
-            resourceType: "Alert",
-            resourceId: input.alert.id,
-            resourceLabel: input.device.hostname,
-            result: "SUCCESS",
-            correlationId,
-            afterJson: JSON.stringify({ incidentNumber: created.number }),
-          },
-        });
+      };
+    } catch (error) {
+      // Unique violation on number → another create took the number: retry once.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const target = error.meta?.target;
+        const targetText = Array.isArray(target)
+          ? target.join(",")
+          : String(target ?? "");
+        if (targetText.includes("number")) {
+          if (attempt === 0) continue;
+          throw new IncidentNumberConflictError();
+        }
       }
+      throw error;
+    }
+  }
 
-      return created;
-    },
-    { maxWait: 5_000, timeout: 20_000 }
-  );
-
-  return {
-    created: true,
-    incident: {
-      id: incident.id,
-      number: incident.number,
-      title: incident.title,
-      severity: incident.severity,
-      priority: incident.priority,
-      status: incident.status,
-      slaDueAt: (incident.slaDueAt ?? slaDueAt).toISOString(),
-    },
-  };
+  // Unreachable — the loop returns or throws on every path; defensive
+  // fall-through keeps the type checker happy (mirrors cmdb items route).
+  throw new IncidentNumberConflictError();
 }
