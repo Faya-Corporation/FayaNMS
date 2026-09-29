@@ -1,6 +1,6 @@
 # FayaNMS — Brand & Iconography Full Re-Audit
 
-**Repository:** `fayafatehi/FayaNMS`  
+**Repository:** `Faya-Corporation/FayaNMS`  
 **Default branch:** `main`  
 **Audited commit:** `e3564ae9a37019ee65c7918b40695d19aa69941b` (`e3564ae`)  
 **Audit date:** 2026-09-10  

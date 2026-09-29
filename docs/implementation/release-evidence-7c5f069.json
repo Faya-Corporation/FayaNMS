@@ -56,7 +56,7 @@
   "branchProtectionReadback": {
     "protected": false,
     "observedAt": "2026-09-22T21:36:31.000Z",
-    "source": "https://api.github.com/repos/fayafatehi/FayaNMS/branches/main"
+    "source": "https://api.github.com/repos/Faya-Corporation/FayaNMS/branches/main"
   },
   "externalBlockers": [
     "Exact-head CI certification for 7c5f069 is not recorded; the latest recorded pass is for older SHA 5671bc5.",

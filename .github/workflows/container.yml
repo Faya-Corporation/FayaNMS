@@ -51,7 +51,7 @@ jobs:
 
       - name: Build ARM64 application image
         run: |
-          docker buildx build             --platform linux/arm64             --load             --tag fayanms:arm64-${CANDIDATE_SHA}             --build-arg NEXT_PUBLIC_SITE_URL=https://fayanms.invalid             --build-arg FAYANMS_SOURCE_SHA=${CANDIDATE_SHA}             --label org.opencontainers.image.revision=${CANDIDATE_SHA}             --label org.opencontainers.image.source=https://github.com/fayafatehi/FayaNMS             --provenance=false             .
+          docker buildx build             --platform linux/arm64             --load             --tag fayanms:arm64-${CANDIDATE_SHA}             --build-arg NEXT_PUBLIC_SITE_URL=https://fayanms.invalid             --build-arg FAYANMS_SOURCE_SHA=${CANDIDATE_SHA}             --label org.opencontainers.image.revision=${CANDIDATE_SHA}             --label org.opencontainers.image.source=https://github.com/Faya-Corporation/FayaNMS             --provenance=false             .
 
       - name: Build ARM64 worker image
         run: |
@@ -134,36 +134,36 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ghcr.io/fayafatehi/fayanms
+          images: ghcr.io/faya-corporation/fayanms
           tags: |
             type=raw,value=${{ github.event.workflow_run.head_sha }}
             type=raw,value=sha-${{ github.event.workflow_run.head_sha }}
           labels: |
-            org.opencontainers.image.source=https://github.com/fayafatehi/FayaNMS
+            org.opencontainers.image.source=https://github.com/Faya-Corporation/FayaNMS
             org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
 
       - name: Extract worker OCI metadata
         id: worker-meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ghcr.io/fayafatehi/fayanms-worker
+          images: ghcr.io/faya-corporation/fayanms-worker
           tags: |
             type=raw,value=${{ github.event.workflow_run.head_sha }}
             type=raw,value=sha-${{ github.event.workflow_run.head_sha }}
           labels: |
-            org.opencontainers.image.source=https://github.com/fayafatehi/FayaNMS
+            org.opencontainers.image.source=https://github.com/Faya-Corporation/FayaNMS
             org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
 
       - name: Extract migration OCI metadata
         id: migrator-meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ghcr.io/fayafatehi/fayanms-migrator
+          images: ghcr.io/faya-corporation/fayanms-migrator
           tags: |
             type=raw,value=${{ github.event.workflow_run.head_sha }}
             type=raw,value=sha-${{ github.event.workflow_run.head_sha }}
           labels: |
-            org.opencontainers.image.source=https://github.com/fayafatehi/FayaNMS
+            org.opencontainers.image.source=https://github.com/Faya-Corporation/FayaNMS
             org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
 
       - name: Build and push immutable multi-architecture image
@@ -211,7 +211,7 @@ jobs:
       - name: Scan published image
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          image-ref: ghcr.io/fayafatehi/fayanms:${{ github.event.workflow_run.head_sha }}
+          image-ref: ghcr.io/faya-corporation/fayanms:${{ github.event.workflow_run.head_sha }}
           format: sarif
           output: trivy-ghcr.sarif
           severity: CRITICAL,HIGH
@@ -221,7 +221,7 @@ jobs:
       - name: Scan published worker image
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          image-ref: ghcr.io/fayafatehi/fayanms-worker:${{ github.event.workflow_run.head_sha }}
+          image-ref: ghcr.io/faya-corporation/fayanms-worker:${{ github.event.workflow_run.head_sha }}
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: false
@@ -230,7 +230,7 @@ jobs:
       - name: Scan published migration image
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          image-ref: ghcr.io/fayafatehi/fayanms-migrator:${{ github.event.workflow_run.head_sha }}
+          image-ref: ghcr.io/faya-corporation/fayanms-migrator:${{ github.event.workflow_run.head_sha }}
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: false

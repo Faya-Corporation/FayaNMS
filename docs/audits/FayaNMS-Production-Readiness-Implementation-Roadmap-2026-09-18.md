@@ -74,7 +74,7 @@ Everything here is executable inside the sandbox with no external dependency, or
 
 ## Phase OWNER — operator-side prerequisites (unchanged, exact hand-off)
 
-- **OWNER-CI-001 — GitHub Actions runner capacity.** The repo's `ci.yml` is complete, SHA-pinned, and honestly documented as runner-blocked since run #34. Action: enable hosted runners (or a self-hosted runner with ≥ 8 GB RAM for `build:gate`) on `fayafatehi/FayaNMS`; then execute HC-6. No code change required — the workflow is ready.
+- **OWNER-CI-001 — GitHub Actions runner capacity.** The repo's `ci.yml` is complete, SHA-pinned, and honestly documented as runner-blocked since run #34. Action: enable hosted runners (or a self-hosted runner with ≥ 8 GB RAM for `build:gate`) on `Faya-Corporation/FayaNMS`; then execute HC-6. No code change required — the workflow is ready.
 - **OWNER-GOV-001 — branch protection / ruleset on `main`.** Exact config already codified in TASK-GOV-001-A + deploy note 4 (require PR + the 4 required checks `gate`+`e2e`+`browser`+`scan` — R66 correction aligns every doc with the workflow header marker; linear history, signed commits recommended). Action: Settings → Rules → Rulesets on GitHub. No code change required. NOTE: `z_ai_v2` is the working integration branch; protection is requested for `main` per the task definition — mirroring it onto `z_ai_v2` is recommended once R52+ merges.
 
 ## Phase LAB — real-device certification (unchanged)

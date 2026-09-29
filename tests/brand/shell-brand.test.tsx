@@ -209,7 +209,7 @@ describe("CI gate wires the brand governance (B0-002)", () => {
     // truth (CI runs on every push; protection currently OFF).
     const readme = read("README.md");
     expect(readme).toContain(
-      "img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml",
+      "img.shields.io/github/actions/workflow/status/Faya-Corporation/FayaNMS/ci.yml",
     );
     expect(readme).toMatch(/BRANCH PROTECTION — CORRECTED 2026-09-13/);
     expect(readme).toMatch(/main\.protected = false/);

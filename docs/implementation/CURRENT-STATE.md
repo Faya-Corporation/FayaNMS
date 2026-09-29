@@ -5,7 +5,7 @@
 
 ## Repository and governance
 
-- Repository: `fayafatehi/FayaNMS`; checked-out branch: `main`.
+- Repository: `Faya-Corporation/FayaNMS`; checked-out branch: `main`.
 - Repository snapshot source: `7e4436183f337b52115fbb1ae0326dd8c3907627`; local `origin/main` and `HEAD` matched when observed (refresh with `git rev-list --left-right --count origin/main...HEAD`). This is a local-ref comparison, not a fresh GitHub readback.
 - **Worktree is not clean.** It contains pre-existing line-ending changes, an unrelated local Compose edit, and four unrelated untracked items. They are outside the focused commits and must be preserved.
 - Last live GitHub branch readback (2026-09-22 21:36:31 UTC) reported `main.protected=false`; the protection endpoint returned 403. This status has not been rechecked for this snapshot. Enabling protection remains an owner action.

@@ -39,7 +39,7 @@ type CheckResult = { name: string; ok: boolean; observed: string };
 const REPO_FULL =
   process.env.GITHUB_REPOSITORY && process.env.GITHUB_REPOSITORY.includes("/")
     ? process.env.GITHUB_REPOSITORY
-    : "fayafatehi/FayaNMS";
+    : "Faya-Corporation/FayaNMS";
 
 const BRANCH = process.argv[2] ?? "main";
 

@@ -26,7 +26,7 @@ Gate env contract staged at `/tmp/fayanms-ci-gate.env` (3-knob + fail-closed ser
 
 - Local `main` created at `origin/main` (`27e0eea`); `git merge --ff-only z_ai_v2`.
 - Result: **fast-forward `27e0eea..6538d46`** — 213 files changed, **+16,377 / −1,990**, **39 commits**.
-- Push: exit 0 (`To https://github.com/fayafatehi/FayaNMS.git · 27e0eea..6538d46 main -> main`).
+- Push: exit 0 (`To https://github.com/Faya-Corporation/FayaNMS.git · 27e0eea..6538d46 main -> main`).
 - Post-merge read-back: `main` == `z_ai_v2` == `origin/main` == `origin/z_ai_v2` == `6538d46` (all four refs identical, 0/0 sync everywhere).
 - **Linear history preserved** — pure fast-forward, no merge commit, no squash. Every one of the 39 commits (R2 era → R69) remains individually addressable, as required by the linear-history invariant `gov-verify.ts` asserts.
 - Provenance note: the previously prepared PR route (`docs/audits/FayaNMS-Candidate-PR-Package-z_ai_v2-to-main-2026-09-19.md`) was superseded by this **direct operator-authorized merge**; an addendum has been appended to that document (it is retained as the record of the rehearsed PR path, merge-tree exit 0 / tree `92222d2`).

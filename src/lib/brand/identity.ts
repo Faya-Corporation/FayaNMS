@@ -50,7 +50,7 @@ export const FAYANMS_BRAND: BrandIdentity = {
     networkShield: "/brand/fayanms-network-shield.svg",
   },
   urls: {
-    repository: "https://github.com/fayafatehi/FayaNMS",
+    repository: "https://github.com/Faya-Corporation/FayaNMS",
   },
 } as const;
 

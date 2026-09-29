@@ -1,7 +1,7 @@
 # FayaNMS — Repository & Social Branding Playbook
 
 **Status:** Phase B2 deliverable · how the GitHub repository presents the brand
-**Repository:** `https://github.com/fayafatehi/FayaNMS`
+**Repository:** `https://github.com/Faya-Corporation/FayaNMS`
 **Related:** [BRAND-GUIDELINES.md](./BRAND-GUIDELINES.md) · [ASSET-MANIFEST.md](./ASSET-MANIFEST.md) (social preview asset)
 
 ---
@@ -67,7 +67,7 @@ uses, verified against `package.json` / the getting-started docs:
 
 - ✅ Allowed: Next.js 16 · TypeScript 5 · Bun · Prisma · Tailwind CSS 4 · next-intl (EN·AR) — static `img.shields.io` badges, `style=flat-square`.
 - ❌ Not allowed until real: **license badge** (no license file is selected yet — a badge would fabricate a licensing claim), **coverage**, **security-certification**, **"production ready"**, **Discord/community**, and any **vendor endorsement** badges.
-- ✅ **CI badge (allowed since 2026-09-10):** the underlying fact became true — the workflow is pushed (task R8), `gate` + `scan` run green on `main`, and both are **required** status checks on the protected `main` branch (§6). The README badge row therefore carries `img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml?style=flat-square&branch=main&label=CI`.
+- ✅ **CI badge (allowed since 2026-09-10):** the underlying fact became true — the workflow is pushed (task R8), `gate` + `scan` run green on `main`, and both are **required** status checks on the protected `main` branch (§6). The README badge row therefore carries `img.shields.io/github/actions/workflow/status/Faya-Corporation/FayaNMS/ci.yml?style=flat-square&branch=main&label=CI`.
 - When a badge's underlying fact becomes true (e.g. a license is chosen, CI runs green on `main`), add the badge **and** keep the honest-status prose consistent with it.
 
 ## 5. About (sidebar) description
@@ -100,8 +100,8 @@ Keep the demo semantics visible in the one-liner; the README body carries the fu
 1. ✅ **Workflow push** — task R8 (2026-09-10): the fresh fine-grained PAT did carry the
    `workflow` scope (the R6/P19-10 blocker no longer applied); ci.yml landed on `main`
    and triggers on push.
-2. ✅ **Green run on a real pushed commit** — runs [#6](https://github.com/fayafatehi/FayaNMS/actions/runs/34539971028)
-   (`d68e47a`) and [#7](https://github.com/fayafatehi/FayaNMS/actions/runs/34540067242)
+2. ✅ **Green run on a real pushed commit** — runs [#6](https://github.com/Faya-Corporation/FayaNMS/actions/runs/34539971028)
+   (`d68e47a`) and [#7](https://github.com/Faya-Corporation/FayaNMS/actions/runs/34540067242)
    (`3e97d3b`): both jobs `gate` and `scan` concluded `success` with zero failed steps
    (verified via the Actions API).
    *(R66 correction: at R9 time the workflow had only `gate`+`scan`; the CURRENT
@@ -119,7 +119,7 @@ Keep the demo semantics visible in the one-liner; the README body carries the fu
 5. ✅ **About description aligned** (§5) — task R9, `PATCH /repos/...`, 200, read-back
    byte-exact.
 6. ✅ **Closing proof run (R9 re-audit evidence):** run
-   [#8](https://github.com/fayafatehi/FayaNMS/actions/runs/34542123439) — ID
+   [#8](https://github.com/Faya-Corporation/FayaNMS/actions/runs/34542123439) — ID
    `34542123439`, HEAD `66ab91a`, run number **8**, `completed / success`; both jobs
    `gate` and `scan` green with zero failed steps. Run-number correction (R10-003,
    2026-09-11): the authoritative Actions-API mapping is #6 = `34539971028`, #7 =

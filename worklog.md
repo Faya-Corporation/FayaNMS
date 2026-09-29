@@ -577,7 +577,7 @@ Stage Summary:
 ---
 Task ID: GITHUB-INIT
 Agent: Orchestrator (Z.ai Code)
-Task: Initialize GitHub remote (github.com/fayafatehi/FayaNMS), commit current state, push main; then move to next roadmap item.
+Task: Initialize GitHub remote (github.com/Faya-Corporation/FayaNMS), commit current state, push main; then move to next roadmap item.
 
 Work Log:
 - Audited git state: 7 local commits (UUID-named) on main, no remote. Repo at G5-passed state.
@@ -589,7 +589,7 @@ Work Log:
 - Surfed registry/schema for next task: ops.maintenance + ops.events keys exist in registry/sidebar/palette but route to PlaceholderView; MaintenanceWindow model (name/siteId?/deviceId?/changeId?/startsAt/endsAt/reason/isActive) seeded w/ 2 windows; no /api/v1/audit yet (only devices/[id]/audit); AuditEvent model is the events source.
 
 Stage Summary:
-- GitHub initiated: https://github.com/fayafatehi/FayaNMS.git main@372bc24 (Phase 5 complete, G5 verified, 15,192-row pristine seed state). Push procedure + flaky-egress mitigations documented — future pushes: `git push origin main` with the retry pattern if connect timeouts recur.
+- GitHub initiated: https://github.com/Faya-Corporation/FayaNMS.git main@372bc24 (Phase 5 complete, G5 verified, 15,192-row pristine seed state). Push procedure + flaky-egress mitigations documented — future pushes: `git push origin main` with the retry pattern if connect timeouts recur.
 - Next roadmap item confirmed as Phase 5-c (light slices): ops.maintenance CRUD UI + ops.events (audit event stream) page — delegated to full-stack-developer as Task 5-c; then Phase 6 (Performance & metrics dashboards + rollups + capacity forecast).
 
 ---
@@ -1713,8 +1713,8 @@ Work Log:
 Stage Summary:
 - ANSWER to "why is the repo >10 MB": the current checkout is only 5.3 MB — the size lives entirely in git HISTORY: 26 snapshot-committed versions of the live SQLite database (547 MB) + 29 WAL versions (166 MB) + upload tars/zips (≈27 MB) + worker logs (11.5 MB), which GitHub packs to ~96 MB.
 - LOCAL REMEDIATION 100% COMPLETE: junk purged from all 62 commits (752 MB of blobs removed), .gitignore hardened + gap closed, integrity fsck-clean, bundle backup retained at /tmp/fayanms-pre-purge-backup.bundle. The rewritten history packs to 2.68 MiB — the remote will drop from ~96 MB to ≈3 MB the moment it is pushed.
-- TO FINISH (needs a fresh fine-grained PAT with Contents: read/write on fayafatehi/FayaNMS — the old one is dead):
-  1. `git remote set-url origin https://x-access-token:<NEWTOKEN>@github.com/fayafatehi/FayaNMS.git`
+- TO FINISH (needs a fresh fine-grained PAT with Contents: read/write on Faya-Corporation/FayaNMS — the old one is dead):
+  1. `git remote set-url origin https://x-access-token:<NEWTOKEN>@github.com/Faya-Corporation/FayaNMS.git`
   2. `git push --force origin main`
   3. (GitHub's API "size" field lags until server-side gc; the served pack is immediately small on fresh clones.)
 - Unchanged from R6: ci.yml rides only on local/ci-workflow-activation (now 6a90ccc) pending a workflow-scope token; GitHub settings-side activation steps remain manual.
@@ -1730,7 +1730,7 @@ Work Log:
 - Verification: ls-remote main = 6c2bca7 ✓; fresh bare probe clone → served pack 3.57 MiB / 3.8 MB on disk (was 95.77 MiB / 96 MB) = 96% reduction; GitHub API size field still reads the stale 90,433 KB pre-purge stat (server-side gc lag — decays to the real ~3.5 MB over time; fresh clones get the true small pack immediately).
 
 Stage Summary:
-- REMOTE SIZE ISSUE FULLY RESOLVED: fayafatehi/FayaNMS now serves the purged history (~3.6 MiB pack) with the complete brand/governance tree, .gitignore hardening (0a25870 → 6c2bca7), and zero db/WAL/upload/scratch/log junk in any of the 63 commits. Backup bundle retained at /tmp/fayanms-pre-purge-backup.bundle. Remaining GitHub-side items unchanged: ci.yml workflow-scope push, branch protection, topics, About, social preview.
+- REMOTE SIZE ISSUE FULLY RESOLVED: Faya-Corporation/FayaNMS now serves the purged history (~3.6 MiB pack) with the complete brand/governance tree, .gitignore hardening (0a25870 → 6c2bca7), and zero db/WAL/upload/scratch/log junk in any of the 63 commits. Backup bundle retained at /tmp/fayanms-pre-purge-backup.bundle. Remaining GitHub-side items unchanged: ci.yml workflow-scope push, branch protection, topics, About, social preview.
 
 ---
 Task ID: R8-orch
@@ -1762,13 +1762,13 @@ Work Log:
 - Confirmed preconditions BEFORE touching settings: latest CI runs on main are green — run 34540067242 (3e97d3b, current HEAD) and 34539971028 (d68e47a) both concluded success with BOTH jobs (gate + scan) succeeding and zero failed steps (Actions API, job-level verification). This satisfies B0-002's "green run on a real pushed commit" precondition for branch protection.
 - PAT validation: stored token → 200 on /user and /repos. Administration:write confirmed operationally by the three 200s below (not by headers — fine-grained PATs return empty scopes headers).
 - SETTINGS ACTIVATION VIA REST API (all three returned 200, payloads written to /tmp/gh-{desc,topics,protection}.json):
-  1. PATCH /repos/fayafatehi/FayaNMS — About description set to the §5 governed wording ("Enterprise multi-vendor network operations, configuration, change, incident and performance management — a self-contained demo platform."); authenticated read-back = byte-exact (len 136).
+  1. PATCH /repos/Faya-Corporation/FayaNMS — About description set to the §5 governed wording ("Enterprise multi-vendor network operations, configuration, change, incident and performance management — a self-contained demo platform."); authenticated read-back = byte-exact (len 136).
   2. PUT /repos/.../topics — the 15 recommended topics from §1 (nms, network-management, network-automation, network-monitoring, network-configuration, configuration-backup, change-management, incident-management, noc, snmp, netconf, restconf, network-operations, nextjs, typescript); read-back set-equal (GitHub returns them sorted — order is not a setting).
   3. PUT /repos/.../branches/main/protection — required status checks gate + scan (strict=false) · required_pull_request_reviews: 1 approval, require_code_owner_reviews=true, dismiss_stale_reviews=false, require_last_push_approval=false · required_conversation_resolution=true · allow_force_pushes=false · allow_deletions=false · restrictions=null · enforce_admins=FALSE (deliberate: keeps the owner/sandbox direct-push workflow alive; required checks still gate every PR and are the non-bypassable record for external contributors). Read-back verified field-by-field.
 - Unauthenticated API from this sandbox IP is rate-limited (403, 0/60 — same as R7); all verification done with the authenticated token.
 - BONUS CONFIRMATION: GitHub API repo `size` field now reads 2,825 KB (~2.8 MB) — the R7 purge's stale 90,433 KB figure has decayed to the true purged size. Repo-size incident fully closed on GitHub's own books.
 - DOC/TEST REGIME CHANGE (the "committed ≠ enforced" window closed 2026-09-10): 
-  - README badge row: added the factual CI badge (img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml?style=flat-square&branch=main&label=CI) per badge-policy §4 ("when the underlying fact becomes true, add the badge").
+  - README badge row: added the factual CI badge (img.shields.io/github/actions/workflow/status/Faya-Corporation/FayaNMS/ci.yml?style=flat-square&branch=main&label=CI) per badge-policy §4 ("when the underlying fact becomes true, add the badge").
   - README production-readiness statement: CI enforcement on a protected main removed from the blocker list (was 1 of 3 blockers; remaining: production persistence infra + real adapter certification) with a dated note.
   - README known-limitations CI sentence rewritten: gate is live AND CI-enforced (activated 2026-09-10, green gate+scan, protected main, required checks, PR + 1 approval + CODEOWNERS + conversation resolution, no force push/deletion).
   - SOCIAL-REPOSITORY.md §4: CI badge moved from the disallowed list to an allowed entry with the dated rationale; §6 rewritten as an ACTIVATION COMPLETE record (steps 1-5 ✅ with dates/mechanisms, step 6 ⬜ = social preview upload — no REST API endpoint exists for it, single remaining manual web-UI action) + historical note explaining the superseded "committed ≠ enforced" rule.
@@ -1778,7 +1778,7 @@ Work Log:
 - CI ON 66ab91a: run 34542123439 completed → SUCCESS; job-level check: gate=success, scan=success, zero failed steps. Every push to main since CI activation (3e97d3b, 66ab91a) is green — the README badge now reports live status.
 
 Stage Summary:
-- GOVERNANCE ACTIVATION COMPLETE (B0-002 closed at the repository level, not just the commit level): fayafatehi/FayaNMS now has (1) CI enforced — gate + scan required status checks on protected main, PRs need 1 approval + CODEOWNERS review + conversation resolution, no force push/deletion; (2) 15 topics live; (3) About description live; (4) CI badge live on README and factual. Executed via the settings REST API with the user-provided Administration:write token (the user's "Administration: write done" unlocked exactly these).
+- GOVERNANCE ACTIVATION COMPLETE (B0-002 closed at the repository level, not just the commit level): Faya-Corporation/FayaNMS now has (1) CI enforced — gate + scan required status checks on protected main, PRs need 1 approval + CODEOWNERS review + conversation resolution, no force push/deletion; (2) 15 topics live; (3) About description live; (4) CI badge live on README and factual. Executed via the settings REST API with the user-provided Administration:write token (the user's "Administration: write done" unlocked exactly these).
 - Score trajectory: 52 → 82 → 96 (self-assessed). Open items now: (1) social preview upload — the ONLY remaining manual action, no REST API endpoint exists (Settings → General → Social preview → upload public/brand/github-social-preview.png); (2) next-auth v5 migration to retire the 4 remaining osv ignores (optional); (3) B3-030 signed commits (optional).
 - Artifacts: commit 66ab91a (README.md, docs/brand/SOCIAL-REPOSITORY.md, tests/brand/shell-brand.test.tsx); settings payloads + responses in /tmp/gh-*.json + /tmp/api-*.json (ephemeral).
 
@@ -2158,7 +2158,7 @@ Work Log:
 - Pushed ce3167a; run #34 (gate + scan) picked it up.
 - GATE job on ce3167a: SUCCESS — proven TWICE (attempt 1 and the attempt-2 rerun of failed jobs): all 20 steps green (lint, src+worker zero-error typecheck, full bun test suite incl. the new change-engine-invariants pins, LIVE_SSH per-flavor certification, brand/icon validators, Prisma validate + fresh-PostgreSQL migrate deploy + migrations≡schema drift guard, demo seed smoke, i18n parity, production build). The commit is therefore fully gate-proven.
 - SCAN job on ce3167a: FAILED WITHOUT EXECUTING — four rerun attempts (2× rerun-failed-jobs, 2× rerun-all), every failure identical: ZERO steps recorded, NO runner ever assigned ("runner: ''"), NO job logs (BlobNotFound). On attempts 3–5 even the gate job — which had succeeded twice on the same SHA minutes earlier — began failing instantly (2 s, no runner, skipped scan), which proves the failure is GitHub-side runner assignment (hosted-runner capacity/quota for the private repo), not a scanner finding and not this commit's content (tests + lib extraction + docs only).
-- Billing API is not accessible with the push token (403 — needs a user-scope token), so the quota hypothesis could not be confirmed from the sandbox. The run is at github.com/fayafatehi/FayaNMS/actions/runs/34790930950 — a UI re-run after the account's Actions minutes reset/reset window (or a manual billing check) should turn scan green; the workflow content is unchanged and proven.
+- Billing API is not accessible with the push token (403 — needs a user-scope token), so the quota hypothesis could not be confirmed from the sandbox. The run is at github.com/Faya-Corporation/FayaNMS/actions/runs/34790930950 — a UI re-run after the account's Actions minutes reset/reset window (or a manual billing check) should turn scan green; the workflow content is unchanged and proven.
 
 Stage Summary:
 - TRUTHFUL CI STATE for ce3167a: gate GREEN (twice) · scan BLOCKED by GitHub runner assignment (infrastructure; zero steps executed across 4 reruns, including instant no-runner failures of previously-succeeding jobs on the identical commit). Local equivalents of every gate step were re-run before push and are green (lint 0 · tsc 0 · 199/199 tests · build:gate exit 0). No scanner finding exists to triage — the scan job never ran.
@@ -3051,7 +3051,7 @@ Agent: Orchestrator (Z.ai Code)
 Task: user instruction "keep going and move to remaining tasks and roadmap" — next authorable roadmap item: R50 Phase R50.3 (R50-T030..T033, fixes the open P1 R50-004: the resolver's A→AAAA fallback + IPv6-literal passthrough autofill management addresses the IPv4-only inventory contract always rejects).
 
 Work Log:
-- Session context audit: fresh-clone review of fayafatehi/FayaNMS (main @ 27e0eea → branch z_ai_v2 @ a4d88d1, 5 commits ahead); baseline gates re-proven on the exact tree (lint 0 · tsc 0 · 681 pass / 12 skip / 0 fail, 3,697 expects — matches the repo record EXACTLY); NEXT-TASKS.md ACTIVE block re-read → R50.3 is the next authorable increment (owner-side CI-001/GOV-001 and lab-side certification are outside sandbox control).
+- Session context audit: fresh-clone review of Faya-Corporation/FayaNMS (main @ 27e0eea → branch z_ai_v2 @ a4d88d1, 5 commits ahead); baseline gates re-proven on the exact tree (lint 0 · tsc 0 · 681 pass / 12 skip / 0 fail, 3,697 expects — matches the repo record EXACTLY); NEXT-TASKS.md ACTIVE block re-read → R50.3 is the next authorable increment (owner-side CI-001/GOV-001 and lab-side certification are outside sandbox control).
 - TDD FIRST: tests/audit/r50-address-policy.test.ts (15 pins, RED) — IPv4-literal passthrough unchanged; IPv6 literal REFUSED pre-DNS (refused-ipv6-literal + typed IPV6_MANAGEMENT_ADDRESS_UNSUPPORTED); AAAA-only hostname → honest AAAA diagnostic then refused-aaaa-only with the same typed code (the old dns-aaaa SUCCESS is dead); neither family → failed with the A-query DNS code; R50-T033 determinism: multi-address A RRsets pick the numeric-ASCENDING first (per-octet compare — 10.0.0.2 < 10.0.0.20 < 10.0.1.2) and resolver RR rotation cannot move the answer; governance pins: the T030 decision ADR exists, the resolver has no AAAA-success path, the five inventory surfaces STAY IPv4-validated (the mismatch is closed resolver-side, never by weakening the contract), the route surfaces the typed refusal in response + audit, and the operator toast names the policy.
 - T030 DECISION recorded in docs/adr/ADR-management-address-policy.md: Device.mgmtIp is IPv4-ONLY (create/update API, form sheet, CSV import UI + API, and the IPv4-CIDR discovery scanner already enforce it; dual-stack would be a multi-plane schema change — shared types, exports, reports, ZTP, IPv6 discovery — with no operator demand; documented as the NOT-TAKEN T032 branch with the explicit lift-the-ADR path).
 - Implementation: src/lib/dns/resolve-host.ts rewritten — mode union is now ip-literal | dns-a | refused-ipv6-literal | refused-aaaa-only | failed ("dns-aaaa" structurally gone); lookup injection switched to RRset-shaped resolve4/resolve6 contracts (structural fakes, no casts); deterministicIpv4Pick() exported; never-throwing typed-result contract preserved. Old vendor-detect.test.ts pins that enshrined the IPv6 passthrough and the AAAA fallback success were re-pinned to the refusal contract (4 tests).

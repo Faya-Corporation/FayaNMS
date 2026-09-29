@@ -91,7 +91,7 @@ test("hashes SBOM bytes and preserves supplied, dated release readbacks", () => 
         branchProtectionReadback: {
           protected: false,
           observedAt: "2026-09-22T21:14:56.000Z",
-          source: "https://api.github.com/repos/fayafatehi/FayaNMS/branches/main/protection",
+          source: "https://api.github.com/repos/Faya-Corporation/FayaNMS/branches/main/protection",
         },
         externalBlockers: ["OCI staging evidence unavailable"],
       },
@@ -126,7 +126,7 @@ test("binds an externally recorded SBOM artifact digest to its exact source SHA 
           workflowRunId: "35677691852",
           sourceSha,
           sha256: `sha256:${"b".repeat(64)}`,
-          source: "https://api.github.com/repos/fayafatehi/FayaNMS/actions/artifacts/10673822610",
+          source: "https://api.github.com/repos/Faya-Corporation/FayaNMS/actions/artifacts/10673822610",
         },
       },
     });
@@ -136,7 +136,7 @@ test("binds an externally recorded SBOM artifact digest to its exact source SHA 
       artifactId: 10673822610,
       workflowRunId: "35677691852",
       sourceSha,
-      source: "https://api.github.com/repos/fayafatehi/FayaNMS/actions/artifacts/10673822610",
+      source: "https://api.github.com/repos/Faya-Corporation/FayaNMS/actions/artifacts/10673822610",
     });
     assert.throws(
       () => buildEvidenceManifest({
@@ -147,7 +147,7 @@ test("binds an externally recorded SBOM artifact digest to its exact source SHA 
             workflowRunId: "35677691852",
             sourceSha: "f".repeat(40),
             sha256: `sha256:${"b".repeat(64)}`,
-            source: "https://api.github.com/repos/fayafatehi/FayaNMS/actions/artifacts/10673822610",
+            source: "https://api.github.com/repos/Faya-Corporation/FayaNMS/actions/artifacts/10673822610",
           },
         },
       }),
@@ -163,7 +163,7 @@ test("binds an externally recorded SBOM artifact digest to its exact source SHA 
             workflowRunId: "35677691852",
             sourceSha,
             sha256: `sha256:${"b".repeat(64)}`,
-            source: "https://api.github.com/repos/fayafatehi/FayaNMS/actions/artifacts/10673822610",
+            source: "https://api.github.com/repos/Faya-Corporation/FayaNMS/actions/artifacts/10673822610",
           },
         },
       }),

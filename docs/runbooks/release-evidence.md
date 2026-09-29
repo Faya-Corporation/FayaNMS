@@ -50,7 +50,7 @@ The optional `--evidence` file is JSON with only these fields:
   "branchProtectionReadback": {
     "protected": false,
     "observedAt": "2026-09-22T21:14:56.000Z",
-    "source": "https://api.github.com/repos/fayafatehi/FayaNMS/branches/main/protection"
+    "source": "https://api.github.com/repos/Faya-Corporation/FayaNMS/branches/main/protection"
   },
   "externalBlockers": ["OCI staging evidence unavailable"]
 }

@@ -1,6 +1,6 @@
 # FayaNMS — Full Repository Audit, Security Review & Production-Readiness Roadmap
 
-**Repository:** https://github.com/fayafatehi/FayaNMS.git  
+**Repository:** https://github.com/Faya-Corporation/FayaNMS.git  
 **Audited branch:** `main`  
 **Audited commit:** `3a9488061e9053ebbf1b30de3a1f9189a30840af`  
 **Commit date:** 2026-09-09  
@@ -3104,43 +3104,43 @@ tests/
 Repository:
 
 ```text
-https://github.com/fayafatehi/FayaNMS
+https://github.com/Faya-Corporation/FayaNMS
 ```
 
 Audited commit:
 
 ```text
-https://github.com/fayafatehi/FayaNMS/commit/3a9488061e9053ebbf1b30de3a1f9189a30840af
+https://github.com/Faya-Corporation/FayaNMS/commit/3a9488061e9053ebbf1b30de3a1f9189a30840af
 ```
 
 Key files:
 
 ```text
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/README.md
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/README.md
 
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/.env.example
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/.env.example
 
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/src/middleware.ts
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/src/middleware.ts
 
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/src/lib/auth/session.ts
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/src/lib/auth/session.ts
 
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/src/lib/auth/acting-admin.ts
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/src/lib/auth/acting-admin.ts
 
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/src/lib/audit/chain.ts
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/src/lib/audit/chain.ts
 
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/src/lib/config/create-snapshot.ts
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/src/lib/config/create-snapshot.ts
 
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/prisma/schema.prisma
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/prisma/schema.prisma
 
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/prisma/seed.ts
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/prisma/seed.ts
 
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/mini-services/worker/adapters.ts
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/mini-services/worker/adapters.ts
 
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/docs/design-governance.md
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/docs/design-governance.md
 
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/next.config.ts
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/next.config.ts
 
-https://github.com/fayafatehi/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/Caddyfile
+https://github.com/Faya-Corporation/FayaNMS/blob/3a9488061e9053ebbf1b30de3a1f9189a30840af/Caddyfile
 ```
 
 ---

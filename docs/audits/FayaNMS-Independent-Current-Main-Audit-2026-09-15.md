@@ -1,6 +1,6 @@
 # FayaNMS — Independent Audit of Current `main` (verification of the 2026-09-15 Superpowers audit)
 
-**Repository:** `fayafatehi/FayaNMS`
+**Repository:** `Faya-Corporation/FayaNMS`
 **Branch:** `main`
 **Audited HEAD:** `b9d3d50be0320addd2f3b35d3e78d3bfc679c7c1` (clean tree — zero uncommitted changes)
 **Audit date:** 2026-09-15 (Asia/Riyadh)

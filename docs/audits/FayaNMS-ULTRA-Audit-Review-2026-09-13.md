@@ -1,7 +1,7 @@
 # FayaNMS — Independent Review of the ULTRA Production-Readiness Audit (2026-09-13)
 
 **Reviewed artifact:** `FayaNMS-ULTRA-End-to-End-Production-Readiness-Audit-2026-09-13.md` (external audit, verdict **BLOCKED**, score **74/100**)
-**Reviewed against:** local clone of `fayafatehi/FayaNMS`, audited commit `5ca36a5` (= current `origin/main`; one later local commit `a3b761b` adds a screenshot PNG only — zero source delta)
+**Reviewed against:** local clone of `Faya-Corporation/FayaNMS`, audited commit `5ca36a5` (= current `origin/main`; one later local commit `a3b761b` adds a screenshot PNG only — zero source delta)
 **Review method:** every claim re-derived from source, not trusted. Each cited file was opened and the defect located at line level. Live GitHub API used for branch protection + CI state. Full local test run executed.
 **Review verdict:** **THE AUDIT IS ACCURATE.** All 5 P0s, all 8 sampled P1s, and all 3 sampled P2s were **CONFIRMED** at the cited locations. The BLOCKED verdict and the "remediation sprint before new features" directive are **accepted**.
 **Review mode:** read-only; this document adds evidence, two nuances the audit understated, and five items it missed.

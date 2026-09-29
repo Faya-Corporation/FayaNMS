@@ -18,7 +18,7 @@
     "artifactId": 10673822610,
     "workflowRunId": "35677691852",
     "sourceSha": "5671bc5b5067d1503b6e10be73101f006b3af794",
-    "source": "https://api.github.com/repos/fayafatehi/FayaNMS/actions/artifacts/10673822610"
+    "source": "https://api.github.com/repos/Faya-Corporation/FayaNMS/actions/artifacts/10673822610"
   },
   "certificationTierSummary": {
     "matrix": "docs/certification/MATRIX.md",
@@ -36,7 +36,7 @@
   "branchProtectionReadback": {
     "protected": false,
     "observedAt": "2026-09-22T21:36:31.000Z",
-    "source": "https://api.github.com/repos/fayafatehi/FayaNMS/branches/main"
+    "source": "https://api.github.com/repos/Faya-Corporation/FayaNMS/branches/main"
   },
   "externalBlockers": [
     "GHCR publication failed on both attempts; no immutable image digest was verified",

@@ -405,7 +405,7 @@ not abort (check `docker compose logs app` for the policy banner).
 
 ```bash
 # in WSL2 Ubuntu
-sudo apt install -y git && git clone https://github.com/fayafatehi/FayaNMS.git ~/fayanms
+sudo apt install -y git && git clone https://github.com/Faya-Corporation/FayaNMS.git ~/fayanms
 cd ~/fayanms
 git config core.autocrlf input          # guard against CRLF if checked out on Windows earlier
 

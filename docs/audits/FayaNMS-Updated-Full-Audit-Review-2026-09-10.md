@@ -1,6 +1,6 @@
 # FayaNMS — Updated Full Repository Audit, Security Review & Production-Readiness Roadmap
 
-**Repository:** `https://github.com/fayafatehi/FayaNMS.git`  
+**Repository:** `https://github.com/Faya-Corporation/FayaNMS.git`  
 **Default branch:** `main`  
 **Re-audited remote HEAD:** `d72cc9ecbb5ae427b585482825c01007b8fcfd10` (`d72cc9e`)  
 **Re-audit date:** 2026-09-10  
@@ -2319,7 +2319,7 @@ P20-016 / Phase 24 (G8 QA matrix)
 
 GitHub:
 
-`https://github.com/fayafatehi/FayaNMS/commit/d72cc9ecbb5ae427b585482825c01007b8fcfd10`
+`https://github.com/Faya-Corporation/FayaNMS/commit/d72cc9ecbb5ae427b585482825c01007b8fcfd10`
 
 ## Important reviewed files
 

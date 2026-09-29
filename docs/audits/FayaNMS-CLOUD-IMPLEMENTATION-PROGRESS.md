@@ -1,6 +1,6 @@
 # FayaNMS Cloud Platform Implementation Progress
 
-**Repository:** `fayafatehi/FayaNMS`  
+**Repository:** `Faya-Corporation/FayaNMS`  
 **Execution branch:** `codex/fayanms-cloud-platform`  
 **Initial main SHA:** `7aef0a330dc8f965fb496b735eb8a97b8d2c5149`  
 **Current local `main` HEAD:** `7e4436183f337b52115fbb1ae0326dd8c3907627`

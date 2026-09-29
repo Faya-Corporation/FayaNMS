@@ -139,7 +139,7 @@ the in-sandbox equivalent and stays green.
 ## 4. Operator runbook — the remaining path to go-live
 
 **Step 1 — OWNER-CI-001: restore runner capacity, then execute HC-6.**
-Enable hosted runners for `fayafatehi/FayaNMS` (billing/minutes) — or attach a
+Enable hosted runners for `Faya-Corporation/FayaNMS` (billing/minutes) — or attach a
 self-hosted runner with **≥8 GB RAM** (for `build:gate`). Then, per the roadmap
 HC-6 section (CORRECTED ordering — the workflow does NOT trigger on pushes to
 `z_ai_v2`): trigger the full 4-job battery via **`workflow_dispatch`** (Actions

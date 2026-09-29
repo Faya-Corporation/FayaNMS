@@ -1,6 +1,6 @@
 # FayaNMS — z_ai_v2 Independent Production Re-Audit
 
-**Repository:** `fayafatehi/FayaNMS`
+**Repository:** `Faya-Corporation/FayaNMS`
 **Branch:** `z_ai_v2` (audit STARTED at `f813d7a`, remediation LANDED on top of it — see §7)
 **Audit date:** 2026-09-18 (Asia/Riyadh)
 **Method:** Independent re-derivation, not attestation. Every material claim of the R50.0–R50.8 program was re-verified against the exact tree by two parallel read-only audit passes (security plane; supply-chain/docs-honesty plane) plus a personally executed gate battery and a live browser session. Prior worklog/audit claims were used ONLY as leads; each control below carries fresh file:line evidence. All locally executable gates were executed on the exact audited SHA.

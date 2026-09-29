@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/Prisma-6-2D3748?style=flat-square" alt="Prisma 6">
     <img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square" alt="Tailwind CSS 4">
     <img src="https://img.shields.io/badge/next--intl-EN%20%C2%B7%20AR-475569?style=flat-square" alt="next-intl — English + Arabic">
-    <img src="https://img.shields.io/github/actions/workflow/status/fayafatehi/FayaNMS/ci.yml?style=flat-square&branch=main&label=CI" alt="CI — release gate: gate, e2e, browser, scan (four jobs, ALL GREEN on main; first full four-job green run 35424363304 on 2026-09-19 — HC-6 accepted after the nine-iteration CI bring-up R70–R78)">
+    <img src="https://img.shields.io/github/actions/workflow/status/Faya-Corporation/FayaNMS/ci.yml?style=flat-square&branch=main&label=CI" alt="CI — release gate: gate, e2e, browser, scan (four jobs, ALL GREEN on main; first full four-job green run 35424363304 on 2026-09-19 — HC-6 accepted after the nine-iteration CI bring-up R70–R78)">
   </p>
 </div>
 
