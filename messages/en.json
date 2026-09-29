@@ -43,6 +43,16 @@
       "title": "Page not found",
       "description": "The page you are looking for does not exist or may have been moved.",
       "backHome": "Back to dashboard"
+    },
+    "highRisk": {
+      "done": "Done — action completed",
+      "failedFallback": "The action failed",
+      "back": "Back",
+      "close": "Close",
+      "cancel": "Cancel",
+      "working": "Working…",
+      "confirmInstruction": "Type <phrase>{text}</phrase> exactly to confirm — case-sensitive",
+      "mismatchHint": "Text does not match yet."
     }
   },
   "nav": {

@@ -26,8 +26,9 @@ import { ViewErrorBoundary } from "@/components/domain/view-error-boundary";
  *  4. error.tsx renders the shared ErrorState with the localized copy,
  *     correlation ID and the reset wiring (retry escape hatch).
  *  5. Both dictionaries carry common.appError.* / common.notFound.* with
- *     exact en/ar parity (totals now 3206 leaves per side after RT-005's
- *     hook-toast/alerts sweep; was 2856 after RT-004, originally 2850).
+ *     exact en/ar parity (totals now 3214 leaves per side after RT-021's
+ *     common.highRisk keys; was 3206 after RT-005's hook-toast/alerts sweep
+ *     (+13 auth.signIn in RT-020), 2856 after RT-004, originally 2850).
  */
 
 const REPO = join(import.meta.dir, "..", "..");
@@ -184,10 +185,11 @@ describe("RT-004 — dictionaries carry the new keys in both locales", () => {
 
     // Identical leaf sets inside the common namespace:
     expect(new Set(leaves(en.common))).toEqual(new Set(leaves(ar.common)));
-    // Totals: 2850 (R102) → 2856 (RT-004) → 3206 (RT-005, +336 toast/detect/
-    // alerts leaves per side; every pinning test updated in the same change).
-    expect(leaves(en).length).toBe(3206);
-    expect(leaves(ar).length).toBe(3206);
+    // Totals: 2850 (R102) → 2856 (RT-004) → 3193 → 3206 → 3214 (RT-021,
+    // +8 common.highRisk leaves per side; every pinning test updated in the
+    // same change).
+    expect(leaves(en).length).toBe(3214);
+    expect(leaves(ar).length).toBe(3214);
   });
 });
 
