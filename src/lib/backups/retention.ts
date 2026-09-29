@@ -50,6 +50,78 @@ export const PRUNE_MAX_DELETES_PER_TICK = 50;
 /** Snapshots always kept per device (hard floor). */
 export const PRUNE_MIN_SNAPSHOTS_PER_DEVICE = 2;
 
+/**
+ * RT-016 (F-018) — snapshot prune due-ness cadence. Snapshots only become
+ * prunable as retention windows move (daily), so the tick must NOT run the
+ * per-device scans every 30 s. The gate keeps an in-memory last-run
+ * timestamp (per server process — the metrics-prune route pattern) plus a
+ * persisted Setting fallback for restart safety.
+ */
+export const SNAPSHOT_PRUNE_SETTING_KEY = "snapshots.retention";
+export const SNAPSHOT_PRUNE_DEDUPE_HOURS = 24;
+
+let snapshotPruneLastRunMs: number | null = null;
+
+/**
+ * Test seam — clears the in-memory half of the gate so a test can exercise
+ * the Setting fallback exactly as a freshly started process would.
+ */
+export function resetSnapshotPruneGateForTests(): void {
+  snapshotPruneLastRunMs = null;
+}
+
+function readStoredLastPrunedAtMs(valueJson: string | null | undefined): number | null {
+  if (!valueJson) return null;
+  try {
+    const parsed: unknown = JSON.parse(valueJson);
+    if (!parsed || typeof parsed !== "object") return null;
+    const lastPrunedAt = (parsed as { lastPrunedAt?: unknown }).lastPrunedAt;
+    if (typeof lastPrunedAt !== "string") return null;
+    const ms = Date.parse(lastPrunedAt);
+    return Number.isFinite(ms) ? ms : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when a snapshot prune may run NOW: in-memory last-run older than the
+ * 24 h window (primary), or — in a fresh process — the persisted Setting
+ * "snapshots.retention" { lastPrunedAt } (restart-safe fallback). Missing
+ * state on either layer means due.
+ */
+export async function isSnapshotPruneDue(now: Date): Promise<boolean> {
+  if (snapshotPruneLastRunMs !== null) {
+    return (
+      now.getTime() - snapshotPruneLastRunMs >=
+      SNAPSHOT_PRUNE_DEDUPE_HOURS * 3_600_000
+    );
+  }
+  const row = await db.setting.findUnique({
+    where: { key: SNAPSHOT_PRUNE_SETTING_KEY },
+    select: { valueJson: true },
+  });
+  if (!row) return true;
+  const ms = readStoredLastPrunedAtMs(row.valueJson);
+  return ms === null || now.getTime() - ms >= SNAPSHOT_PRUNE_DEDUPE_HOURS * 3_600_000;
+}
+
+/**
+ * Stamp the cadence gate at the END of a prune run that actually executed
+ * (even a zero-delete run — the gate is about CADENCE, not work done).
+ * Writes BOTH layers: in-memory (this process) and the Setting row
+ * (every other process / restart).
+ */
+export async function markSnapshotsPruned(now: Date): Promise<void> {
+  snapshotPruneLastRunMs = now.getTime();
+  const valueJson = JSON.stringify({ lastPrunedAt: now.toISOString() });
+  await db.setting.upsert({
+    where: { key: SNAPSHOT_PRUNE_SETTING_KEY },
+    update: { valueJson },
+    create: { key: SNAPSHOT_PRUNE_SETTING_KEY, valueJson },
+  });
+}
+
 /** Minimal policy projection the pruner needs (BackupPolicy row subset). */
 export interface PrunePolicyRef {
   id: string;
@@ -103,15 +175,26 @@ export async function pruneRetention(
     return { pruned: 0, prunedDevices: 0, protectedByOpenDrift: 0, protectedByBaseline: 0 };
   }
 
-  // Cheap per-device totals in one grouped query (deviceId index).
+  // Cheap per-device totals in ONE grouped query (deviceId index), split by
+  // status so RT-016 can prove a device has no HISTORICAL rows at all —
+  // such a device can never yield a candidate and is skipped below with
+  // ZERO per-device queries.
   const totals = await db.configSnapshot.groupBy({
-    by: ["deviceId"],
+    by: ["deviceId", "status"],
     _count: { _all: true },
     where: { deviceId: { in: Array.from(cutoffs.keys()) } },
   });
-  const totalByDevice = new Map<string, number>(
-    totals.map((row) => [row.deviceId, row._count._all])
-  );
+  const totalByDevice = new Map<string, number>();
+  const historicalCountByDevice = new Map<string, number>();
+  for (const row of totals) {
+    totalByDevice.set(
+      row.deviceId,
+      (totalByDevice.get(row.deviceId) ?? 0) + row._count._all
+    );
+    if (row.status === "HISTORICAL") {
+      historicalCountByDevice.set(row.deviceId, row._count._all);
+    }
+  }
 
   const deleteIds: string[] = [];
   const touchedDevices = new Set<string>();
@@ -122,6 +205,10 @@ export async function pruneRetention(
     // Hard safety cap: always keep at least 2 snapshots on the device.
     const maxDeletable = total - PRUNE_MIN_SNAPSHOTS_PER_DEVICE;
     if (maxDeletable <= 0) continue;
+    // RT-016: no HISTORICAL row exists → no candidate can exist past the
+    // cutoff → skip without a single per-device query (the grouped scan
+    // above already knows this).
+    if ((historicalCountByDevice.get(deviceId) ?? 0) === 0) continue;
 
     const budget = Math.min(
       PRUNE_MAX_DELETES_PER_TICK - deleteIds.length,

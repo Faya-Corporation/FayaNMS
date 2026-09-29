@@ -2,7 +2,11 @@ import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, newJobCorrelationId, ok } from "../../_lib/api";
 import { authenticateServiceRequest } from "@/lib/auth/service-auth";
 import { parsePolicyScope, scopeDeviceWhere } from "../../_lib/scope";
-import { pruneRetention } from "@/lib/backups/retention";
+import {
+  isSnapshotPruneDue,
+  markSnapshotsPruned,
+  pruneRetention,
+} from "@/lib/backups/retention";
 import { parseStoredDiscoveryPolicy } from "@/lib/discovery/policy";
 import { z } from "zod";
 
@@ -90,6 +94,19 @@ export const dynamic = "force-dynamic";
  *   ProtocolEventQueue rows (chunked, FlowRecord-guarded). 429
  *   PROTOCOL_QUEUE_PRUNE_THROTTLED from the 60 s guard is a graceful no-op.
  *
+ * Retention pruning due-ness gate (RT-016 / F-018):
+ *   The snapshot retention prune (Task 3-a) runs at most once per 24 h —
+ *   gated by an in-memory last-run timestamp with a persisted
+ *   "snapshots.retention" Setting { lastPrunedAt } as the restart-safe
+ *   fallback (same pattern as the metrics-prune route guard). Snapshots only
+ *   become prunable as retention windows move, so running the per-device
+ *   scans on every 30 s tick was pure DB load. A due run stamps the gate at
+ *   the END of the run (even a zero-delete run — the gate is about CADENCE);
+ *   a skipped run answers pruneSkipped: true and issues ZERO snapshot
+ *   queries. Outcomes of a due run are unchanged (caps, newest-HISTORICAL
+ *   protection, RT-011 cascade guard; non-prunable devices cost zero
+ *   per-device queries via the grouped totals).
+ *
  * Stale-job reaper (hardening closeout), after the scheduling blocks:
  *   RUNNING jobs whose startedAt is older than 10 minutes were orphaned
  *   (worker/backend death mid-flight — the in-memory runner state is gone)
@@ -105,8 +122,8 @@ export const dynamic = "force-dynamic";
  *
  * Returns { enqueued, discoveryEnqueued, driftEnqueued, alertEvalEnqueued,
  * metricRetentionEnqueued, rollupEnqueued, flowRetentionEnqueued,
- * protocolQueueRetentionEnqueued, reapedOrphans, pruned, evaluatedAt,
- * policies }.
+ * protocolQueueRetentionEnqueued, reapedOrphans, pruned, prunedDevices,
+ * pruneSkipped, evaluatedAt, policies }.
  */
 
 const tickSchema = z.object({
@@ -122,6 +139,8 @@ const METRIC_RETENTION_DEDUPE_HOURS = 24;
 const ROLLUP_DEDUPE_MIN = 5;
 const FLOW_RETENTION_DEDUPE_HOURS = 24;
 const PROTOCOL_QUEUE_RETENTION_DEDUPE_HOURS = 24;
+// RT-016 (F-018) — the snapshot prune cadence constant + gate helpers live
+// in src/lib/backups/retention.ts next to the pruner engine.
 
 /* ── tiny 5-field cron matcher ──────────────────────────────────────────── */
 
@@ -510,12 +529,24 @@ export async function POST(request: Request) {
   }
 
   // Retention pruning (Task 3-a) — after enqueue processing, before the
-  // response. One console line + one summary audit event per pruning tick.
-  const prune = await pruneRetention(policies, now);
-  if (prune.pruned > 0) {
-    console.log(
-      `[tick] retention prune: removed ${prune.pruned} historical snapshot(s) across ${prune.prunedDevices} device(s)`
-    );
+  // response. RT-016 (F-018): gated by a 24 h due-ness window (in-memory
+  // primary + "snapshots.retention" Setting fallback for restart safety) —
+  // snapshots only become prunable as retention windows move, so running
+  // the per-device scans on every 30 s tick was pure DB load. A skipped run
+  // answers pruneSkipped: true and issues ZERO snapshot queries; a due run
+  // stamps the gate at the END of the run (even when it deletes 0 rows —
+  // the gate is about CADENCE, not work done).
+  let prune = { pruned: 0, prunedDevices: 0, protectedByOpenDrift: 0, protectedByBaseline: 0 };
+  let pruneSkipped = true;
+  if (await isSnapshotPruneDue(now)) {
+    prune = await pruneRetention(policies, now);
+    await markSnapshotsPruned(now);
+    pruneSkipped = false;
+    if (prune.pruned > 0) {
+      console.log(
+        `[tick] retention prune: removed ${prune.pruned} historical snapshot(s) across ${prune.prunedDevices} device(s)`
+      );
+    }
   }
 
   return ok({
@@ -531,6 +562,7 @@ export async function POST(request: Request) {
     reapedOrphans: reapedCount,
     pruned: prune.pruned,
     prunedDevices: prune.prunedDevices,
+    pruneSkipped,
     evaluatedAt: now.toISOString(),
     policies: policyResults,
   });
