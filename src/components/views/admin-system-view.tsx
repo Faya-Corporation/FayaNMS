@@ -227,6 +227,11 @@ export function AdminSystemView() {
                   {t("chain.inconsistencyTail", { reason: chain.brokenAt.reason })}
                 </p>
               )}
+              {chain.window === "TAIL" && (
+                <p className="text-xs text-muted-foreground">
+                  {t("chain.tailWindow", { anchor: chain.anchoredAt ?? "—" })}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 {t("chain.autoChainNote")}
               </p>

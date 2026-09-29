@@ -2512,6 +2512,10 @@ export interface SettingsUpdateResult {
 export interface AuditChainVerifyResult {
   valid: boolean;
   checked: number;
+  /** "FULL" — every row walked; "TAIL" — only the newest rows (scan cap). */
+  window?: "FULL" | "TAIL";
+  /** window === "TAIL" — id of the oldest row inside the verified window. */
+  anchoredAt?: string;
   brokenAt?: { id: string; index: number; reason: string };
 }
 

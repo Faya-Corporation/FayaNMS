@@ -270,6 +270,14 @@ export interface ChainVerifyResult {
   unhashed: number;
   /** True when the scan cap truncated the walk (verdict ≤ PARTIALLY). */
   truncated: boolean;
+  /**
+   * What this run proved (RT-013): "FULL" — every audit row was walked;
+   * "TAIL" — the table outgrew the cap and only the NEWEST maxRows rows
+   * were examined (verdict ≤ PARTIALLY_VERIFIED, as with any truncation).
+   */
+  window: "FULL" | "TAIL";
+  /** window === "TAIL" — id of the oldest row inside the scanned window. */
+  anchoredAt?: string;
   /** Human-readable anomalies beyond the first hard break. */
   issues: string[];
   brokenAt?: ChainBreak;
@@ -278,15 +286,25 @@ export interface ChainVerifyResult {
 /**
  * Walk the chain by its LINKS, not by (createdAt, id) sort order (audit
  * AUD-101 §14.2): under concurrent writers the timestamp order can disagree
- * with link order, so the verifier starts at the genesis row (the single
- * hashed row with prevHash = null) and follows prevHash → hash until the
- * tail, recomputing every hash. Any of the following is INVALID:
- *   - zero or multiple genesis rows among hashed rows;
+ * with link order, so the verifier follows prevHash → hash links while
+ * recomputing every hash. The scan window is TAIL-ANCHORED (RT-013 / F-015):
+ * the NEWEST maxRows rows are fetched (then reversed into chain order) so a
+ * capped table still proves its fresh tail — the realistic tamper target —
+ * instead of only the oldest prefix. Inside the window the walk starts at
+ * the genesis row (the single hashed row with prevHash = null) when it is
+ * present, otherwise at the window's oldest hashed row. Any of the
+ * following is INVALID:
+ *   - multiple genesis rows among hashed rows (when no genesis is in the
+ *     window and the scan was truncated, the missing root is expected —
+ *     see the tail-anchor branch below);
  *   - a recomputed hash that disagrees with the stored hash;
- *   - a prevHash that references an unknown/out-of-window hash;
- *   - hashed rows unreachable from genesis (a planted parallel chain).
+ *   - a prevHash that references an unknown hash (the window boundary is
+ *     resolved with one count: unknown everywhere → dangling → INVALID;
+ *     known outside the window → the link merely continues beyond it);
+ *   - hashed rows unreachable from the walk anchor (a planted parallel
+ *     chain).
  * Unhashed rows (pre-backfill legacy) are REPORTED, not followed — they
- * degrade the verdict to PARTIALLY_VERIFIED once the linked prefix is
+ * degrade the verdict to PARTIALLY_VERIFIED once the walked links are
  * intact. A scan-cap truncation also caps the verdict at PARTIALLY.
  */
 export async function verifyAuditChain(
@@ -300,12 +318,18 @@ export async function verifyAuditChain(
     client.auditEvent.count({ where: { hash: null } }),
   ]);
 
-  const rows = await client.auditEvent.findMany({
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  // TAIL-anchored scan window (RT-013 / F-015): fetch the NEWEST maxRows
+  // rows, then reverse into chain order. A genesis-forward take would
+  // forever prove only the oldest prefix once the table outgrows the cap.
+  const windowRows = await client.auditEvent.findMany({
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: maxRows,
     select: CHAIN_SELECT,
   });
+  const rows = windowRows.reverse();
   const truncated = totalCount > rows.length;
+  const window: ChainVerifyResult["window"] = truncated ? "TAIL" : "FULL";
+  const anchoredAt = truncated && rows.length > 0 ? rows[0].id : undefined;
   if (truncated) {
     issues.push(
       `Scan cap reached: ${rows.length} of ${totalCount} rows examined — verdict capped at PARTIALLY_VERIFIED.`
@@ -323,6 +347,8 @@ export async function verifyAuditChain(
       totalHashed: 0,
       unhashed: unhashedCount,
       truncated,
+      window,
+      ...(anchoredAt !== undefined ? { anchoredAt } : {}),
       issues: unhashed === 0 ? [] : ["No hashed rows yet — chain awaits backfill."],
     };
   }
@@ -344,6 +370,8 @@ export async function verifyAuditChain(
         totalHashed: hashed.length,
         unhashed: unhashedCount,
         truncated,
+        window,
+        ...(anchoredAt !== undefined ? { anchoredAt } : {}),
         issues,
       };
     }
@@ -351,20 +379,59 @@ export async function verifyAuditChain(
   }
 
   const genesis = hashed.filter((row) => !row.prevHash);
+
+  // Walk start: the genesis row when it is inside the window; otherwise
+  // (tail window on a table bigger than the cap) the window's OLDEST hashed
+  // row, whose prevHash necessarily points outside the window (RT-013).
+  let walkAnchor: (typeof hashed)[number] | undefined = genesis[0];
+
   if (genesis.length === 0) {
-    return {
-      valid: false,
-      verdict: "INVALID",
-      checked: 0,
-      totalHashed: hashed.length,
-      unhashed: unhashedCount,
-      truncated,
-      issues: ["No genesis row (every hashed row carries a prevHash)."],
-    };
+    if (!truncated) {
+      return {
+        valid: false,
+        verdict: "INVALID",
+        checked: 0,
+        totalHashed: hashed.length,
+        unhashed: unhashedCount,
+        truncated,
+        window,
+        ...(anchoredAt !== undefined ? { anchoredAt } : {}),
+        issues: ["No genesis row (every hashed row carries a prevHash)."],
+      };
+    }
+    // Tail window without genesis: the chain root predates the scan cap —
+    // expected, NOT invalid. Resolve the boundary link with ONE count:
+    // prevHash unknown anywhere → dangling link → INVALID; known outside
+    // the window → the link merely continues beyond it → cap at PARTIALLY.
+    const boundary = hashed[0];
+    const outside = boundary.prevHash
+      ? await client.auditEvent.count({ where: { hash: boundary.prevHash } })
+      : 0;
+    if (!boundary.prevHash || outside === 0) {
+      issues.push(
+        `Tail anchor dangling: row ${boundary.id} prevHash matches no audit row — chain link broken.`
+      );
+      return {
+        valid: false,
+        verdict: "INVALID",
+        checked: 0,
+        totalHashed: hashed.length,
+        unhashed: unhashedCount,
+        truncated,
+        window,
+        ...(anchoredAt !== undefined ? { anchoredAt } : {}),
+        issues,
+        brokenAt: { id: boundary.id, index: 0, reason: "prev-hash-mismatch" },
+      };
+    }
+    issues.push(
+      `Tail window: rows 0..${totalCount - rows.length - 1} before ${boundary.id} not examined this run — verdict capped at PARTIALLY_VERIFIED.`
+    );
+    walkAnchor = boundary;
   }
   if (genesis.length > 1) {
     issues.push(
-      `${genesis.length} genesis rows found — SQLite permits multiple NULL prevHash values; a parallel chain may have been planted.`
+      `${genesis.length} genesis rows found — multiple NULL prevHash values; a parallel chain may have been planted.`
     );
     return {
       valid: false,
@@ -373,13 +440,15 @@ export async function verifyAuditChain(
       totalHashed: hashed.length,
       unhashed: unhashedCount,
       truncated,
+      window,
+      ...(anchoredAt !== undefined ? { anchoredAt } : {}),
       issues,
     };
   }
 
-  // Walk links from genesis; detect loops via visited set.
+  // Walk links from the anchor; detect loops via visited set.
   const visited = new Set<string>();
-  let cursor: (typeof hashed)[number] | undefined = genesis[0];
+  let cursor: (typeof hashed)[number] | undefined = walkAnchor;
   let index = 0;
   while (cursor) {
     if (visited.has(cursor.id)) {
@@ -391,6 +460,8 @@ export async function verifyAuditChain(
         totalHashed: hashed.length,
         unhashed: unhashedCount,
         truncated,
+        window,
+        ...(anchoredAt !== undefined ? { anchoredAt } : {}),
         issues,
         brokenAt: { id: cursor.id, index, reason: "prev-hash-mismatch" },
       };
@@ -406,6 +477,8 @@ export async function verifyAuditChain(
         totalHashed: hashed.length,
         unhashed: unhashedCount,
         truncated,
+        window,
+        ...(anchoredAt !== undefined ? { anchoredAt } : {}),
         issues,
         brokenAt: { id: cursor.id, index, reason: "hash-mismatch" },
       };
@@ -417,7 +490,7 @@ export async function verifyAuditChain(
       // Tail reached. Intact only when it accounts for every hashed row.
       if (visited.size < hashed.length) {
         issues.push(
-          `Chain tail reached after ${visited.size} rows but ${hashed.length - visited.size} hashed rows are unreachable from genesis (planned parallel chain or dangling links).`
+          `Chain tail reached after ${visited.size} rows but ${hashed.length - visited.size} hashed rows are unreachable from the walk anchor (planned parallel chain or dangling links).`
         );
         return {
           valid: false,
@@ -426,6 +499,8 @@ export async function verifyAuditChain(
           totalHashed: hashed.length,
           unhashed: unhashedCount,
           truncated,
+          window,
+          ...(anchoredAt !== undefined ? { anchoredAt } : {}),
           issues,
           brokenAt: { id: cursor.id, index, reason: "prev-hash-mismatch" },
         };
@@ -451,6 +526,8 @@ export async function verifyAuditChain(
     totalHashed: hashed.length,
     unhashed: unhashedCount,
     truncated,
+    window,
+    ...(anchoredAt !== undefined ? { anchoredAt } : {}),
     issues,
   };
 }

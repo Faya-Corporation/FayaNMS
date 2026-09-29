@@ -2228,7 +2228,8 @@
       "brokenBadge": "Broken at index {index}",
       "inconsistencyPrefix": "First inconsistency at event",
       "inconsistencyTail": ": {reason}. Run the backfill to repair unhashed rows.",
-      "autoChainNote": "New events chain automatically via the db extension. The backfill hashes pre-chain rows oldest→newest (capped per run — repeat until remaining is 0)."
+      "autoChainNote": "New events chain automatically via the db extension. The backfill hashes pre-chain rows oldest→newest (capped per run — repeat until remaining is 0).",
+      "tailWindow": "Scan cap reached — the newest events were verified (tail window anchored at {anchor}); older events were not examined this run."
     },
     "tiers": {
       "title": "Metrics tier retention",
