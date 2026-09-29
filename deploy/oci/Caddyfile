@@ -1,6 +1,10 @@
 {$FAYANMS_TLS_DOMAIN} {
   encode zstd gzip
 
+  # RT-007: the app (next.config.ts headers()) now ALSO serves the
+  # nosniff/Referrer-Policy/Permissions-Policy/CSP set itself — the values
+  # here remain belt-and-braces and must stay in lockstep with it
+  # (tests/audit/rt007-security-headers.test.ts pins both owners equal).
   header {
     Strict-Transport-Security "max-age=31536000; includeSubDomains"
     X-Content-Type-Options "nosniff"
