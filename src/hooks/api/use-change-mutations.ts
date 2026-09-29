@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -27,6 +28,7 @@ function invalidateChangeGraph(queryClient: ReturnType<typeof useQueryClient>) {
 export function useCreateChange() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.changes");
 
   return useMutation({
     mutationFn: (payload: WizardPayload) =>
@@ -37,13 +39,13 @@ export function useCreateChange() {
     onSuccess: (result) => {
       invalidateChangeGraph(queryClient);
       toast({
-        title: `Change ${result.change.number} created`,
+        title: t("createdTitle", { number: result.change.number }),
         description: result.message,
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not create the change",
+        title: t("createFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -59,6 +61,7 @@ export function useCreateChange() {
 export function useUpdateChange() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.changes");
 
   return useMutation({
     mutationFn: ({
@@ -77,18 +80,22 @@ export function useUpdateChange() {
       toast({
         title:
           result.audit.action === "CHANGE_CANCELLED"
-            ? "Change cancelled"
+            ? t("updateCancelledTitle")
             : result.audit.action === "CHANGE_SUBMITTED"
-              ? "Change submitted for approval"
+              ? t("updateSubmittedTitle")
               : result.audit.action === "CHANGE_CLOSED"
-                ? "Change closed"
-                : "Change updated",
-        description: `${result.message} Audit ${result.audit.correlationId}.`,
+                ? t("updateClosedTitle")
+                : t("updateUpdatedTitle"),
+        // result.message is server copy — kept verbatim.
+        description: t("updateDescription", {
+          message: result.message,
+          correlation: result.audit.correlationId,
+        }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not update the change",
+        title: t("updateFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -103,6 +110,7 @@ export function useUpdateChange() {
 export function useExecuteChange() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.changes");
 
   return useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: ExecuteChangePayload }) =>
@@ -113,13 +121,16 @@ export function useExecuteChange() {
     onSuccess: (result) => {
       invalidateChangeGraph(queryClient);
       toast({
-        title: `Execution queued — ${result.change.number}`,
-        description: `${result.message} Correlation ${result.job.correlationId}.`,
+        title: t("executeTitle", { number: result.change.number }),
+        description: t("executeDescription", {
+          message: result.message,
+          correlation: result.job.correlationId,
+        }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not queue the execution",
+        title: t("executeFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -134,6 +145,7 @@ export function useExecuteChange() {
 export function useCreateIncidentFromChange() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.changes");
 
   return useMutation({
     mutationFn: (payload: IncidentFromChangePayload) =>
@@ -145,13 +157,16 @@ export function useCreateIncidentFromChange() {
       invalidateChangeGraph(queryClient);
       void queryClient.invalidateQueries({ queryKey: ["incidents"] });
       toast({
-        title: `Incident ${result.incident.number} created`,
-        description: `${result.message} Severity ${result.incident.severity}, SLA due in 4 h.`,
+        title: t("incidentCreatedTitle", { number: result.incident.number }),
+        description: t("incidentCreatedDescription", {
+          message: result.message,
+          severity: result.incident.severity,
+        }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not create the incident",
+        title: t("incidentFailedTitle"),
         description: error.message,
         variant: "destructive",
       });

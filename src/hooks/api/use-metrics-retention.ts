@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   ApiError,
@@ -30,6 +31,7 @@ export function useMetricsRetention() {
 export function useSaveMetricsRetention() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.retention");
   return useMutation({
     mutationFn: (payload: MetricsRetentionUpdatePayload) =>
       updateMetricsRetention(payload),
@@ -41,14 +43,20 @@ export function useSaveMetricsRetention() {
         saved.rollup1H?.days,
         saved.rollup1D?.days,
       ];
+      const tier = (days: number | undefined) => (days === undefined ? "—" : String(days));
       toast({
-        title: "Retention policy saved",
-        description: `Raw ${tiers[0] ?? "—"}d · 5-min ${tiers[1] ?? "—"}d · 1-hour ${tiers[2] ?? "—"}d · 1-day ${tiers[3] ?? "—"}d`,
+        title: t("savedTitle"),
+        description: t("savedDescription", {
+          raw: tier(tiers[0]),
+          m5: tier(tiers[1]),
+          h1: tier(tiers[2]),
+          d1: tier(tiers[3]),
+        }),
       });
     },
     onError: (error: Error) =>
       toast({
-        title: "Saving retention policy failed",
+        title: t("saveFailedTitle"),
         description: error.message,
         variant: "destructive",
       }),
@@ -58,6 +66,7 @@ export function useSaveMetricsRetention() {
 export function usePruneMetricsRetention() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.retention");
   return useMutation({
     mutationFn: () => pruneMetricsRetention(),
     onSuccess: (result: MetricsPruneResult) => {
@@ -69,23 +78,26 @@ export function usePruneMetricsRetention() {
         result.rollup5MDeleted +
         result.rollup1HDeleted +
         result.rollup1DDeleted;
+      // toLocaleString() stays runtime-formatted (pre-existing behavior).
       toast({
-        title: "Retention prune completed",
-        description: `${total.toLocaleString()} rows deleted in ${(result.durationMs / 1000).toFixed(1)} s`,
+        title: t("pruneCompletedTitle"),
+        description: t("pruneCompletedDescription", {
+          rows: total.toLocaleString(),
+          seconds: (result.durationMs / 1000).toFixed(1),
+        }),
       });
     },
     onError: (error: Error) => {
       if (error instanceof ApiError && error.status === 429) {
         toast({
-          title: "Prune already ran recently",
-          description:
-            "A pruning run finished less than 60 seconds ago — try again shortly.",
+          title: t("pruneRateLimitedTitle"),
+          description: t("pruneRateLimitedDescription"),
           variant: "destructive",
         });
         return;
       }
       toast({
-        title: "Prune failed",
+        title: t("pruneFailedTitle"),
         description: error.message,
         variant: "destructive",
       });

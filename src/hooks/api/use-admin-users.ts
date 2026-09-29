@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -73,19 +74,24 @@ function invalidateAdminSurfaces(
 export function useCreateUser() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.users");
 
   return useMutation({
     mutationFn: (payload: CreateUserPayload) => createUserApi(payload),
     onSuccess: (result) => {
       invalidateAdminSurfaces(queryClient);
+      // {role} stays the raw enum token (technical value).
       toast({
-        title: "User created",
-        description: `${result.user.email} — role ${result.user.role}.`,
+        title: t("createdTitle"),
+        description: t("createdDescription", {
+          email: result.user.email,
+          role: result.user.role,
+        }),
       });
     },
     onError: (error: Error) =>
       toast({
-        title: "Could not create user",
+        title: t("createFailedTitle"),
         description: error.message,
         variant: "destructive",
       }),
@@ -96,26 +102,32 @@ export function useCreateUser() {
 export function useUpdateUser() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.users");
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateUserPayload }) =>
       updateUserApi(id, data),
     onSuccess: (result, variables) => {
       invalidateAdminSurfaces(queryClient);
+      // {role} stays the raw enum token (technical value).
       const parts: string[] = [];
-      if (variables.data.role !== undefined) parts.push(`role ${variables.data.role}`);
+      if (variables.data.role !== undefined)
+        parts.push(t("updateRoleSegment", { role: variables.data.role }));
       if (variables.data.isActive !== undefined)
-        parts.push(variables.data.isActive ? "activated" : "deactivated");
-      if (variables.data.name !== undefined) parts.push("name updated");
-      if (variables.data.password !== undefined) parts.push("password changed");
+        parts.push(variables.data.isActive ? t("updateActivatedSegment") : t("updateDeactivatedSegment"));
+      if (variables.data.name !== undefined) parts.push(t("updateNameSegment"));
+      if (variables.data.password !== undefined) parts.push(t("updatePasswordSegment"));
       toast({
-        title: "User updated",
-        description: `${result.user.email}${parts.length ? ` — ${parts.join(", ")}` : ""}.`,
+        title: t("updatedTitle"),
+        description: t("updatedDescription", {
+          email: result.user.email,
+          changes: parts.length ? ` — ${parts.join(", ")}` : "",
+        }),
       });
     },
     onError: (error: Error) =>
       toast({
-        title: "Could not update user",
+        title: t("updateFailedTitle"),
         description: error.message,
         variant: "destructive",
       }),
@@ -126,6 +138,7 @@ export function useUpdateUser() {
 export function useResetUserPassword() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.users");
 
   return useMutation({
     mutationFn: ({ id, password }: { id: string; password: string }) =>
@@ -133,13 +146,13 @@ export function useResetUserPassword() {
     onSuccess: (result: ResetPasswordResult) => {
       invalidateAdminSurfaces(queryClient);
       toast({
-        title: "Password reset",
-        description: `A new password is set for ${result.email}. Share it over a secure channel.`,
+        title: t("resetTitle"),
+        description: t("resetDescription", { email: result.email }),
       });
     },
     onError: (error: Error) =>
       toast({
-        title: "Could not reset password",
+        title: t("resetFailedTitle"),
         description: error.message,
         variant: "destructive",
       }),

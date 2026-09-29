@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -39,6 +40,7 @@ export function useNotifications(
 export function useMarkNotificationsRead() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.notifications");
   return useMutation({
     mutationFn: (input: { ids?: string[]; all?: boolean }) =>
       apiFetch<{ updated: number; unreadCount: number }>(
@@ -49,16 +51,13 @@ export function useMarkNotificationsRead() {
       void queryClient.invalidateQueries({ queryKey: ["notifications"] });
       if (result.updated > 0) {
         toast({
-          title:
-            result.updated === 1
-              ? "1 notification marked read"
-              : `${result.updated} notifications marked read`,
+          title: t("markedReadTitle", { count: result.updated }),
         });
       }
     },
     onError: (error: Error) =>
       toast({
-        title: "Could not update notifications",
+        title: t("updateFailedTitle"),
         description: error.message,
         variant: "destructive",
       }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -31,6 +32,7 @@ function invalidatePolicies(queryClient: ReturnType<typeof useQueryClient>) {
 export function useCreateBackupPolicy() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.backupPolicies");
 
   return useMutation({
     mutationFn: (payload: BackupPolicyPayload) =>
@@ -41,13 +43,13 @@ export function useCreateBackupPolicy() {
     onSuccess: (result) => {
       invalidatePolicies(queryClient);
       toast({
-        title: "Backup policy created",
-        description: `${result.policy.name} — the scheduler picks it up on the next tick (30 s).`,
+        title: t("createdTitle"),
+        description: t("createdDescription", { name: result.policy.name }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not create backup policy",
+        title: t("createFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -59,6 +61,7 @@ export function useCreateBackupPolicy() {
 export function useUpdateBackupPolicy() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.backupPolicies");
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateBackupPolicyPayload }) =>
@@ -71,20 +74,16 @@ export function useUpdateBackupPolicy() {
       // The inline isActive toggle has its own quiet confirmation below.
       if (variables.data.isActive !== undefined) {
         toast({
-          title: variables.data.isActive
-            ? "Policy enabled"
-            : "Policy paused",
-          description: `${result.policy.name} — ${
-            variables.data.isActive
-              ? "scheduled backups resume on the next tick."
-              : "the schedule no longer enqueues backup jobs."
-          }`,
+          title: variables.data.isActive ? t("enabledTitle") : t("pausedTitle"),
+          description: variables.data.isActive
+            ? t("enabledDescription", { name: result.policy.name })
+            : t("pausedDescription", { name: result.policy.name }),
         });
       }
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not update backup policy",
+        title: t("updateFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -96,6 +95,7 @@ export function useUpdateBackupPolicy() {
 export function useDeleteBackupPolicy() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.backupPolicies");
 
   return useMutation({
     mutationFn: (id: string) =>
@@ -105,13 +105,15 @@ export function useDeleteBackupPolicy() {
     onSuccess: (result) => {
       invalidatePolicies(queryClient);
       toast({
-        title: "Backup policy deleted",
-        description: `${result.audit.resourceLabel ?? "Policy"} removed — existing snapshots and jobs are kept.`,
+        title: t("deletedTitle"),
+        description: t("deletedDescription", {
+          label: result.audit.resourceLabel ?? t("policyFallback"),
+        }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not delete backup policy",
+        title: t("deleteFailedTitle"),
         description: error.message,
         variant: "destructive",
       });

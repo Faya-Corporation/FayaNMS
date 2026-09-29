@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -38,6 +39,7 @@ export function useDiscoveryJobs() {
 export function useStartScan() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.discovery");
 
   return useMutation({
     mutationFn: (payload: StartScanPayload) =>
@@ -50,13 +52,13 @@ export function useStartScan() {
       void queryClient.invalidateQueries({ queryKey: ["jobs"] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       toast({
-        title: "Scan queued",
-        description: `Correlation ${result.correlationId} — the worker picks it up within seconds.`,
+        title: t("scanQueuedTitle"),
+        description: t("scanQueuedDescription", { correlation: result.correlationId }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not queue scan",
+        title: t("scanFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -68,6 +70,7 @@ export function useStartScan() {
 export function useImportCandidates() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.discovery");
 
   return useMutation({
     mutationFn: (payload: ImportCandidatesPayload) =>
@@ -80,17 +83,15 @@ export function useImportCandidates() {
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       void queryClient.invalidateQueries({ queryKey: ["discovery"] });
       const skippedNote =
-        result.skipped.length > 0
-          ? ` ${result.skipped.length} skipped.`
-          : "";
+        result.skipped.length > 0 ? ` ${t("importSkipped", { count: result.skipped.length })}` : "";
       toast({
-        title: `Imported ${result.created} device${result.created === 1 ? "" : "s"}`,
-        description: `The inventory now includes the imported candidates.${skippedNote}`,
+        title: t("importTitle", { count: result.created }),
+        description: `${t("importDescription")}${skippedNote}`,
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Import failed",
+        title: t("importFailedTitle"),
         description: error.message,
         variant: "destructive",
       });

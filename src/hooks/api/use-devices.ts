@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -73,6 +74,7 @@ function invalidateDeviceCaches(queryClient: ReturnType<typeof useQueryClient>) 
 export function useCreateDevice() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.devices");
 
   return useMutation({
     mutationFn: (payload: CreateDevicePayload) =>
@@ -83,13 +85,15 @@ export function useCreateDevice() {
     onSuccess: (result) => {
       invalidateDeviceCaches(queryClient);
       toast({
-        title: "Device created",
-        description: `${result.device.hostname} was added to the inventory with status Unknown.`,
+        title: t("createTitle"),
+        description: t("createDescription", { hostname: result.device.hostname }),
       });
     },
     onError: (error: Error) => {
+      // API error copy (error.message) stays server-sourced — only the fixed
+      // titles are translated.
       toast({
-        title: "Could not create device",
+        title: t("createFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -101,6 +105,7 @@ export function useCreateDevice() {
 export function useUpdateDevice() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.devices");
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateDevicePayload }) =>
@@ -111,15 +116,18 @@ export function useUpdateDevice() {
     onSuccess: (device, variables) => {
       invalidateDeviceCaches(queryClient);
       if (variables.data.status) {
+        // {status} stays the raw lowercased enum token (technical value).
         toast({
-          title: `Device marked ${variables.data.status.toLowerCase()}`,
-          description: `${device.hostname} — status updated.`,
+          title: t("updateStatusTitle", {
+            status: variables.data.status.toLowerCase(),
+          }),
+          description: t("updateStatusDescription", { hostname: device.hostname }),
         });
       }
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not update device",
+        title: t("updateFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -141,6 +149,7 @@ interface DeviceDetailResponse {
 export function useBulkDeviceAction() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.devices");
 
   return useMutation({
     mutationFn: (payload: { action: "backup_now"; deviceIds: string[] }) =>
@@ -153,16 +162,16 @@ export function useBulkDeviceAction() {
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       const skippedNote =
         result.skipped.length > 0
-          ? ` ${result.skipped.length} skipped (unmanaged or missing).`
+          ? ` ${t("bulkBackupSkipped", { count: result.skipped.length })}`
           : "";
       toast({
-        title: `Queued ${result.queued} backup job${result.queued === 1 ? "" : "s"}`,
-        description: `Track progress in the Job Center.${skippedNote}`,
+        title: t("bulkBackupTitle", { count: result.queued }),
+        description: `${t("bulkBackupDescription")}${skippedNote}`,
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Bulk backup failed",
+        title: t("bulkBackupFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -178,6 +187,7 @@ export function useBulkDeviceAction() {
 export function useCsvImportDevices() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.devices");
 
   return useMutation({
     mutationFn: (payload: CsvImportPayload) =>
@@ -189,16 +199,16 @@ export function useCsvImportDevices() {
       invalidateDeviceCaches(queryClient);
       const skippedNote =
         result.skipped.length > 0
-          ? ` ${result.skipped.length} row${result.skipped.length === 1 ? "" : "s"} skipped.`
+          ? ` ${t("csvImportSkipped", { count: result.skipped.length })}`
           : "";
       toast({
-        title: `Imported ${result.created} device${result.created === 1 ? "" : "s"}`,
-        description: `CSV import finished.${skippedNote}`,
+        title: t("csvImportTitle", { count: result.created }),
+        description: `${t("csvImportDescription")}${skippedNote}`,
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "CSV import failed",
+        title: t("csvImportFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -292,45 +302,49 @@ export interface AutoDetectResult {
 
 /**
  * R50-T041 — operator copy keyed on the STABLE codes (never on transport
- * strings). Used for the destructive toast and the resolution line; when a
- * code has no hint the raw message is shown unchanged.
+ * strings). Each code maps to its `detect.hints.<CODE>` dictionary key
+ * (resolved through useTranslations at hook level); when a code has no
+ * mapping the raw message is shown unchanged (contract documented in
+ * useAutoDetectDevice below).
  */
-const DETECTION_CODE_OPERATOR_HINTS: Record<string, string> = {
-  HOST_KEY_MISMATCH:
-    "The SSH host key presented by the target does not match the enrolled key — verify it out-of-band before trusting this endpoint",
-  HOST_KEY_UNENROLLED:
-    "No SSH host key is enrolled for this endpoint — enroll it first from the device page",
-  SSH_AUTH_FAILED:
-    "SSH authentication failed — check the credential profile's username and password",
-  SSH_CONNECT_TIMEOUT:
-    "The endpoint did not answer the SSH connection in time — check reachability and firewall rules",
-  SSH_UNREACHABLE: "The endpoint is unreachable over the network",
-  SSH_COMMAND_REJECTED: "The device rejected the read-only detection command",
-  SSH_SESSION_FAILED: "Could not establish an SSH session with the endpoint",
-  CREDENTIAL_UNRESOLVED:
-    "The credential profile could not be resolved — check that it still exists",
-  CREDENTIAL_NOT_AUTHORIZED:
-    "This credential profile cannot drive vendor detection — an SSH_PASSWORD profile is required",
-  WORKER_UNAVAILABLE: "The detection worker service is not responding",
-  WORKER_REJECTED: "The detection worker rejected the request",
-  VENDOR_UNKNOWN: "No certified vendor signature matched (generic)",
-  PROBE_NOT_AUTHORIZED:
-    "Your role does not include the device-detect permission — ask an administrator",
-  DEVICE_PROBE_RATE_LIMITED: "Vendor detection rate limit reached — wait a moment and retry",
-  TARGET_NOT_ALLOWED:
-    "The target address is refused by the network probe policy (loopback / metadata / reserved)",
+const DETECTION_CODE_HINT_KEYS: Record<string, string> = {
+  HOST_KEY_MISMATCH: "HOST_KEY_MISMATCH",
+  HOST_KEY_UNENROLLED: "HOST_KEY_UNENROLLED",
+  SSH_AUTH_FAILED: "SSH_AUTH_FAILED",
+  SSH_CONNECT_TIMEOUT: "SSH_CONNECT_TIMEOUT",
+  SSH_UNREACHABLE: "SSH_UNREACHABLE",
+  SSH_COMMAND_REJECTED: "SSH_COMMAND_REJECTED",
+  SSH_SESSION_FAILED: "SSH_SESSION_FAILED",
+  CREDENTIAL_UNRESOLVED: "CREDENTIAL_UNRESOLVED",
+  CREDENTIAL_NOT_AUTHORIZED: "CREDENTIAL_NOT_AUTHORIZED",
+  WORKER_UNAVAILABLE: "WORKER_UNAVAILABLE",
+  WORKER_REJECTED: "WORKER_REJECTED",
+  VENDOR_UNKNOWN: "VENDOR_UNKNOWN",
+  PROBE_NOT_AUTHORIZED: "PROBE_NOT_AUTHORIZED",
+  DEVICE_PROBE_RATE_LIMITED: "DEVICE_PROBE_RATE_LIMITED",
+  TARGET_NOT_ALLOWED: "TARGET_NOT_ALLOWED",
+  IPV6_UNSUPPORTED: "IPV6_UNSUPPORTED",
+  DNS_NOT_FOUND: "DNS_NOT_FOUND",
+  DNS_TIMEOUT: "DNS_TIMEOUT",
+  DNS_LOOKUP_FAILED: "DNS_LOOKUP_FAILED",
 };
 
-const RESOLUTION_CODE_OPERATOR_HINTS: Record<string, string> = {
-  IPV6_UNSUPPORTED:
-    "Management IP not mapped: the target advertises IPv6 only — the device inventory requires an IPv4 (A record / IPv4 literal) management address",
-  DNS_NOT_FOUND: "Hostname could not be resolved: the name does not exist in DNS",
-  DNS_TIMEOUT: "Hostname could not be resolved: the DNS resolver timed out — try again",
-  DNS_LOOKUP_FAILED: "Hostname could not be resolved (DNS failure)",
-};
+/**
+ * Resolve a stable error code to its `detect.hints.*` dictionary key.
+ * Returns null for unmapped/missing codes so callers fall back to the raw
+ * transport message (R50-T041 fallback contract).
+ */
+export function detectionHintKey(code: string | null | undefined): string | null {
+  if (!code) return null;
+  return Object.prototype.hasOwnProperty.call(DETECTION_CODE_HINT_KEYS, code)
+    ? DETECTION_CODE_HINT_KEYS[code]
+    : null;
+}
 
 export function useAutoDetectDevice() {
   const { toast } = useToast();
+  const t = useTranslations("toast.devices");
+  const th = useTranslations("detect.hints");
 
   return useMutation({
     mutationFn: (payload: AutoDetectPayload) =>
@@ -342,11 +356,10 @@ export function useAutoDetectDevice() {
       if (result.error) {
         // R50-T041: prefer the operator copy keyed on the STABLE code; the
         // raw transport message stays the fallback for unmapped codes.
-        const hint = result.errorCode
-          ? DETECTION_CODE_OPERATOR_HINTS[result.errorCode]
-          : undefined;
+        const hintKey = detectionHintKey(result.errorCode);
+        const hint = hintKey ? th(hintKey) : undefined;
         toast({
-          title: "Auto-detect failed",
+          title: t("detectFailedTitle"),
           description: hint ? `${hint} (${result.error})` : result.error,
           variant: "destructive",
         });
@@ -365,39 +378,53 @@ export function useAutoDetectDevice() {
         : true;
       if (vendorRan) {
         if (result.detected && result.detection) {
-          parts.push(`Vendor signature: ${result.detection.vendorKey}`);
-          if (result.detection.model) parts.push(`Model: ${result.detection.model}`);
-          if (result.detection.osVersion) parts.push(`OS: ${result.detection.osVersion}`);
+          parts.push(t("detectVendorSignature", { vendor: result.detection.vendorKey }));
+          if (result.detection.model)
+            parts.push(t("detectModel", { model: result.detection.model }));
+          if (result.detection.osVersion)
+            parts.push(t("detectOs", { os: result.detection.osVersion }));
           // R50-T052: the deterministic matched-signature ids — the summary
           // names WHY the vendor was claimed, not just which one won.
           if (result.detection.matchReasons?.length) {
-            parts.push(`Matched: ${result.detection.matchReasons.join(", ")}`);
+            parts.push(
+              t("detectMatched", { reasons: result.detection.matchReasons.join(", ") })
+            );
           }
         } else if (result.vendorStage === "executed") {
-          parts.push("No vendor signature matched (generic)");
+          parts.push(t("detectNoSignature"));
           // R50-T054: banner/hostname near-misses are surfaced so a generic
           // answer with "cisco.vendor-name" is visibly different from one
           // with nothing informative at all.
           if (result.detection?.softMatches?.length) {
-            parts.push(`Unconfirmed vendor tokens: ${result.detection.softMatches.join(", ")}`);
+            parts.push(
+              t("detectSoftMatches", {
+                tokens: result.detection.softMatches.join(", "),
+              })
+            );
           }
         }
       }
       if (result.mgmtIpResolution.mgmtIp) {
         parts.push(
-          `Management IP: ${result.mgmtIpResolution.mgmtIp} (${
-            result.mgmtIpResolution.mode === "ip-literal" ? "as entered" : "DNS"
-          })`,
+          t("detectManagementIp", {
+            ip: result.mgmtIpResolution.mgmtIp,
+            source:
+              result.mgmtIpResolution.mode === "ip-literal"
+                ? t("detectSourceAsEntered")
+                : t("detectSourceDns"),
+          }),
         );
       } else if (addressRan && result.addressResolution?.code) {
         // R50-T040/T041: the typed resolution block decides the copy when
-        // present; the literal-based branches below are the legacy fallback.
-        const hint = RESOLUTION_CODE_OPERATOR_HINTS[result.addressResolution.code];
+        // present; the raw-message fallback is the legacy path.
+        const hintKey = detectionHintKey(result.addressResolution.code);
         parts.push(
-          hint ??
-            `Hostname could not be resolved (${
-              result.addressResolution.message ?? result.addressResolution.code
-            })`,
+          hintKey
+            ? th(hintKey)
+            : t("detectResolveFailed", {
+                detail:
+                  result.addressResolution.message ?? result.addressResolution.code,
+              }),
         );
       } else if (
         addressRan &&
@@ -405,28 +432,26 @@ export function useAutoDetectDevice() {
       ) {
         // R50-T031 — the typed IPv6 policy refusal: name the contract, not
         // a generic DNS failure. (ADR-management-address-policy)
-        parts.push(
-          "Management IP not mapped: the target advertises IPv6 only — the device inventory requires an IPv4 (A record / IPv4 literal) management address",
-        );
+        parts.push(th("IPV6_UNSUPPORTED"));
       } else if (addressRan) {
         parts.push(
-          `Hostname could not be resolved (${result.mgmtIpResolution.error ?? "DNS failure"})`,
+          t("detectResolveFailed", {
+            detail: result.mgmtIpResolution.error ?? t("detectResolveFallback"),
+          }),
         );
       }
       if (result.hostKeyCaptured) {
-        parts.push(
-          "New SSH host key captured — verify it out-of-band and enroll it from the device page",
-        );
+        parts.push(t("detectHostKeyCaptured"));
       }
       // R50-T064: the title names what RAN, not what was skipped.
       const title =
         vendorRan && addressRan
           ? result.vendorStage === "executed"
-            ? "Auto-detect complete"
-            : "Hostname resolved"
+            ? t("detectTitleAll")
+            : t("detectTitleHostnameOnly")
           : vendorRan
-            ? "Vendor detection complete"
-            : "Address resolution complete";
+            ? t("detectTitleVendorOnly")
+            : t("detectTitleAddressOnly");
       toast({
         title,
         description: parts.join(" · "),
@@ -434,7 +459,7 @@ export function useAutoDetectDevice() {
     },
     onError: (error: Error) => {
       toast({
-        title: "Auto-detect failed",
+        title: t("detectFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -451,6 +476,7 @@ export function useAutoDetectDevice() {
 export function useTestConnection() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.devices");
 
   return useMutation({
     mutationFn: (deviceId: string) =>
@@ -462,29 +488,37 @@ export function useTestConnection() {
       invalidateDeviceCaches(queryClient);
       if (!result.reachable) {
         toast({
-          title: "Worker service unreachable",
-          description:
-            "The simulation worker is not responding — connection could not be tested.",
+          title: t("workerTitle"),
+          description: t("workerDescription"),
           variant: "destructive",
         });
         return;
       }
       if (result.ok) {
+        const latency =
+          result.latencyMs !== null ? t("connectionLatency", { ms: result.latencyMs }) : "";
+        const status = result.workerStatus
+          ? t("connectionStatus", { status: result.workerStatus })
+          : "";
         toast({
-          title: `Connection OK${result.latencyMs !== null ? ` — ${result.latencyMs} ms` : ""}`,
-          description: `${result.device.hostname} responded${result.workerStatus ? ` (status ${result.workerStatus})` : ""}.`,
+          title: t("connectionOkTitle", { latency }),
+          description: t("connectionOkDescription", {
+            hostname: result.device.hostname,
+            status,
+          }),
         });
       } else {
+        // result.message is server copy — kept verbatim when present.
         toast({
-          title: "Connection failed",
-          description: result.message ?? "The device did not respond.",
+          title: t("connectionFailedTitle"),
+          description: result.message ?? t("connectionFailedFallback"),
           variant: "destructive",
         });
       }
     },
     onError: (error: Error) => {
       toast({
-        title: "Test connection failed",
+        title: t("testFailedTitle"),
         description: error.message,
         variant: "destructive",
       });

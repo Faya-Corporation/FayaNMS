@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -24,6 +25,7 @@ function invalidateApprovalGraph(queryClient: ReturnType<typeof useQueryClient>)
 export function useDecideApproval() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.approvals");
 
   return useMutation({
     mutationFn: ({
@@ -39,20 +41,27 @@ export function useDecideApproval() {
       }),
     onSuccess: (result) => {
       invalidateApprovalGraph(queryClient);
+      // result.message is server copy — kept verbatim inside both variants.
       toast({
         title:
           result.audit.action === "CHANGE_APPROVED"
-            ? `Approval recorded — ${result.change.number}`
-            : `Rejection recorded — ${result.change.number}`,
+            ? t("approvedTitle", { number: result.change.number })
+            : t("rejectedTitle", { number: result.change.number }),
         description:
           result.change.status === "APPROVED"
-            ? `${result.message} All levels decided — the change is APPROVED and ready to execute. Audit ${result.audit.correlationId}.`
-            : `${result.message} Audit ${result.audit.correlationId}.`,
+            ? t("descriptionApproved", {
+                message: result.message,
+                correlation: result.audit.correlationId,
+              })
+            : t("descriptionOther", {
+                message: result.message,
+                correlation: result.audit.correlationId,
+              }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Decision could not be recorded",
+        title: t("failedTitle"),
         description: error.message,
         variant: "destructive",
       });

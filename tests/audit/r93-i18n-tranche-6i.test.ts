@@ -58,8 +58,8 @@ describe("R93 — backup compliance namespace", () => {
   });
 
   test("checks dictionary totals at current HEAD after R102", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(2856);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(2856);
+    expect(leaves(readJson("messages/en.json")).length).toBe(3193);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(3193);
   });
 });
 

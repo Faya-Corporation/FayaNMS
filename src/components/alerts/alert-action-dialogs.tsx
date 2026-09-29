@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { useMetaUsers } from "@/hooks/api/use-meta";
 import { useAssignAlert, useSuppressAlert } from "@/hooks/api/use-alert-mutations";
@@ -36,6 +37,7 @@ export function AssignAlertDialog({
   alert: AlertStreamRow | null;
   onClose: () => void;
 }) {
+  const t = useTranslations("alerts.dialogs");
   const meta = useMetaUsers();
   const assign = useAssignAlert();
   const [userId, setUserId] = useState("");
@@ -54,16 +56,16 @@ export function AssignAlertDialog({
     <Dialog open={alert !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Assign alert</DialogTitle>
+          <DialogTitle>{t("assignTitle")}</DialogTitle>
           <DialogDescription>
             {alert ? `${alert.device.hostname} — ${alert.message}` : ""}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="assign-user">Assign to</Label>
+          <Label htmlFor="assign-user">{t("assignTo")}</Label>
           <Select value={userId} onValueChange={setUserId}>
-            <SelectTrigger id="assign-user" aria-label="Assignee">
-              <SelectValue placeholder="Select a user" />
+            <SelectTrigger id="assign-user" aria-label={t("assigneeAria")}>
+              <SelectValue placeholder={t("selectUser")} />
             </SelectTrigger>
             <SelectContent>
               {users.map((user) => (
@@ -76,7 +78,7 @@ export function AssignAlertDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             disabled={!userId || assign.isPending}
@@ -88,7 +90,7 @@ export function AssignAlertDialog({
               );
             }}
           >
-            Assign
+            {t("assign")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -103,6 +105,7 @@ export function SuppressAlertDialog({
   alert: AlertStreamRow | null;
   onClose: () => void;
 }) {
+  const t = useTranslations("alerts.dialogs");
   const suppress = useSuppressAlert();
   const [reason, setReason] = useState("");
   // Render-time reset (react-hooks/set-state-in-effect): clear the reason
@@ -118,24 +121,24 @@ export function SuppressAlertDialog({
     <Dialog open={alert !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Suppress alert</DialogTitle>
+          <DialogTitle>{t("suppressTitle")}</DialogTitle>
           <DialogDescription>
             {alert ? `${alert.device.hostname} — ${alert.message}` : ""}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="suppress-reason">Reason (optional)</Label>
+          <Label htmlFor="suppress-reason">{t("reasonLabel")}</Label>
           <Input
             id="suppress-reason"
             value={reason}
             maxLength={240}
             onChange={(event) => setReason(event.target.value)}
-            placeholder="e.g. planned fiber work — ticket NET-4412"
+            placeholder={t("reasonPlaceholder")}
           />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             disabled={suppress.isPending}
@@ -147,7 +150,7 @@ export function SuppressAlertDialog({
               );
             }}
           >
-            Suppress
+            {t("suppress")}
           </Button>
         </DialogFooter>
       </DialogContent>
