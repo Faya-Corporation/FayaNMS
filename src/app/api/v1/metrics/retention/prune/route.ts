@@ -5,6 +5,8 @@ import { authErrorToFail } from "@/lib/auth/session";
 import {
   METRICS_RETENTION_KEY,
   parseStoredRetention,
+  pruneMetricRollupsChunked,
+  pruneMetricSamplesChunked,
   readRetentionSetting,
 } from "@/lib/performance/retention";
 import { z } from "zod";
@@ -25,6 +27,13 @@ export const dynamic = "force-dynamic";
  * into the SAME Setting row (so the UI survives restarts). Audits
  * METRIC_RETENTION_PRUNED (RET-XXXXXX correlation; actor "Admin" for manual
  * runs, "system:metrics-worker" when triggered by the worker job).
+ *
+ * RT-015 (F-017): every delete runs in BOUNDED CHUNKS (≤ 1,000 rows per
+ * statement, ≤ 50,000 rows per run — see METRIC_RETENTION_CHUNK_SIZE /
+ * METRIC_RETENTION_MAX_DELETES_PER_RUN), so a first run after enabling or
+ * after a long gap cannot hold one giant DELETE transaction. If a backlog
+ * larger than the per-run cap remains, the next prune (60 s-throttled manual
+ * retry or the daily METRIC_RETENTION job) converges it.
  *
  * Guard: at most one prune per 60 s (ADR-01 — Redis-free; in-memory
  * timestamp + the persisted lastPrunedAt as a restart-safe fallback).
@@ -89,22 +98,16 @@ export async function POST(request: Request) {
 
   const startedAt = Date.now();
   const metricSamplesDeleted = stored.raw.enabled
-    ? (await db.metricSample.deleteMany({ where: { ts: { lt: cutoff(stored.raw.days) } } })).count
+    ? await pruneMetricSamplesChunked(cutoff(stored.raw.days))
     : 0;
   const rollup5MDeleted = stored.rollup5M.enabled
-    ? (await db.metricRollup.deleteMany({
-        where: { granularity: "5M", periodStart: { lt: cutoff(stored.rollup5M.days) } },
-      })).count
+    ? await pruneMetricRollupsChunked("5M", cutoff(stored.rollup5M.days))
     : 0;
   const rollup1HDeleted = stored.rollup1H.enabled
-    ? (await db.metricRollup.deleteMany({
-        where: { granularity: "1H", periodStart: { lt: cutoff(stored.rollup1H.days) } },
-      })).count
+    ? await pruneMetricRollupsChunked("1H", cutoff(stored.rollup1H.days))
     : 0;
   const rollup1DDeleted = stored.rollup1D.enabled
-    ? (await db.metricRollup.deleteMany({
-        where: { granularity: "1D", periodStart: { lt: cutoff(stored.rollup1D.days) } },
-      })).count
+    ? await pruneMetricRollupsChunked("1D", cutoff(stored.rollup1D.days))
     : 0;
   const durationMs = Date.now() - startedAt;
 

@@ -192,6 +192,9 @@ model Device {
   @@index([healthScore])
   @@index([backupCompliance])
   @@index([role])
+  // RT-015 / F-049: per-event device lookup by management IP (ingest path,
+  // discovery reconcile). Non-unique — duplicate mgmtIp values are legal.
+  @@index([mgmtIp])
 }
 
 model DeviceInterface {
@@ -734,6 +737,10 @@ model MetricRollup {
   p95         Float
 
   @@unique([deviceId, metric, granularity, periodStart])
+  // RT-015 / F-017+F-050: serves the retention prune (granularity +
+  // periodStart) and the no-deviceId rollup readers (fetchRollups, dashboard
+  // trend) that filter granularity (+ metric) + periodStart.
+  @@index([granularity, metric, periodStart])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

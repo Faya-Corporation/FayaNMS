@@ -25,6 +25,76 @@ import { db } from "@/lib/db";
 
 export const METRICS_RETENTION_KEY = "metrics.retention";
 
+/**
+ * RT-015 (F-017): the retention prune deletes in bounded chunks instead of
+ * one unbounded DELETE — a first run after enabling (or after a gap) would
+ * otherwise delete millions of rows in a single statement (long transaction,
+ * lock pressure, vacuum bloat). Same pattern as FLOW_RETENTION
+ * (src/lib/flows/retention.ts + the flow prune route).
+ */
+export const METRIC_RETENTION_CHUNK_SIZE = 1_000;
+export const METRIC_RETENTION_MAX_DELETES_PER_RUN = 50_000;
+
+/**
+ * Chunked delete of aged MetricSample rows (≤ CHUNK per statement, ≤
+ * MAX per run). The ts guard is repeated on every deleteMany (CAS spirit —
+ * a row is only ever deleted while it still matches the retention cutoff).
+ * Returns the number of rows actually deleted; a remaining backlog is
+ * converged by the NEXT prune run (the 60 s throttle and daily
+ * METRIC_RETENTION job make room in between).
+ */
+export async function pruneMetricSamplesChunked(cutoff: Date): Promise<number> {
+  const batches = METRIC_RETENTION_MAX_DELETES_PER_RUN / METRIC_RETENTION_CHUNK_SIZE;
+  let deleted = 0;
+  for (let batch = 0; batch < batches; batch += 1) {
+    const rows = await db.metricSample.findMany({
+      where: { ts: { lt: cutoff } },
+      orderBy: [{ ts: "asc" }, { id: "asc" }],
+      take: METRIC_RETENTION_CHUNK_SIZE,
+      select: { id: true },
+    });
+    if (rows.length === 0) break;
+    deleted += (
+      await db.metricSample.deleteMany({
+        where: { id: { in: rows.map((row) => row.id) }, ts: { lt: cutoff } },
+      })
+    ).count;
+  }
+  return deleted;
+}
+
+/**
+ * Chunked delete of aged MetricRollup rows for ONE granularity (served by
+ * the RT-015 (granularity, metric, periodStart) index). Same bounds and
+ * convergence contract as pruneMetricSamplesChunked.
+ */
+export async function pruneMetricRollupsChunked(
+  granularity: "5M" | "1H" | "1D",
+  cutoff: Date
+): Promise<number> {
+  const batches = METRIC_RETENTION_MAX_DELETES_PER_RUN / METRIC_RETENTION_CHUNK_SIZE;
+  let deleted = 0;
+  for (let batch = 0; batch < batches; batch += 1) {
+    const rows = await db.metricRollup.findMany({
+      where: { granularity, periodStart: { lt: cutoff } },
+      orderBy: [{ periodStart: "asc" }, { id: "asc" }],
+      take: METRIC_RETENTION_CHUNK_SIZE,
+      select: { id: true },
+    });
+    if (rows.length === 0) break;
+    deleted += (
+      await db.metricRollup.deleteMany({
+        where: {
+          id: { in: rows.map((row) => row.id) },
+          granularity,
+          periodStart: { lt: cutoff },
+        },
+      })
+    ).count;
+  }
+  return deleted;
+}
+
 export interface RetentionSection {
   days: number;
   enabled: boolean;
