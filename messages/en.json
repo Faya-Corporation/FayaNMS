@@ -39,6 +39,10 @@
       "description": "An unexpected error occurred while rendering this view. Support can trace it with the correlation ID below.",
       "retry": "Try again"
     },
+    "errors": {
+      "genericTitle": "Something went wrong",
+      "correlationId": "Correlation ID: <tech>{id}</tech>"
+    },
     "notFound": {
       "title": "Page not found",
       "description": "The page you are looking for does not exist or may have been moved.",

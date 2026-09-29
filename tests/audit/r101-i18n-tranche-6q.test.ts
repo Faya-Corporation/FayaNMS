@@ -50,8 +50,8 @@ describe("R101 — change detail namespace", () => {
   });
 
   test("checks dictionary totals at current HEAD after R102", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(3309);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(3309);
+    expect(leaves(readJson("messages/en.json")).length).toBe(3311);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(3311);
   });
 });
 

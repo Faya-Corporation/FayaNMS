@@ -314,11 +314,11 @@ describe("RT-022 — dictionaries carry devices.form + devices.csv in both local
     expect(new Set(leaves(en.devices))).toEqual(new Set(leaves(ar.devices)));
   });
 
-  test("totals moved consistently (3214 → 3309 per side)", () => {
+  test("totals moved consistently (3214 → 3309 per side; later retotaled to 3311 by RT-037)", () => {
     const en = leaves(readJson("messages/en.json"));
     const ar = leaves(readJson("messages/ar.json"));
     expect(new Set(en)).toEqual(new Set(ar));
-    expect(en.length).toBe(3309);
-    expect(ar.length).toBe(3309);
+    expect(en.length).toBe(3311);
+    expect(ar.length).toBe(3311);
   });
 });

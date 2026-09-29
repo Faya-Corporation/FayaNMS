@@ -24,12 +24,15 @@ import { ViewErrorBoundary } from "@/components/domain/view-error-boundary";
  *  3. The ViewRouter switch in app-shell.tsx is wrapped by
  *     ViewErrorBoundary, keyed by activeView (reset-on-navigation).
  *  4. error.tsx renders the shared ErrorState with the localized copy,
- *     correlation ID and the reset wiring (retry escape hatch).
+ *     correlation ID and the reset wiring (retry escape hatch). Since
+ *     RT-037 the ErrorState chrome itself is next-intl-driven, so its
+ *     fallback renders run inside the locale provider.
  *  5. Both dictionaries carry common.appError.* / common.notFound.* with
- *     exact en/ar parity (totals now 3309 leaves per side after RT-022's
- *     devices.form/csv sweep; was 3214 after RT-021's common.highRisk keys,
- *     3206 after RT-005's hook-toast/alerts sweep (+13 auth.signIn in
- *     RT-020), 2856 after RT-004, originally 2850).
+ *     exact en/ar parity (totals now 3311 leaves per side after RT-037's
+ *     common.errors keys; was 3309 after RT-022's devices.form/csv sweep,
+ *     3214 after RT-021's common.highRisk keys, 3206 after RT-005's
+ *     hook-toast/alerts sweep (+13 auth.signIn in RT-020), 2856 after
+ *     RT-004, originally 2850).
  */
 
 const REPO = join(import.meta.dir, "..", "..");
@@ -186,11 +189,11 @@ describe("RT-004 — dictionaries carry the new keys in both locales", () => {
 
     // Identical leaf sets inside the common namespace:
     expect(new Set(leaves(en.common))).toEqual(new Set(leaves(ar.common)));
-    // Totals: 2850 (R102) → 2856 (RT-004) → 3193 → 3206 → 3214 → 3309
-    // (RT-022, +95 devices.form/devices.csv leaves per side; every pinning
-    // test updated in the same change).
-    expect(leaves(en).length).toBe(3309);
-    expect(leaves(ar).length).toBe(3309);
+    // Totals: 2850 (R102) → 2856 (RT-004) → 3193 → 3206 → 3214 → 3309 → 3311
+    // (RT-037, +2 common.errors leaves per side; every pinning test updated
+    // in the same change).
+    expect(leaves(en).length).toBe(3311);
+    expect(leaves(ar).length).toBe(3311);
   });
 });
 
@@ -217,12 +220,16 @@ describe("RT-004 — ViewErrorBoundary view-level degradation", () => {
   });
 
   test("the failed state renders the ErrorState fallback (shell stays alive)", () => {
+    // ErrorState resolves its chrome through next-intl (RT-037), so the
+    // fallback render needs the locale provider (en) like the error.tsx case:
     const boundary = new ViewErrorBoundary({ children: null });
     boundary.state = { failed: true };
-    const html = renderToStaticMarkup(boundary.render() as ReactElement);
+    const html = renderToStaticMarkup(
+      withLocale(boundary.render() as ReactElement)
+    );
     expect(html).toContain('role="alert"'); // ErrorState fallback visible
-    expect(html).toContain("Something went wrong"); // ErrorState default title
-    expect(html).toContain("Retry"); // in-place retry escape hatch
+    expect(html).toContain("Something went wrong"); // errors.genericTitle default
+    expect(html).toContain("Retry"); // common.retry default label
   });
 
   test("a healthy child renders through untouched", () => {

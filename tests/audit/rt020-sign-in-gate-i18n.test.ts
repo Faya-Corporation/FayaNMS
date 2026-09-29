@@ -146,7 +146,7 @@ describe("RT-020 — dictionaries carry auth.signIn in both locales", () => {
     // Identical leaf sets; totals moved 3193 → 3206 in RT-020 (later
     // retotaled by the repo rule — 3309 after RT-021+RT-022).
     expect(new Set(leaves(en))).toEqual(new Set(leaves(ar)));
-    expect(leaves(en).length).toBe(3309);
-    expect(leaves(ar).length).toBe(3309);
+    expect(leaves(en).length).toBe(3311);
+    expect(leaves(ar).length).toBe(3311);
   });
 });
