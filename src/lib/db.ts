@@ -71,6 +71,18 @@ export const db = basePrisma.$extends({
           }
         }
       },
+      // RT-012 / F-014 defense-in-depth tripwire: `createMany` is not
+      // stampable (the extension sees one batch, not N rows), so any
+      // auditEvent.createMany would silently write unhashed rows OUTSIDE
+      // the tamper-evident chain. Refuse loudly instead — bulk writers must
+      // use per-row `create` (see devices/bulk, the route that motivated
+      // this). No current call site exists (grep-audited); this keeps it
+      // that way.
+      async createMany() {
+        throw new Error(
+          "auditEvent.createMany bypasses chain stamping — use per-row create (see RT-012/F-014)"
+        );
+      },
     },
   },
 })

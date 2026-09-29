@@ -12,6 +12,11 @@ export const dynamic = "force-dynamic";
  * Enqueues one CONFIG_BACKUP JobExecution per eligible device (each with its
  * own correlationId), skips UNMANAGED devices, writes CONFIG_BACKUP_QUEUED
  * audit events and returns the created jobs + skip report.
+ *
+ * RT-012 / F-014: jobs + audit rows are written per-device inside one
+ * interactive transaction so every audit row is stamped into the hash chain
+ * by the db extension at creation (createMany would bypass the stamp and
+ * leave unhashed rows behind; the extension now refuses that verb).
  */
 
 const bulkSchema = z.object({
@@ -75,38 +80,54 @@ export async function POST(request: Request) {
 
   const correlationIds = eligible.map(() => newJobCorrelationId());
 
-  const [jobs, auditCount] = await db.$transaction([
-    db.jobExecution.createMany({
-      data: eligible.map((device, index) => ({
-        type: "CONFIG_BACKUP",
-        targetType: "DEVICE",
-        targetId: device.id,
-        status: "QUEUED",
-        progress: 0,
-        priority: 5,
-        maxAttempts: 3,
-        payloadJson: JSON.stringify({ deviceId: device.id }),
-        correlationId: correlationIds[index],
-      })),
-    }),
-    db.auditEvent.createMany({
-      data: eligible.map((device, index) => ({
-        actorId: actor.id,
-        actorName: actor.name ?? "Unknown user",
-        action: "CONFIG_BACKUP_QUEUED",
-        resourceType: "Device",
-        resourceId: device.id,
-        resourceLabel: device.hostname,
-        result: "SUCCESS",
-        correlationId: correlationIds[index],
-      })),
-    }),
-  ]);
+  // RT-012 / F-014: the audit hash-chain extension (src/lib/db.ts) stamps
+  // ONLY per-row `auditEvent.create` — a batched `createMany` would write
+  // CONFIG_BACKUP_QUEUED rows with null hash/prevHash (outside the link
+  // graph, mutable, verify verdict degraded). Each job + its audit row are
+  // therefore written per-device inside ONE interactive transaction; every
+  // audit row is born hash-chained (and inherits the extension's P2002
+  // tail-conflict retry). ≤ 100 rows per call keeps the transaction well
+  // inside the route budget.
+  const jobs = await db.$transaction(
+    async (tx) => {
+      const created: Array<{ id: string }> = [];
+      for (const [index, device] of eligible.entries()) {
+        const job = await tx.jobExecution.create({
+          data: {
+            type: "CONFIG_BACKUP",
+            targetType: "DEVICE",
+            targetId: device.id,
+            status: "QUEUED",
+            progress: 0,
+            priority: 5,
+            maxAttempts: 3,
+            payloadJson: JSON.stringify({ deviceId: device.id }),
+            correlationId: correlationIds[index],
+          },
+        });
+        created.push(job);
+        await tx.auditEvent.create({
+          data: {
+            actorId: actor.id,
+            actorName: actor.name ?? "Unknown user",
+            action: "CONFIG_BACKUP_QUEUED",
+            resourceType: "Device",
+            resourceId: device.id,
+            resourceLabel: device.hostname,
+            result: "SUCCESS",
+            correlationId: correlationIds[index],
+          },
+        });
+      }
+      return created;
+    },
+    { maxWait: 5_000, timeout: 20_000 }
+  );
 
   return ok(
     {
-      queued: jobs.count,
-      // createMany does not return rows — echo the queue entries explicitly.
+      queued: jobs.length,
+      // Echo the queue entries explicitly (stable response contract).
       jobs: eligible.map((device, index) => ({
         deviceId: device.id,
         hostname: device.hostname,
@@ -116,6 +137,6 @@ export async function POST(request: Request) {
       })),
       skipped,
     },
-    { requested: uniqueIds.length, auditEvents: auditCount.count }
+    { requested: uniqueIds.length, auditEvents: jobs.length }
   );
 }
