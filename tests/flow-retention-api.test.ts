@@ -25,7 +25,9 @@ test("flow retention jobs are deduplicated, claimed, executed, and validated", (
   expect(tick).toContain('finishedAt: {');
 
   const claim = readFileSync("src/app/api/v1/worker/claim/route.ts", "utf8");
-  expect(claim).toContain(".max(12)");
+  // RT-002/RT-003 added ROLLUP_AGGREGATION + PROTOCOL_QUEUE_RETENTION to the
+  // claimed job-type list (13 types) — the cap keeps one tick of headroom.
+  expect(claim).toContain(".max(14)");
   const runner = readFileSync("mini-services/worker/runner.ts", "utf8");
   expect(runner).toContain('job.type === "FLOW_RETENTION"');
   expect(runner).toContain('"/api/v1/flows/retention/prune"');

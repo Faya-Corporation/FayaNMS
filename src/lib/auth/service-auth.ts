@@ -53,6 +53,7 @@ export {
  *   reports/execute       → "reports"
  *   metrics/retention/prune → "metrics"
  *   metrics/rollup/aggregate → "metrics"
+ *   protocol queue retention → "jobs"
  *   protocol ingestion → "telemetry"
  *   ("simulate" authorizes Next→worker simulator calls — enforced by the
  *   worker mini-service's own HTTP layer.)

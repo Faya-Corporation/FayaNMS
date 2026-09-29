@@ -424,6 +424,48 @@ export async function POST(request: Request) {
       });
     }
 
+    // ── PROTOCOL_QUEUE_RETENTION (RT-003): the prune endpoint persisted the
+    // deletes, the Setting bookkeeping and the audit — store the summary
+    // verbatim as resultJson. outcome "throttled" is a graceful no-op (a
+    // prune ran within the 60 s guard). ──
+    if (job.type === "PROTOCOL_QUEUE_RETENTION") {
+      const queueRetentionShape = z.object({
+        outcome: z.enum(["pruned", "disabled", "throttled"]),
+        queueRowsDeleted: z.number().int().nonnegative().optional(),
+        durationMs: z.number().int().nonnegative().optional(),
+        deliveredDays: z.number().int().min(1).max(3650).optional(),
+        deadDays: z.number().int().min(1).max(3650).optional(),
+        correlationId: z.string().trim().min(1).max(120).optional(),
+        triggeredBy: z.string().trim().min(1).max(40).optional(),
+        prunedAt: z.string().datetime().optional(),
+        reason: z.string().max(300).optional(),
+      });
+      const parsedQueueRetention = queueRetentionShape.safeParse(result);
+      if (!parsedQueueRetention.success) {
+        return fail(
+          "INVALID_RESULT",
+          "SUCCEEDED PROTOCOL_QUEUE_RETENTION completion requires a valid prune summary",
+          400
+        );
+      }
+      await db.jobExecution.update({
+        where: { id: job.id },
+        data: {
+          status: "SUCCEEDED",
+          progress: 100,
+          finishedAt: now,
+          error: null,
+          resultJson: JSON.stringify(parsedQueueRetention.data),
+        },
+      });
+      return ok({
+        jobId,
+        updated: true,
+        status: "SUCCEEDED",
+        outcome: parsedQueueRetention.data.outcome,
+      });
+    }
+
     // ── FIRMWARE_UPGRADE (Phase 13-b): the upgrade endpoint persisted the
     // device.firmware flip + FIRMWARE_UPGRADED audit — store the summary
     // verbatim in resultJson (Job Center shows before → after). ──

@@ -863,6 +863,75 @@ async function runRollupAggregationJob(job: ClaimedJob): Promise<void> {
   }
 }
 
+/* ───────────── PROTOCOL_QUEUE_RETENTION driver (RT-003) ───────────── */
+
+interface ProtocolQueueRetentionResult {
+  outcome: "pruned" | "disabled" | "throttled";
+  queueRowsDeleted?: number;
+  durationMs?: number;
+  deliveredDays?: number;
+  deadDays?: number;
+  correlationId?: string;
+  reason?: string;
+}
+
+/**
+ * PROTOCOL_QUEUE_RETENTION execution — the sweep (chunked deletes + Setting
+ * + audit) lives entirely in the Next.js API; the worker just triggers it
+ * and reports the counts. A throttled run (another prune within 60 s) is a
+ * SUCCESS for the job — it means the queue was swept recently enough.
+ */
+async function runProtocolQueueRetentionJob(job: ClaimedJob): Promise<void> {
+  await reportProgress(job.id, 10, "Loading protocol queue retention policy (delivered/dead windows)");
+
+  try {
+    const result = (await nextPost(
+      "/api/v1/protocol/queue/retention/prune",
+      { triggeredBy: "SCHEDULE" },
+      60_000
+    )) as ProtocolQueueRetentionResult;
+
+    await reportProgress(
+      job.id,
+      80,
+      `Pruned queue rows=${result.queueRowsDeleted ?? 0} outcome=${result.outcome}`
+    );
+
+    await nextPost(
+      "/api/v1/worker/complete",
+      { jobId: job.id, outcome: "SUCCEEDED", result },
+      15_000
+    );
+    counters.completed += 1;
+    counters.completedByType.PROTOCOL_QUEUE_RETENTION =
+      (counters.completedByType.PROTOCOL_QUEUE_RETENTION ?? 0) + 1;
+    await log(
+      `job ${job.id} [${job.correlationId}] SUCCEEDED: protocol-queue-retention deleted=${result.queueRowsDeleted ?? 0} deliveredDays=${result.deliveredDays ?? "?"} deadDays=${result.deadDays ?? "?"} in ${result.durationMs ?? "?"}ms`
+    );
+  } catch (e) {
+    const message = (e as Error)?.message ?? String(e);
+    if (message.includes("PROTOCOL_QUEUE_PRUNE_THROTTLED") || message.includes("HTTP 429")) {
+      const result: ProtocolQueueRetentionResult = {
+        outcome: "throttled",
+        reason: "A protocol queue retention prune ran less than 60s ago (PROTOCOL_QUEUE_PRUNE_THROTTLED)",
+      };
+      await nextPost(
+        "/api/v1/worker/complete",
+        { jobId: job.id, outcome: "SUCCEEDED", result },
+        15_000
+      );
+      counters.completed += 1;
+      counters.completedByType.PROTOCOL_QUEUE_RETENTION =
+        (counters.completedByType.PROTOCOL_QUEUE_RETENTION ?? 0) + 1;
+      await log(
+        `job ${job.id} [${job.correlationId}] SUCCEEDED: protocol-queue-retention throttled (recent prune)`
+      );
+      return;
+    }
+    throw e;
+  }
+}
+
 /* ───────────────── FIRMWARE_UPGRADE driver (Phase 13-b) ─────────────── */
 
 /**
@@ -1204,6 +1273,8 @@ async function executeJob(job: ClaimedJob): Promise<void> {
       await raceTimeout(runFlowRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "ROLLUP_AGGREGATION") {
       await raceTimeout(runRollupAggregationJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "PROTOCOL_QUEUE_RETENTION") {
+      await raceTimeout(runProtocolQueueRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "REPORT_RUN") {
       await raceTimeout(runReportJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "FIRMWARE_UPGRADE") {
@@ -1260,6 +1331,7 @@ async function claimTick(): Promise<"ok" | "failed" | "busy"> {
             "METRIC_RETENTION",
             "FLOW_RETENTION",
             "ROLLUP_AGGREGATION",
+            "PROTOCOL_QUEUE_RETENTION",
             "REPORT_RUN",
             "FIRMWARE_UPGRADE",
             "ZTP_PROVISION",

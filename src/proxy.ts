@@ -108,6 +108,7 @@ const MACHINE_EXACT_ROUTES: ReadonlySet<string> = new Set([
   "/api/v1/reports/execute",
   "/api/v1/metrics/retention/prune",
   "/api/v1/metrics/rollup/aggregate",
+  "/api/v1/protocol/queue/retention/prune",
 ]);
 
 function isMachineSurface(pathname: string): boolean {
@@ -166,7 +167,8 @@ export async function proxy(req: NextRequest) {
     pathname === "/api/v1/alerts/evaluate" ||
     pathname === "/api/v1/reports/execute" ||
     pathname === "/api/v1/metrics/retention/prune" ||
-    pathname === "/api/v1/metrics/rollup/aggregate"
+    pathname === "/api/v1/metrics/rollup/aggregate" ||
+    pathname === "/api/v1/protocol/queue/retention/prune"
   ) {
     return NextResponse.next();
   }

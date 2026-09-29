@@ -75,6 +75,12 @@ export const dynamic = "force-dynamic";
  *   graceful no-op). The aggregation itself is bounded (5,000 bucket
  *   groups / ~20 s per run, oldest-first) and converges over ticks.
  *
+ * Protocol queue retention scheduling (RT-003), next to flow retention:
+ *   ONE recurring PROTOCOL_QUEUE_RETENTION job per 24 h — the worker
+ *   triggers the evaluate-in-Next sweep that prunes terminal DELIVERED/DEAD
+ *   ProtocolEventQueue rows (chunked, FlowRecord-guarded). 429
+ *   PROTOCOL_QUEUE_PRUNE_THROTTLED from the 60 s guard is a graceful no-op.
+ *
  * Stale-job reaper (hardening closeout), after the scheduling blocks:
  *   RUNNING jobs whose startedAt is older than 10 minutes were orphaned
  *   (worker/backend death mid-flight — the in-memory runner state is gone)
@@ -90,7 +96,8 @@ export const dynamic = "force-dynamic";
  *
  * Returns { enqueued, discoveryEnqueued, driftEnqueued, alertEvalEnqueued,
  * metricRetentionEnqueued, rollupEnqueued, flowRetentionEnqueued,
- * reapedOrphans, pruned, evaluatedAt, policies }.
+ * protocolQueueRetentionEnqueued, reapedOrphans, pruned, evaluatedAt,
+ * policies }.
  */
 
 const tickSchema = z.object({
@@ -107,6 +114,7 @@ const ALERT_EVALUATION_DEDUPE_MIN = 3;
 const METRIC_RETENTION_DEDUPE_HOURS = 24;
 const ROLLUP_DEDUPE_MIN = 5;
 const FLOW_RETENTION_DEDUPE_HOURS = 24;
+const PROTOCOL_QUEUE_RETENTION_DEDUPE_HOURS = 24;
 
 /* ── tiny 5-field cron matcher ──────────────────────────────────────────── */
 
@@ -523,6 +531,11 @@ export async function POST(request: Request) {
   // Flow retention uses an independent 24-hour policy and bounded prune job.
   const flowRetentionEnqueued = await enqueueFlowRetention(now);
 
+  // Protocol queue retention (RT-003): ONE recurring
+  // PROTOCOL_QUEUE_RETENTION job per 24 h — the worker triggers the
+  // evaluate-in-Next terminal-row sweep.
+  const protocolQueueRetentionEnqueued = await enqueueProtocolQueueRetention(now);
+
   // Reaper: RUNNING jobs whose startedAt is older than the stale threshold
   // were orphaned (worker crash / backend restart mid-flight — the
   // in-memory runner state is gone) and would otherwise stay RUNNING
@@ -634,6 +647,7 @@ export async function POST(request: Request) {
     metricRetentionEnqueued,
     rollupEnqueued,
     flowRetentionEnqueued,
+    protocolQueueRetentionEnqueued,
     reapedOrphans: reapedCount,
     pruned: prune.pruned,
     prunedDevices: prune.prunedDevices,
@@ -706,6 +720,44 @@ async function enqueueRollupAggregation(now: Date): Promise<number> {
   await db.jobExecution.create({
     data: {
       type: "ROLLUP_AGGREGATION",
+      targetType: "SYSTEM",
+      status: "QUEUED",
+      progress: 0,
+      priority: 7,
+      maxAttempts: 3,
+      payloadJson: JSON.stringify({ triggeredBy: "SCHEDULE" }),
+      correlationId: newJobCorrelationId(),
+    },
+  });
+  return 1;
+}
+
+/**
+ * Enqueue ONE PROTOCOL_QUEUE_RETENTION job per 24 h (RT-003). Dedupe: skip
+ * when a PROTOCOL_QUEUE_RETENTION job is QUEUED/RUNNING, or when the last
+ * one finished within the daily cadence window. Returns 0 or 1.
+ */
+async function enqueueProtocolQueueRetention(now: Date): Promise<number> {
+  const recent = await db.jobExecution.findFirst({
+    where: {
+      type: "PROTOCOL_QUEUE_RETENTION",
+      OR: [
+        { status: { in: ["QUEUED", "RUNNING"] } },
+        {
+          status: { in: ["SUCCEEDED", "FAILED", "DEAD", "CANCELLED"] },
+          finishedAt: {
+            gte: new Date(now.getTime() - PROTOCOL_QUEUE_RETENTION_DEDUPE_HOURS * 3_600_000),
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  if (recent) return 0;
+
+  await db.jobExecution.create({
+    data: {
+      type: "PROTOCOL_QUEUE_RETENTION",
       targetType: "SYSTEM",
       status: "QUEUED",
       progress: 0,
