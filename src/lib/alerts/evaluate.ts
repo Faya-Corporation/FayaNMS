@@ -43,9 +43,13 @@ import {
  *      for the same device (and any existing ACTIVE engine alert on it)
  *      becomes/turns into a SUPPRESSED CHILD (parentAlertId set,
  *      suppressReason "Suppressed by root alert"). The root fires alone.
- *      While the root is open its children stay suppressed; after the root
- *      resolves, children re-activate if their own condition still holds,
- *      or resolve with it.
+ *      While the root is open its children stay suppressed; once no
+ *      AVAILABILITY root is open for the device anymore, root-suppressed
+ *      children re-activate on the next pass when their own condition still
+ *      breaches, or auto-resolve when it has recovered (maintenance windows
+ *      keep precedence — a window-suppressed row is owned by the window).
+ *      A recovered root-suppressed child resolves with its parent link and
+ *      suppress reason cleared.
  *   6. Auto-resolve: a rule that no longer breaches resolves its open
  *      alert — threshold metrics need the recent window AND the previous
  *      equal window both non-breaching (2 consecutive windows); recovery
@@ -86,6 +90,69 @@ const OPEN_STATUSES = ["ACTIVE", "ACKNOWLEDGED", "SUPPRESSED"] as const;
 const MAINTENANCE_REASON_PREFIX = "Maintenance window: ";
 export const ROOT_SUPPRESS_PREFIX = "Suppressed by root alert: ";
 
+/* ── suppression lifecycle predicates (RT-001/F-001) ───────────────────
+ *
+ * Exported pure helpers so the regression suite
+ * (tests/audit/alert-suppression-reactivation.test.ts) can pin the exact
+ * branch policy that used to be buried — and for root-suppressed rows,
+ * dead — inside the evaluation passes.
+ */
+
+/** Row is SUPPRESSED by a maintenance window ("Maintenance window: …"). */
+export function isWindowSuppressed(
+  status: string,
+  suppressReason: string | null
+): boolean {
+  return (
+    status === "SUPPRESSED" &&
+    (suppressReason ?? "").startsWith(MAINTENANCE_REASON_PREFIX)
+  );
+}
+
+/** Row is SUPPRESSED by a root alert ("Suppressed by root alert: …"). */
+export function isRootSuppressed(
+  status: string,
+  suppressReason: string | null
+): boolean {
+  return (
+    status === "SUPPRESSED" &&
+    (suppressReason ?? "").startsWith(ROOT_SUPPRESS_PREFIX)
+  );
+}
+
+/**
+ * Pass-1 reactivation policy for a still-breaching SUPPRESSED row:
+ *   - a window-suppressed row re-activates when its window ended;
+ *   - a root-suppressed row re-activates when no AVAILABILITY root is open
+ *     for the device anymore (G5 release);
+ *   - an active maintenance window keeps precedence in both cases;
+ *   - anything else (unknown/manual suppression reason) stays untouched.
+ */
+export function shouldReactivateSuppressedRow(
+  status: string,
+  suppressReason: string | null,
+  maintenanceActive: boolean,
+  openRootExists: boolean
+): boolean {
+  if (status !== "SUPPRESSED" || maintenanceActive) return false;
+  if (isWindowSuppressed(status, suppressReason)) return true;
+  return isRootSuppressed(status, suppressReason) && !openRootExists;
+}
+
+/**
+ * Pass-2 auto-resolve eligibility: open engine rows plus root-suppressed
+ * children (previously unreachable — zombie SUPPRESSED rows). A
+ * maintenance-suppressed row is owned by its window and is never
+ * auto-resolved by recovery.
+ */
+export function isAutoResolveCandidate(
+  status: string,
+  suppressReason: string | null
+): boolean {
+  if (status === "ACTIVE" || status === "ACKNOWLEDGED") return true;
+  return isRootSuppressed(status, suppressReason);
+}
+
 const MAX_NEW_ALERTS_PER_RUN = 50;
 const MAX_INCIDENTS_PER_RUN = 10;
 const MAX_NOTIFICATIONS_PER_RUN = 40;
@@ -117,6 +184,8 @@ export interface AlertEvaluationSummary {
   devicesConsidered: number;
   fired: number;
   deduped: number;
+  /** SUPPRESSED rows re-activated this run (window expiry / root release). */
+  reactivated: number;
   /** Existing alerts transitioned into SUPPRESSED this run (window / root). */
   suppressed: number;
   /** New alerts born SUPPRESSED as root-alert children. */
@@ -254,6 +323,7 @@ export async function runAlertEvaluation(options: {
     devicesConsidered: 0,
     fired: 0,
     deduped: 0,
+    reactivated: 0,
     suppressed: 0,
     childrenSuppressed: 0,
     resolved: 0,
@@ -322,6 +392,26 @@ export async function runAlertEvaluation(options: {
     windowByDevice.get(device.id) ??
     (device.siteId ? windowBySite.get(device.siteId) : undefined) ??
     null;
+
+  /**
+   * G5 release check (RT-001): is an AVAILABILITY root (ACTIVE or
+   * ACKNOWLEDGED) open for the device? `openRootByDevice` alone only holds
+   * roots breached in THIS run — the DB check also sees roots opened by an
+   * earlier pass (e.g. an acknowledged outage), so a child can never
+   * re-activate while its root is still open.
+   */
+  const openRootExists = async (device: EvalDevice): Promise<boolean> => {
+    if (openRootByDevice.has(device.id)) return true;
+    const openRoot = await db.alert.findFirst({
+      where: {
+        deviceId: device.id,
+        status: { in: ["ACTIVE", "ACKNOWLEDGED"] },
+        dedupKey: { contains: ":AVAILABILITY:" },
+      },
+      select: { id: true },
+    });
+    return openRoot !== null;
+  };
 
   /* ── existing engine-managed alerts ────────────────────────────────── */
   const existingRows = await db.alert.findMany({
@@ -457,13 +547,6 @@ export async function runAlertEvaluation(options: {
 
     if (existing) {
       // DEDUP — refresh the open alert instead of creating a duplicate.
-      const suppressedByWindow =
-        existing.status === "SUPPRESSED" &&
-        (existing.suppressReason ?? "").startsWith(MAINTENANCE_REASON_PREFIX);
-      const suppressedByRoot =
-        existing.status === "SUPPRESSED" &&
-        (existing.suppressReason ?? "").startsWith(ROOT_SUPPRESS_PREFIX);
-
       if (existing.status === "ACTIVE" || existing.status === "ACKNOWLEDGED") {
         const inMaintenance = maintenanceFor(device);
         if (existing.status === "ACTIVE" && inMaintenance) {
@@ -491,20 +574,30 @@ export async function runAlertEvaluation(options: {
         continue;
       }
 
-      // SUPPRESSED — maintenance expiry re-activates; root release handled
-      // by the children sweep below (root resolves first, next pass cleans).
-      if (suppressedByWindow && !maintenanceFor(device)) {
+      // SUPPRESSED — maintenance expiry re-activates; a root-suppressed row
+      // re-activates when no AVAILABILITY root is open for the device
+      // anymore (G5 release — RT-001). Maintenance precedence holds for
+      // both; unknown suppression reasons stay dedup-touched only.
+      if (
+        shouldReactivateSuppressedRow(
+          existing.status,
+          existing.suppressReason,
+          maintenanceFor(device) !== null,
+          await openRootExists(device)
+        )
+      ) {
         await db.alert.update({
           where: { id: existing.id },
           data: {
             status: "ACTIVE",
             suppressReason: null,
+            parentAlertId: null,
             lastSeen: now,
             count: { increment: 1 },
             dedupKey: key,
           },
         });
-        summary.deduped += 1;
+        summary.reactivated += 1;
       } else {
         await db.alert.update({
           where: { id: existing.id },
@@ -676,7 +769,10 @@ export async function runAlertEvaluation(options: {
   /* ── pass 2: auto-resolve ──────────────────────────────────────────── */
   const ruleById = new Map(rules.map((r) => [r.id as string, r]));
   for (const existing of existingRows) {
-    if (existing.status !== "ACTIVE" && existing.status !== "ACKNOWLEDGED") continue;
+    // RT-001 — root-suppressed children are resolve candidates too (their
+    // recovery path used to be unreachable); maintenance-suppressed rows
+    // are owned by their window and stay skipped.
+    if (!isAutoResolveCandidate(existing.status, existing.suppressReason)) continue;
     if (!existing.ruleId) continue;
     const rule = ruleById.get(existing.ruleId);
     if (!rule) continue; // rule deleted/inactive — alert is human-managed
@@ -709,7 +805,12 @@ export async function runAlertEvaluation(options: {
 
     await db.alert.update({
       where: { id: existing.id },
-      data: { status: "RESOLVED", suppressReason: null },
+      data: {
+        status: "RESOLVED",
+        suppressReason: null,
+        // A resolved child drops its (now stale) parent link.
+        ...(existing.status === "SUPPRESSED" ? { parentAlertId: null } : {}),
+      },
     });
     summary.resolved += 1;
     await db.auditEvent.create({
@@ -744,6 +845,7 @@ export async function runAlertEvaluation(options: {
         devicesConsidered: summary.devicesConsidered,
         fired: summary.fired,
         deduped: summary.deduped,
+        reactivated: summary.reactivated,
         suppressed: summary.suppressed,
         childrenSuppressed: summary.childrenSuppressed,
         resolved: summary.resolved,

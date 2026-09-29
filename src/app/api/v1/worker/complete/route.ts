@@ -273,6 +273,7 @@ export async function POST(request: Request) {
         devicesConsidered: z.number().int().nonnegative().optional(),
         fired: z.number().int().nonnegative().optional(),
         deduped: z.number().int().nonnegative().optional(),
+        reactivated: z.number().int().nonnegative().optional(),
         suppressed: z.number().int().nonnegative().optional(),
         childrenSuppressed: z.number().int().nonnegative().optional(),
         resolved: z.number().int().nonnegative().optional(),

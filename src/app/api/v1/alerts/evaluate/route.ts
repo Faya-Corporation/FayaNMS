@@ -21,7 +21,7 @@ export const maxDuration = 60;
  * intentionally lenient: an empty body is valid, unknown fields are ignored.
  *
  * Returns the AlertEvaluationSummary: { evaluatedAt, triggeredBy,
- * rulesEvaluated, devicesConsidered, fired, deduped, suppressed,
+ * rulesEvaluated, devicesConsidered, fired, deduped, reactivated, suppressed,
  * childrenSuppressed, resolved, incidentsCreated, notificationsCreated, caps }.
  */
 
