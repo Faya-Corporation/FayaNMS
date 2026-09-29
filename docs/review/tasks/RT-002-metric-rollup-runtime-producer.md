@@ -72,3 +72,8 @@ bun run lint                                           # 0 errors
 ## Rollout & rollback notes
 
 Deploy-order safe: the route/worker additions are inert until the first tick enqueues a job; readers are untouched. Rollback = revert; leftover rollup rows are harmless (retention prunes them per policy). If the first production run backfills a large history, the bounded loop spreads it over several 5-min ticks by design — monitor the `remaining` field in the job result rather than disabling the job.
+
+
+## Status
+
+Fixed (fdb3dcf)

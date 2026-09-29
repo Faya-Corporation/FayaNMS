@@ -61,3 +61,8 @@ bun run lint                                         # 0 errors
 ## Rollout & rollback notes
 
 Additive-only; no route/contract changes. The view boundary is the user-visible behavior change — if it masks a genuine regression by swallowing crashes too aggressively, revert just `app-shell.tsx` (route-level files can stay). No data migration; safe to cherry-pick independently.
+
+
+## Status
+
+Fixed (a2f2278)

@@ -1,7 +1,7 @@
 # Audit State — GLM/full-audit-and-fix
 
 ## Current phase
-P3: compiling findings register + reports (doc compiler agent 5-f running); P0/P1/P2 done: baseline GREEN (lint 0, tsc 0, tests 1340 pass/18 skip/2 env-fail, build:gate exit 0), 5 module audits complete (67 raw findings), UX walk of unauthenticated surfaces done with 4 before-screenshots
+P5 Wave 0 P1s FIXED: data P1s (RT-001 8c5200d, RT-002 fdb3dcf, RT-003 e97007e) + frontend error boundaries (RT-004 a2f2278); full suite 1404 pass/18 skip/2 env-fail, tsc 0, lint 0. Prior: docs compiler + RT plan done (4881a96, 3517ce7). Baseline details:  baseline GREEN (lint 0, tsc 0, tests 1340 pass/18 skip/2 env-fail, build:gate exit 0), 5 module audits complete (67 raw findings), UX walk of unauthenticated surfaces done with 4 before-screenshots
 
 ## Ground truth
 - Repo: /home/z/faya-nms, branch GLM/full-audit-and-fix (from main @ 38fbdfb). Base branch NEVER touched.

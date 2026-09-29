@@ -73,3 +73,8 @@ bun run lint                                                   # 0 errors
 ## Rollout & rollback notes
 
 Behavior change is confined to the evaluate-in-Next engine invoked by ALERT_EVALUATION jobs every 3 min; no schema or API contract change. Rollback = revert the single file (stateless — the next evaluation run behaves as before; already re-activated/resolved rows are correct under both versions).
+
+
+## Status
+
+Fixed (8c5200d)

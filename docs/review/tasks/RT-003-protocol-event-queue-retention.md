@@ -71,3 +71,8 @@ bun run lint                                             # 0 errors
 ## Rollout & rollback notes
 
 Inert until the first tick enqueues the job; the first run deletes at most 10k oldest terminal rows, so worst-case disk reclaim is gradual by design. Rollback = revert; the Setting row is ignored by older code. Do NOT ship this together with a lowered `deliveredDays` in the same change — keep defaults conservative (7d/30d) and let operators tune the Setting.
+
+
+## Status
+
+Fixed (e97007e)
