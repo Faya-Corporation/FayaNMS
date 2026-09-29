@@ -19,7 +19,7 @@ import { detectionHintKey } from "@/hooks/api/use-devices";
  *  3. alert-stream-item / alert-action-dialogs / alert-rules-panel use
  *     next-intl and none of the F-006 evidence literals remain.
  *  4. en/ar parity holds with the new toast.* / detect.* / alerts.*
- *     namespaces (totals 3193 leaves per side after the sweep).
+ *     namespaces (totals 3206 leaves per side after the sweep).
  *  5. aria labels on the alert stream go through t().
  */
 
@@ -192,15 +192,17 @@ describe("RT-005 — alert components use next-intl", () => {
 });
 
 describe("RT-005 — en/ar parity holds with the new namespaces", () => {
-  test("leaf sets are identical and totals pin at 3193 per side", () => {
+  test("leaf sets are identical and totals pin at 3206 per side", () => {
     const en = readJson("messages/en.json");
     const ar = readJson("messages/ar.json");
     const enLeaves = leaves(en);
     const arLeaves = leaves(ar);
     expect(new Set(enLeaves)).toEqual(new Set(arLeaves));
-    // 2850 (R102) → 2856 (RT-004) → 3193 (RT-005: +337 toast/detect/alerts).
-    expect(enLeaves.length).toBe(3193);
-    expect(arLeaves.length).toBe(3193);
+    // 2850 (R102) → 2856 (RT-004) → 3193 (RT-005: +337 toast/detect/alerts)
+    // → 3206 (RT-020: +13 auth.signIn). This pin tracks the CURRENT total
+    // and is retotaled by every later dictionary-touching RT (repo rule).
+    expect(enLeaves.length).toBe(3206);
+    expect(arLeaves.length).toBe(3206);
   });
 
   test("alerts.stream/dialogs/rules and detect.hints exist in both locales", () => {

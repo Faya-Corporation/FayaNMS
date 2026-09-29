@@ -4400,5 +4400,22 @@
         "severityRequired": "Pick a severity"
       }
     }
+  },
+  "auth": {
+    "signIn": {
+      "subtitle": "Sign in to your account to access the platform.",
+      "email": "Email",
+      "password": "Password",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "errorCredentials": "Invalid email or password.",
+      "errorServer": "Sign-in failed — the server could not be reached.",
+      "demoTitle": "Demo accounts",
+      "demoAsideLabel": "Demo credentials",
+      "demoPasswordHint": "Every account uses the password <tech>{code}</tech> — click a row to fill the form.",
+      "privacyNote": "Auditors are read-only: the platform blocks every write for that role, and all secret material stays masked behind vault references. Sessions are signed JWTs — nothing about this demo is stored client-side beyond an httpOnly cookie."
+    }
   }
 }
