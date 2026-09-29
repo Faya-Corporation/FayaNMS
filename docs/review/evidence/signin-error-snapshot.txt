@@ -1,0 +1,14 @@
+- region "FayaNMS Network Operations Management" [ref=e21]
+  - heading "FayaNMS Network Operations Management" [level=1, ref=e22]
+  - textbox "Email" [required, ref=e24]: admin@faya.local
+  - textbox "Password" [required, ref=e26]: •••••••••••••••••••••••••
+  - button "Show password" [ref=e27]
+  - button "Sign in" [ref=e25]
+- heading "Demo accounts" [level=2, ref=e23]
+- button "Amal Al-Sabri admin@faya.local ADMIN" [ref=e28]
+- button "Yousef Ghalib noc1@faya.local OPERATOR" [ref=e29]
+- button "Mariam Al-Hakimi engineer1@faya.local ENGINEER" [ref=e30]
+- button "Salma Al-Attar manager1@faya.local MANAGER" [ref=e31]
+- button "Tariq Bashiri auditor1@faya.local AUDITOR" [ref=e32]
+- region "Notifications (F8)" [ref=e20]
+- button "Open Next.js Dev Tools" [expanded=false, ref=e33]
