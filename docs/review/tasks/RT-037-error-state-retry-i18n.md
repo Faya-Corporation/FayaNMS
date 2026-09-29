@@ -59,3 +59,7 @@ bun run lint                                           # 0 errors
 ## Rollout & rollback notes
 
 One component + 3 keys ×2 locales; revert-safe. Composes with RT-004 (error.tsx) — review together if both are in flight.
+
+## Status
+
+FIXED — commit 7e78c8f on GLM/full-audit-and-fix (Task 5-k). `common.errors.{genericTitle,correlationId}` (2 new keys ×2 locales) added; `common.retry` already existed and is REUSED (no duplicate key — a deliberate, documented deviation from the RT's "add common.retry"). ErrorState consumes `useTranslations("common")`: default title → `errors.genericTitle`, retry label → `retryLabel ?? t("retry")`, correlation line → `t.rich("errors.correlationId")` with the id interpolated INSIDE the existing `ltr-technical` span (rich-tag pattern; the RT's literal `t(...)` call would have dropped the span the RT itself requires kept). Caller `title`/`retryLabel` overrides keep precedence (`??`), so all 50+ call sites passing localized titles are unaffected. en copy byte-identical to the previous literals; ar matches the appError glossary (حدث خطأ ما، معرّف الارتباط). Totals 3309 → 3311 (all 24 pinning tests retotaled). app-error-boundaries.test.tsx: the ViewErrorBoundary fallback render now runs inside the en locale provider (ErrorState needs next-intl context since this RT) — same assertions, no weakening. Test: `tests/audit/rt037-error-state-i18n.test.tsx` (9 cases, full SSR render coverage — ErrorState is portal-free).

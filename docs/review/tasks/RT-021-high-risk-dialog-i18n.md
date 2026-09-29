@@ -63,3 +63,7 @@ bun run lint                                                # 0 errors
 ## Rollout & rollback notes
 
 Copy-only, single component + dictionaries; revert-safe. Scope note (flagged during planning): F-020 was not in the explicit scope lists; written as a fixable P2/S finding — main agent may re-scope to BACKLOG by dropping this file and the plan row.
+
+## Status
+
+FIXED — commit 9117774 on GLM/full-audit-and-fix (Task 5-k). `common.highRisk.*` (8 keys ×2 locales: done, failedFallback, back, close, cancel, working, confirmInstruction, mismatchHint) added; every F-020 literal keyed; the confirm instruction keys through `t.rich` with the phrase interpolated INSIDE the `font-tech ltr-technical` span (RT-020 demoPasswordHint pattern) while the input placeholder still binds `confirmHint ?? confirmPhrase` byte-for-byte (deliberately untranslated technical text per the RT scope rules); aria-live="polite" mismatch hint localized; caller-provided title/description/impact rows, resultSummary and confirm label pass through unchanged; phase flow untouched (strings-only). Real Arabic consistent with the existing glossary (تم/اكتمل الإجراء، حساسة لحالة الأحرف، جارٍ التنفيذ…). Totals 3206 → 3214 (all 21 pinning tests retotaled). Test: `tests/audit/rt021-high-risk-dialog-i18n.test.tsx` (8 cases; honesty note recorded — Radix portals render empty under react-dom/server, so the RT's render-shaped cases are pinned as exact source contracts).

@@ -1,7 +1,7 @@
 # Audit State — GLM/full-audit-and-fix
 
 ## Current phase
-P5 Wave 0 P1s FIXED: data P1s (RT-001 8c5200d, RT-002 fdb3dcf, RT-003 e97007e) + frontend error boundaries (RT-004 a2f2278); full suite 1404 pass/18 skip/2 env-fail, tsc 0, lint 0. Prior: docs compiler + RT plan done (4881a96, 3517ce7). Baseline details:  baseline GREEN (lint 0, tsc 0, tests 1340 pass/18 skip/2 env-fail, build:gate exit 0), 5 module audits complete (67 raw findings), UX walk of unauthenticated surfaces done with 4 before-screenshots
+P5 i18n gap-closure FIXED: RT-005 55db23a (hook toasts/alerts) + RT-020 04534bc (sign-in gate) + RT-021 9117774 (high-risk dialog) + RT-022 19b91de (device form + CSV import) + RT-037 7e78c8f (ErrorState defaults); dictionary 3311 leaves/side, full suite 1453 pass/18 skip/2 env-fail, tsc 0, lint 0. Prior: Wave 0 P1s (RT-001 8c5200d, RT-002 fdb3dcf, RT-003 e97007e, RT-004 a2f2278); docs compiler + RT plan done (4881a96, 3517ce7). Baseline GREEN (lint 0, tsc 0, tests 1340 pass/18 skip/2 env-fail, build:gate exit 0), 5 module audits complete (67 raw findings), UX walk of unauthenticated surfaces done with 4 before-screenshots
 
 ## Ground truth
 - Repo: /home/z/faya-nms, branch GLM/full-audit-and-fix (from main @ 38fbdfb). Base branch NEVER touched.
