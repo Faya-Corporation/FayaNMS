@@ -208,12 +208,17 @@ jobs:
           sbom: true
           provenance: mode=max
 
-      - name: Scan published image
+      # Gate contract mirrors ci.yml's image scans and R78-B policy:
+      # fatal for every HIGH/CRITICAL result, including unfixed findings.
+      # (trivy-action's sarif mode ignores the severity filter — running the
+      # gate in sarif format made ANY low-severity base-image finding fatal,
+      # which is stricter than the R78 policy the repo actually enforces.)
+      - name: Scan published image (HIGH/CRITICAL fatal)
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
+          scan-type: image
           image-ref: ghcr.io/faya-corporation/fayanms:${{ github.event.workflow_run.head_sha }}
-          format: sarif
-          output: trivy-ghcr.sarif
+          format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: false
           exit-code: "1"
@@ -235,6 +240,19 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: false
           exit-code: "1"
+
+      # Structured evidence for the release-evidence manifest: SARIF with all
+      # severities, NON-blocking (exit 0), captured even when the gate above
+      # trips so triage always has machine-readable findings.
+      - name: Capture published-image scan evidence (SARIF, non-blocking)
+        if: always()
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/faya-corporation/fayanms:${{ github.event.workflow_run.head_sha }}
+          format: sarif
+          output: trivy-ghcr.sarif
+          exit-code: "0"
 
       - name: Upload image scan evidence
         if: always()
