@@ -13,6 +13,7 @@ import { useLocaleInfo } from "@/i18n/locale-provider";
 import { FayaNMSLockup, FayaNMSMark } from "@/components/brand";
 import { SignInGate } from "@/components/auth/sign-in-gate";
 import { SkipLink } from "@/components/domain/skip-link";
+import { ViewErrorBoundary } from "@/components/domain/view-error-boundary";
 import { GuidedTour } from "@/components/tour/guided-tour";
 import { AppFooter } from "./app-footer";
 import { AppHeader } from "./app-header";
@@ -169,7 +170,12 @@ export function AppShell() {
             tabIndex={-1}
           >
             <div className="mx-auto w-full max-w-[1600px]">
-              <ViewRouter />
+              {/* View-level boundary (RT-004 / F-004): a crashing view degrades
+                  to ErrorState while the shell stays alive. Keyed by activeView
+                  so navigation remounts a fresh boundary (reset-on-nav). */}
+              <ViewErrorBoundary key={activeView}>
+                <ViewRouter />
+              </ViewErrorBoundary>
             </div>
           </main>
         </div>

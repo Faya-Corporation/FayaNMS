@@ -12,6 +12,8 @@ interface ErrorStateProps {
   /** Correlation/request ID to quote in support channels. */
   correlationId?: string;
   onRetry?: () => void;
+  /** Localized retry label; defaults to the built-in "Retry". */
+  retryLabel?: string;
   /** Extra content (e.g. "Contact the network team" links). */
   extra?: React.ReactNode;
   className?: string;
@@ -26,6 +28,7 @@ export function ErrorState({
   reason,
   correlationId,
   onRetry,
+  retryLabel = "Retry",
   extra,
   className,
 }: ErrorStateProps) {
@@ -54,7 +57,7 @@ export function ErrorState({
       {onRetry && (
         <Button className="mt-2" onClick={onRetry} size="sm" variant="outline">
           <RotateCcw aria-hidden="true" />
-          Retry
+          {retryLabel}
         </Button>
       )}
       {extra && <div className="mt-1 text-sm text-muted-foreground">{extra}</div>}

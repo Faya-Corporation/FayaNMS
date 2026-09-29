@@ -33,6 +33,16 @@
       "better": "changed for the better",
       "up": "trending up",
       "down": "trending down"
+    },
+    "appError": {
+      "title": "Something went wrong",
+      "description": "An unexpected error occurred while rendering this view. Support can trace it with the correlation ID below.",
+      "retry": "Try again"
+    },
+    "notFound": {
+      "title": "Page not found",
+      "description": "The page you are looking for does not exist or may have been moved.",
+      "backHome": "Back to dashboard"
     }
   },
   "nav": {

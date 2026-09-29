@@ -99,8 +99,8 @@ describe("R85 — tranche 6a namespace exists and is balanced", () => {
   test("A: dictionary totals are 2,850 = 2,850 at current HEAD (+117 R102)", () => {
     const en = readJson("messages/en.json");
     const ar = readJson("messages/ar.json");
-    expect(leaves(en).length).toBe(2850);
-    expect(leaves(ar).length).toBe(2850);
+    expect(leaves(en).length).toBe(2856);
+    expect(leaves(ar).length).toBe(2856);
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {
