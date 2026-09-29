@@ -384,6 +384,46 @@ export async function POST(request: Request) {
       });
     }
 
+    // ── ROLLUP_AGGREGATION (RT-002): the aggregate endpoint persisted the
+    // upserts + audit — store the summary verbatim as resultJson. outcome
+    // "throttled" is a graceful no-op (another run was in flight). ──
+    if (job.type === "ROLLUP_AGGREGATION") {
+      const rollupShape = z.object({
+        outcome: z.enum(["aggregated", "throttled"]),
+        groupsComputed: z.number().int().nonnegative().optional(),
+        groupsUpserted: z.number().int().nonnegative().optional(),
+        remaining: z.number().int().nonnegative().optional(),
+        bounded: z.boolean().optional(),
+        byGranularity: z.record(z.string(), z.number().int().nonnegative()).optional(),
+        durationMs: z.number().int().nonnegative().optional(),
+        reason: z.string().max(300).optional(),
+      });
+      const parsedRollup = rollupShape.safeParse(result);
+      if (!parsedRollup.success) {
+        return fail(
+          "INVALID_RESULT",
+          "SUCCEEDED ROLLUP_AGGREGATION completion requires result.outcome (aggregated|throttled)",
+          400
+        );
+      }
+      await db.jobExecution.update({
+        where: { id: job.id },
+        data: {
+          status: "SUCCEEDED",
+          progress: 100,
+          finishedAt: now,
+          error: null,
+          resultJson: JSON.stringify(parsedRollup.data),
+        },
+      });
+      return ok({
+        jobId,
+        updated: true,
+        status: "SUCCEEDED",
+        outcome: parsedRollup.data.outcome,
+      });
+    }
+
     // ── FIRMWARE_UPGRADE (Phase 13-b): the upgrade endpoint persisted the
     // device.firmware flip + FIRMWARE_UPGRADED audit — store the summary
     // verbatim in resultJson (Job Center shows before → after). ──

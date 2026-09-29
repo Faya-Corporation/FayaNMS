@@ -67,6 +67,14 @@ export const dynamic = "force-dynamic";
  *   POST /api/v1/metrics/retention/prune (evaluate-in-Next; a 429
  *   PRUNE_THROTTLED from the 60 s manual-prune guard is a graceful no-op).
  *
+ * Rollup aggregation scheduling (RT-002), next to metric retention:
+ *   ONE recurring ROLLUP_AGGREGATION job per 5 minutes so fresh 5M buckets
+ *   appear promptly — same dedupe shape as METRIC_RETENTION. The worker
+ *   claims it and calls POST /api/v1/metrics/rollup/aggregate
+ *   (evaluate-in-Next; 429 ROLLUP_THROTTLED = a run is already in flight =
+ *   graceful no-op). The aggregation itself is bounded (5,000 bucket
+ *   groups / ~20 s per run, oldest-first) and converges over ticks.
+ *
  * Stale-job reaper (hardening closeout), after the scheduling blocks:
  *   RUNNING jobs whose startedAt is older than 10 minutes were orphaned
  *   (worker/backend death mid-flight — the in-memory runner state is gone)
@@ -81,8 +89,8 @@ export const dynamic = "force-dynamic";
  *   the rollback-or-fail decision).
  *
  * Returns { enqueued, discoveryEnqueued, driftEnqueued, alertEvalEnqueued,
- * metricRetentionEnqueued, flowRetentionEnqueued, reapedOrphans, pruned,
- * evaluatedAt, policies }.
+ * metricRetentionEnqueued, rollupEnqueued, flowRetentionEnqueued,
+ * reapedOrphans, pruned, evaluatedAt, policies }.
  */
 
 const tickSchema = z.object({
@@ -97,6 +105,7 @@ const DRIFT_CHECK_CAP_PER_TICK = 20;
 const DRIFT_CHECK_DEDUPE_MIN = 30;
 const ALERT_EVALUATION_DEDUPE_MIN = 3;
 const METRIC_RETENTION_DEDUPE_HOURS = 24;
+const ROLLUP_DEDUPE_MIN = 5;
 const FLOW_RETENTION_DEDUPE_HOURS = 24;
 
 /* ── tiny 5-field cron matcher ──────────────────────────────────────────── */
@@ -506,6 +515,11 @@ export async function POST(request: Request) {
   // job per 24 h — the worker triggers the evaluate-in-Next prune.
   const metricRetentionEnqueued = await enqueueMetricRetention(now);
 
+  // Rollup aggregation scheduling (RT-002): ONE recurring
+  // ROLLUP_AGGREGATION job per 5 min — the worker triggers the
+  // evaluate-in-Next MetricSample → MetricRollup aggregation pass.
+  const rollupEnqueued = await enqueueRollupAggregation(now);
+
   // Flow retention uses an independent 24-hour policy and bounded prune job.
   const flowRetentionEnqueued = await enqueueFlowRetention(now);
 
@@ -618,6 +632,7 @@ export async function POST(request: Request) {
     driftEnqueued: driftTargets,
     alertEvalEnqueued,
     metricRetentionEnqueued,
+    rollupEnqueued,
     flowRetentionEnqueued,
     reapedOrphans: reapedCount,
     pruned: prune.pruned,
@@ -653,6 +668,44 @@ async function enqueueMetricRetention(now: Date): Promise<number> {
   await db.jobExecution.create({
     data: {
       type: "METRIC_RETENTION",
+      targetType: "SYSTEM",
+      status: "QUEUED",
+      progress: 0,
+      priority: 7,
+      maxAttempts: 3,
+      payloadJson: JSON.stringify({ triggeredBy: "SCHEDULE" }),
+      correlationId: newJobCorrelationId(),
+    },
+  });
+  return 1;
+}
+
+/**
+ * Enqueue ONE ROLLUP_AGGREGATION job per 5 minutes (RT-002). Dedupe: skip
+ * when a ROLLUP_AGGREGATION job is QUEUED/RUNNING, or when the last one
+ * finished within the 5-minute cadence window. Returns 0 or 1.
+ */
+async function enqueueRollupAggregation(now: Date): Promise<number> {
+  const inFlight = await db.jobExecution.findFirst({
+    where: {
+      type: "ROLLUP_AGGREGATION",
+      OR: [
+        { status: { in: ["QUEUED", "RUNNING"] } },
+        {
+          status: { in: ["SUCCEEDED", "FAILED", "DEAD", "CANCELLED"] },
+          finishedAt: {
+            gte: new Date(now.getTime() - ROLLUP_DEDUPE_MIN * 60_000),
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  if (inFlight) return 0;
+
+  await db.jobExecution.create({
+    data: {
+      type: "ROLLUP_AGGREGATION",
       targetType: "SYSTEM",
       status: "QUEUED",
       progress: 0,
