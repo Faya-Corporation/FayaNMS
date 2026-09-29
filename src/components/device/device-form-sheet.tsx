@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useForm, useWatch, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -57,21 +58,31 @@ const IPV4_PATTERN =
   /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
 const HOSTNAME_PATTERN = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
 
+/**
+ * Form schema (RT-022/F-021). Messages are devices.form.* dictionary KEYS
+ * (resolved at render time via tForm — the same key-based pattern as the
+ * alert-rules panel), so validation copy localizes with the locale.
+ * DELIBERATE DUPLICATION: the server re-states these rules in
+ * src/app/api/v1/devices (unchanged by this RT) — its messages remain the
+ * fallback for API-level rejections; client keys are authoritative for the
+ * client. Unknown (server) messages still render verbatim via the t.has
+ * gate in tForm.
+ */
 const formSchema = z
   .object({
     hostname: z
       .string()
       .trim()
-      .min(1, "Hostname is required")
-      .max(63, "Hostname is limited to 63 characters")
-      .regex(HOSTNAME_PATTERN, "Letters, digits and hyphens only"),
+      .min(1, "hostnameRequired")
+      .max(63, "hostnameMax")
+      .regex(HOSTNAME_PATTERN, "hostnamePattern"),
     displayName: z.string().trim().max(120).optional(),
-    vendorId: z.string().min(1, "Vendor is required"),
+    vendorId: z.string().min(1, "vendorRequired"),
     model: z.string().trim().max(120).optional(),
     mgmtIp: z
       .string()
       .trim()
-      .regex(IPV4_PATTERN, "Enter a valid IPv4 management address"),
+      .regex(IPV4_PATTERN, "mgmtIpPattern"),
     siteId: z.string().optional(),
     criticality: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
     // Data plane (Phase 22): SIMULATOR = deterministic in-memory adapters;
@@ -89,7 +100,7 @@ const formSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["credentialProfileId"],
-        message: "LIVE devices require a linked SSH credential profile",
+        message: "liveRequiresCredential",
       });
     }
   });
@@ -103,10 +114,16 @@ interface PendingPick {
   label: string;
 }
 
+/**
+ * Detection pick labels. Keys resolve at render time via
+ * `devices.form.pickField*` (localized); the field discriminant stays the
+ * stable token. (The raw pick.label data from the detection result is not
+ * rendered — this map drives the visible "Detected …" row.)
+ */
 const PICK_FIELD_LABELS: Record<DetectableField, string> = {
-  vendorId: "Vendor",
-  model: "Model",
-  mgmtIp: "Management IP",
+  vendorId: "pickFieldVendor",
+  model: "pickFieldModel",
+  mgmtIp: "pickFieldMgmtIp",
 };
 
 /** R50-T060 — the icon speaks the row state at a glance. */
@@ -137,6 +154,7 @@ function StageRowView({
   onRetry: () => void;
   retryDisabled: boolean;
 }) {
+  const t = useTranslations("devices.form");
   return (
     <div className="flex items-start justify-between gap-2">
       <div className="flex min-w-0 items-start gap-2">
@@ -157,7 +175,7 @@ function StageRowView({
       </div>
       {row.retryable && (
         <Button
-          aria-label={`Retry ${row.stage === "vendor" ? "vendor detection" : "address resolution"}`}
+          aria-label={row.stage === "vendor" ? t("stageRetryVendorAria") : t("stageRetryAddressAria")}
           className="h-7 shrink-0 gap-1 px-2 text-xs"
           disabled={retryDisabled}
           onClick={onRetry}
@@ -166,7 +184,7 @@ function StageRowView({
           variant="ghost"
         >
           <RefreshCw aria-hidden="true" className="size-3" />
-          Retry
+          {t("stageRetry")}
         </Button>
       )}
     </div>
@@ -195,6 +213,7 @@ function DetectionSection({
   form: UseFormReturn<FormValues>;
   vendors: Array<{ id: string; key: string; name: string }>;
 }) {
+  const t = useTranslations("devices.form");
   const autoDetect = useAutoDetectDevice();
   // Compiler-safe field subscriptions (form.watch() in render is the
   // incompatible-library pattern).
@@ -314,7 +333,7 @@ function DetectionSection({
     <>
       <div className="flex items-center gap-2">
         <Button
-          aria-label="Detect vendor and management IP"
+          aria-label={t("detectButtonAria")}
           disabled={autoDetect.isPending || !hostnameValue.trim()}
           onClick={() => runDetection()}
           size="sm"
@@ -324,14 +343,10 @@ function DetectionSection({
           {autoDetect.isPending && (
             <LoaderCircle aria-hidden="true" className="animate-spin" />
           )}
-          Detect vendor &amp; IP
+          {t("detectButton")}
         </Button>
         <p className="text-xs text-muted-foreground">
-          Read-only SSH fingerprint via the worker{": "}
-          {credentialProfileId
-            ? "uses the selected credential profile"
-            : "select a credential profile to fingerprint the vendor"}
-          , then maps the hostname to its management address (DNS).
+          {credentialProfileId ? t("detectHintWithProfile") : t("detectHintNoProfile")}
         </p>
       </div>
 
@@ -346,10 +361,11 @@ function DetectionSection({
         >
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-semibold">
-              Detection
               {detectionResult
-                ? ` — ${detectionResult.requestedHost ?? detectionResult.host}`
-                : ""}
+                ? t("detectionTitle", {
+                    host: detectionResult.requestedHost ?? detectionResult.host,
+                  })
+                : t("detectionHeading")}
             </p>
             {detectionResult?.contractVersion != null && (
               <span className="font-tech text-[10px] text-muted-foreground">
@@ -384,32 +400,32 @@ function DetectionSection({
                 />
                 <p className="text-xs font-medium">
                   {hostKeyPanel.state === "capture-requested"
-                    ? "First contact — host key captured (NOT enrolled)"
-                    : "Host key verified against the enrolled pin"}
+                    ? t("hostKeyCaptured")
+                    : t("hostKeyVerified")}
                 </p>
               </div>
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
                 {hostKeyPanel.target && (
                   <>
-                    <dt className="text-muted-foreground">Target</dt>
+                    <dt className="text-muted-foreground">{t("hostKeyTarget")}</dt>
                     <dd className="font-tech break-all">{hostKeyPanel.target}</dd>
                   </>
                 )}
                 {hostKeyPanel.dialed && (
                   <>
-                    <dt className="text-muted-foreground">Dialed</dt>
+                    <dt className="text-muted-foreground">{t("hostKeyDialed")}</dt>
                     <dd className="font-tech break-all">{hostKeyPanel.dialed}</dd>
                   </>
                 )}
                 {hostKeyPanel.captured && (
                   <>
-                    <dt className="text-muted-foreground">Key</dt>
+                    <dt className="text-muted-foreground">{t("hostKeyAlgorithm")}</dt>
                     <dd className="font-tech break-all">{hostKeyPanel.captured.keyType}</dd>
                   </>
                 )}
                 {hostKeyPanel.captured && (
                   <>
-                    <dt className="text-muted-foreground">Fingerprint</dt>
+                    <dt className="text-muted-foreground">{t("hostKeyFingerprint")}</dt>
                     <dd className="font-tech break-all">
                       {hostKeyPanel.captured.fingerprint}
                     </dd>
@@ -417,10 +433,7 @@ function DetectionSection({
                 )}
               </dl>
               {hostKeyPanel.state === "capture-requested" && (
-                <p className="text-xs text-muted-foreground">
-                  Verify this fingerprint out-of-band with the device operator, then
-                  enroll it from the device page. FayaNMS has not trusted this key yet.
-                </p>
+                <p className="text-xs text-muted-foreground">{t("hostKeyDisclaimer")}</p>
               )}
             </div>
           )}
@@ -431,10 +444,10 @@ function DetectionSection({
             >
               <p className="min-w-0 text-xs">
                 <span className="text-muted-foreground">
-                  Detected {PICK_FIELD_LABELS[pick.field]}:{" "}
+                  {t("detectedPick", { field: t(PICK_FIELD_LABELS[pick.field]) })}
                 </span>
                 <span className="font-tech break-all">{pick.value}</span>
-                <span className="text-muted-foreground"> — field has your input</span>
+                <span className="text-muted-foreground"> {t("pickHasInput")}</span>
               </p>
               <div className="flex shrink-0 gap-1">
                 <Button
@@ -443,7 +456,7 @@ function DetectionSection({
                   size="sm"
                   type="button"
                 >
-                  Use
+                  {t("pickUse")}
                 </Button>
                 <Button
                   className="h-7 px-2 text-xs"
@@ -452,7 +465,7 @@ function DetectionSection({
                   type="button"
                   variant="outline"
                 >
-                  Keep mine
+                  {t("pickKeepMine")}
                 </Button>
               </div>
             </div>
@@ -483,6 +496,14 @@ function parseTags(input: string | undefined): string[] | undefined {
  * create navigates straight to the new device's detail view.
  */
 export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetProps) {
+  const t = useTranslations("devices.form");
+  // Key-based message resolver (RT-005 alert-rules-panel pattern): the zod
+  // messages ARE devices.form.* dictionary keys; anything that is not a
+  // known key — e.g. a server-side rejection reason surfaced through the
+  // same channel — renders VERBATIM (fallback contract preserved, see the
+  // schema comment on the deliberate server-copy duplication).
+  const tForm = (message: string | undefined): string =>
+    message && t.has(message) ? t(message) : (message ?? "");
   const meta = useMeta();
   const createDevice = useCreateDevice();
   const updateDevice = useUpdateDevice();
@@ -581,21 +602,19 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
   const profiles = meta.data?.credentialProfiles ?? [];
 
   const criticalities: { value: FormValues["criticality"]; label: string }[] = [
-    { value: "LOW", label: "Low" },
-    { value: "MEDIUM", label: "Medium" },
-    { value: "HIGH", label: "High" },
-    { value: "CRITICAL", label: "Critical" },
+    { value: "LOW", label: t("criticalityLow") },
+    { value: "MEDIUM", label: t("criticalityMedium") },
+    { value: "HIGH", label: t("criticalityHigh") },
+    { value: "CRITICAL", label: t("criticalityCritical") },
   ];
 
   return (
     <Sheet onOpenChange={onOpenChange} open={open}>
       <SheetContent className="flex flex-col gap-0 overflow-y-auto sm:max-w-md" side="right">
         <SheetHeader className="pb-2">
-          <SheetTitle>{editing ? "Edit device" : "Add device"}</SheetTitle>
+          <SheetTitle>{editing ? t("editTitle") : t("addTitle")}</SheetTitle>
           <SheetDescription>
-            {editing
-              ? "Update the inventory record. Connectivity details are managed by the collector."
-              : "Registers the device with status Unknown until the first successful poll."}
+            {editing ? t("editDescription") : t("addDescription")}
           </SheetDescription>
         </SheetHeader>
 
@@ -604,37 +623,39 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
           onSubmit={form.handleSubmit(onSubmit)}
         >
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="device-hostname">Hostname *</Label>
+            <Label htmlFor="device-hostname">{t("hostnameLabel")}</Label>
             <Input
               {...form.register("hostname")}
               aria-invalid={Boolean(form.formState.errors.hostname)}
               disabled={editing}
               id="device-hostname"
+              // Example-format DATA placeholder (hostname shape) — kept
+              // untranslated per the RT-020 precedent.
               placeholder="HQ-Core-RTR-01"
               className="font-tech"
             />
             {form.formState.errors.hostname && (
               <p className="text-xs text-danger">
-                {form.formState.errors.hostname.message}
+                {tForm(form.formState.errors.hostname.message)}
               </p>
             )}
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="device-display-name">Display name</Label>
+            <Label htmlFor="device-display-name">{t("displayNameLabel")}</Label>
             <Input {...form.register("displayName")} id="device-display-name" placeholder="HQ Core Router 01" />
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="device-vendor">Vendor *</Label>
+              <Label htmlFor="device-vendor">{t("vendorLabel")}</Label>
               <Select
                 disabled={editing}
                 onValueChange={(value) => form.setValue("vendorId", value, { shouldValidate: true })}
                 value={vendorId}
               >
-                <SelectTrigger aria-label="Vendor" id="device-vendor">
-                  <SelectValue placeholder="Select vendor" />
+                <SelectTrigger aria-label={t("vendorAria")} id="device-vendor">
+                  <SelectValue placeholder={t("vendorPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {vendors.map((vendor) => (
@@ -645,17 +666,17 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
                 </SelectContent>
               </Select>
               {form.formState.errors.vendorId && (
-                <p className="text-xs text-danger">{form.formState.errors.vendorId.message}</p>
+                <p className="text-xs text-danger">{tForm(form.formState.errors.vendorId.message)}</p>
               )}
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="device-model">Model</Label>
+              <Label htmlFor="device-model">{t("modelLabel")}</Label>
               <Input {...form.register("model")} id="device-model" placeholder="ISR4451-X" />
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="device-mgmt-ip">Management IP *</Label>
+            <Label htmlFor="device-mgmt-ip">{t("mgmtIpLabel")}</Label>
             <Input
               {...form.register("mgmtIp")}
               aria-invalid={Boolean(form.formState.errors.mgmtIp)}
@@ -665,23 +686,23 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
               placeholder="10.20.255.1"
             />
             {form.formState.errors.mgmtIp && (
-              <p className="text-xs text-danger">{form.formState.errors.mgmtIp.message}</p>
+              <p className="text-xs text-danger">{tForm(form.formState.errors.mgmtIp.message)}</p>
             )}
             <DetectionSection editing={editing} form={form} vendors={vendors} />
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label>Site</Label>
+              <Label>{t("siteLabel")}</Label>
               <Select
                 onValueChange={(value) => form.setValue("siteId", value === "NONE" ? "" : value)}
                 value={siteId || "NONE"}
               >
-                <SelectTrigger aria-label="Site">
-                  <SelectValue placeholder="Unassigned" />
+                <SelectTrigger aria-label={t("siteAria")}>
+                  <SelectValue placeholder={t("unassigned")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="NONE">Unassigned</SelectItem>
+                  <SelectItem value="NONE">{t("unassigned")}</SelectItem>
                   {sites.map((site) => (
                     <SelectItem key={site.id} value={site.id}>
                       {site.name} ({site.code})
@@ -691,14 +712,14 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Criticality</Label>
+              <Label>{t("criticalityLabel")}</Label>
               <Select
                 onValueChange={(value) =>
                   form.setValue("criticality", value as FormValues["criticality"])
                 }
                 value={criticality}
               >
-                <SelectTrigger aria-label="Criticality">
+                <SelectTrigger aria-label={t("criticalityAria")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -713,7 +734,7 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>Data plane</Label>
+            <Label>{t("dataPlaneLabel")}</Label>
             <Select
               onValueChange={(value) =>
                 form.setValue("dataSource", value as FormValues["dataSource"], {
@@ -722,31 +743,24 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
               }
               value={dataSource}
             >
-              <SelectTrigger aria-label="Data plane">
+              <SelectTrigger aria-label={t("dataPlaneAria")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="SIMULATOR">Simulator (deterministic demo adapters)</SelectItem>
-                <SelectItem value="LIVE_SSH">Live device (read-only SSH)</SelectItem>
+                <SelectItem value="SIMULATOR">{t("dataPlaneSimulator")}</SelectItem>
+                <SelectItem value="LIVE_SSH">{t("dataPlaneLive")}</SelectItem>
               </SelectContent>
             </Select>
             {isLive ? (
-              <p className="text-xs text-muted-foreground">
-                The worker connects over REAL SSH (exec-only, read-only show
-                commands). Certified live vendors: Cisco IOS/IOS-XE, Fortinet
-                FortiOS, HPE Aruba AOS-CX.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("liveDataPlaneHint")}</p>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                Simulator devices answer the worker deterministically — ideal
-                for demos, training and workflow testing.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("simulatorDataPlaneHint")}</p>
             )}
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="device-credential-profile">
-              Credential profile{isLive ? " *" : ""}
+              {isLive ? t("credentialLabelRequired") : t("credentialLabel")}
             </Label>
             <Select
               onValueChange={(value) =>
@@ -757,14 +771,14 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
               value={credentialProfileId || "NONE"}
             >
               <SelectTrigger
-                aria-label="Credential profile"
+                aria-label={t("credentialAria")}
                 aria-invalid={Boolean(form.formState.errors.credentialProfileId)}
                 id="device-credential-profile"
               >
-                <SelectValue placeholder="None yet" />
+                <SelectValue placeholder={t("credentialPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="NONE">— none —</SelectItem>
+                <SelectItem value="NONE">{t("credentialNoneOption")}</SelectItem>
                 {profiles.map((profile) => (
                   <SelectItem key={profile.id} value={profile.id}>
                     {profile.name} · {profile.type}
@@ -774,32 +788,34 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
             </Select>
             {form.formState.errors.credentialProfileId && (
               <p className="text-xs text-danger">
-                {form.formState.errors.credentialProfileId.message}
+                {tForm(form.formState.errors.credentialProfileId.message)}
               </p>
             )}
             <p className="text-xs text-muted-foreground">
               {isLive
-                ? `Required for live devices — use an ${liveWebApiVendor ? "API_TOKEN (the SFOS WebAPI api-key)" : "SSH_PASSWORD"} profile and make sure its secret exists in the worker vault (FAYANMS_VAULT_*).`
-                : "Managed in Administration → Credential Profiles — secrets stay in the vault, FayaNMS stores references only."}
+                ? liveWebApiVendor
+                  ? t("credentialHintLiveApiToken")
+                  : t("credentialHintLivePassword")
+                : t("credentialHintManaged")}
             </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="device-tags">Tags</Label>
+            <Label htmlFor="device-tags">{t("tagsLabel")}</Label>
             <Input
               {...form.register("tags")}
               id="device-tags"
               placeholder="core, bgp, hsrp"
             />
-            <p className="text-xs text-muted-foreground">Comma-separated keywords.</p>
+            <p className="text-xs text-muted-foreground">{t("tagsHint")}</p>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="device-notes">Description</Label>
+            <Label htmlFor="device-notes">{t("notesLabel")}</Label>
             <Textarea
               {...form.register("notes")}
               id="device-notes"
-              placeholder="Role, location notes, operational context…"
+              placeholder={t("notesPlaceholder")}
               rows={3}
             />
           </div>
@@ -812,11 +828,11 @@ export function AddDeviceSheet({ open, onOpenChange, device }: DeviceFormSheetPr
               type="button"
               variant="outline"
             >
-              Cancel
+              {t("cancel")}
             </Button>
             <Button disabled={pending} type="submit">
               {pending && <LoaderCircle aria-hidden="true" className="animate-spin" />}
-              {editing ? "Save changes" : "Create device"}
+              {editing ? t("saveChanges") : t("createDevice")}
             </Button>
           </SheetFooter>
         </form>

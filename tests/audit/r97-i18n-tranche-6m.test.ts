@@ -58,8 +58,8 @@ describe("R97 — discovery namespace", () => {
   });
 
   test("updates dictionary totals at current HEAD after R102", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(3214);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(3214);
+    expect(leaves(readJson("messages/en.json")).length).toBe(3309);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(3309);
   });
 });
 
