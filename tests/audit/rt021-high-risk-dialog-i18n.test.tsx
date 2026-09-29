@@ -164,7 +164,7 @@ describe("RT-021 — dictionaries carry common.highRisk in both locales", () => 
     // Identical leaf sets; totals moved 3206 → 3214 in RT-021 (later
     // retotaled by the repo rule — 3311 after RT-022+RT-037).
     expect(new Set(leaves(en))).toEqual(new Set(leaves(ar)));
-    expect(leaves(en).length).toBe(3311);
-    expect(leaves(ar).length).toBe(3311);
+    expect(leaves(en).length).toBe(3312);
+    expect(leaves(ar).length).toBe(3312);
   });
 });

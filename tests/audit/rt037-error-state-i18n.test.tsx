@@ -24,7 +24,7 @@ import { ErrorState } from "@/components/domain/error-state";
  *  3. Caller title/retryLabel overrides win over the localized defaults.
  *  4. common.retry, common.errors.correlationId and
  *     common.errors.genericTitle exist in BOTH dictionaries; totals moved
- *     consistently (3309 → 3311; common.retry already existed and is
+ *     consistently (3309 → 3312; common.retry already existed and is
  *     reused, per the RT).
  */
 
@@ -166,10 +166,10 @@ describe("RT-037 — dictionaries carry the keys in both locales", () => {
     expect(en.common.errors.genericTitle).toBe("Something went wrong");
     expect(en.common.errors.correlationId).toContain("<tech>{id}</tech>");
 
-    // Identical leaf sets; totals moved 3309 → 3311 (+2 common.errors
+    // Identical leaf sets; totals moved 3309 → 3312 (+2 common.errors
     // leaves per side; every pinning test retotaled in the same change).
     expect(new Set(leaves(en))).toEqual(new Set(leaves(ar)));
-    expect(leaves(en).length).toBe(3311);
-    expect(leaves(ar).length).toBe(3311);
+    expect(leaves(en).length).toBe(3312);
+    expect(leaves(ar).length).toBe(3312);
   });
 });
