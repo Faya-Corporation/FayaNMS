@@ -166,6 +166,92 @@ jobs:
             org.opencontainers.image.source=https://github.com/Faya-Corporation/FayaNMS
             org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
 
+      # RT-017 / F-024 — scan BEFORE any publication. The three gate steps
+      # below build the images LOCALLY (push: false, load: true) and the
+      # trivy gate scans those LOCAL refs; only after all three gates pass
+      # do the multi-arch push steps run, so every published image has
+      # already passed the HIGH/CRITICAL gate.
+      # Multi-arch note: buildx cannot `load` a multi-platform manifest, so
+      # the gate runs on the locally built linux/amd64 image — the
+      # vulnerability surface is effectively identical across arches for
+      # these images (same Dockerfiles, same digest-pinned bases), the
+      # dedicated arm64 job additionally builds and scans linux/arm64
+      # locally, and the arm64 attestation still ships via the later
+      # multi-arch push (buildx cache makes the second build cheap).
+      - name: Build gate image (local, never pushed)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: fayanms:gate
+          build-args: |
+            NEXT_PUBLIC_SITE_URL=https://fayanms.invalid
+            FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
+
+      - name: Build gate worker image (local, never pushed)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: Dockerfile.worker
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: fayanms-worker:gate
+          build-args: |
+            FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
+
+      - name: Build gate migration image (local, never pushed)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: Dockerfile.migrator
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: fayanms-migrator:gate
+          build-args: |
+            FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
+
+      # Gate contract mirrors ci.yml's image scans and R78-B policy:
+      # fatal for every HIGH/CRITICAL result, including unfixed findings —
+      # evaluated on the LOCALLY BUILT image, BEFORE any push (RT-017:
+      # published images have always passed the gate).
+      # (trivy-action's sarif mode ignores the severity filter — running the
+      # gate in sarif format made ANY low-severity base-image finding fatal,
+      # which is stricter than the R78 policy the repo actually enforces.)
+      - name: Scan built image (HIGH/CRITICAL fatal)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: fayanms:gate
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          exit-code: "1"
+
+      - name: Scan built worker image (HIGH/CRITICAL fatal)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: fayanms-worker:gate
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          exit-code: "1"
+
+      - name: Scan built migration image (HIGH/CRITICAL fatal)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: fayanms-migrator:gate
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          exit-code: "1"
+
+      # Reached only after all three gates above passed on the local image.
       - name: Build and push immutable multi-architecture image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -207,39 +293,6 @@ jobs:
             FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
           sbom: true
           provenance: mode=max
-
-      # Gate contract mirrors ci.yml's image scans and R78-B policy:
-      # fatal for every HIGH/CRITICAL result, including unfixed findings.
-      # (trivy-action's sarif mode ignores the severity filter — running the
-      # gate in sarif format made ANY low-severity base-image finding fatal,
-      # which is stricter than the R78 policy the repo actually enforces.)
-      - name: Scan published image (HIGH/CRITICAL fatal)
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: ghcr.io/faya-corporation/fayanms:${{ github.event.workflow_run.head_sha }}
-          format: table
-          severity: CRITICAL,HIGH
-          ignore-unfixed: false
-          exit-code: "1"
-
-      - name: Scan published worker image
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
-        with:
-          image-ref: ghcr.io/faya-corporation/fayanms-worker:${{ github.event.workflow_run.head_sha }}
-          format: table
-          severity: CRITICAL,HIGH
-          ignore-unfixed: false
-          exit-code: "1"
-
-      - name: Scan published migration image
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
-        with:
-          image-ref: ghcr.io/faya-corporation/fayanms-migrator:${{ github.event.workflow_run.head_sha }}
-          format: table
-          severity: CRITICAL,HIGH
-          ignore-unfixed: false
-          exit-code: "1"
 
       # Structured evidence for the release-evidence manifest: SARIF with all
       # severities, NON-blocking (exit 0), captured even when the gate above
