@@ -74,3 +74,7 @@ docker compose --env-file .env -f deploy/oci/compose.yml config >/dev/null && ec
 ## Rollout & rollback notes
 
 Requires a one-time operator action on the host (create `.env.app`/`.env.worker` from the examples, keep `.env` host-side) BEFORE the next deploy; deploy.sh's new preflight enforces the ordering. Rollback = revert compose.yml to `env_file: .env` (old host layout still works until the boot-policy deprecation window closes — that window is exactly why this RT is P1).
+
+## Status
+
+Fixed (a2c56f8)
