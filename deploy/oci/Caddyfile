@@ -17,8 +17,15 @@
   @internal_metrics path /api/metrics
   respond @internal_metrics 404
 
+  # RT-029 / F-058: access logs go to STDOUT as JSON — docker's json-file
+  # driver (compose.yml caddy service: max-size 10m / max-file 5) owns
+  # retention. The previous file output pointed at an UNMOUNTED container-
+  # local log directory (the official caddy:2-alpine image does not ship
+  # it — first-boot provision failure), and container-local files are lost
+  # on recreation anyway. Read the access log with:
+  #   docker logs fayanms-staging-caddy-1   (JSON access lines)
   log {
-    output file /var/log/caddy/fayanms-access.log
+    output stdout
     format json
   }
 
