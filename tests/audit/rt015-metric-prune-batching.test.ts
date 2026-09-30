@@ -32,7 +32,6 @@ import {
 } from "../../src/lib/performance/retention";
 
 const VENDOR_KEY = "rt015-test-vendor";
-const ADMIN_EMAIL = "admin@faya.local";
 const MIGRATION_DIR = "20260924000000_rt015_hot_path_indexes";
 
 const testStartedAt = new Date();
@@ -111,11 +110,9 @@ beforeAll(async () => {
     where: { key: METRICS_RETENTION_KEY },
     select: { key: true, valueJson: true },
   });
-  const admin = await db.user.findUnique({
-    where: { email: ADMIN_EMAIL },
-    select: { id: true },
-  });
-  expect(admin).not.toBeNull(); // demo admin must exist
+  // No user fixture needed: this file mints a SERVICE token, not a session
+  // JWT. The CI gate replays only `migrate deploy` on a fresh database (no
+  // demo seed), so nothing here may assume seeded rows.
   adminJwt = mintServiceJwt();
   try {
     await db.$queryRaw`SELECT 1`;

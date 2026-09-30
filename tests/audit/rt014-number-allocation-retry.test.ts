@@ -22,6 +22,7 @@ import { encode } from "next-auth/jwt";
 import { Prisma } from "@prisma/client";
 
 import { db } from "../../src/lib/db";
+import { ROLE_MATRIX } from "../../src/lib/auth/role-matrix";
 import {
   createIncidentForAlert,
   nextIncidentNumber,
@@ -59,6 +60,44 @@ async function mintSessionJwt(user: {
     },
     secret: process.env.NEXTAUTH_SECRET ?? "",
   });
+}
+
+/** Session-shaped projection of the admin identity (change requester). */
+type AuditAdminUser = { id: string; email: string; name: string | null; role: string };
+
+/**
+ * Self-contained admin identity. The CI gate replays ONLY `migrate deploy`
+ * on a fresh service container (no demo seed), so `admin@faya.local` cannot
+ * be assumed to exist — and neither can the seeded admin ROLE row that
+ * loadRolePermissions() resolves User.role against (a missing row turns
+ * every requirePermission() into a 403). The Role upsert sources its
+ * permissions from ROLE_MATRIX — the same single source of truth the seed
+ * uses — and leaves an existing row untouched (update: {}). The user upsert
+ * is atomic (ON CONFLICT on the unique email), so concurrent test files on
+ * the shared database stay safe; the rows are never deleted afterwards —
+ * they are seed-equivalent shared state, and removing them mid-run could
+ * break parallel test files.
+ */
+let auditAdmin: AuditAdminUser | null = null;
+async function ensureAuditAdmin(): Promise<AuditAdminUser> {
+  if (auditAdmin) return auditAdmin;
+  const adminEntry = ROLE_MATRIX.find((role) => role.name === "admin");
+  await db.role.upsert({
+    where: { name: "admin" },
+    update: {},
+    create: {
+      name: "admin",
+      description: adminEntry?.description ?? "Full platform administration",
+      permissionsJson: JSON.stringify(adminEntry?.permissions ?? ["*"]),
+    },
+  });
+  auditAdmin = await db.user.upsert({
+    where: { email: ADMIN_EMAIL },
+    update: { isActive: true },
+    create: { email: ADMIN_EMAIL, name: "RT014 Admin", role: "admin", isActive: true },
+    select: { id: true, email: true, name: true, role: true },
+  });
+  return auditAdmin;
 }
 
 async function createAlert(severity: string, message: string): Promise<string> {
@@ -134,12 +173,8 @@ beforeAll(async () => {
     select: { id: true },
   });
   deviceId = device.id;
-  const admin = await db.user.findUnique({
-    where: { email: ADMIN_EMAIL },
-    select: { id: true, email: true, name: true, role: true },
-  });
-  expect(admin).not.toBeNull();
-  adminJwt = await mintSessionJwt(admin!);
+  const admin = await ensureAuditAdmin();
+  adminJwt = await mintSessionJwt(admin);
 });
 
 afterAll(async () => {

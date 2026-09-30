@@ -25,6 +25,7 @@ import { encode } from "next-auth/jwt";
 import type { PrismaClient } from "@prisma/client";
 
 import { db } from "../../src/lib/db";
+import { ROLE_MATRIX } from "../../src/lib/auth/role-matrix";
 import {
   computeAuditHash,
   GENESIS,
@@ -48,6 +49,44 @@ async function mintSessionJwt(user: { id: string; email: string; name: string | 
     token: { id: user.id, email: user.email, name: user.name ?? undefined, role: user.role },
     secret: process.env.NEXTAUTH_SECRET ?? "",
   });
+}
+
+/** Session-shaped projection of the admin identity (chain actor). */
+type ChainAdminUser = { id: string; email: string; name: string | null; role: string };
+
+/**
+ * Self-contained admin identity. The CI gate replays ONLY `migrate deploy`
+ * on a fresh service container (no demo seed), so `admin@faya.local` cannot
+ * be assumed to exist — and neither can the seeded admin ROLE row that
+ * loadRolePermissions() resolves User.role against (a missing row turns
+ * every requirePermission() into a 403). The Role upsert sources its
+ * permissions from ROLE_MATRIX — the same single source of truth the seed
+ * uses — and leaves an existing row untouched (update: {}). The user upsert
+ * is atomic (ON CONFLICT on the unique email), so concurrent test files on
+ * the shared database stay safe; the rows are never deleted afterwards —
+ * they are seed-equivalent shared state, and removing them mid-run could
+ * break parallel test files.
+ */
+let chainAdmin: ChainAdminUser | null = null;
+async function ensureChainAdmin(): Promise<ChainAdminUser> {
+  if (chainAdmin) return chainAdmin;
+  const adminEntry = ROLE_MATRIX.find((role) => role.name === "admin");
+  await db.role.upsert({
+    where: { name: "admin" },
+    update: {},
+    create: {
+      name: "admin",
+      description: adminEntry?.description ?? "Full platform administration",
+      permissionsJson: JSON.stringify(adminEntry?.permissions ?? ["*"]),
+    },
+  });
+  chainAdmin = await db.user.upsert({
+    where: { email: ADMIN_EMAIL },
+    update: { isActive: true },
+    create: { email: ADMIN_EMAIL, name: "RT012 Admin", role: "admin", isActive: true },
+    select: { id: true, email: true, name: true, role: true },
+  });
+  return chainAdmin;
 }
 
 async function bulkPost(body: unknown, sessionJwt?: string): Promise<Response> {
@@ -181,16 +220,12 @@ afterAll(async () => {
 
 describe("RT-012 bulk audit chain stamping (DB)", () => {
   test("bulk backup_now stamps every audit row onto the chain", async () => {
-    const admin = await db.user.findUnique({
-      where: { email: ADMIN_EMAIL },
-      select: { id: true, email: true, name: true, role: true },
-    });
-    expect(admin).not.toBeNull();
+    const admin = await ensureChainAdmin();
 
     const threeIds = deviceIds.slice(0, 3);
     const response = await bulkPost(
       { action: "backup_now", deviceIds: threeIds },
-      await mintSessionJwt(admin!)
+      await mintSessionJwt(admin)
     );
     if (response.status !== 200) console.error("PROBE_BODY", await response.clone().text());
     expect(response.status).toBe(200);
@@ -242,16 +277,13 @@ describe("RT-012 bulk audit chain stamping (DB)", () => {
   });
 
   test("chain verify verdict is not degraded by the bulk run", async () => {
-    const admin = await db.user.findUnique({
-      where: { email: ADMIN_EMAIL },
-      select: { id: true, email: true, name: true, role: true },
-    });
+    const admin = await ensureChainAdmin();
 
     const before = await verifyAuditChain(db as unknown as PrismaClient);
 
     const response = await bulkPost(
       { action: "backup_now", deviceIds: [deviceIds[3]] },
-      await mintSessionJwt(admin!)
+      await mintSessionJwt(admin)
     );
     expect(response.status).toBe(200);
 
@@ -291,12 +323,8 @@ describe("RT-012 bulk audit chain stamping (DB)", () => {
   });
 
   test("concurrent bulk runs keep the chain linear", async () => {
-    const admin = await db.user.findUnique({
-      where: { email: ADMIN_EMAIL },
-      select: { id: true, email: true, name: true, role: true },
-    });
-    expect(admin).not.toBeNull();
-    const jwt = await mintSessionJwt(admin!);
+    const admin = await ensureChainAdmin();
+    const jwt = await mintSessionJwt(admin);
 
     // Two parallel bulk posts race for the same chain tail: the extension's
     // P2002 retry must converge BOTH onto a single linear sequence.

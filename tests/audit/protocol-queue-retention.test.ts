@@ -20,8 +20,8 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 
 import { db } from "../../src/lib/db";
 import { mintServiceToken } from "../../src/lib/auth/service-auth";
@@ -284,12 +284,22 @@ describe("queue retention policy (pure)", () => {
 /* ── wiring contracts ─────────────────────────────────────────────────── */
 
 test("deleteMany exists ONLY in the retention sweep", () => {
-  const hits = execSync("rg -l \"protocolEventQueue.deleteMany\" src/ || true", {
-    encoding: "utf8",
-  })
-    .trim()
-    .split("\n")
-    .filter(Boolean);
+  // Pure-node source walk — no external binary dependency. The previous
+  // `execSync("rg -l …")` version silently returned zero hits on CI runner
+  // images without ripgrep (the `|| true` swallowed the spawn failure) and
+  // produced a false red.
+  const hits: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p = path.posix.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(p);
+      } else if (entry.isFile() && readFileSync(p, "utf8").includes("protocolEventQueue.deleteMany")) {
+        hits.push(p);
+      }
+    }
+  };
+  walk("src");
   expect(hits).toEqual(["src/lib/protocol/queue-retention.ts"]);
 });
 
