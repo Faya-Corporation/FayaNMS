@@ -1,28 +1,23 @@
 # FayaNMS — ACTIVE CI gate (.github/workflows/ci.yml · task R2-c · re-audit finding B0-002).
 #
-# ── GOVERNANCE STATUS (reconciled with LIVE GitHub state, DOC-001-A 2026-09-15) ──
+# ── GOVERNANCE STATUS (RT-034 refresh 2026-09-30; reconciled with worklog Task 3) ──
 # Workflow:          ACTIVE — this workflow runs ALL FOUR jobs (gate + e2e +
 #                    browser + scan) on every push and pull_request.
-# Branch protection: NOT ACTIVE. Live API read-back 2026-09-15:
-#                    branches/main → protected:false, protection.enabled:false,
-#                    required status checks enforcement_level:off, zero contexts.
-#                    (The earlier "protection active" claim here was governance
-#                    drift — the earlier settings-side activation did not hold.)
-# Required checks:   gate + scan + e2e + browser are DESIGNED as required checks —
-#                    the ruleset must be (re-)enabled by the OWNER (GOV-001,
-#                    docs/audits/FayaNMS-NEXT-TASKS.md): PRs required, gate+scan+e2e+browser
-#                    as required status checks, no force-push/deletion, admin bypass
-#                    scoped and recorded (SOCIAL-REPOSITORY §6). Until then, direct
-#                    pushes to main run these gates from the sandbox with the results
-#                    recorded honestly per commit in worklog.md (R70 update: the
-#                    runner-capacity block lifted 2026-09-19 — run 35414649589 was
-#                    the FIRST real gate execution; CI bring-up findings are
-#                    remediated in-branch and re-proven by dispatch per push).
+# Branch protection: ACTIVE (owner-applied, worklog Task 3, 2026-09-19).
+#                    Required checks: gate, e2e, browser, scan (strict;
+#                    enforce_admins=false). MAINTENANCE RULE: refresh this
+#                    block and the read-back date whenever the protection
+#                    settings change again, so the next drift self-flags
+#                    here (this is the exact drift RT-034 fixed).
+# Executable contract: bun scripts/gov-verify.ts (GOV gate); see
+#                    docs/runbooks/governance.md.
 # required-checks: gate, scan, e2e, browser
-# History:           the activation path (PAT workflow-scope blocker, the corrupted
-#                    `branches:` trigger, the docs/ci/ci-gate.yml pointer era,
-#                    runs #1–#5 shakedown failures, first green run #6) is recorded
-#                    in worklog.md and docs/brand/SOCIAL-REPOSITORY.md §6.
+# History (NOT status): the CI bring-up era — the PAT workflow-scope blocker,
+#                    the corrupted `branches:` trigger, the docs/ci/ci-gate.yml
+#                    pointer era, runs #1–#6 shakedown, first green run #6, and
+#                    the 2026-09-15 DOC-001-A read-back that found protection
+#                    off (before the owner applied it on 2026-09-19) — is
+#                    recorded in worklog.md and docs/brand/SOCIAL-REPOSITORY.md §6.
 #
 # Supply-chain hardening (re-audit R10-005, 2026-09-11): every third-party action is
 # pinned to the full commit SHA its version tag resolved to on 2026-09-11 (tags are
