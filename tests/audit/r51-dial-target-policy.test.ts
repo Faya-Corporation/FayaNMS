@@ -269,8 +269,14 @@ describe("R51-A1 — wiring pins (the job plane cannot bypass the guard)", () =>
 });
 
 describe("R51-A2 — /api/v1/meta no longer discloses credential-profile usernames", () => {
-  test("the pre-auth bootstrap select carries no username column (with a pin)", () => {
-    expect(META_ROUTE).toContain("// R51-A2: no `username` here — pre-auth bootstrap surface.");
+  test("the reference select carries no username column (with a pin)", () => {
+    // RT-024 (F-028): the reference data moved to the AUTHENTICATED
+    // /api/v1/meta/reference — the pre-auth meta route no longer queries
+    // credential profiles at all, and the R51-A2 pin moved with it.
+    expect(META_ROUTE).not.toContain("credentialProfile");
     expect(META_ROUTE).not.toContain("type: true, username: true");
+    const referenceRoute = readFileSync("src/app/api/v1/meta/reference/route.ts", "utf8");
+    expect(referenceRoute).toContain("// R51-A2: no `username` here.");
+    expect(referenceRoute).not.toContain("type: true, username: true");
   });
 });

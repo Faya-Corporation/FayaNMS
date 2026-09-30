@@ -40,14 +40,29 @@ describe("HC-2 — the bootstrap payload carries zero user records", () => {
     expect(body.success).toBe(true);
     // The F-N3 core assertion — machine-pinned:
     expect("users" in body.data).toBe(false);
-    // The pre-auth-needed reference data the sign-in transition requires:
+    // RT-024 (F-028): the pre-auth surface is EMPTY by contract — vendors,
+    // sites and credential profiles moved to the AUTHENTICATED
+    // /api/v1/meta/reference (see tests/audit/rt024-meta-preauth-trim.test.ts).
+    expect("vendors" in body.data).toBe(false);
+    expect("sites" in body.data).toBe(false);
+    expect("credentialProfiles" in body.data).toBe(false);
+  });
+
+  test("wire-level: GET /api/v1/meta/reference (handler, real DB) carries the pickers", async () => {
+    const { GET } = await import("@/app/api/v1/meta/reference/route");
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      success: boolean;
+      data: { vendors: unknown[]; sites: unknown[]; credentialProfiles: { username?: string }[] };
+    };
+    expect(body.success).toBe(true);
     expect(Array.isArray(body.data.vendors)).toBe(true);
     expect(Array.isArray(body.data.sites)).toBe(true);
     expect(Array.isArray(body.data.credentialProfiles)).toBe(true);
     // R51-A2 holds: no credential-profile operator usernames either.
-    const profiles = body.data.credentialProfiles as { username?: string }[];
-    if (profiles.length > 0) {
-      expect("username" in profiles[0]).toBe(false);
+    if (body.data.credentialProfiles.length > 0) {
+      expect("username" in body.data.credentialProfiles[0]).toBe(false);
     }
   });
 
