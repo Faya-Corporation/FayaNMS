@@ -1,6 +1,7 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
+import { encode } from "next-auth/jwt";
 
 /**
  * RT-008 / F-010 — CSRF origin check for cookie-session mutations.
@@ -25,26 +26,15 @@ import { NextRequest } from "next/server";
  * under test here, handler-level checks are separate suites.
  */
 
-mock.module("next-auth/jwt", () => ({
-  getToken: async ({ req }: { req: NextRequest }) => {
-    const raw = req.cookies.get("next-auth.session-token")?.value;
-    if (!raw) return null;
-    try {
-      return JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as {
-        id: string;
-        role: string;
-      };
-    } catch {
-      return null;
-    }
-  },
-}));
-
 const { proxy } = await import("@/proxy");
 
-const SESSION = Buffer.from(JSON.stringify({ id: "user-rt008", role: "admin" })).toString(
-  "base64url",
-);
+// REAL session token: minted with the production next-auth/jwt encoder and
+// the same secret the app reads — no module mocking (bun mock.module is
+// process-wide and would poison later suites that decode real tokens).
+const SESSION = await encode({
+  token: { id: "user-rt008", email: "rt008@faya.local", name: "RT-008 Admin", role: "admin" },
+  secret: process.env.NEXTAUTH_SECRET ?? "",
+});
 
 let ipCounter = 0;
 function sessionRequest(
@@ -175,3 +165,4 @@ describe("RT-008: CSRF origin check for cookie-session mutations", () => {
     await expectNext(response);
   });
 });
+

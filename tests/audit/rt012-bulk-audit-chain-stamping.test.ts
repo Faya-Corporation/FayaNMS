@@ -192,6 +192,7 @@ describe("RT-012 bulk audit chain stamping (DB)", () => {
       { action: "backup_now", deviceIds: threeIds },
       await mintSessionJwt(admin!)
     );
+    if (response.status !== 200) console.error("PROBE_BODY", await response.clone().text());
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       success: boolean;
