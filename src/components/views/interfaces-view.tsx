@@ -344,11 +344,11 @@ export function InterfacesView() {
         <div className="relative min-w-0 flex-1 sm:max-w-xs">
           <Search
             aria-hidden="true"
-            className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            className="absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
           />
           <Input
             aria-label={t("filters.searchAria")}
-            className="h-9 pl-8"
+            className="h-9 ps-8"
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder={t("filters.searchPlaceholder")}
             value={searchInput}

@@ -87,7 +87,7 @@ export function AdminCollectorsView() {
             onClick={() => void collectorsQuery.refetch()}
             disabled={collectorsQuery.isFetching}
           >
-            <RefreshCcw className={cn("mr-2 size-4", collectorsQuery.isFetching && "animate-spin")} />
+            <RefreshCcw className={cn("me-2 size-4", collectorsQuery.isFetching && "animate-spin")} />
             {t("registry.refresh")}
           </Button>
         }

@@ -73,11 +73,11 @@ export function DeviceInterfacesTab({ deviceId }: { deviceId: string }) {
         <div className="relative w-48 sm:w-56">
           <Search
             aria-hidden="true"
-            className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            className="absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
           />
           <Input
             aria-label="Search interfaces"
-            className="h-8 pl-8"
+            className="h-8 ps-8"
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Filter by name…"
             value={searchInput}

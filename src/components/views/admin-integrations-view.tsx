@@ -151,10 +151,10 @@ export function AdminIntegrationsView() {
           canWrite ? (
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => setChannelOpen(true)}>
-                <Bell className="mr-2 size-4" /> {t("common.newChannel")}
+                <Bell className="me-2 size-4" /> {t("common.newChannel")}
               </Button>
               <Button size="sm" onClick={() => setWebhookOpen(true)}>
-                <Webhook className="mr-2 size-4" /> {t("common.newWebhook")}
+                <Webhook className="me-2 size-4" /> {t("common.newWebhook")}
               </Button>
             </div>
           ) : undefined
@@ -251,7 +251,7 @@ export function AdminIntegrationsView() {
                           onClick={() => void testWebhookMut.mutateAsync(webhook.id)}
                           disabled={testWebhookMut.isPending}
                         >
-                          <Send className="mr-1 size-3" /> {t("common.test")}
+                          <Send className="me-1 size-3" /> {t("common.test")}
                         </Button>
                         <Button
                           variant="outline"
@@ -306,11 +306,11 @@ export function AdminIntegrationsView() {
                   <TableCell>
                     {channel.type === "EMAIL" ? (
                       <Badge className="bg-info/10 text-info">
-                        <Mail className="mr-1 size-3" /> {t("channelDialog.email")}
+                        <Mail className="me-1 size-3" /> {t("channelDialog.email")}
                       </Badge>
                     ) : (
                       <Badge className="bg-warning/10 text-warning">
-                        <Globe className="mr-1 size-3" /> {t("channelDialog.webhook")}
+                        <Globe className="me-1 size-3" /> {t("channelDialog.webhook")}
                       </Badge>
                     )}
                   </TableCell>
@@ -343,7 +343,7 @@ export function AdminIntegrationsView() {
                           onClick={() => void testChannelMut.mutateAsync(channel.id)}
                           disabled={testChannelMut.isPending}
                         >
-                          <Send className="mr-1 size-3" /> {t("common.test")}
+                          <Send className="me-1 size-3" /> {t("common.test")}
                         </Button>
                         <Button
                           variant="outline"

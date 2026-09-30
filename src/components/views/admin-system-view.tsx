@@ -147,9 +147,9 @@ export function AdminSystemView() {
           canWrite ? (
             <Button size="sm" onClick={() => void save()} disabled={dirty.length === 0 || updateSettings.isPending}>
               {updateSettings.isPending ? (
-                <LoaderCircle className="mr-2 size-4 animate-spin" />
+                <LoaderCircle className="me-2 size-4 animate-spin" />
               ) : (
-                <Save className="mr-2 size-4" />
+                <Save className="me-2 size-4" />
               )}
               {dirty.length > 0 ? t("saveWithCount", { count: dirty.length }) : t("save")}
             </Button>
@@ -185,15 +185,15 @@ export function AdminSystemView() {
                 disabled={backfillChain.isPending}
               >
                 {backfillChain.isPending ? (
-                  <LoaderCircle className="mr-1 size-3 animate-spin" />
+                  <LoaderCircle className="me-1 size-3 animate-spin" />
                 ) : (
-                  <Database className="mr-1 size-3" />
+                  <Database className="me-1 size-3" />
                 )}
                 {t("chain.runBackfill")}
               </Button>
             )}
             <Button variant="outline" size="sm" onClick={() => void auditChainQuery.refetch()} disabled={auditChainQuery.isFetching}>
-              <ShieldCheck className="mr-1 size-3" /> {t("chain.verify")}
+              <ShieldCheck className="me-1 size-3" /> {t("chain.verify")}
             </Button>
           </div>
         }
@@ -212,11 +212,11 @@ export function AdminSystemView() {
               <div className="flex items-center gap-2">
                 {chain.valid ? (
                   <Badge className="bg-success/10 text-success">
-                    <CheckCircle2 className="mr-1 size-3" /> {t("chain.validBadge", { count: chain.checked })}
+                    <CheckCircle2 className="me-1 size-3" /> {t("chain.validBadge", { count: chain.checked })}
                   </Badge>
                 ) : (
                   <Badge className="bg-danger-orange/10 text-danger-orange">
-                    <AlertTriangle className="mr-1 size-3" /> {t("chain.brokenBadge", { index: chain.brokenAt?.index ?? "—" })}
+                    <AlertTriangle className="me-1 size-3" /> {t("chain.brokenBadge", { index: chain.brokenAt?.index ?? "—" })}
                   </Badge>
                 )}
               </div>
@@ -304,7 +304,7 @@ export function AdminSystemView() {
         <div className="sticky bottom-4 flex items-center justify-between gap-3 rounded-lg border bg-background/95 p-3 shadow-sm backdrop-blur">
           <span className="text-sm">{t("unsavedChanges", { count: dirty.length })}</span>
           <Button size="sm" onClick={() => void save()} disabled={updateSettings.isPending}>
-            <Save className="mr-2 size-4" /> {t("saveNow")}
+            <Save className="me-2 size-4" /> {t("saveNow")}
           </Button>
         </div>
       )}
