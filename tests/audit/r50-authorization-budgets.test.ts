@@ -408,20 +408,29 @@ describe("R50-T025 — appendBounded accumulator", () => {
     expect(acc).toEqual({ text: "hello", bytes: 5, truncated: false });
   });
 
-  test("a chunk crossing the budget is taken whole; later chunks are dropped", () => {
+  test("a chunk crossing the budget is sliced to the exact remaining budget; later chunks are dropped", () => {
+    // RT-026 (F-042): the crossing chunk is no longer taken WHOLE — the
+    // accumulator appends exactly the remaining budget and drops the tail,
+    // so `bytes` never overshoots maxBytes (the pre-RT-026 behavior this
+    // pin asserted — bytes === 8 with a 4-byte cap — was the bug).
     let acc = { text: "", bytes: 0, truncated: false };
     acc = appendBounded(acc, Buffer.from("abcdefgh"), 4);
-    expect(acc.text).toBe("abcdefgh"); // whole chunk (documented granularity)
+    expect(acc.text).toBe("abcd"); // sliced to the exact remaining budget
+    expect(acc.bytes).toBe(4);
     expect(acc.truncated).toBe(true);
     acc = appendBounded(acc, Buffer.from("more"), 4);
-    expect(acc.text).toBe("abcdefgh"); // tail dropped
-    expect(acc.bytes).toBe(8);
+    expect(acc.text).toBe("abcd"); // tail dropped
+    expect(acc.bytes).toBe(4);
   });
 
-  test("multibyte characters are accounted by BYTES", () => {
+  test("multibyte characters are accounted by BYTES (exact cap at the boundary)", () => {
+    // RT-026: the cap is exact — `bytes` equals maxBytes. A 2-byte é sliced
+    // at the 1-byte boundary decodes as U+FFFD (documented in the helper's
+    // comment); the text's re-encoded length may exceed the cap by at most
+    // the 2 bytes of the split sequence — the accumulator counter does not.
     let acc = { text: "", bytes: 0, truncated: false };
     acc = appendBounded(acc, Buffer.from("é"), 1); // 2 bytes in UTF-8
-    expect(acc.bytes).toBe(2);
+    expect(acc.bytes).toBe(1);
     expect(acc.truncated).toBe(true);
   });
 

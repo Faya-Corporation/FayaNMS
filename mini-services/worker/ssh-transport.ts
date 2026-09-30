@@ -332,9 +332,16 @@ export async function sshProbe(
 
 /**
  * R50-T025 — the bounded stdout/stderr accumulator. Appends a chunk while
- * the byte budget allows; past the budget the tail is DROPPED (chunk
- * granularity — no partial re-slicing) and the truncation is reported so
- * callers can observe it. Pure: unit-pinned in the audit suite.
+ * the byte budget allows; past the budget the crossing chunk is sliced to
+ * the EXACT remaining budget and the tail is dropped (RT-026: the cap is
+ * enforced exactly — `bytes` never overshoots `maxBytes`) and the
+ * truncation is reported so callers can observe it. Pure: unit-pinned in
+ * the audit suite.
+ *
+ * Byte-accurate note: Buffer.subarray slices at a BYTE boundary and can
+ * split a multi-byte UTF-8 sequence — the trailing replacement char
+ * (\uFFFD) is acceptable at a truncation boundary (the stream is already
+ * `truncated: true`). Do NOT "fix" this into an unbounded decoder loop.
  */
 export function appendBounded(
   current: { text: string; bytes: number; truncated: boolean },
@@ -352,12 +359,14 @@ export function appendBounded(
       truncated: current.truncated,
     };
   }
-  // This chunk crosses the budget: take the whole chunk, drop the rest.
-  return {
-    text: current.text + chunk.toString(),
-    bytes: current.bytes + chunkBytes,
-    truncated: true,
-  };
+  // This chunk crosses the budget: append ONLY the remaining budget and
+  // drop the tail (RT-026 / F-042 — exact cap, no whole-chunk overshoot).
+  const remaining = maxBytes - current.bytes;
+  const sliced =
+    typeof chunk === "string"
+      ? Buffer.from(chunk, "utf8").subarray(0, remaining).toString("utf8")
+      : chunk.subarray(0, remaining).toString("utf8");
+  return { text: current.text + sliced, bytes: maxBytes, truncated: true };
 }
 
 /**
