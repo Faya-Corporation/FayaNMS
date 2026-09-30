@@ -39,6 +39,8 @@
 import { createHash } from "node:crypto";
 import { Client } from "ssh2";
 
+import { log } from "./next-client";
+
 export class SshError extends Error {
   constructor(
     public readonly code:
@@ -370,9 +372,22 @@ export function appendBounded(
 }
 
 /**
+ * RT-027 / F-043 — the client-facing rejection for a non-zero exec exit.
+ * Extracted (pure) so the audit suite can pin the exact prose hermetically:
+ * the message carries the command + exit code ONLY — device output is
+ * NEVER interpolated into client-facing error text (it goes to the
+ * server-side log at the rejection site in sshExecText).
+ */
+export function sshExecRejection(command: string, exitCode: number | null): SshError {
+  return new SshError("SSH_EXEC_FAILED", `Command "${command}" exited with ${exitCode}`);
+}
+
+/**
  * Connect, execute ONE command on the exec channel, collect stdout,
- * disconnect. Non-zero exit or stderr-backed failures surface as
- * SSH_EXEC_FAILED with a bounded excerpt.
+ * disconnect. Non-zero exit surfaces as SSH_EXEC_FAILED (RT-027 / F-043:
+ * the message carries the command + exit code ONLY — the device-output
+ * excerpt stays server-side in worker.log, it never travels in the error
+ * that reaches job records / control-plane clients).
  */
 export async function sshExecText(
   creds: SshCredentials,
@@ -421,12 +436,15 @@ export async function sshExecText(
         stream.on("close", () => {
           clearTimeout(timer);
           if (exitCode !== null && exitCode !== 0) {
-            reject(
-              new SshError(
-                "SSH_EXEC_FAILED",
-                `Command "${command}" exited with ${exitCode}: ${(errOut || out).slice(0, 200)}`,
-              ),
+            // RT-027 / F-043 — the 200-char device-output excerpt is
+            // SERVER-SIDE ONLY (worker.log). The client-facing SshError
+            // message carries the command + exit code; the code (not the
+            // prose) is the contract, and device text must not travel in
+            // error messages that end up in job records / the UI.
+            void log(
+              `SSH_EXEC_FAILED exit ${exitCode} on "${command}" — device output excerpt (server-side only): ${(errOut || out).slice(0, 200)}`,
             );
+            reject(sshExecRejection(command, exitCode));
             return;
           }
           resolve(out);

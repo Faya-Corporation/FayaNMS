@@ -78,7 +78,7 @@
  * same-host loopback contract).
  */
 
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { adapters, pickAdapter, type DeviceTarget } from "./adapters";
 import { LIVE_SSH_FLAVORS, LiveAdapterError, createLiveSshAdapter } from "./live-ssh";
 import {
@@ -974,11 +974,29 @@ export async function handle(req: Request): Promise<Response> {
     return Response.json({ ok: false, error: `No route: ${req.method} ${url.pathname}` }, { status: 404 });
   } catch (e) {
     // Handler errors are JSON, never hangs (all inner work is timeout-bounded).
-    return Response.json(
-      { ok: false, error: (e as Error)?.message ?? "internal error" },
-      { status: 500 }
-    );
+    return internalErrorResponse(e);
   }
+}
+
+/**
+ * RT-027 / F-043 — the catch-all for GENUINELY unexpected errors. Typed
+ * errors (VaultError / SshError / LiveAdapterError / TargetPolicyError /
+ * HostKeyPolicyError / LiveChangeError) are handled INSIDE their routes
+ * with their own typed responses; this path must never leak internal
+ * detail (vault file paths, DNS codes, stack-adjacent text) to
+ * control-plane callers. The full error goes to the SERVER log (worker.log)
+ * keyed by the correlation id — the response carries only the generic
+ * message + the correlation id for cross-referencing.
+ * Exported for the audit suite (response-shape pin).
+ */
+export function internalErrorResponse(e: unknown): Response {
+  const correlationId = randomUUID();
+  const detail = e instanceof Error ? (e.stack ?? e.message) : String(e);
+  void log(`[correlation ${correlationId}] unhandled worker error: ${detail}`);
+  return Response.json(
+    { ok: false, error: "Internal worker error", correlationId },
+    { status: 500 }
+  );
 }
 
 if (import.meta.main) {

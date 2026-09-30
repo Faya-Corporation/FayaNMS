@@ -120,8 +120,9 @@ describe("RT-025 — worker /api/metrics bearer discipline", () => {
   test("metrics compare is constant-time (timingSafeEqual from node:crypto)", () => {
     // Source pin: the metrics path must use the repo's standard bearer
     // discipline (RT-009 pattern) — no plain `!==` against the configured
-    // token remains.
-    expect(WORKER_INDEX_SOURCE).toContain('import { createHash, timingSafeEqual } from "node:crypto"');
+    // token remains. The import assertion is shape-based (the module may
+    // legitimately import other crypto helpers alongside).
+    expect(WORKER_INDEX_SOURCE).toMatch(/import \{[^}]*timingSafeEqual[^}]*\} from "node:crypto"/);
     expect(WORKER_INDEX_SOURCE).toContain("timingSafeEqual(suppliedBuf, expected)");
     expect(WORKER_INDEX_SOURCE).not.toMatch(/supplied\s*!==\s*`Bearer \$\{configuredToken\}`/);
   });
