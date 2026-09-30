@@ -33,5 +33,13 @@
                 -Server
         }
 
+        # RT-031 (F-061): internal process metrics are never reachable from
+        # the public edge — parity with deploy/oci/Caddyfile (source of
+        # truth). The matcher is exactly /api/metrics; /api/v1/* and
+        # /api/health pass through untouched. The edge 404 is the second
+        # layer; the FAYANMS_METRICS_TOKEN check remains the primary control.
+        @internal_metrics path /api/metrics
+        respond @internal_metrics 404
+
         reverse_proxy app:3000
 }
