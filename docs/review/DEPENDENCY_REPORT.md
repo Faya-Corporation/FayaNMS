@@ -104,3 +104,30 @@ Additional supply-chain posture (from package.json + A5): root `overrides`/`reso
 **Not determined:** whether any pinned/resolved version carries a known CVE (no advisory database was reachable from this sandbox); whether the in-range updates (next 16.3.7, ssh2 1.17.0, sharp 0.35.5, zod 4.6.5, …) are security-relevant; and GHCR image scan status post-base (container workflow is disabled at repo level by owner request, so scans only ran while it was enabled).
 
 **Recommendation:** run `bun pm scan` with a configured scanner (or `osv-scanner`/`npm audit` against a generated lockfile) from a network-capable environment, and re-enable the container certification workflow to restore the image-level HIGH/CRITICAL gate; until then, treat CI runs at base as the only advisory evidence.
+
+## 5. Post-audit round-trip — CI scan gate (2026-09-30, main agent)
+
+The first PR run (#14, 36768543791) and its scan job re-ran on 2026-09-30 exposed
+advisory drift that post-dates base `38fbdfb` (lockfiles were byte-identical to
+base, so the branch did not introduce it — the advisories were published after
+base's last green scan):
+
+| Package | Was | Now | Advisories |
+|---|---|---|---|
+| next | 16.3.4 | **16.3.6** | GHSA-vcvr-r3jv-pc5j (Critical 9.5) |
+| brace-expansion (v1 chain, 6 instances) | 1.1.18 (repo `resolutions` pin) | **1.1.21** | GHSA-6j4f-fj2g-mc7p, GHSA-qhr7-859c-m2p7, GHSA-q2hr-2g5m-vwhr |
+| brace-expansion (v5 chain) | 5.0.9 | **5.0.12** | same three, v5 range |
+
+Changes: `package.json` bumps the `next` dev-pinned version and refreshes the
+repo's own `resolutions` pins (`brace-expansion@^1` → 1.1.21, new
+`brace-expansion@^5` → 5.0.12); `@types/node` added to devDependencies pinned
+at `22.20.2` (a full in-range regen let `bun-types@1.4.2`'s `*` range pull
+@types/node 26, whose `KeyObject.export` typings break compile — the repo
+targets the 22.x typings). `bun.lock` regenerated: all other moves are
+in-range patch/minor refreshes (typescript-eslint 8.71, @swc/core 1.16.13,
+zod 4.6.5, …).
+
+**Verification:** `osv-scanner` v2.5.1 (CI's exact binary + checksum +
+`osv-scanner.toml`) against both lockfiles: **No issues found**. tsc 0, lint 0,
+`build:gate` 0, full suite unchanged on seeded and fresh-DB replicas (1627/19/2
+R61-only). Worker lockfile untouched (was already clean).
