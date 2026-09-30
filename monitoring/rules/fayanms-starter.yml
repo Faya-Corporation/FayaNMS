@@ -1,0 +1,89 @@
+# RT-030 / F-060 — FayaNMS starter Prometheus alert rules.
+#
+# Honest starter scope: ONLY metrics the app/worker emitters actually serve
+# (src/app/api/metrics/route.ts + mini-services/worker/index.ts /api/metrics)
+# plus the synthetic `up` series. The runbook's operational bar
+# (docs/runbooks/observability.md "Alerts") also lists PostgreSQL-down and
+# certificate-expiry — both are INTENTIONALLY commented placeholders below:
+# no postgres_exporter / blackbox / SSL exporter exists in this stack yet,
+# and inventing a metric name no exporter serves would be fake coverage.
+# Scope note: alertmanager routing is NOT configured — these rules evaluate
+# in Prometheus only (alerts visible at /alerts on the admin tunnel).
+#
+# Pinned by tests/audit/rt030-prometheus-starter-rules.test.ts (anti-
+# invented-metric whitelist: every active expr may reference only emitter
+# metrics or `up`).
+
+groups:
+  - name: fayanms-starter
+    rules:
+      - alert: FayanmsAppDown
+        expr: up{job="fayanms-app"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: app
+        annotations:
+          summary: "FayaNMS app is down"
+          description: 'Prometheus cannot scrape the fayanms-app /api/metrics target (app:3000). The gateway health gate and the stack itself are unobservable.'
+
+      - alert: FayanmsWorkerDown
+        expr: up{job="fayanms-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: worker
+        annotations:
+          summary: "FayaNMS worker is down"
+          description: 'Prometheus cannot scrape the fayanms-worker /api/metrics target (worker:3030). Jobs and the scheduler are unobservable (meaningful since the RT-018 scrape-path fix).'
+
+      - alert: FayanmsWorkerSchedulerDown
+        expr: fayanms_worker_scheduler_up == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "FayaNMS worker scheduler is failing"
+          description: 'The worker reports fayanms_worker_scheduler_up == 0 (consecutive scheduler tick failures) for 5 minutes. Job claiming/tick drives are degraded even though the process is up.'
+
+      - alert: FayanmsQueueGrowth
+        expr: increase(fayanms_worker_protocol_packets_total{state="queue_dropped"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "Protocol collector queue drops observed"
+          description: 'The worker dropped protocol packets from its collector ingest queue in the last 15 minutes (fayanms_worker_protocol_packets_total{state="queue_dropped"} increased). The ingest path cannot keep up or the relay target is unhealthy.'
+
+      # ── COMMENTED PLACEHOLDERS — need an exporter decision, NOT fake metrics ──
+      # TODO(exporter-decision): PostgreSQL-down. There is NO postgres_exporter
+      # target in this stack, so `pg_up` does not exist and a live rule would
+      # never fire (or fire forever). Ship it only together with:
+      #   - deploy/oci/compose.monitoring.yml: a postgres_exporter service on
+      #     the backend network, and a prometheus scrape job for it;
+      #   - the runbook line updated to name the chosen exporter.
+      # - alert: FayanmsPostgresDown
+      #   expr: pg_up == 0
+      #   for: 2m
+      #   labels:
+      #     severity: critical
+      #     component: database
+      #   annotations:
+      #     summary: "PostgreSQL exporter reports the database down"
+      #     description: 'pg_up == 0 for 2 minutes (requires the exporter decision above).'
+      #
+      # TODO(exporter-decision): certificate expiry. No blackbox/SSL exporter
+      # exists; Caddy's automatic internal/ACME certs are not introspectable
+      # as Prometheus metrics today. Revisit with a blackbox exporter probe
+      # of the public TLS endpoint (probe_ssl_earliest_cert_expiry).
+      # - alert: FayanmsCertExpiringSoon
+      #   expr: probe_ssl_earliest_cert_expiry - time() < 14 * 24 * 3600
+      #   for: 0m
+      #   labels:
+      #     severity: warning
+      #     component: edge
+      #   annotations:
+      #     summary: "TLS certificate expires in under 14 days"
+      #     description: 'Requires the blackbox exporter decision above.'

@@ -11,6 +11,10 @@ services:
     restart: unless-stopped
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # RT-030 / F-060: the rule_files glob in prometheus.yml
+      # (/etc/prometheus/rules/*.yml) is wired to the starter rules dir —
+      # without this mount Prometheus had rules configured but NONE shipped.
+      - ./monitoring/rules/:/etc/prometheus/rules/:ro
       - prometheus-data:/prometheus
     networks:
       - backend
