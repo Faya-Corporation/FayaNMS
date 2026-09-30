@@ -18,7 +18,9 @@ docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --status running app
 
 curl --fail --silent --show-error --max-time 15 "https://${FAYANMS_TLS_DOMAIN}/" >/dev/null
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T postgres pg_isready -U fayanms -d fayanms >/dev/null
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T app bun -e 'const r = await fetch("http://127.0.0.1:3000/"); process.exit(r.ok ? 0 : 1)'
+# RT-028: the app gate uses the READINESS route (/api/health — DB-backed),
+# not the marketing root page; r.ok is false on the 503, failing the gate.
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T app bun -e 'const r = await fetch("http://127.0.0.1:3000/api/health"); process.exit(r.ok ? 0 : 1)'
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T worker bun -e 'const r = await fetch("http://127.0.0.1:3030/health"); process.exit(r.ok ? 0 : 1)'
 
 echo "FayaNMS staging health gate passed."
