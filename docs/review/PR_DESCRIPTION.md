@@ -43,6 +43,8 @@ NEXT_PUBLIC_SITE_URL=https://fayanms.invalid bun run build:gate
 
 The 2 failures + 2 errors at final state are the R61 credential-free SSH first-contact tests, which require a local `sshd` the sandbox lacks; they fail identically on `main` and are environment-dependent, not product defects. Secret scan of `git diff main`: clean. Live checks: sign-in gate screenshots re-captured at 375/768/1440 + failed-sign-in error state (`docs/review/evidence/screenshots/after/`); `/api/health` verified 200 live.
 
+**CI round-trip:** the first PR run (36768543791) failed 6 tests — audit-added DB suites assumed the demo-seeded sandbox (admin user + admin Role row) and one source-police test shelled out to `rg`, absent on the runner. Fixed in `2027fb2`: the suites now upsert their admin identity from `ROLE_MATRIX` (the seed's own single source of truth) and the source walk is pure-node. Re-verified on a byte-fresh replica database (migrate deploy only, CI env values): full suite 1627 pass / 19 skip / 2 R61 env-fail only — the suite is hermetic against a migrate-only database.
+
 ## Rollout notes (operator action required)
 
 1. **BEFORE deploying this branch: split the OCI env file.** The monolithic host `.env` is replaced by per-service files — create `.env.app` and `.env.worker` on the host per `deploy/oci/env.example` (app keeps session/KEK/DB/app vars; worker gets only its own service identity and scrape credentials; postgres/caddy no longer receive app secrets). `deploy/oci/deploy.sh` now **fails fast** in preflight if either split file is missing — this is the enforcement, so the old single-`.env` deploy path will refuse to start.

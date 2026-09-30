@@ -23,3 +23,12 @@ All modules; plan: A1 auth/API, A2 protocol/worker/ingest, A3 data/core services
 
 ## Blockers / errors
 A1 auth/API: 12 (0 P0/0 P1/3 P2/9 P3); A2 protocol/worker: 13 (3 P2/10 P3); A3 data/core: 16 (3 P1/6 P2/7 P3); A4 frontend/i18n: 12 (3 P1/4 P2/5 P3); A5 ops/CI: 14 (1 P1/4 P2/9 P3). Total raw 67; P1s individually re-verified by main agent (all confirmed). Dedupe pending: A2-03 == A3-03.
+
+## Post-audit round-trip (2026-09-30, main agent)
+- PR #14 opened (Faya-Corporation/FayaNMS, GLM/full-audit-and-fix -> main @ 38fbdfb; 57 commits, 239 files, +16.5k/-1.3k).
+- First CI run 36768543791: gate FAILED — 6 tests failed (1626 pass/18 skip). All six were audit-added suites with fresh-DB dependencies the seeded sandbox had masked:
+  (a) rt012 x3, rt014 x2, rt015 x1 — findUnique(admin@faya.local) null on a migrate-only DB; the two route-level suites also 403'd because the seeded admin ROLE row was missing (loadRolePermissions resolves User.role -> Role.name).
+  (b) protocol-queue-retention source-police test shelled out to `rg -l ... || true` — ripgrep absent on the runner image, spawn failure swallowed, zero hits, false red.
+- Fix 2027fb2: rt012/rt014 ensure-helpers upsert the admin Role (permissions from ROLE_MATRIX, the seed's single source of truth; update:{} keeps existing rows) + admin User atomically, never deleting seed-equivalent shared state; rt015's vestigial admin lookup removed (service-token file, no user fixture needed); rg shell-out replaced with a pure-node recursive walk.
+- Verification on a byte-fresh replica database (fayanms_gatecheck2, migrate deploy only, CI env values): FULL suite 1627 pass / 19 skip / 2 fail + 2 err — R61 sshd pair only. Seeded-DB full suite identical. tsc 0, lint 0. The suite is now proven hermetic against a migrate-only database — stronger than the pre-fix evidence.
+- Next: push 2027fb2, watch CI gate/e2e/browser/scan on the new head, then final report.
