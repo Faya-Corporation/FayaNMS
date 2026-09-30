@@ -61,3 +61,8 @@ bun run lint                                               # 0 errors
 ## Rollout & rollback notes
 
 One view; revert-safe. If the app has a shared "locked action button" pattern elsewhere with the same defect, file it as a new finding — this RT is scoped to reports-view per F-054.
+
+
+## Status
+
+Fixed (2d8b3cb)

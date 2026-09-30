@@ -70,3 +70,8 @@ bun run lint                                           # 0 errors
 ## Rollout & rollback notes
 
 Config-only; if an operator preferred file logs, the alternative (mount a dedicated dir) is a two-line revert+volume. Rollback = restore the file block (and add the missing volume this time).
+
+
+## Status
+
+Fixed (51bb59c)

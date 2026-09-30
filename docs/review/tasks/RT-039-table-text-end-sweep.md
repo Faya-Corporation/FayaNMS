@@ -56,3 +56,8 @@ rg -n 'text-right' src/components/views/admin-integrations-view.tsx src/componen
 ## Rollout & rollback notes
 
 Pure className rename; revert-safe. Review together with RT-019 if both are in flight, but land as separate commits/PRs.
+
+
+## Status
+
+Fixed (4d58462)

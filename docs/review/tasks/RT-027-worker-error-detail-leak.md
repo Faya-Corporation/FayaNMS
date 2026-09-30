@@ -60,3 +60,8 @@ bun run lint                                               # 0 errors
 ## Rollout & rollback notes
 
 Worker-only; support/debug flows rely on server logs (which now get MORE detail, not less). Rollback = revert. If the NOC UI somewhere displayed the SSH excerpt usefully, note the loss in the PR (job records still carry exit codes; full output remains in the job's result path where the runner stores stdout).
+
+
+## Status
+
+Fixed (78bca1d)

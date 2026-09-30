@@ -71,3 +71,8 @@ bun run lint                                               # 0 errors
 ## Rollout & rollback notes
 
 One pure function; revert-safe. Detection-plane behavior unchanged (ANALYSIS_MAX_BYTES still re-bounds). Note: the SESSION driver's ring-buffer desync issue (A2-09/F-041) is a DIFFERENT defect and stays deferred — do not conflate in review.
+
+
+## Status
+
+Fixed (dbb7e0a)

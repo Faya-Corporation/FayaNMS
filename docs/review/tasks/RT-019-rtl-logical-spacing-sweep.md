@@ -73,3 +73,8 @@ rg -n '\b(left-2\.5|pl-8|mr-[0-9.]+|ml-[0-9.]+|pr-1)\b' src/components/views/dev
 ## Rollout & rollback notes
 
 Pure className renames (logical utilities are Tailwind built-ins, already used repo-wide — no config change). Rollback = revert the PR. Pair with an ar-locale browser screenshot for the devices list in the PR description (cheap confidence).
+
+
+## Status
+
+Fixed (1fff733)

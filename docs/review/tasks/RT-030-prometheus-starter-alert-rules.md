@@ -64,3 +64,8 @@ bun run lint                                                   # 0 errors
 ## Rollout & rollback notes
 
 Monitoring-profile-only; rules that misfire cost nothing until an alertmanager routes them (none configured — noted in the runbook line). Rollback = unmount the dir. Scope concern flagged during planning: PG-down/cert-expiry cannot be honestly implemented without choosing an exporter — the RT deliberately ships them as commented placeholders instead of fake coverage.
+
+
+## Status
+
+Fixed (776b760)

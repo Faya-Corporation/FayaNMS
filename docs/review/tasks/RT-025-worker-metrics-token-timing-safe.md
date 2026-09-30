@@ -60,3 +60,8 @@ bun run lint                                                # 0 errors
 ## Rollout & rollback notes
 
 Worker-module-only; rebuild worker image on deploy. Rollback = revert. Remaining A2-08 items (fail-closed metrics when unset, jti replay, HS256 retirement) stay in BACKLOG — do not expand this PR.
+
+
+## Status
+
+Fixed (ac16a12)

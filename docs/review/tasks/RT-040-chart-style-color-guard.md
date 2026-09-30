@@ -72,3 +72,8 @@ bun run lint                                           # 0 errors
 ## Rollout & rollback notes
 
 One component + tests; revert-safe. If a legitimate chart style trips the whitelist (e.g. `oklch(...)` colors), EXTEND `SAFE_COLOR` deliberately with a comment — never loosen the key guard.
+
+
+## Status
+
+Fixed (bd17c98)

@@ -65,3 +65,8 @@ bun run lint                                             # 0 errors
 ## Rollout & rollback notes
 
 If the verification step finds a pre-auth consumer (it did not at planning time), STOP per the RT's binding instruction and mark Deferred. Rollback = revert; no data changes. Coordinate the merge with no other in-flight `useMeta` refactor to avoid a trivial conflict.
+
+
+## Status
+
+Fixed (62772c6)

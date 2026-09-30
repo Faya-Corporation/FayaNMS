@@ -57,3 +57,8 @@ bun run lint                                             # 0 errors
 ## Rollout & rollback notes
 
 Trivial revert (restore one file). If an unknown external script scraped `/api` for liveness, it must move to `/api/health` once RT-028 lands — note in the PR body.
+
+
+## Status
+
+Fixed (867e3c1)
