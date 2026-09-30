@@ -78,7 +78,7 @@
  * same-host loopback contract).
  */
 
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { adapters, pickAdapter, type DeviceTarget } from "./adapters";
 import { LIVE_SSH_FLAVORS, LiveAdapterError, createLiveSshAdapter } from "./live-ssh";
 import {
@@ -150,7 +150,16 @@ export async function handle(req: Request): Promise<Response> {
       const configuredToken = process.env.FAYANMS_METRICS_TOKEN?.trim() ?? "";
       if (configuredToken.length > 0) {
         const supplied = req.headers.get("authorization") ?? "";
-        if (supplied !== `Bearer ${configuredToken}`) {
+        // RT-025 / F-040 — constant-time compare (mirrors RT-009 on the app
+        // /api/metrics route): length-check first because timingSafeEqual
+        // throws on a length mismatch. The unset-token OPEN behavior is
+        // UNCHANGED here (fail-closed is a deployment-policy decision
+        // tracked in BACKLOG under A2-08 — do not silently change reachability).
+        const expected = Buffer.from(`Bearer ${configuredToken}`, "utf8");
+        const suppliedBuf = Buffer.from(supplied, "utf8");
+        const tokenOk =
+          suppliedBuf.length === expected.length && timingSafeEqual(suppliedBuf, expected);
+        if (!tokenOk) {
           return new Response("Unauthorized\n", {
             status: 401,
             headers: {

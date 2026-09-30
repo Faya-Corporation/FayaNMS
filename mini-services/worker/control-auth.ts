@@ -281,10 +281,15 @@ export function verifyControlToken(
   return { ok: true, code: "OK", message: "verified" };
 }
 
-/** Uniform 401/403 JSON response for rejected control calls. */
+/**
+ * Uniform 401/403 JSON response for rejected control calls.
+ * RT-025 / F-040: a token that AUTHENTICATED but lacks the required scope
+ * is an authorization failure — 403 semantics — while every "who are you"
+ * failure stays 401. Clients can now distinguish the two classes.
+ */
 export function controlRejectResponse(result: ControlVerifyResult): Response {
   return Response.json(
     { ok: false, error: result.message, code: result.code },
-    { status: 401 }
+    { status: result.code === "WORKER_SCOPE_INSUFFICIENT" ? 403 : 401 }
   );
 }
