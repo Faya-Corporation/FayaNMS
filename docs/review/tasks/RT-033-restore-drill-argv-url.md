@@ -73,3 +73,8 @@ bun run lint                                               # 0 errors
 ## Rollout & rollback notes
 
 Host-script-only; DR runbook contract (env var name) unchanged. Rollback = revert. Flag for reviewers: bash URL parsing is the riskiest line in the change — the shape-guard test (3) is the safety net; do not "simplify" the guard away.
+
+
+## Status
+
+Fixed (770245d)

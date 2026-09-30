@@ -63,3 +63,8 @@ bun run lint                                          # 0 errors
 ## Rollout & rollback notes
 
 Edge-config only; no app behavior change. Rollback = remove the block (returns to today's exposure — not recommended). Defense-in-depth note for reviewers: the edge 404 is the SECOND layer; the token (RT-009/RT-025 timing-safe) remains the primary control.
+
+
+## Status
+
+Fixed (428a9c2)

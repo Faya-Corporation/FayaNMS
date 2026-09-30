@@ -62,3 +62,8 @@ bun run lint                                            # 0 errors
 ## Rollout & rollback notes
 
 One flag; rollback = re-add the line (not recommended without also adding basic auth). If an operator automation script relied on `/-/reload`, it must switch to `docker compose restart prometheus` — that is exactly what the docs update covers.
+
+
+## Status
+
+Fixed (54c5774)

@@ -66,3 +66,8 @@ bun run dev & curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/api
 ## Rollout & rollback notes
 
 The semantics change (container restarts when DB access breaks) is the FEATURE — but stage it: merge the route first, flip probes in the same PR only after staging ran a day with the route deployed. Rollback = revert probe lines (route can stay). Caution: during a Postgres restart window the app container will now flap healthy/unhealthy — expected; compose `start_period: 30s` already absorbs short blips.
+
+
+## Status
+
+Fixed (0571878)

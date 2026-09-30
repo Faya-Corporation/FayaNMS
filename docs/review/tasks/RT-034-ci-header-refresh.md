@@ -59,3 +59,8 @@ bun run lint                                         # 0 errors
 ## Rollout & rollback notes
 
 Comment-only; revert-safe. Refresh the "live read-back" date whenever protection settings change again — note that maintenance rule in the header itself so the next drift is self-flagging.
+
+
+## Status
+
+Fixed (5711b3c)

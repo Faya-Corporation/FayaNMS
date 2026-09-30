@@ -61,3 +61,8 @@ bun run lint                                       # 0 errors
 ## Rollout & rollback notes
 
 Host-script-only; takes effect on the next backup run. Rollback = revert. No restore-path impact (age decryption is mode-agnostic; restore-drill reads via identity file).
+
+
+## Status
+
+Fixed (08d981e)

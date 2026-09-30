@@ -64,3 +64,8 @@ bun run lint                                           # 0 errors
 ## Rollout & rollback notes
 
 Config-only; Dependabot PRs appear per the existing ACTIVATION CAVEAT (owner CI capacity, file lines 24-29). Rollback = remove the entry. Expect ~1 PR/week of action-bump noise once active — that is the point; group rules keep it reviewable.
+
+
+## Status
+
+Fixed (f5b7186)
