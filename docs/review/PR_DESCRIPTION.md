@@ -1,13 +1,13 @@
 # PR Description — Full audit & remediation of FayaNMS (`GLM/full-audit-and-fix`)
 
-Suggested PR title: **`audit: full five-module audit + 43/66 findings fixed (all 7 P1s), suite 1340→1627 green`**
+Suggested PR title: **`audit: full five-module audit + 44/67 findings fixed (all 7 P1s), suite 1340→1627 green`**
 
 ## Summary
 
 This branch delivers a complete audit of FayaNMS and the remediation that followed it:
 
 - **Audit:** five parallel module audits (A1 auth/API, A2 protocol/worker, A3 data/core, A4 frontend/i18n, A5 ops/CI) produced **66 deduplicated findings** (0 P0 · 7 P1 · 19 P2 · 40 P3; raw 67, one documented merge), a UX walkthrough record, a security posture report, a test-gap analysis, and a dependency scan — all evidence-quoted to file:line in `docs/review/`.
-- **Remediation:** **43 of 66 findings fixed** across 40 planned tasks (RT-001..040) in dependency-ordered waves, including **all 7 P1s**: alert-suppression reactivation (F-001), MetricRollup runtime producer (F-002), protocol-queue retention sweep (F-003), route-level error boundaries (F-004), hook-toast + alert-surface i18n (F-005/F-006), and the OCI compose least-privilege env split (F-007).
+- **Remediation:** **44 of 67 findings fixed** (43 across 40 planned tasks RT-001..040 in dependency-ordered waves, plus F-067 found via the PR's own browser CI job — a pre-existing dashboard a11y defect reproduced on main), including **all 7 P1s**: alert-suppression reactivation (F-001), MetricRollup runtime producer (F-002), protocol-queue retention sweep (F-003), route-level error boundaries (F-004), hook-toast + alert-surface i18n (F-005/F-006), and the OCI compose least-privilege env split (F-007).
 - **Verification:** every fix carries paired regression tests; the suite grew **1,340 → 1,627 passing (+287)**; lint 0, tsc 0, `build:gate` exit 0 at final state. No test, linter, or type check was weakened.
 - **What remains:** 21 open findings (2 P2 + 19 P3) + 2 deferred P2s — all with concrete plans in `docs/review/BACKLOG.md`. Nothing dropped silently.
 
@@ -44,6 +44,8 @@ NEXT_PUBLIC_SITE_URL=https://fayanms.invalid bun run build:gate
 The 2 failures + 2 errors at final state are the R61 credential-free SSH first-contact tests, which require a local `sshd` the sandbox lacks; they fail identically on `main` and are environment-dependent, not product defects. Secret scan of `git diff main`: clean. Live checks: sign-in gate screenshots re-captured at 375/768/1440 + failed-sign-in error state (`docs/review/evidence/screenshots/after/`); `/api/health` verified 200 live.
 
 **CI round-trip:** the first PR run (36768543791) failed 6 tests — audit-added DB suites assumed the demo-seeded sandbox (admin user + admin Role row) and one source-police test shelled out to `rg`, absent on the runner. Fixed in `2027fb2`: the suites now upsert their admin identity from `ROLE_MATRIX` (the seed's own single source of truth) and the source walk is pure-node. Re-verified on a byte-fresh replica database (migrate deploy only, CI env values): full suite 1627 pass / 19 skip / 2 R61 env-fail only — the suite is hermetic against a migrate-only database.
+
+**Browser round-trip:** the browser job then failed twice at B3b (authenticated-dashboard axe scan hanging 300s on 2-vCPU runners). Reproduced locally on the branch AND on a main-worktree build: the defect is pre-existing on `main` — recharts hardcodes `role="img"` on every sector path with no accessible name (6 serious svg-img-alt when data loads before the scan; main's CI green was a race fluke), and the donut's mount animation starves the scan on slow runners. Fixed in `dfa349a` (decorative svg excluded from the a11y tree — its labelled wrapper, legend, and sr-only alternative carry the full text — plus animation off). Full browser suite now 12/12 locally, B3b in 2.3s; register updated to **67 findings / 44 fixed (F-067)**.
 
 ## Rollout notes (operator action required)
 

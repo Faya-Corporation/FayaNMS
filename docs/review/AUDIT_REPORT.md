@@ -110,3 +110,39 @@ Two mid-stream regressions were caught by the gates and fixed, not buried: `mock
 - `git diff main` secret scan clean; no credentials introduced; demo/CI placeholder keys referenced by location only.
 - `main @ 38fbdfb` untouched; branch protection on `main` (required checks `gate,e2e,browser,scan`, strict) applies to the eventual merge as to any other.
 - Residual risk is documented, planned, and P2/P3-only (BACKLOG.md); nothing fixed here regressed a test or weakened a gate.
+
+## 10. Post-audit round-trip addendum (2026-09-30, PR CI)
+
+Opening PR #14 ran the full four-job CI on real runners for the first time on
+this branch and surfaced three classes of issue, each root-caused and fixed:
+
+1. **Fresh-database test isolation (2027fb2).** The gate failed 6 tests: the
+   audit-added DB suites assumed the seeded sandbox (demo admin user + the
+   seeded admin ROLE row that permission resolution needs) and one
+   source-police test shelled out to `rg`, absent on runner images. The
+   suites now upsert their admin identity from `ROLE_MATRIX` (the seed's own
+   single source of truth) and use a pure-node source walk. Re-verified on a
+   byte-fresh replica database: full suite 1,627 pass / 19 skip / 2 R61
+   env-fails only.
+2. **Advisory drift (a63a246).** The scan gate flagged 7 advisories (next
+   16.3.4 → Critical GHSA-vcvr-r3jv-pc5j; brace-expansion 1.1.18/5.0.9 ×6).
+   Lockfiles were byte-identical to base — published-advisory drift, not a
+   branch introduction. Fixed via next 16.3.6 + refreshed `resolutions`
+   pins; `osv-scanner` v2.5.1 (CI's exact binary + config) now reports
+   **No issues found**. See `DEPENDENCY_REPORT.md` §5.
+3. **Pre-existing dashboard a11y defect + CI hang (F-067, dfa349a).** The
+   browser job's B3b (authenticated-dashboard axe scan) hung 300s twice.
+   Local reproduction on both the branch AND a main-worktree build proved
+   the defect predates the audit: recharts stamps `role="img"` on every
+   sector path with no accessible name (6 serious svg-img-alt violations
+   whenever data loads before the scan — main's CI green was a race fluke),
+   and the donut's mount animation starves the scan on 2-vCPU runners (the
+   hang). Fixed by excluding the decorative svg from the a11y tree (its
+   labelled wrapper, legend, and sr-only alternative already carry the full
+   text) and disabling the animation. Full browser suite now 12/12 locally,
+   B3b in 2.3s.
+
+Register impact: **67 deduplicated findings, 44 fixed** (43 from the
+remediation waves + F-067), 2 deferred, 20 open (2 P2 + 18 P3). The PR CI
+evidence (gate/e2e/scan green; browser green on the local full-suite
+reproduction) accompanies the merge readiness statement above.
