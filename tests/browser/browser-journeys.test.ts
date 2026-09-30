@@ -65,27 +65,51 @@ interface AxeViolation {
 
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"];
 
+/**
+ * Bounded axe scan. The bound lives on the NODE side of page.evaluate — an
+ * in-page timer cannot rescue a frozen renderer (it lives in the renderer).
+ * A starved scan now rejects at 60 s and the page is closed to reclaim the
+ * renderer, failing the journey fast instead of hanging until the test-runner
+ * watchdog kills the shared e2e stack and cascades the rest of the file.
+ * Real violations are NEVER retried or masked: a completed scan's verdict is
+ * final; only the bound-expiry path is typed.
+ */
 async function runAxe(page: Page): Promise<AxeViolation[]> {
   await page.addScriptTag({ path: AXE_SOURCE });
-  return page.evaluate(async (tags: string[]) => {
-    // axe is injected as a global script (no module system on the page).
-    // Signature: axe.run(context, options) — the tag filter rides in
-    // runOnly, NEVER as the context argument.
-    const axeGlobal = (
-      window as unknown as {
-        axe: {
-          run: (
-            context: Document,
-            options: { runOnly: { type: string; values: string[] } }
-          ) => Promise<{ violations: AxeViolation[] }>;
-        };
-      }
-    ).axe;
-    const results = await axeGlobal.run(document, {
-      runOnly: { type: "tags", values: tags },
-    });
-    return results.violations;
-  }, TAGS);
+  const AXE_BOUND_MS = 60_000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      page.evaluate(async (tags: string[]) => {
+        // axe is injected as a global script (no module system on the page).
+        // Signature: axe.run(context, options) — the tag filter rides in
+        // runOnly, NEVER as the context argument.
+        const axeGlobal = (
+          window as unknown as {
+            axe: {
+              run: (
+                context: Document,
+                options: { runOnly: { type: string; values: string[] } }
+              ) => Promise<{ violations: AxeViolation[] }>;
+            };
+          }
+        ).axe;
+        const results = await axeGlobal.run(document, {
+          runOnly: { type: "tags", values: tags },
+        });
+        return results.violations;
+      }, TAGS),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          timer = undefined;
+          void page.close().catch(() => undefined);
+          reject(new Error("axe.run exceeded the node-side bound; page reclaimed"));
+        }, AXE_BOUND_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function formatViolations(violations: AxeViolation[]): string {
@@ -122,17 +146,39 @@ async function signIn(page: Page): Promise<void> {
 
 let browser: Browser | undefined;
 
-function activeBrowser(): Browser {
-  if (!browser?.isConnected()) {
-    throw new Error("Browser fixture is not connected");
+/**
+ * Bounded evaluate. page.evaluate has NO timeout: a starved or crashed
+ * renderer hangs the journey forever, which the test-runner watchdog then
+ * punishes by killing the shared e2e stack — cascading every later journey
+ * to CONNECTION_REFUSED. Race a Node timer instead; on timeout, close the
+ * page to reclaim the renderer and fail the journey fast.
+ */
+async function evalB<T>(page: Page, fn: () => T | Promise<T>, ms = 20_000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      page.evaluate(fn),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`page.evaluate exceeded the ${ms}ms bound`)),
+          ms
+        );
+      }),
+    ]);
+  } catch (error) {
+    if (String((error as Error)?.message ?? "").includes("exceeded the")) {
+      await page.close().catch(() => undefined);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
-  return browser;
 }
 
 async function newJourneyPage(options: {
   viewport: { width: number; height: number };
 }): Promise<Page> {
-  const page = await activeBrowser().newPage(options);
+  const page = await browser!.newPage(options);
   page.on("crash", () => {
     console.error("[browser] Playwright page crash detected");
   });
@@ -150,16 +196,34 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
     await bootE2E();
   }, 300_000);
 
-  // A dashboard axe run can terminate Chromium on constrained CI runners.
-  // Isolating every journey prevents one browser-process failure from
-  // cascading into the remaining accessibility, keyboard, and RTL gates.
+  // Journey isolation is DOUBLE: each journey gets a FRESH Chromium (the
+  // repo's validated design — a wedged browser can never poison the next
+  // journey) and a liveness-checked stack. A shared browser was tried and
+  // rejected locally: its occasional mid-file death ("Target page, context
+  // or browser has been closed") reproduced the very cascade this file
+  // guards against.
   beforeEach(async () => {
     if (!enabled) return;
+    // Self-healing: the previous journey's timeout kill may have taken the
+    // e2e app down with it (watchdog dangling-process cleanup). bootE2E is
+    // liveness-aware and idempotent — one /api/v1/meta fetch when alive, a
+    // full re-boot when not — so no journey ever starts against a dead stack
+    // and one failure can never cascade into CONNECTION_REFUSED noise.
+    await bootE2E();
     browser = await chromium.launch({
       headless: true,
-      args: ["--disable-dev-shm-usage"],
+      // dev-shm: CI runners have tiny /dev/shm. The backgrounding/throttling
+      // disables keep headless renderers from being deprioritized mid-scan —
+      // renderer starvation was the observed indefinite page.evaluate hang
+      // in every real CI run of this suite so far.
+      args: [
+        "--disable-dev-shm-usage",
+        "--disable-renderer-backgrounding",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+      ],
     });
-  }, 120_000);
+  }, 300_000);
 
   afterEach(async () => {
     await browser?.close().catch(() => undefined);
@@ -270,7 +334,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
 
         // First Tab from the body lands on an interactive element.
         await page.keyboard.press("Tab");
-        const first = await page.evaluate(() => document.activeElement?.tagName ?? "BODY");
+        const first = await evalB(page, () => document.activeElement?.tagName ?? "BODY");
         expect(first).not.toBe("BODY");
 
         // From the email field, the submit button is keyboard-reachable
@@ -281,7 +345,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         let reachedSubmit = false;
         for (let i = 0; i < 6 && !reachedSubmit; i++) {
           await page.keyboard.press("Tab");
-          reachedSubmit = await page.evaluate(() => {
+          reachedSubmit = await evalB(page, () => {
             const el = document.activeElement;
             return el?.tagName === "BUTTON" && (el as HTMLButtonElement).type === "submit";
           });
@@ -297,10 +361,10 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
           state: "visible",
           timeout: 60_000,
         });
-        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+        await evalB(page, () => (document.activeElement as HTMLElement | null)?.blur());
         for (let i = 0; i < 12; i++) {
           await page.keyboard.press("Tab");
-          const state = await page.evaluate(() => {
+          const state = await evalB(page, () => {
             const el = document.activeElement;
             const interactive =
               el !== null &&
@@ -325,7 +389,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         await signIn(page);
 
         const overflowOf = (): Promise<{ scroll: number; client: number; dir: string; lang: string }> =>
-          page.evaluate(() => ({
+          evalB(page, () => ({
             scroll: document.documentElement.scrollWidth,
             client: document.documentElement.clientWidth,
             dir: document.documentElement.dir,
