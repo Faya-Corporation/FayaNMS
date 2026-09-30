@@ -367,23 +367,30 @@ export function ReportsView() {
                             </>
                           ) : (
                             <>
+                              {/* RT-038 (F-054): aria-disabled instead of disabled so
+                                  the hint stays reachable by keyboard/screen-reader;
+                                  activation is impossible (guarded onClick, no anchor). */}
                               <Button
+                                aria-disabled
                                 aria-label={t("downloadLockedHint")}
-                                disabled
+                                onClick={(e) => e.preventDefault()}
                                 size="icon"
                                 title={t("downloadLockedHint")}
                                 variant="ghost"
                               >
                                 <FileSpreadsheet aria-hidden="true" />
+                                <span className="sr-only">{t("downloadLockedHint")}</span>
                               </Button>
                               <Button
+                                aria-disabled
                                 aria-label={t("downloadLockedHint")}
-                                disabled
+                                onClick={(e) => e.preventDefault()}
                                 size="icon"
                                 title={t("downloadLockedHint")}
                                 variant="ghost"
                               >
                                 <FileJson aria-hidden="true" />
+                                <span className="sr-only">{t("downloadLockedHint")}</span>
                               </Button>
                             </>
                           )}
