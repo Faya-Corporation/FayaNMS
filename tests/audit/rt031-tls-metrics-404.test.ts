@@ -100,10 +100,15 @@ describe("RT-031: internal-metrics edge 404 parity", () => {
   });
 
   test("deploy/oci/Caddyfile stays the unchanged source of truth", () => {
-    // Regression guard: the OCI block predates this RT — its shape (comment
-    // free, immediately before reverse_proxy) must not drift.
+    // Regression guard: the OCI block predates this RT — the metrics 404
+    // pair must stay present and ordered before the log/reverse_proxy
+    // blocks (comments between them are fine — RT-029 moved the log block
+    // wording, not the gate).
     expect(oci).toMatch(
-      /@internal_metrics path \/api\/metrics\n\s*respond @internal_metrics 404\n\s*\n?\s*log \{/
+      /@internal_metrics path \/api\/metrics\n\s*respond @internal_metrics 404/
+    );
+    expect(oci.indexOf("respond @internal_metrics 404")).toBeLessThan(
+      oci.indexOf("reverse_proxy app:3000")
     );
   });
 });

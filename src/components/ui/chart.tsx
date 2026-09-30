@@ -90,7 +90,17 @@ ${colorConfig
     const color =
       itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
       itemConfig.color
-    return color ? `  --color-${key}: ${color};` : null
+    // RT-040 (F-056): the interpolated value lands inside a <style> block —
+    // only literal CSS color shapes may pass through (guard against a
+    // crafted config turning a chart key into arbitrary CSS injection).
+    const safe =
+      typeof color === "string" &&
+      /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s%]+\)|hsla?\([\d.,\s%deg]+\)|[a-zA-Z]+)$/.test(
+        color
+      )
+        ? color
+        : null
+    return safe ? `  --color-${key}: ${safe};` : null
   })
   .join("\n")}
 }
