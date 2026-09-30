@@ -188,7 +188,7 @@ export function AdminIntegrationsView() {
                 <TableHead>{t("webhooks.columns.secret")}</TableHead>
                 <TableHead>{t("webhooks.columns.lastDelivery")}</TableHead>
                 <TableHead>{t("webhooks.columns.active")}</TableHead>
-                {canWrite && <TableHead className="text-right">{t("webhooks.columns.actions")}</TableHead>}
+                {canWrite && <TableHead className="text-end">{t("webhooks.columns.actions")}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -243,7 +243,7 @@ export function AdminIntegrationsView() {
                     />
                   </TableCell>
                   {canWrite && (
-                    <TableCell className="text-right">
+                    <TableCell className="text-end">
                       <div className="flex justify-end gap-1">
                         <Button
                           variant="outline"
@@ -296,7 +296,7 @@ export function AdminIntegrationsView() {
                 <TableHead>{t("channels.columns.target")}</TableHead>
                 <TableHead>{t("channels.columns.lastTest")}</TableHead>
                 <TableHead>{t("channels.columns.active")}</TableHead>
-                {canWrite && <TableHead className="text-right">{t("channels.columns.actions")}</TableHead>}
+                {canWrite && <TableHead className="text-end">{t("channels.columns.actions")}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -335,7 +335,7 @@ export function AdminIntegrationsView() {
                     />
                   </TableCell>
                   {canWrite && (
-                    <TableCell className="text-right">
+                    <TableCell className="text-end">
                       <div className="flex justify-end gap-1">
                         <Button
                           variant="outline"

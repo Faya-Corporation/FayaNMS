@@ -135,7 +135,7 @@ export function AdminCollectorsView() {
                 <TableHead>{t("registry.table.col.capabilities")}</TableHead>
                 <TableHead>{t("registry.table.col.host")}</TableHead>
                 <TableHead>{t("registry.table.col.lastSeen")}</TableHead>
-                <TableHead className="text-right">{t("registry.table.col.jobs")}</TableHead>
+                <TableHead className="text-end">{t("registry.table.col.jobs")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -192,7 +192,7 @@ export function AdminCollectorsView() {
                       ? formatDistanceToNow(parseISO(collector.lastSeenAt), { addSuffix: true })
                       : t("registry.row.never")}
                   </TableCell>
-                  <TableCell className="text-right font-mono text-xs">
+                  <TableCell className="text-end font-mono text-xs">
                     {String(collector.stats.jobsCompleted ?? "—")}
                   </TableCell>
                 </TableRow>
@@ -404,7 +404,7 @@ function CollectorDistributionSection() {
                     <TableHead>{t("sites.online")}</TableHead>
                     <TableHead>{t("sites.agents")}</TableHead>
                     <TableHead>{t("sites.coverage")}</TableHead>
-                    <TableHead className="text-right">{t("sites.remote")}</TableHead>
+                    <TableHead className="text-end">{t("sites.remote")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -433,7 +433,7 @@ function CollectorDistributionSection() {
                           <span className="font-mono text-xs">{site.coveragePct}%</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs">
+                      <TableCell className="text-end font-mono text-xs">
                         {site.remoteAssigned}
                       </TableCell>
                     </TableRow>

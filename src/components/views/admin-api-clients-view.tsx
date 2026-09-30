@@ -153,7 +153,7 @@ export function AdminApiClientsView() {
                 <TableHead>{t("table.lastUsed")}</TableHead>
                 <TableHead>{t("table.created")}</TableHead>
                 <TableHead>{t("table.active")}</TableHead>
-                {canWrite && <TableHead className="text-right">{t("table.actions")}</TableHead>}
+                {canWrite && <TableHead className="text-end">{t("table.actions")}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -193,7 +193,7 @@ export function AdminApiClientsView() {
                     />
                   </TableCell>
                   {canWrite && (
-                    <TableCell className="text-right">
+                    <TableCell className="text-end">
                       <Button
                         variant="outline"
                         size="sm"
