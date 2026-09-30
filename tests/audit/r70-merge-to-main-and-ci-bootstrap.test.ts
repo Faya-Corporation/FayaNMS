@@ -94,8 +94,12 @@ describe("R70-D: stale CI-001 runner-block claims retired from ci.yml comments",
     expect(CI).not.toContain("runner-blocked (CI-001)");
   });
   test("the header records the R70 truth (first real gate execution)", () => {
-    expect(CI).toContain("R70 update: the");
-    expect(CI).toContain("the FIRST real gate execution");
+    // RT-034 (F-064) refreshed the GOVERNANCE STATUS block to the current
+    // protection truth and moved the bring-up era into an explicit
+    // "History (NOT status)" section — same facts, honest framing.
+    expect(CI).toContain("History (NOT status)");
+    expect(CI).toContain("first green run #6");
+    expect(CI).toContain("Branch protection: ACTIVE");
   });
 });
 
