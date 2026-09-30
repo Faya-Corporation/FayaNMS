@@ -29,15 +29,20 @@ command -v curl >/dev/null || {
   exit 1
 }
 
-if [[ ! -f /opt/fayanms/.env ]]; then
-  echo "Create /opt/fayanms/.env from deploy/oci/env.example using a secure channel." >&2
-  exit 1
-fi
-mode=$(stat -c '%a' /opt/fayanms/.env)
-if [[ "$mode" != "600" ]]; then
-  echo "/opt/fayanms/.env must be mode 600; current mode is $mode." >&2
-  exit 1
-fi
+# RT-006 (SEC-ENV-001): the host keeps THREE env files — the host-side
+# interpolation .env plus the app-zone .env.app and worker-zone .env.worker
+# runtime files. All must exist and be mode 600.
+for env_file in /opt/fayanms/.env /opt/fayanms/.env.app /opt/fayanms/.env.worker; do
+  if [[ ! -f "$env_file" ]]; then
+    echo "Create $env_file from deploy/oci/env.example using a secure channel." >&2
+    exit 1
+  fi
+  mode=$(stat -c '%a' "$env_file")
+  if [[ "$mode" != "600" ]]; then
+    echo "$env_file must be mode 600; current mode is $mode." >&2
+    exit 1
+  fi
+done
 
 hostnamectl set-hostname fayanms-staging-01
 timedatectl set-timezone UTC

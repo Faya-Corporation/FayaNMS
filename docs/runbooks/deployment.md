@@ -2,7 +2,7 @@
 
 1. Confirm the source SHA has green gate, e2e, browser, scan, ARM64, and container-image evidence.
 2. Confirm the protected staging approval is present.
-3. Confirm /opt/fayanms/.env is mode 600 and all three image references end with the same full SHA.
+3. Confirm /opt/fayanms/.env, /opt/fayanms/.env.app and /opt/fayanms/.env.worker are all mode 600 (root-owned; the required SEC-ENV-001 split layout — see deploy/oci/env.example) and all three image references end with the same full SHA.
 4. Confirm backup status and migration compatibility.
 5. Run /opt/fayanms/deploy.sh <full-commit-sha>.
 6. Run /opt/fayanms/health-check.sh.

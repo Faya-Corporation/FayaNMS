@@ -4,7 +4,8 @@ services:
   postgres:
     image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
     restart: unless-stopped
-    env_file: .env
+    # SEC-ENV-001 (RT-006): no env_file here — postgres gets ONLY the three
+    # POSTGRES_* keys below, interpolated from the host-side --env-file (.env).
     environment:
       POSTGRES_USER: fayanms
       POSTGRES_DB: fayanms
@@ -35,7 +36,8 @@ services:
     image: ${FAYANMS_MIGRATOR_IMAGE:?FAYANMS_MIGRATOR_IMAGE must be an immutable GHCR reference}
     profiles: ["provision"]
     restart: "no"
-    env_file: .env
+    # SEC-ENV-001 (RT-006): no env_file — the one-off migrator receives only
+    # NODE_ENV and the interpolated DATABASE_URL below.
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in /opt/fayanms/.env}
@@ -58,7 +60,11 @@ services:
   app:
     image: ${FAYANMS_IMAGE:?FAYANMS_IMAGE must be an immutable GHCR reference}
     restart: unless-stopped
-    env_file: .env
+    # SEC-ENV-001 (RT-006): the app is the ONLY container that receives the
+    # app-zone secret file (session secret, config-encryption KEK, CONTROL
+    # keypair). Everything below is interpolated from the host-side .env.
+    env_file:
+      - .env.app
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in /opt/fayanms/.env}
@@ -99,7 +105,10 @@ services:
   worker:
     image: ${FAYANMS_WORKER_IMAGE:?FAYANMS_WORKER_IMAGE must be an immutable GHCR reference}
     restart: unless-stopped
-    env_file: .env
+    # SEC-ENV-001 (RT-006): worker-zone file only — WORKER keypair, vault
+    # credentials, CA pin. NEVER the monolithic .env (no KEK/session/DB there).
+    env_file:
+      - .env.worker
     environment:
       NODE_ENV: production
       NEXT_BASE_URL: http://app:3000
@@ -135,7 +144,9 @@ services:
   caddy:
     image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     restart: unless-stopped
-    env_file: .env
+    # SEC-ENV-001 (RT-006): no env_file — caddy receives ONLY the TLS domain
+    # below (interpolated from the host-side .env). Zero secrets reach the
+    # edge proxy.
     environment:
       FAYANMS_TLS_DOMAIN: ${FAYANMS_TLS_DOMAIN:?FAYANMS_TLS_DOMAIN must be set in /opt/fayanms/.env}
     depends_on:

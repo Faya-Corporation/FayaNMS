@@ -13,6 +13,15 @@ if [[ ! "$VERSION" =~ ^[0-9a-f]{40}$ ]]; then
   exit 2
 fi
 [[ -r "$ENV_FILE" ]] || { echo "Missing $ENV_FILE" >&2; exit 1; }
+# RT-006 (SEC-ENV-001): the stack no longer mounts a monolithic .env into the
+# containers — app and worker read per-zone files (compose.yml env_file).
+# Refuse a stale host layout BEFORE `docker compose up` can half-boot it.
+for split_file in .env.app .env.worker; do
+  [[ -r "$ROOT/$split_file" ]] || {
+    echo "Missing $ROOT/$split_file — create it from deploy/oci/env.example (SEC-ENV-001 least-privilege env split) and chmod 600 it before deploying." >&2
+    exit 1
+  }
+done
 [[ -x "$HEALTH_SCRIPT" ]] || { echo "Missing executable health-check.sh" >&2; exit 1; }
 
 set -a
