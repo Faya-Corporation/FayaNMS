@@ -76,8 +76,15 @@ export function HealthDistributionCard({
           role="img"
         >
           {/* dir="ltr": the donut geometry and its center overlay never
-              mirror under RTL (Task 8-a chart rule). */}
-          <div className="relative h-[190px] w-full max-w-[240px]" dir="ltr">
+              mirror under RTL (Task 8-a chart rule). aria-hidden: the
+              wrapper div is this graphic's role=img text alternative and
+              the legend list repeats it as plain text — recharts stamps
+              role="img" onto every Sector <path> with no accessible name
+              (serious svg-img-alt under axe; reproduced identically on
+              main @ 38fbdfb, so pre-existing). isAnimationActive=false:
+              the mount animation starves the a11y scan's evaluate on
+              2-vCPU CI runners (300s hang, runs 36770354882/36772556368). */}
+          <div aria-hidden="true" className="relative h-[190px] w-full max-w-[240px]" dir="ltr">
             <ResponsiveContainer height="100%" width="100%">
               <PieChart>
                 <Pie
@@ -86,6 +93,7 @@ export function HealthDistributionCard({
                   data={chartData}
                   dataKey="count"
                   innerRadius={62}
+                  isAnimationActive={false}
                   nameKey="label"
                   outerRadius={88}
                   paddingAngle={2}
