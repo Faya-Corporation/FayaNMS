@@ -28,7 +28,11 @@
  *
  * Same rig as tests/auth/csrf-origin-proxy.test.ts: REAL session tokens
  * minted with the production next-auth/jwt encoder (no mock.module — it is
- * process-wide and poisons later suites), real seeded demo database.
+ * process-wide and poisons later suites). The admin identity is
+ * SELF-CONTAINED via the certified rt012/rt014 ensure-helper pattern: the
+ * CI gate replays ONLY `migrate deploy` (no demo seed), so the admin Role
+ * (from ROLE_MATRIX, the seed's single source of truth) and the admin User
+ * are upserted here and never deleted (seed-equivalent shared state).
  */
 
 import { describe, expect, test } from "bun:test";
@@ -38,6 +42,7 @@ import { encode } from "next-auth/jwt";
 import { db } from "../../src/lib/db";
 import { mintServiceToken } from "../../src/lib/auth/service-auth";
 import { requireSessionRead } from "../../src/lib/auth/session";
+import { ROLE_MATRIX } from "../../src/lib/auth/role-matrix";
 
 async function dashboardRequest(headers: Record<string, string>): Promise<Response> {
   const { GET } = await import("../../src/app/api/v1/dashboard/route");
@@ -47,6 +52,48 @@ async function dashboardRequest(headers: Record<string, string>): Promise<Respon
       headers,
     })
   );
+}
+
+/** Session-shaped projection of the admin identity used by these pins. */
+type F008AdminUser = { id: string; email: string; name: string | null; role: string };
+let f008Admin: F008AdminUser | null = null;
+
+/**
+ * Self-contained admin identity (the certified rt012/rt014 pattern): the CI
+ * gate replays ONLY `migrate deploy` on a fresh service container (no demo
+ * seed), so `admin@faya.local` cannot be assumed to exist — and neither can
+ * the seeded admin ROLE row that loadRolePermissions() resolves User.role
+ * against. The Role upsert sources permissions from ROLE_MATRIX (the seed's
+ * single source of truth) and leaves an existing row untouched (update: {});
+ * the user upsert is atomic (unique email) and seed-equivalent shared state
+ * is never deleted mid-run.
+ */
+async function ensureF008Admin(): Promise<F008AdminUser> {
+  if (f008Admin) return f008Admin;
+  const adminEntry = ROLE_MATRIX.find((role) => role.name === "admin");
+  await db.role.upsert({
+    where: { name: "admin" },
+    update: {},
+    create: {
+      name: "admin",
+      description: adminEntry?.description ?? "Full platform administration",
+      permissionsJson: JSON.stringify(adminEntry?.permissions ?? ["*"]),
+    },
+  });
+  f008Admin = await db.user.upsert({
+    where: { email: "admin@faya.local" },
+    update: { isActive: true },
+    create: { email: "admin@faya.local", name: "F008 Admin", role: "admin", isActive: true },
+    select: { id: true, email: true, name: true, role: true },
+  });
+  return f008Admin;
+}
+
+async function mintSessionJwt(user: F008AdminUser): Promise<string> {
+  return encode({
+    token: { id: user.id, email: user.email, name: user.name ?? undefined, role: user.role },
+    secret: process.env.NEXTAUTH_SECRET ?? "",
+  });
 }
 
 describe("F-008 phase 1: GET /api/v1/dashboard is handler-gated", () => {
@@ -88,18 +135,8 @@ describe("F-008 phase 1: GET /api/v1/dashboard is handler-gated", () => {
   });
 
   test("real admin session → 200 with the live KPI aggregate", async () => {
-    const admin = await db.user.findUnique({ where: { email: "admin@faya.local" } });
-    expect(admin).toBeTruthy();
-    expect(admin!.isActive).toBe(true);
-    const session = await encode({
-      token: {
-        id: admin!.id,
-        email: admin!.email,
-        name: admin!.name ?? undefined,
-        role: admin!.role,
-      },
-      secret: process.env.NEXTAUTH_SECRET ?? "",
-    });
+    const admin = await ensureF008Admin();
+    const session = await mintSessionJwt(admin);
     const res = await dashboardRequest({
       cookie: `next-auth.session-token=${session}`,
     });
@@ -116,38 +153,20 @@ describe("F-008 phase 1: GET /api/v1/dashboard is handler-gated", () => {
 
 describe("F-008 phase 1: requireSessionRead helper contract", () => {
   test("per-request cache: repeated calls with the SAME Request return the identical promise", async () => {
-    const admin = await db.user.findUnique({ where: { email: "admin@faya.local" } });
-    expect(admin).toBeTruthy();
-    const session = await encode({
-      token: {
-        id: admin!.id,
-        email: admin!.email,
-        name: admin!.name ?? undefined,
-        role: admin!.role,
-      },
-      secret: process.env.NEXTAUTH_SECRET ?? "",
-    });
+    const admin = await ensureF008Admin();
+    const session = await mintSessionJwt(admin);
     const req = new NextRequest("http://app.local/api/v1/dashboard", {
       headers: { cookie: `next-auth.session-token=${session}` },
     });
     const p1 = requireSessionRead(req);
     const p2 = requireSessionRead(req);
     expect(p2).toBe(p1); // WeakMap hit — one getToken + one DB check per request
-    expect((await p1).id).toBe(admin!.id); // the cached promise resolves to the actor
+    expect((await p1).id).toBe(admin.id); // the cached promise resolves to the actor
   });
 
   test("different Requests get independent cache slots", async () => {
-    const admin = await db.user.findUnique({ where: { email: "admin@faya.local" } });
-    expect(admin).toBeTruthy();
-    const session = await encode({
-      token: {
-        id: admin!.id,
-        email: admin!.email,
-        name: admin!.name ?? undefined,
-        role: admin!.role,
-      },
-      secret: process.env.NEXTAUTH_SECRET ?? "",
-    });
+    const admin = await ensureF008Admin();
+    const session = await mintSessionJwt(admin);
     const a = new NextRequest("http://app.local/api/v1/dashboard", {
       headers: { cookie: `next-auth.session-token=${session}` },
     });
@@ -156,8 +175,8 @@ describe("F-008 phase 1: requireSessionRead helper contract", () => {
     });
     const [pa, pb] = [requireSessionRead(a), requireSessionRead(b)];
     expect(pb).not.toBe(pa); // no cross-request dedupe
-    expect((await pa).id).toBe(admin!.id);
-    expect((await pb).id).toBe(admin!.id);
+    expect((await pa).id).toBe(admin.id);
+    expect((await pb).id).toBe(admin.id);
   });
 
   test("source contract: the dashboard GET body gates on requireSessionRead", async () => {
