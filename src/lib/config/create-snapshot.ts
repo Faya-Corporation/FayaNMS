@@ -87,6 +87,21 @@ export async function createSnapshot(
     return { ok: false, reason: "DEVICE_NOT_FOUND" };
   }
 
+  // F-051 (audit A3-15): the per-device version (max+1) is a read-modify-
+  // write. Two concurrent completion transactions for the SAME device could
+  // both read version N and both create N+1 → the @@unique([deviceId,
+  // version]) P2002 aborts the whole job tx (same shape F-016 had for
+  // incident numbers, fixed in RT-014). Instead of retrying at 8 call
+  // sites, serialize HERE: take the device row lock (SELECT … FOR UPDATE)
+  // BEFORE reading max(version). The second tx blocks on the row until the
+  // first commits, then reads the fresh max — versions can never collide.
+  // The lock is transaction-scoped (released with the caller's tx) and the
+  // row is the same one this function updates below, so lock ordering is
+  // stable. PostgreSQL provider is the schema's only target.
+  await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "Device" WHERE id = ${input.deviceId} FOR UPDATE
+  `;
+
   const sha256 = sha256Plaintext(input.rawText);
   const sizeBytes = Buffer.byteLength(input.rawText, "utf8");
   const normalizedText =

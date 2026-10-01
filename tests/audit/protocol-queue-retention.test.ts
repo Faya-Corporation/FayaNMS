@@ -364,7 +364,10 @@ test("tick enqueues at most one PROTOCOL_QUEUE_RETENTION per dedupe window", () 
   const tick = readFileSync("src/app/api/v1/worker/tick/route.ts", "utf8");
   expect(tick).toContain("PROTOCOL_QUEUE_RETENTION_DEDUPE_HOURS = 24");
   expect(tick).toContain('type: "PROTOCOL_QUEUE_RETENTION"');
-  expect(tick).toContain("enqueueProtocolQueueRetention(now)");
+  // F-052: the five SYSTEM singleton enqueues now run inside the
+  // advisory-locked transaction — the dedupe read/create use the tx client.
+  expect(tick).toContain("enqueueProtocolQueueRetention(tx, now)");
+  expect(tick).toContain("pg_try_advisory_xact_lock");
   expect(tick).toContain("protocolQueueRetentionEnqueued");
 });
 

@@ -236,7 +236,9 @@ test("tick enqueues at most one ROLLUP_AGGREGATION per dedupe window", () => {
   const tick = readFileSync("src/app/api/v1/worker/tick/route.ts", "utf8");
   expect(tick).toContain("ROLLUP_DEDUPE_MIN = 5");
   expect(tick).toContain('type: "ROLLUP_AGGREGATION"');
-  expect(tick).toContain("enqueueRollupAggregation(now)");
+  // F-052: the five SYSTEM singleton enqueues now run inside the
+  // advisory-locked transaction — the dedupe read/create use the tx client.
+  expect(tick).toContain("enqueueRollupAggregation(tx, now)");
   expect(tick).toContain("rollupEnqueued");
   // Same dedupe shape as METRIC_RETENTION / FLOW_RETENTION.
   expect(tick).toContain('status: { in: ["QUEUED", "RUNNING"] }');
