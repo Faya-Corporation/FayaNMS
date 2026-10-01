@@ -148,6 +148,33 @@ validity re-verified at execute time (`APPROVAL_FINGERPRINT_MISMATCH`,
 | `/reports/schedules/[id]/run` | POST | `report.schedule` |
 | `/reports/runs/[id]/download` | GET | `report.read` (`*.read` holders pass) |
 
+## 2.1 Read-plane handler gates (F-008 series — in progress)
+
+Audit finding F-008 (P2): operational GETs under `/api/v1` were
+authenticated ONLY by the proxy matcher (`/api/v1/:path*`) — a single
+point of failure for the whole read plane. The remediation is a
+defense-in-depth second layer: each read handler verifies the human
+session itself via the typed helper `requireSessionRead()` in
+`src/lib/auth/session.ts` (getToken + active-user DB re-verification,
+per-request cached; fail-closed — 401 `UNAUTHENTICATED` /
+`ACCOUNT_DISABLED`, machine and API-client bearer credentials refused).
+
+Rollout order (one PR per domain group; the read-route matrix in
+`tests/auth/authorization-contract.test.ts` enforces per-GET-handler
+gates and pins the ungated allowlist at its phase-1 size — the list may
+only shrink as the sweep lands):
+
+| Phase | Domain | Status |
+|---|---|---|
+| 1 | dashboard (`/api/v1/dashboard`) | **Gated** |
+| 2 | events / alerts (`events`, `alerts`, `alerts/rules` GETs) | pending |
+| 3 | devices / interfaces (`devices`, `devices/[id]/*`, `interfaces`) | pending |
+| 4 | the rest (admin reads, incidents, changes, cmdb, performance, …) | pending |
+
+The proxy's API-client READ refusal (`API_CLIENT_READS_NOT_WIRED_BODY`,
+src/proxy.ts) stays in force until every read handler is gated — only
+then can the documented API-client read scopes ship safely.
+
 ## 3. Machine (service) endpoints — scope enforcement
 
 Every middleware-exempt machine route authenticates a service JWT AND
