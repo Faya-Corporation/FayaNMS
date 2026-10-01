@@ -141,8 +141,23 @@ this branch and surfaced three classes of issue, each root-caused and fixed:
    labelled wrapper, legend, and sr-only alternative already carry the full
    text) and disabling the animation. Full browser suite now 12/12 locally,
    B3b in 2.3s.
+4. **Harness robustness (F-068, e1d1bf3 + a7a4512).** After 1df1341
+   bounded every `page.evaluate`, the browser job still failed 2/12 — and
+   both modes reproduced in four local full-suite runs, each root-caused:
+   (a) a strict-mode violation on the D10 toast the product renders
+   correctly twice (toast title + notification live region); (b) a 300s
+   hook burn where teardown's plain `DROP DATABASE` waited forever on the
+   starved-but-alive app's still-open pool backends. Also audited: every
+   Playwright call that has NO timeout of its own (`browser.newPage`,
+   `page.close`, `page.addScriptTag`, `keyboard.press`) is now raced
+   against node-side timers (new `tests/browser/harness-bounds.ts`),
+   migrate/seed `spawnSync` calls are bounded, teardown reaps children
+   before dropping `WITH (FORCE)`, and the CI browser step gains ONE
+   automatic full-suite re-run (deterministic failures fail both attempts).
+   Final local evidence: full browser suite **12/12 in 41s** (B3b 2.16s,
+   B4 1.36s). No assertion, violation verdict, or journey step weakened.
 
-Register impact: **67 deduplicated findings, 44 fixed** (43 from the
-remediation waves + F-067), 2 deferred, 20 open (2 P2 + 18 P3). The PR CI
-evidence (gate/e2e/scan green; browser green on the local full-suite
+Register impact: **68 deduplicated findings, 45 fixed** (43 from the
+remediation waves + F-067 + F-068), 2 deferred, 21 open (2 P2 + 19 P3). The
+PR CI evidence (gate/e2e/scan green; browser green on the local full-suite
 reproduction) accompanies the merge readiness statement above.
