@@ -14,7 +14,10 @@
  *       actually present and visible in a real viewport;
  *   B3  axe-core accessibility scans (wcag2a/aa + best-practice) of the
  *       sign-in page AND the authenticated dashboard — no critical or
- *       serious violations;
+ *       serious violations. A scan whose 60s node-side bound expires on a
+ *       starved renderer is retried ONCE on a fresh page/renderer (the
+ *       environment-wedge path — a COMPLETED scan's verdict is never
+ *       retried or masked);
  *   B4  keyboard-only sweeps — focus moves through the sign-in form and
  *       across the dashboard shell without ever falling back to <body>;
  *   B5  RTL sweep — switching the locale to العربية flips <html dir> to
@@ -74,7 +77,9 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"];
  * renderer, failing the journey fast instead of hanging until the test-runner
  * watchdog kills the shared e2e stack and cascades the rest of the file.
  * Real violations are NEVER retried or masked: a completed scan's verdict is
- * final; only the bound-expiry path is typed.
+ * final; only the bound-expiry path is typed. The B3 journeys call this
+ * through runAxeWithWedgeRetry, which retries ONLY this bound-expiry path,
+ * once, on a fresh page/renderer.
  */
 async function runAxe(page: Page): Promise<AxeViolation[]> {
   const AXE_BOUND_MS = 60_000;
@@ -201,6 +206,92 @@ async function newJourneyPage(options: {
   return page;
 }
 
+/**
+ * Journey browser launch — shared by beforeEach AND the B3 wedge retry
+ * (the retry must be able to relaunch a browser that died with its wedged
+ * renderer instead of failing the retry at newPage).
+ */
+function launchJourneyBrowser(): Promise<Browser> {
+  return chromium.launch({
+    headless: true,
+    // Bounded launch: a starved driver must fail this hook fast (the next
+    // journey's fresh launch takes over) instead of hanging it to the hook
+    // timeout. 120s, not less: a full-suite run shares the box with the
+    // app, worker, postgres AND the other browser file's Chromium — a
+    // locally-observed launch under that load exceeded 60s (the 60s bound
+    // fired → B4 hook fail; the same journey in isolation launches in ~2s).
+    // 120s still
+    // leaves >2x headroom inside the 300s hook budget. dev-shm: CI runners
+    // have tiny /dev/shm. The backgrounding/throttling disables keep
+    // headless renderers from being deprioritized mid-scan — renderer
+    // starvation was the observed indefinite page.evaluate hang in every
+    // real CI run so far.
+    timeout: 120_000,
+    args: [
+      "--disable-dev-shm-usage",
+      "--disable-renderer-backgrounding",
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+    ],
+  });
+}
+
+/**
+ * Bounded axe scan with ONE starvation-wedge retry on a fresh page.
+ *
+ * CI evidence (runs 36799654823, 36805529852): exactly ONE of the four axe
+ * scans per suite run can have its 60s node-side bound expire on the
+ * co-tenanted 2-vCPU runner — and WHICH scan starves ROTATES between
+ * attempts (run 36805529852: B3b in attempt 1, B3a in attempt 2), while
+ * every other scan completes in 1-2s and the full suite passes 12/12
+ * locally on a deliberately MORE constrained sandbox. The wedge is
+ * renderer starvation, not a product verdict — but the suite-level CI
+ * retry re-runs ALL journeys and both attempts starved once each, so it
+ * cannot absorb this mode alone.
+ *
+ * This helper mirrors the file's established honest-retry posture (B5's
+ * operator-retry sweep): on bound expiry the starved page is reclaimed
+ * (runAxe already closed it), a FRESH page is opened (browser.newPage
+ * creates a fresh context → fresh renderer process, isolated from the
+ * wedged one), the journey setup re-runs, and the scan executes again —
+ * ONCE. A COMPLETED scan is final: its verdict (clean OR violations) is
+ * returned as-is and NEVER retried or masked. Any non-bound error (setup
+ * failure, assertion material, driver wedge) propagates immediately.
+ * Worst-case sums stay inside the test budgets: B3a ≈ 2×(5s setup + 60s
+ * bound + 10s close) ≈ 150s < 180s; B3b ≈ 2×(30s setup + 60s bound + 10s
+ * close) ≈ 200s < 240s.
+ */
+async function runAxeWithWedgeRetry(
+  setup: (page: Page) => Promise<void>
+): Promise<AxeViolation[]> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    // If the browser itself died with the wedge, relaunch it (same bounded
+    // config as beforeEach) so the retry faces a live browser.
+    if (!browser || !browser.isConnected()) {
+      await boundedBrowserClose(browser);
+      browser = await launchJourneyBrowser();
+    }
+    const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
+    try {
+      await setup(page);
+      return await runAxe(page);
+    } catch (error) {
+      const message = String((error as Error)?.message ?? "");
+      if (!message.includes("axe.run exceeded the node-side bound") || attempt === 2) {
+        throw error;
+      }
+      console.error(
+        `[browser] axe scan exceeded its 60s node-side bound (attempt ${attempt}/2) — ` +
+          "renderer starvation wedge, NOT a product verdict; retrying once on a fresh page/renderer"
+      );
+    } finally {
+      await closeJourneyPage(page, browser);
+    }
+  }
+  /* unreachable: attempt 2 either returns a verdict or throws */
+  throw new Error("unreachable: axe wedge-retry loop exited");
+}
+
 const enabled = process.env[BROWSER_E2E_FLAG] === "1";
 
 /** Modifier that skips each journey unless the flag is set (hermetic default). */
@@ -226,28 +317,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
     // full re-boot when not — so no journey ever starts against a dead stack
     // and one failure can never cascade into CONNECTION_REFUSED noise.
     await bootE2E();
-    browser = await chromium.launch({
-      headless: true,
-      // Bounded launch: a starved driver must fail this hook fast (the next
-      // journey's fresh launch takes over) instead of hanging it to the hook
-      // timeout. 120s, not less: a full-suite run shares the box with the
-      // app, worker, postgres AND the other browser file's Chromium — a
-      // locally-observed launch under that load exceeded 60s (the 60s bound
-      // fired → B4 hook fail; the same journey in isolation launches in ~2s).
-      // 120s still
-      // leaves >2x headroom inside the 300s hook budget. dev-shm: CI runners
-      // have tiny /dev/shm. The backgrounding/throttling disables keep
-      // headless renderers from being deprioritized mid-scan — renderer
-      // starvation was the observed indefinite page.evaluate hang in every
-      // real CI run so far.
-      timeout: 120_000,
-      args: [
-        "--disable-dev-shm-usage",
-        "--disable-renderer-backgrounding",
-        "--disable-background-timer-throttling",
-        "--disable-backgrounding-occluded-windows",
-      ],
-    });
+    browser = await launchJourneyBrowser();
   }, 300_000);
 
   afterEach(async () => {
@@ -321,17 +391,13 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
   browserTest(
     "B3a: axe scan — sign-in page has no critical/serious accessibility violations",
     async () => {
-      const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
-      try {
-        await page.goto(`${APP_BASE}/`, { waitUntil: "domcontentloaded" });
-        await page.waitForSelector("#sign-in-title", { state: "visible", timeout: 20_000 });
-        const violations = (await runAxe(page)).filter(
-          (v) => v.impact === "critical" || v.impact === "serious"
-        );
-        expect(formatViolations(violations) || "(none)").toBe("(none)");
-      } finally {
-        await closeJourneyPage(page, browser);
-      }
+      const violations = (
+        await runAxeWithWedgeRetry(async (page) => {
+          await page.goto(`${APP_BASE}/`, { waitUntil: "domcontentloaded" });
+          await page.waitForSelector("#sign-in-title", { state: "visible", timeout: 20_000 });
+        })
+      ).filter((v) => v.impact === "critical" || v.impact === "serious");
+      expect(formatViolations(violations) || "(none)").toBe("(none)");
     },
     180_000
   );
@@ -339,22 +405,18 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
   browserTest(
     "B3b: axe scan — authenticated dashboard has no critical/serious violations",
     async () => {
-      const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
-      try {
-        await signIn(page);
-        // networkidle has NO default timeout in Playwright (waits forever) —
-        // unbounded it burned B3b's whole 240s budget when the dashboard's
-        // react-query polling never let the network go idle (run 11 local,
-        // run 36799654823 B3b class). The settle is best-effort by design;
-        // bound it so it can only ever cost 15s.
-        await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
-        const violations = (await runAxe(page)).filter(
-          (v) => v.impact === "critical" || v.impact === "serious"
-        );
-        expect(formatViolations(violations) || "(none)").toBe("(none)");
-      } finally {
-        await closeJourneyPage(page, browser);
-      }
+      const violations = (
+        await runAxeWithWedgeRetry(async (page) => {
+          await signIn(page);
+          // networkidle has NO default timeout in Playwright (waits forever) —
+          // unbounded it burned B3b's whole 240s budget when the dashboard's
+          // react-query polling never let the network go idle (run 11 local,
+          // run 36799654823 B3b class). The settle is best-effort by design;
+          // bound it so it can only ever cost 15s.
+          await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
+        })
+      ).filter((v) => v.impact === "critical" || v.impact === "serious");
+      expect(formatViolations(violations) || "(none)").toBe("(none)");
     },
     240_000
   );
