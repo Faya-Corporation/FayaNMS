@@ -167,8 +167,28 @@ this branch and surfaced three classes of issue, each root-caused and fixed:
    side-effect-of-a-comment"). Fixed by moving the pin with a written
    move log (old hash → new hash, reason, commit reference) inside the
    test docstring; comment-only edits still cannot move it silently.
+6. **Browser-harness round 2 (F-070, d462f1f).** Run 36799654823: gate,
+   e2e and scan all green — the browser job still failed both attempts.
+   Sixteen local full-suite runs plus idle-box CDP probes isolated five
+   harness defects beneath the two CI failure modes: `page.addScriptTag`
+   was still outside runAxe's raced region (unbounded inject through the
+   renderer — the surviving 240s budget kill), `waitForLoadState`
+   ("networkidle") has NO default timeout in Playwright, browser reclaim
+   was graceful-only (a wedged driver burned the 60s hook timeout and its
+   leaked spinners degraded the CI re-run; bun's dangling-kill even took
+   the shared e2e app with it), a cleanup-side close wedge could flip a
+   journey whose assertions had already passed, and 60s-era waits made
+   some journeys' worst-case bound sums exceed their own test budgets.
+   Fixed: the inject+scan share one node-side 60s bound, the settle is
+   bounded at 15s, `boundedBrowserClose` force-closes via a browser-level
+   CDP session (bypasses wedged renderers; verified ~1.7s disconnect),
+   `closeJourneyPage` isolates verdicts from cleanup wedges, waits are
+   sized to loaded reality with B5's budget resized to fit its operator-
+   honest retry sweep. Idle-box probes show no product defect underneath
+   (menu stable, item click 114ms); no assertion, violation verdict, or
+   journey step changed.
 
-Register impact: **69 deduplicated findings, 46 fixed** (43 from the
-remediation waves + F-067 + F-068 + F-069), 2 deferred, 21 open (2 P2 + 19 P3). The
+Register impact: **70 deduplicated findings, 47 fixed** (43 from the
+remediation waves + F-067 + F-068 + F-069 + F-070), 2 deferred, 21 open (2 P2 + 19 P3). The
 PR CI evidence (gate/e2e/scan green; browser green on the local full-suite
 reproduction) accompanies the merge readiness statement above.
