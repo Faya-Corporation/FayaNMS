@@ -15,6 +15,7 @@ import {
   authErrorToFail,
   loadRolePermissions,
   requirePermission,
+  requireSessionRead,
 } from "@/lib/auth/session";
 import { isWildcardHolder } from "@/lib/auth/permissions";
 import type { User } from "@prisma/client";
@@ -99,9 +100,19 @@ function parsePreChecks(
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // F-008 phase 4a (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const { id } = await params;
   if (!id || id.length > ID_MAX) {
     return fail("INVALID_ID", "Invalid change id", 400);

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, ok } from "../../_lib/api";
 import { computeSlaState } from "@/lib/incidents/lifecycle";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +15,19 @@ export const dynamic = "force-dynamic";
  * the UI consumes this shape directly for the detail view.
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // F-008 phase 4a (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const { id } = await params;
   if (!id || id.length > 64) {
     return fail("INVALID_ID", "Invalid incident id", 400);

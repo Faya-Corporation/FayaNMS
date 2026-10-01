@@ -6,7 +6,7 @@ import {
   newCorrelationId,
   ok,
 } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
 import {
   cmdbCiTypeSchema,
   cmdbCriticalitySchema,
@@ -69,6 +69,16 @@ const createItemSchema = z.object({
 });
 
 export async function GET(request: Request) {
+  // F-008 phase 4a (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const url = new URL(request.url);
 
   const parsedQuery = listQuerySchema.safeParse({

@@ -132,13 +132,21 @@ const READ_GATES = [
   "verifyControlToken(",
   "getSessionUser(",
   "resolveActingUser(",
+  // Admin-surface gate (Task 7-b): resolveAdminActor() wraps
+  // requireRole(req, "admin") — full session + active-user DB check + admin
+  // role. Recognized from F-008 phase 4a on so the read matrix reflects the
+  // admin reads' REAL handler-level enforcement (they were allowlisted in
+  // phases 1-3 only because this wrapper was not a recognized marker).
+  "resolveAdminActor(",
 ];
 
 /**
  * F-008 read-route allowlist — route files whose GET handler(s) perform NO
  * handler-level auth. Phase 1 gated the dashboard domain and pinned the
  * initial list at 59 entries; phase 2 gated events/alerts (−3 → 56);
- * phase 3 gated devices/interfaces (−9 → 47).
+ * phase 3 gated devices/interfaces (−9 → 47); phase 4a gated
+ * incidents/changes/cmdb with requireSessionRead (−11) AND recognized the
+ * admin surface's resolveAdminActor → requireRole("admin") gate (−8) → 28.
  * Every later phase DELETES its domain's entries. The list may never GROW
  * past the pinned cap: a new unguarded read route fails the matrix test,
  * and raising the cap is a deliberate, documented governance edit (RT-034
@@ -149,52 +157,33 @@ const READ_ALLOWLIST: Record<string, string> = {
   // ── deliberate non-gates (bootstrap/reference surfaces) ───────────────
   "meta/route.ts": "public bootstrap (branding/status; read-only)",
   "meta/reference/route.ts": "authenticated filter-bar reference data — proxy-gated today; F-008 candidate once the sweep reaches meta",
-  // ── F-008 phase 4+: the rest (admin reads, incidents, changes, cmdb, performance, …) ──
-  "admin/api-clients/route.ts": "F-008 rollout pending (phase 4: admin)",
-  "admin/audit-chain/verify/route.ts": "F-008 rollout pending (phase 4: admin)",
-  "admin/collectors/route.ts": "F-008 rollout pending (phase 4: admin)",
-  "admin/collectors/distribution/route.ts": "F-008 rollout pending (phase 4: admin)",
-  "admin/drivers/route.ts": "F-008 rollout pending (phase 4: admin)",
-  "admin/notification-channels/route.ts": "F-008 rollout pending (phase 4: admin)",
-  "admin/settings/route.ts": "F-008 rollout pending (phase 4: admin)",
-  "admin/webhooks/route.ts": "F-008 rollout pending (phase 4: admin)",
-  "backup-policies/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "backup-policies/[id]/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "baselines/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "changes/[id]/route.ts": "F-008 rollout pending (phase 4: the rest; PATCH/DELETE are permission-gated, GET is not)",
-  "changes/conflicts/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "cmdb/items/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "cmdb/items/[id]/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "cmdb/relations/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "cmdb/impact/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "compliance/backup/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "discovery/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "discovery/policies/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "drift/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "firmware/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "flows/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "flows/retention/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "ha/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "incidents/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "incidents/[id]/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "incidents/stats/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "incidents/export/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "incidents/correlate/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "jobs/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "maintenance/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "metrics/retention/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "notifications/route.ts": "F-008 rollout pending (phase 4: the rest; list reads the caller's own rows)",
-  "performance/overview/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "performance/availability/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "performance/capacity/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "performance/devices/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "performance/interfaces/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "predictive/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "search/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "sites/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "snapshots/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "topology/route.ts": "F-008 rollout pending (phase 4: the rest)",
-  "ztp/claims/route.ts": "F-008 rollout pending (phase 4: the rest)",
+  // ── F-008 phase 4b: the long tail (performance, discovery, jobs, …) ──
+  "backup-policies/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "backup-policies/[id]/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "baselines/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "compliance/backup/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "discovery/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "discovery/policies/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "drift/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "firmware/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "flows/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "flows/retention/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "ha/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "jobs/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "maintenance/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "metrics/retention/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "notifications/route.ts": "F-008 rollout pending (phase 4b: the long tail; list reads the caller's own rows)",
+  "performance/overview/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "performance/availability/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "performance/capacity/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "performance/devices/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "performance/interfaces/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "predictive/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "search/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "sites/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "snapshots/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "topology/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
+  "ztp/claims/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
 };
 
 describe("authorization contract inventory", () => {
@@ -383,5 +372,70 @@ describe("F-008 read-route matrix (handler-level read-plane authn)", () => {
       "utf8"
     );
     expect(deviceDetail).toContain('requirePermission(request, "device.write")');
+  });
+
+  test("incidents/changes/cmdb domain is handler-gated (F-008 phase 4a landed)", () => {
+    const domain = [
+      "incidents/route.ts",
+      "incidents/[id]/route.ts",
+      "incidents/stats/route.ts",
+      "incidents/export/route.ts",
+      "incidents/correlate/route.ts",
+      "changes/[id]/route.ts",
+      "changes/conflicts/route.ts",
+      "cmdb/items/route.ts",
+      "cmdb/items/[id]/route.ts",
+      "cmdb/relations/route.ts",
+      "cmdb/impact/route.ts",
+    ];
+    for (const rel of domain) {
+      expect(READ_ALLOWLIST[rel]).toBeUndefined();
+      const bodies = getHandlerBodies(readFileSync(join(API_ROOT, rel), "utf8"));
+      expect(bodies.length).toBeGreaterThanOrEqual(1);
+      for (const body of bodies) {
+        expect(body).toContain("requireSessionRead(");
+      }
+    }
+    // The gated files keep their permission-gated mutations alongside the
+    // newly session-gated GETs — the gate addition must not weaken the
+    // mutation plane.
+    const cmdbItems = readFileSync(join(API_ROOT, "cmdb", "items", "route.ts"), "utf8");
+    expect(cmdbItems).toContain('requirePermission(request, "cmdb.write")');
+    const changeDetail = readFileSync(
+      join(API_ROOT, "changes", "[id]", "route.ts"),
+      "utf8"
+    );
+    expect(changeDetail).toContain('requirePermission(request, "change.cancel")');
+  });
+
+  test("admin reads are handler-gated via resolveAdminActor (F-008 phase 4a recognition)", () => {
+    // Not a code change: the admin GETs always enforced requireRole("admin")
+    // through resolveAdminActor — the matrix simply did not recognize the
+    // wrapper as a gate marker until phase 4a. Pin the recognition AND the
+    // underlying strict gate so neither can silently regress.
+    const domain = [
+      "admin/api-clients/route.ts",
+      "admin/audit-chain/verify/route.ts",
+      "admin/collectors/route.ts",
+      "admin/collectors/distribution/route.ts",
+      "admin/drivers/route.ts",
+      "admin/notification-channels/route.ts",
+      "admin/settings/route.ts",
+      "admin/webhooks/route.ts",
+    ];
+    for (const rel of domain) {
+      expect(READ_ALLOWLIST[rel]).toBeUndefined();
+      const bodies = getHandlerBodies(readFileSync(join(API_ROOT, rel), "utf8"));
+      expect(bodies.length).toBeGreaterThanOrEqual(1);
+      for (const body of bodies) {
+        expect(body).toContain("resolveAdminActor(");
+      }
+    }
+    // The wrapper itself must keep delegating to the admin role gate.
+    const wrapper = readFileSync(
+      join(import.meta.dir, "..", "..", "src", "lib", "auth", "acting-admin.ts"),
+      "utf8"
+    );
+    expect(wrapper).toContain('requireRole(req, "admin")');
   });
 });
