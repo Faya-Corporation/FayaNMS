@@ -36,6 +36,8 @@ import { createRequire } from "node:module";
 
 import { chromium, type Browser, type Page } from "playwright";
 
+import { boundedClose, boundedNewPage, pressB } from "./harness-bounds";
+
 import {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
@@ -102,7 +104,7 @@ async function runAxe(page: Page): Promise<AxeViolation[]> {
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           timer = undefined;
-          void page.close().catch(() => undefined);
+          void boundedClose(page).catch(() => undefined);
           reject(new Error("axe.run exceeded the node-side bound; page reclaimed"));
         }, AXE_BOUND_MS);
       }),
@@ -167,7 +169,7 @@ async function evalB<T>(page: Page, fn: () => T | Promise<T>, ms = 20_000): Prom
     ]);
   } catch (error) {
     if (String((error as Error)?.message ?? "").includes("exceeded the")) {
-      await page.close().catch(() => undefined);
+      await boundedClose(page).catch(() => undefined);
     }
     throw error;
   } finally {
@@ -178,7 +180,13 @@ async function evalB<T>(page: Page, fn: () => T | Promise<T>, ms = 20_000): Prom
 async function newJourneyPage(options: {
   viewport: { width: number; height: number };
 }): Promise<Page> {
-  const page = await browser!.newPage(options);
+  // Bounded: newPage has NO timeout of its own and setDefaultTimeout only
+  // covers the page it creates — a wedged browser process would hang the
+  // journey here. The helper also bounds every action/navigation of the
+  // returned page at 30 s (Playwright actions default to UNLIMITED — on a
+  // starved renderer a single wedged click would hang the journey until the
+  // watchdog kill cascades the stack).
+  const page = await boundedNewPage(browser!, options);
   page.on("crash", () => {
     console.error("[browser] Playwright page crash detected");
   });
@@ -212,10 +220,19 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
     await bootE2E();
     browser = await chromium.launch({
       headless: true,
-      // dev-shm: CI runners have tiny /dev/shm. The backgrounding/throttling
-      // disables keep headless renderers from being deprioritized mid-scan —
-      // renderer starvation was the observed indefinite page.evaluate hang
-      // in every real CI run of this suite so far.
+      // Bounded launch: a starved driver must fail this hook fast (the next
+      // journey's fresh launch takes over) instead of hanging it to the hook
+      // timeout. 120s, not less: a full-suite run shares the box with the
+      // app, worker, postgres AND the other browser file's Chromium — a
+      // locally-observed launch under that load exceeded 60s (the 60s bound
+      // fired → B4 hook fail; the same journey in isolation launches in ~2s).
+      // 120s still
+      // leaves >2x headroom inside the 300s hook budget. dev-shm: CI runners
+      // have tiny /dev/shm. The backgrounding/throttling disables keep
+      // headless renderers from being deprioritized mid-scan — renderer
+      // starvation was the observed indefinite page.evaluate hang in every
+      // real CI run so far.
+      timeout: 120_000,
       args: [
         "--disable-dev-shm-usage",
         "--disable-renderer-backgrounding",
@@ -262,7 +279,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         await page.click("text=Sign out");
         await page.waitForSelector("#sign-in-title", { state: "visible", timeout: 60_000 });
       } finally {
-        await page.close();
+        await boundedClose(page);
       }
     },
     180_000
@@ -282,7 +299,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         // The sidebar navigation is really rendered (not just mounted).
         expect(await page.locator("nav").first().isVisible()).toBe(true);
       } finally {
-        await page.close();
+        await boundedClose(page);
       }
     },
     180_000
@@ -300,7 +317,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         );
         expect(formatViolations(violations) || "(none)").toBe("(none)");
       } finally {
-        await page.close();
+        await boundedClose(page);
       }
     },
     180_000
@@ -318,7 +335,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         );
         expect(formatViolations(violations) || "(none)").toBe("(none)");
       } finally {
-        await page.close();
+        await boundedClose(page);
       }
     },
     240_000
@@ -333,7 +350,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         await page.waitForSelector("#sign-in-email", { state: "visible", timeout: 60_000 });
 
         // First Tab from the body lands on an interactive element.
-        await page.keyboard.press("Tab");
+        await pressB(page, "Tab");
         const first = await evalB(page, () => document.activeElement?.tagName ?? "BODY");
         expect(first).not.toBe("BODY");
 
@@ -344,7 +361,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         await page.focus("#sign-in-email");
         let reachedSubmit = false;
         for (let i = 0; i < 6 && !reachedSubmit; i++) {
-          await page.keyboard.press("Tab");
+          await pressB(page, "Tab");
           reachedSubmit = await evalB(page, () => {
             const el = document.activeElement;
             return el?.tagName === "BUTTON" && (el as HTMLButtonElement).type === "submit";
@@ -363,7 +380,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         });
         await evalB(page, () => (document.activeElement as HTMLElement | null)?.blur());
         for (let i = 0; i < 12; i++) {
-          await page.keyboard.press("Tab");
+          await pressB(page, "Tab");
           const state = await evalB(page, () => {
             const el = document.activeElement;
             const interactive =
@@ -375,7 +392,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
           expect(state.interactive).toBe(true);
         }
       } finally {
-        await page.close();
+        await boundedClose(page);
       }
     },
     180_000
@@ -423,14 +440,14 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         });
         await page.waitForTimeout(300);
         await page.focus('[aria-label="تغيير اللغة"]');
-        await page.keyboard.press("Enter");
+        await pressB(page, "Enter");
         await page.waitForSelector('div[role="menu"]', { state: "visible", timeout: 30_000 });
         await page.click('div[role="menuitem"]:has-text("English")');
         await page.waitForFunction(() => document.documentElement.dir === "ltr", undefined, {
           timeout: 30_000,
         });
       } finally {
-        await page.close();
+        await boundedClose(page);
       }
     },
     180_000

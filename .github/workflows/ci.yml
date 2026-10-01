@@ -368,8 +368,19 @@ jobs:
       - name: Production build (standalone output, journeys' boot entry)
         run: bun run build:gate
 
+      # One automatic re-run of the whole suite: every journey/evaluate is
+      # bounded and the stack self-heals, but headless Chromium on 2-vCPU
+      # runners still wedges ONE random journey occasionally (renderer
+      # starvation — evidence across runs 36768543791..36779703553). A
+      # deterministic product failure (axe violations, broken journey) fails
+      # BOTH attempts, so the retry only absorbs environment flakes. The
+      # second attempt is a full fresh stack (the harness re-boots).
       - name: Run rendering-layer browser journeys (axe a11y + keyboard + RTL)
-        run: FAYANMS_BROWSER_E2E=1 bun test tests/browser/
+        run: |
+          FAYANMS_BROWSER_E2E=1 bun test tests/browser/ && exit 0
+          status=$?
+          echo "::warning::browser journeys attempt 1 failed (status $status) — re-running the full suite once"
+          FAYANMS_BROWSER_E2E=1 bun test tests/browser/
 
       - name: Upload browser diagnostics
         if: always()
