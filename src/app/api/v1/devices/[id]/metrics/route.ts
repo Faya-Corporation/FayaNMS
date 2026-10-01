@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../../_lib/api";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,10 @@ export const dynamic = "force-dynamic";
  * Resolution (ADR-07): 6h/24h read raw MetricSamples; 7d prefers 1D rollups,
  * falls back to 1H rollups (clamping to the available window), then to raw
  * samples. meta.source reports which tier served the request.
+ *
+ * F-008 phase 3 (read-plane defense-in-depth): the handler verifies the
+ * human session itself (requireSessionRead) — the proxy matcher stays the
+ * coarse gate, not the only check, for this read route.
  */
 
 const METRICS = ["CPU", "MEMORY", "UTILIZATION_IN", "UTILIZATION_OUT"] as const;
@@ -79,6 +84,14 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
+
   const { id } = await params;
   if (!id || id.length > 64) {
     return fail("INVALID_ID", "Invalid device id", 400);

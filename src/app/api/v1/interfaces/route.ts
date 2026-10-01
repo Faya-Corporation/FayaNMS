@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../_lib/api";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
@@ -35,6 +36,10 @@ export const dynamic = "force-dynamic";
  * BigInt bps counters are serialized to JS numbers (JSON.stringify throws on
  * BigInt); at link rates these are far below MAX_SAFE_INTEGER.
  * Read-only GET → no audit event (app convention).
+ *
+ * F-008 phase 3 (read-plane defense-in-depth): the handler verifies the
+ * human session itself (requireSessionRead) — the proxy matcher stays the
+ * coarse gate, not the only check, for this read route.
  * ───────────────────────────────────────────────────────────────────────────── */
 
 const FLAP_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -171,6 +176,13 @@ function orderByFor(
 }
 
 export async function GET(request: Request) {
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
 
   const sp = new URL(request.url).searchParams;
   const parsed = querySchema.safeParse({

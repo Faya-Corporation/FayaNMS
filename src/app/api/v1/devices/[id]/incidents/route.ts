@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok, pageMeta, paginationSchema } from "../../../_lib/api";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +8,10 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/v1/devices/[id]/incidents — incidents linked to the device via
  * IncidentDevice, newest first.
+ *
+ * F-008 phase 3 (read-plane defense-in-depth): the handler verifies the
+ * human session itself (requireSessionRead) — the proxy matcher stays the
+ * coarse gate, not the only check, for this read route.
  */
 
 const querySchema = paginationSchema.extend({});
@@ -15,6 +20,14 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
+
   const { id } = await params;
   if (!id || id.length > 64) {
     return fail("INVALID_ID", "Invalid device id", 400);

@@ -197,8 +197,51 @@ describe("HC-3 — wire-level: handlers answer with stamped envelopes, zero cont
   });
 
   test("devices GET on the real DB → 200 ok() envelope with requestId (no ctx arg)", async () => {
+    // F-008 phase 3: the devices GET is handler-session-gated, so this
+    // envelope-stamping probe now authenticates like every other
+    // session-minting test (the certified rt012/rt014 ensure-helper pattern
+    // — the CI gate replays only `migrate deploy`, no demo seed). The
+    // assertions below are UNCHANGED: they pin the envelope shape and the
+    // requestId stamping, not the auth plane.
+    const { db } = await import("@/lib/db");
+    const { encode } = await import("next-auth/jwt");
+    const { ROLE_MATRIX } = await import("@/lib/auth/role-matrix");
+    const adminEntry = ROLE_MATRIX.find((role) => role.name === "admin");
+    await db.role.upsert({
+      where: { name: "admin" },
+      update: {},
+      create: {
+        name: "admin",
+        description: adminEntry?.description ?? "Full platform administration",
+        permissionsJson: JSON.stringify(adminEntry?.permissions ?? ["*"]),
+      },
+    });
+    const admin = await db.user.upsert({
+      where: { email: "admin@faya.local" },
+      update: { isActive: true },
+      create: { email: "admin@faya.local", name: "HC3 Admin", role: "admin", isActive: true },
+      select: { id: true, email: true, name: true, role: true },
+    });
+    const session = await encode({
+      token: {
+        id: admin.id,
+        email: admin.email,
+        name: admin.name ?? undefined,
+        role: admin.role,
+      },
+      secret: process.env.NEXTAUTH_SECRET ?? "",
+    });
     const { GET } = await import("@/app/api/v1/devices/route");
-    const res = await GET(new Request("http://localhost/api/v1/devices"));
+    const { NextRequest } = await import("next/server");
+    // NextRequest (not a plain Request): next-auth v4's getToken reads
+    // req.cookies / req.headers.cookie — a plain web Request exposes
+    // neither, so the token would be invisible to the gate. The runtime
+    // hands handlers a NextRequest; the probe matches that reality.
+    const res = await GET(
+      new NextRequest("http://localhost/api/v1/devices", {
+        headers: { cookie: `next-auth.session-token=${session}` },
+      })
+    );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       success: boolean;
