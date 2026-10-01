@@ -156,8 +156,19 @@ this branch and surfaced three classes of issue, each root-caused and fixed:
    automatic full-suite re-run (deterministic failures fail both attempts).
    Final local evidence: full browser suite **12/12 in 41s** (B3b 2.16s,
    B4 1.36s). No assertion, violation verdict, or journey step weakened.
+5. **Governance hash pin not moved with its change (F-069).** Run
+   36797322067: the gate failed exactly one test — RT-034's "workflow
+   semantics untouched" pin (expected `91902f72…`, received `9f761be2…`).
+   The F-068 fix had deliberately edited ci.yml (the browser retry) but
+   did not deliberately move RT-034's pinned non-comment YAML hash in the
+   same change; e2e/browser/scan correctly skipped downstream. The
+   tripwire behaved exactly as designed — the edit missed its own
+   documented protocol ("update the hash deliberately, never
+   side-effect-of-a-comment"). Fixed by moving the pin with a written
+   move log (old hash → new hash, reason, commit reference) inside the
+   test docstring; comment-only edits still cannot move it silently.
 
-Register impact: **68 deduplicated findings, 45 fixed** (43 from the
-remediation waves + F-067 + F-068), 2 deferred, 21 open (2 P2 + 19 P3). The
+Register impact: **69 deduplicated findings, 46 fixed** (43 from the
+remediation waves + F-067 + F-068 + F-069), 2 deferred, 21 open (2 P2 + 19 P3). The
 PR CI evidence (gate/e2e/scan green; browser green on the local full-suite
 reproduction) accompanies the merge readiness statement above.
