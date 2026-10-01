@@ -203,17 +203,36 @@ async function reportProgress(jobId: string, progress: number, message: string) 
   }
 }
 
-async function reportFailure(jobId: string, correlationId: string, message: string) {
+/**
+ * F-012 (audit A2-03) — every completion post carries the claim epoch
+ * (JobExecution.attempts AT CLAIM TIME — the claim route increments it) so
+ * the app can IGNORE a terminal from an orphaned body: when raceTimeout
+ * fires the body keeps running while the job is retried; a late SUCCEEDED
+ * from the old body must never overwrite the replacement attempt's state
+ * (see the stale-attempt guard in /api/v1/worker/complete).
+ */
+function completePost(
+  job: Pick<ClaimedJob, "id" | "attempts">,
+  payload: Record<string, unknown>,
+  timeoutMs = 10_000
+): Promise<unknown> {
+  return nextPost(
+    "/api/v1/worker/complete",
+    { attempt: job.attempts, ...payload },
+    timeoutMs
+  );
+}
+
+async function reportFailure(
+  job: Pick<ClaimedJob, "id" | "attempts" | "correlationId">,
+  message: string
+) {
   counters.failed += 1;
   try {
-    await nextPost(
-      "/api/v1/worker/complete",
-      { jobId, outcome: "FAILED", error: message },
-      10_000
-    );
-    await log(`job ${jobId} [${correlationId}] FAILED: ${message}`);
+    await completePost(job, { jobId: job.id, outcome: "FAILED", error: message }, 10_000);
+    await log(`job ${job.id} [${job.correlationId}] FAILED: ${message}`);
   } catch (e) {
-    await log(`complete(FAILED) post failed for ${jobId}: ${(e as Error).message}`);
+    await log(`complete(FAILED) post failed for ${job.id}: ${(e as Error).message}`);
   }
 }
 
@@ -281,8 +300,8 @@ async function runBackupJob(job: ClaimedJob): Promise<void> {
     );
     const bytes = new TextEncoder().encode(cfg.rawText).length;
 
-    await nextPost(
-      "/api/v1/worker/complete",
+    await completePost(
+      job,
       {
         jobId: job.id,
         outcome: "SUCCEEDED",
@@ -339,8 +358,8 @@ async function runBackupJob(job: ClaimedJob): Promise<void> {
   const cfg = await adapter.fetchConfig(target);
   const bytes = new TextEncoder().encode(cfg.rawText).length;
 
-  await nextPost(
-    "/api/v1/worker/complete",
+  await completePost(
+    job,
     {
       jobId: job.id,
       outcome: "SUCCEEDED",
@@ -457,8 +476,8 @@ async function runDiscoveryJob(job: ClaimedJob): Promise<void> {
   };
 
   const durationMs = Date.now() - startedAt;
-  await nextPost(
-    "/api/v1/worker/complete",
+  await completePost(
+    job,
     {
       jobId: job.id,
       outcome: "SUCCEEDED",
@@ -546,8 +565,8 @@ async function runDriftCheckJob(job: ClaimedJob): Promise<void> {
     summary = `no drift vs baseline v${evaluation.baselineVersion} (running v${evaluation.currentVersion}${evaluation.resolved ? `, resolved ${evaluation.resolved} open record(s)` : ""})`;
   }
 
-  await nextPost(
-    "/api/v1/worker/complete",
+  await completePost(
+    job,
     { jobId: job.id, outcome: "SUCCEEDED", result },
     15_000
   );
@@ -594,8 +613,8 @@ async function runChangeExecutionJob(job: ClaimedJob): Promise<void> {
 
     if (step.done) {
       const outcome = step.outcome ?? "SUCCESS";
-      await nextPost(
-        "/api/v1/worker/complete",
+      await completePost(
+        job,
         {
           jobId: job.id,
           outcome: "SUCCEEDED",
@@ -663,8 +682,8 @@ async function runAlertEvaluationJob(job: ClaimedJob): Promise<void> {
     `Evaluated ${summary.rulesEvaluated} rule(s) across ${summary.devicesConsidered} device(s)`
   );
 
-  await nextPost(
-    "/api/v1/worker/complete",
+  await completePost(
+    job,
     { jobId: job.id, outcome: "SUCCEEDED", result: summary },
     15_000
   );
@@ -718,8 +737,8 @@ async function runMetricRetentionJob(job: ClaimedJob): Promise<void> {
     );
 
     const result: MetricRetentionResult = { outcome: "pruned", ...counts };
-    await nextPost(
-      "/api/v1/worker/complete",
+    await completePost(
+      job,
       { jobId: job.id, outcome: "SUCCEEDED", result },
       15_000
     );
@@ -736,8 +755,8 @@ async function runMetricRetentionJob(job: ClaimedJob): Promise<void> {
         outcome: "throttled",
         reason: "A metric retention prune ran less than 60s ago (PRUNE_THROTTLED)",
       };
-      await nextPost(
-        "/api/v1/worker/complete",
+      await completePost(
+        job,
         { jobId: job.id, outcome: "SUCCEEDED", result },
         15_000
       );
@@ -774,8 +793,8 @@ async function runFlowRetentionJob(job: ClaimedJob): Promise<void> {
     80,
     `Pruned flow records=${result.flowRecordsDeleted} outcome=${result.outcome}`,
   );
-  await nextPost(
-    "/api/v1/worker/complete",
+  await completePost(
+    job,
     { jobId: job.id, outcome: "SUCCEEDED", result },
     15_000,
   );
@@ -828,8 +847,8 @@ async function runRollupAggregationJob(job: ClaimedJob): Promise<void> {
     );
 
     const result: RollupAggregationResult = { outcome: "aggregated", ...summary };
-    await nextPost(
-      "/api/v1/worker/complete",
+    await completePost(
+      job,
       { jobId: job.id, outcome: "SUCCEEDED", result },
       15_000
     );
@@ -846,8 +865,8 @@ async function runRollupAggregationJob(job: ClaimedJob): Promise<void> {
         outcome: "throttled",
         reason: "A rollup aggregation is already in flight (ROLLUP_THROTTLED)",
       };
-      await nextPost(
-        "/api/v1/worker/complete",
+      await completePost(
+        job,
         { jobId: job.id, outcome: "SUCCEEDED", result },
         15_000
       );
@@ -897,8 +916,8 @@ async function runProtocolQueueRetentionJob(job: ClaimedJob): Promise<void> {
       `Pruned queue rows=${result.queueRowsDeleted ?? 0} outcome=${result.outcome}`
     );
 
-    await nextPost(
-      "/api/v1/worker/complete",
+    await completePost(
+      job,
       { jobId: job.id, outcome: "SUCCEEDED", result },
       15_000
     );
@@ -915,8 +934,8 @@ async function runProtocolQueueRetentionJob(job: ClaimedJob): Promise<void> {
         outcome: "throttled",
         reason: "A protocol queue retention prune ran less than 60s ago (PROTOCOL_QUEUE_PRUNE_THROTTLED)",
       };
-      await nextPost(
-        "/api/v1/worker/complete",
+      await completePost(
+        job,
         { jobId: job.id, outcome: "SUCCEEDED", result },
         15_000
       );
@@ -998,8 +1017,8 @@ async function runFirmwareUpgradeJob(job: ClaimedJob): Promise<void> {
     20_000
   )) as FirmwareUpgradeResponse;
 
-  await nextPost(
-    "/api/v1/worker/complete",
+  await completePost(
+    job,
     {
       jobId: job.id,
       outcome: "SUCCEEDED",
@@ -1083,8 +1102,8 @@ async function runZtpProvisionJob(job: ClaimedJob): Promise<void> {
     20_000
   )) as ZtpProvisionResponse;
 
-  await nextPost(
-    "/api/v1/worker/complete",
+  await completePost(
+    job,
     {
       jobId: job.id,
       outcome: "SUCCEEDED",
@@ -1289,7 +1308,7 @@ async function executeJob(job: ClaimedJob): Promise<void> {
     // Task 10-a: the failure path itself must never produce an unhandled
     // rejection (e.g. backend down → reportFailure can fail too).
     try {
-      await reportFailure(job.id, job.correlationId, message);
+      await reportFailure(job, message);
     } catch (reportErr) {
       await log(
         `failed to report failure for ${job.id}: ${(reportErr as Error)?.message ?? String(reportErr)}`

@@ -103,6 +103,13 @@ const driftCheckResultSchema = z.object({
 const completeSchema = z.object({
   jobId: z.string().trim().min(1),
   outcome: z.enum(["SUCCEEDED", "FAILED"]),
+  // F-012 (audit A2-03): the claim epoch (JobExecution.attempts at claim
+  // time — the claim route increments it). When present, a terminal for a
+  // NON-current attempt is acknowledged but IGNORED: a timed-out (and
+  // therefore orphaned) job body must never write a terminal over the
+  // retry attempt that replaced it. Older workers that omit the field
+  // keep the exact previous behavior.
+  attempt: z.number().int().positive().optional(),
   // Shape depends on the job type and is validated per-branch below
   // (CONFIG_BACKUP keeps its original error-for-missing-rawText behavior).
   result: z.unknown().optional(),
@@ -139,12 +146,25 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
 
-  const { jobId, outcome, result, error } = parsed.data;
+  const { jobId, outcome, result, error, attempt } = parsed.data;
   const now = new Date();
 
   const job = await db.jobExecution.findUnique({ where: { id: jobId } });
   if (!job) {
     return fail("JOB_NOT_FOUND", "The referenced job does not exist", 404);
+  }
+
+  // F-012 — stale-attempt guard (applies to BOTH outcome branches): a
+  // completion whose claim epoch no longer matches the job's current one is
+  // a post from an orphaned body (raceTimeout fired, the job was requeued
+  // and re-claimed, the old body then finished late). Acknowledge with
+  // { updated: false } — never crash the loop, never write the terminal.
+  if (attempt !== undefined && attempt !== job.attempts) {
+    return ok({
+      jobId,
+      updated: false,
+      reason: `stale attempt ${attempt} (current ${job.attempts}) — terminal ignored`,
+    });
   }
 
   // ── SUCCEEDED ────────────────────────────────────────────────────────────

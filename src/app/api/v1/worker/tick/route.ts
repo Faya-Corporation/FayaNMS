@@ -12,6 +12,9 @@ import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
+/** Transaction client used by the advisory-locked enqueue phase (F-052). */
+type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
 /**
  * POST /api/v1/worker/tick — scheduler tick driven by the worker mini-service.
  *
@@ -416,24 +419,37 @@ export async function POST(request: Request) {
 
   // Alert evaluation scheduling (Task 5-a): ONE recurring ALERT_EVALUATION
   // job per dedupe window — the worker runs the evaluate-in-Next engine.
-  const alertEvalEnqueued = await enqueueAlertEvaluation(now);
-
-  // Metric retention scheduling (Task 6-a): ONE recurring METRIC_RETENTION
-  // job per 24 h — the worker triggers the evaluate-in-Next prune.
-  const metricRetentionEnqueued = await enqueueMetricRetention(now);
-
-  // Rollup aggregation scheduling (RT-002): ONE recurring
-  // ROLLUP_AGGREGATION job per 5 min — the worker triggers the
-  // evaluate-in-Next MetricSample → MetricRollup aggregation pass.
-  const rollupEnqueued = await enqueueRollupAggregation(now);
-
-  // Flow retention uses an independent 24-hour policy and bounded prune job.
-  const flowRetentionEnqueued = await enqueueFlowRetention(now);
-
-  // Protocol queue retention (RT-003): ONE recurring
-  // PROTOCOL_QUEUE_RETENTION job per 24 h — the worker triggers the
-  // evaluate-in-Next terminal-row sweep.
-  const protocolQueueRetentionEnqueued = await enqueueProtocolQueueRetention(now);
+  //
+  // F-052 (audit A3-16): the FIVE SYSTEM singleton enqueues below are
+  // check-then-create (dedupe read → create) — two OVERLAPPING ticks could
+  // both pass the same dedupe read and double-enqueue a SYSTEM job.
+  // Mitigated until now only by the single scheduler; the claim pattern is
+  // made atomic here with a transaction-scoped Postgres advisory lock
+  // (same convention as login-guard.ts): the first overlapping tick takes
+  // pg_try_advisory_xact_lock and enqueues; the second gets `locked=false`,
+  // enqueues NOTHING this round, and the winner's cadence dedupe already
+  // covers the interval. Discovery/drift/backup-policy enqueues stay
+  // outside — they target DEVICE rows and carry their own per-target
+  // dedupe (discovery policies use a transactional claim of their own).
+  const lockedEnqueues = await db.$transaction(async (tx) => {
+    const lock = await tx.$queryRaw<[{ locked: boolean }]>`
+      SELECT pg_try_advisory_xact_lock(hashtextextended('fayanms:tick:system-enqueue', 0)) AS locked
+    `;
+    if (!lock[0]?.locked) {
+      return null; // an overlapping tick owns this window — skip this round
+    }
+    const alertEval = await enqueueAlertEvaluation(tx, now);
+    const metricRetention = await enqueueMetricRetention(tx, now);
+    const rollup = await enqueueRollupAggregation(tx, now);
+    const flowRetention = await enqueueFlowRetention(tx, now);
+    const protocolQueueRetention = await enqueueProtocolQueueRetention(tx, now);
+    return { alertEval, metricRetention, rollup, flowRetention, protocolQueueRetention };
+  });
+  const alertEvalEnqueued = lockedEnqueues?.alertEval ?? 0;
+  const metricRetentionEnqueued = lockedEnqueues?.metricRetention ?? 0;
+  const rollupEnqueued = lockedEnqueues?.rollup ?? 0;
+  const flowRetentionEnqueued = lockedEnqueues?.flowRetention ?? 0;
+  const protocolQueueRetentionEnqueued = lockedEnqueues?.protocolQueueRetention ?? 0;
 
   // Reaper: RUNNING jobs whose startedAt is older than the stale threshold
   // were orphaned (worker crash / backend restart mid-flight — the
@@ -573,8 +589,8 @@ export async function POST(request: Request) {
  * a METRIC_RETENTION job is QUEUED/RUNNING, or when the last one finished
  * within the daily cadence window. Returns 0 or 1.
  */
-async function enqueueMetricRetention(now: Date): Promise<number> {
-  const inFlight = await db.jobExecution.findFirst({
+async function enqueueMetricRetention(tx: TxClient, now: Date): Promise<number> {
+  const inFlight = await tx.jobExecution.findFirst({
     where: {
       type: "METRIC_RETENTION",
       OR: [
@@ -591,7 +607,7 @@ async function enqueueMetricRetention(now: Date): Promise<number> {
   });
   if (inFlight) return 0;
 
-  await db.jobExecution.create({
+  await tx.jobExecution.create({
     data: {
       type: "METRIC_RETENTION",
       targetType: "SYSTEM",
@@ -611,8 +627,8 @@ async function enqueueMetricRetention(now: Date): Promise<number> {
  * when a ROLLUP_AGGREGATION job is QUEUED/RUNNING, or when the last one
  * finished within the 5-minute cadence window. Returns 0 or 1.
  */
-async function enqueueRollupAggregation(now: Date): Promise<number> {
-  const inFlight = await db.jobExecution.findFirst({
+async function enqueueRollupAggregation(tx: TxClient, now: Date): Promise<number> {
+  const inFlight = await tx.jobExecution.findFirst({
     where: {
       type: "ROLLUP_AGGREGATION",
       OR: [
@@ -629,7 +645,7 @@ async function enqueueRollupAggregation(now: Date): Promise<number> {
   });
   if (inFlight) return 0;
 
-  await db.jobExecution.create({
+  await tx.jobExecution.create({
     data: {
       type: "ROLLUP_AGGREGATION",
       targetType: "SYSTEM",
@@ -649,8 +665,8 @@ async function enqueueRollupAggregation(now: Date): Promise<number> {
  * when a PROTOCOL_QUEUE_RETENTION job is QUEUED/RUNNING, or when the last
  * one finished within the daily cadence window. Returns 0 or 1.
  */
-async function enqueueProtocolQueueRetention(now: Date): Promise<number> {
-  const recent = await db.jobExecution.findFirst({
+async function enqueueProtocolQueueRetention(tx: TxClient, now: Date): Promise<number> {
+  const recent = await tx.jobExecution.findFirst({
     where: {
       type: "PROTOCOL_QUEUE_RETENTION",
       OR: [
@@ -667,7 +683,7 @@ async function enqueueProtocolQueueRetention(now: Date): Promise<number> {
   });
   if (recent) return 0;
 
-  await db.jobExecution.create({
+  await tx.jobExecution.create({
     data: {
       type: "PROTOCOL_QUEUE_RETENTION",
       targetType: "SYSTEM",
@@ -682,8 +698,8 @@ async function enqueueProtocolQueueRetention(now: Date): Promise<number> {
   return 1;
 }
 
-async function enqueueFlowRetention(now: Date): Promise<number> {
-  const recent = await db.jobExecution.findFirst({
+async function enqueueFlowRetention(tx: TxClient, now: Date): Promise<number> {
+  const recent = await tx.jobExecution.findFirst({
     where: {
       type: "FLOW_RETENTION",
       OR: [
@@ -700,7 +716,7 @@ async function enqueueFlowRetention(now: Date): Promise<number> {
   });
   if (recent) return 0;
 
-  await db.jobExecution.create({
+  await tx.jobExecution.create({
     data: {
       type: "FLOW_RETENTION",
       targetType: "SYSTEM",
@@ -720,8 +736,8 @@ async function enqueueFlowRetention(now: Date): Promise<number> {
  * ALERT_EVALUATION job is QUEUED/RUNNING, or when the last one finished
  * within the 3-minute cadence window. Returns 0 or 1.
  */
-async function enqueueAlertEvaluation(now: Date): Promise<number> {
-  const inFlight = await db.jobExecution.findFirst({
+async function enqueueAlertEvaluation(tx: TxClient, now: Date): Promise<number> {
+  const inFlight = await tx.jobExecution.findFirst({
     where: {
       type: "ALERT_EVALUATION",
       OR: [
@@ -738,7 +754,7 @@ async function enqueueAlertEvaluation(now: Date): Promise<number> {
   });
   if (inFlight) return 0;
 
-  await db.jobExecution.create({
+  await tx.jobExecution.create({
     data: {
       type: "ALERT_EVALUATION",
       targetType: "SYSTEM",

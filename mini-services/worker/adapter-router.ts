@@ -293,7 +293,11 @@ export async function resolveAdapter(
         },
         options.captureTimeoutMs,
       );
-      recordedHostKey = { keyType: capture.keyType, fingerprint: capture.fingerprint };
+      // F-039 (audit A2-08): the capture travels ONLY on the signal — the
+      // former module-global `recordedHostKey` slot (read back via
+      // takeRecordedHostKey) could cross concurrent enrollments and had NO
+      // remaining consumers (the /simulate/connect handler answers from
+      // `e.capture` directly), so the slot is deleted entirely.
       throw new HostKeyCaptureSignal(capture);
     }
     // P1-005: vault resolution is async (exec provider carries a real
@@ -330,19 +334,4 @@ export class HostKeyCaptureSignal extends Error {
     super("SSH_HOSTKEY_CAPTURED");
     this.name = "HostKeyCaptureSignal";
   }
-}
-
-/**
- * Enrollment capture slot — set directly by resolveAdapter's R61 enrollment
- * branch after the credential-free capture and read by the /simulate/connect
- * handler for compatibility. Single-connection lifetime: the probe records
- * exactly one handshake.
- */
-let recordedHostKey: { keyType: string; fingerprint: string } | null = null;
-
-/** Read (and clear) the captured host key from the last enrollment-mode connection. */
-export function takeRecordedHostKey(): { keyType: string; fingerprint: string } | null {
-  const meta = recordedHostKey;
-  recordedHostKey = null;
-  return meta;
 }
