@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { csvParam, fail, firstIssueMessage, ok } from "../_lib/api";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,10 @@ export const dynamic = "force-dynamic";
  * computed live from the seeded database. The range param selects the
  * utilization-trend window; 7d reads 1D rollups and falls back (clamps)
  * to the available 24h of 1H data when no daily rollups exist yet.
+ *
+ * F-008 phase 1 (read-plane defense-in-depth): the handler verifies the
+ * human session itself (requireSessionRead) — the proxy matcher stays the
+ * coarse gate, not the only check, for the dashboard read domain.
  */
 
 const OPEN_INCIDENT_STATUSES = [
@@ -40,6 +45,14 @@ const rangeSchema = z.object({
 });
 
 export async function GET(request: Request) {
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
+
   const url = new URL(request.url);
   const parsed = rangeSchema.safeParse({ range: url.searchParams.get("range") ?? undefined });
   if (!parsed.success) {

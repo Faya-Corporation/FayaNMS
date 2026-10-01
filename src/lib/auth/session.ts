@@ -133,6 +133,42 @@ export async function requireRole(
 }
 
 /**
+ * Handler-level read-plane authn (F-008 phase 1 — per-domain sweep).
+ *
+ * The ACTIVE control for reads under /api/v1 today is the proxy matcher
+ * (src/proxy.ts, `/api/v1/:path*`) — a single point of failure for the
+ * whole read plane (audit A1-01 / F-008, P2). This helper adds the
+ * defense-in-depth SECOND layer: the read handler itself verifies the
+ * session (getToken + active-user DB check), so a matcher regression, a
+ * proxy bypass, or a future route mounted outside /api/v1 can no longer
+ * silently publish operational reads.
+ *
+ * Fail-closed by construction:
+ *   - no/invalid session                    → 401 UNAUTHENTICATED
+ *   - session for a mid-flight deactivated  → 401 ACCOUNT_DISABLED
+ *   - machine/API-client bearer credentials → 401 (they are NOT session
+ *     tokens — getToken cannot verify them under NEXTAUTH_SECRET; the
+ *     proxy already refuses both planes before any read handler)
+ *
+ * Read handlers call this once at the top; the per-request WeakMap (keyed
+ * by the Request object itself) dedupes any repeated calls within the same
+ * request without retaining entries beyond the request's lifetime. The
+ * rollout is per domain group (dashboard → events/alerts →
+ * devices/interfaces → the rest), one PR per group; the read-route matrix
+ * in tests/auth/authorization-contract.test.ts pins every ungated GET so
+ * the sweep cannot silently stall.
+ */
+const readSessionCache = new WeakMap<object, Promise<User>>();
+
+export function requireSessionRead(req: Request): Promise<User> {
+  const cached = readSessionCache.get(req);
+  if (cached) return cached;
+  const pending = requireUser(req);
+  readSessionCache.set(req, pending);
+  return pending;
+}
+
+/**
  * Load the authoritative permission array for a role name from the DB.
  * Returns [] for unknown roles / unparsable JSON (fail closed).
  */
