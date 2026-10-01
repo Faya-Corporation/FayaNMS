@@ -36,7 +36,7 @@ import { createRequire } from "node:module";
 
 import { chromium, type Browser, type Page } from "playwright";
 
-import { boundedClose, boundedNewPage, pressB } from "./harness-bounds";
+import { boundedBrowserClose, boundedClose, boundedNewPage, closeJourneyPage, pressB } from "./harness-bounds";
 
 import {
   ADMIN_EMAIL,
@@ -77,30 +77,38 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"];
  * final; only the bound-expiry path is typed.
  */
 async function runAxe(page: Page): Promise<AxeViolation[]> {
-  await page.addScriptTag({ path: AXE_SOURCE });
   const AXE_BOUND_MS = 60_000;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      page.evaluate(async (tags: string[]) => {
-        // axe is injected as a global script (no module system on the page).
-        // Signature: axe.run(context, options) — the tag filter rides in
-        // runOnly, NEVER as the context argument.
-        const axeGlobal = (
-          window as unknown as {
-            axe: {
-              run: (
-                context: Document,
-                options: { runOnly: { type: string; values: string[] } }
-              ) => Promise<{ violations: AxeViolation[] }>;
-            };
-          }
-        ).axe;
-        const results = await axeGlobal.run(document, {
-          runOnly: { type: "tags", values: tags },
-        });
-        return results.violations;
-      }, TAGS),
+      // addScriptTag MUST live inside the raced region: it has NO timeout
+      // concept at all, and injecting the script goes through the renderer —
+      // a starved renderer hangs it indefinitely (the surviving B3b 240s
+      // burn: run 13 local; the F-068 commit message claimed this was moved
+      // inside the race, but the code had it still outside — this IS the
+      // move). The whole inject+scan now shares one 60s node-side bound.
+      (async () => {
+        await page.addScriptTag({ path: AXE_SOURCE });
+        return await page.evaluate(async (tags: string[]) => {
+          // axe is injected as a global script (no module system on the page).
+          // Signature: axe.run(context, options) — the tag filter rides in
+          // runOnly, NEVER as the context argument.
+          const axeGlobal = (
+            window as unknown as {
+              axe: {
+                run: (
+                  context: Document,
+                  options: { runOnly: { type: string; values: string[] } }
+                ) => Promise<{ violations: AxeViolation[] }>;
+              };
+            }
+          ).axe;
+          const results = await axeGlobal.run(document, {
+            runOnly: { type: "tags", values: tags },
+          });
+          return results.violations;
+        }, TAGS);
+      })(),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           timer = undefined;
@@ -134,7 +142,7 @@ function formatViolations(violations: AxeViolation[]): string {
 /** Fill + submit the real sign-in form and wait for the app shell. */
 async function signIn(page: Page): Promise<void> {
   await page.goto(`${APP_BASE}/`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector("#sign-in-email", { state: "visible", timeout: 60_000 });
+  await page.waitForSelector("#sign-in-email", { state: "visible", timeout: 20_000 });
   await page.fill("#sign-in-email", ADMIN_EMAIL);
   await page.fill("#sign-in-password", ADMIN_PASSWORD);
   await page.click("button[type=submit]");
@@ -142,7 +150,7 @@ async function signIn(page: Page): Promise<void> {
   // sign-in gate disappears.
   await page.waitForSelector('header [aria-label="User menu"]', {
     state: "visible",
-    timeout: 60_000,
+    timeout: 20_000,
   });
 }
 
@@ -243,12 +251,17 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
   }, 300_000);
 
   afterEach(async () => {
-    await browser?.close().catch(() => undefined);
+    // Bounded + force-kill reclaim: a wedged driver used to burn the full
+    // 60s hook timeout and linger until bun's dangling-kill reaped the
+    // children — together with the shared e2e app (run 36799654823:
+    // `[e2e:app] exited 143` collateral, leaked spinners degrading the CI
+    // re-run). Fresh-browser-per-journey makes SIGKILL reclaim safe.
+    await boundedBrowserClose(browser);
     browser = undefined;
   }, 60_000);
 
   afterAll(async () => {
-    await browser?.close().catch(() => undefined);
+    await boundedBrowserClose(browser);
     // bun test files are sequential: the HTTP journeys re-boot through the
     // liveness-aware bootE2E() if this suite ran first and tore down.
     if (enabled) await teardownE2E();
@@ -260,14 +273,14 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
       const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
       try {
         await page.goto(`${APP_BASE}/`, { waitUntil: "domcontentloaded" });
-        await page.waitForSelector("#sign-in-title", { state: "visible", timeout: 60_000 });
+        await page.waitForSelector("#sign-in-title", { state: "visible", timeout: 20_000 });
         expect(await page.locator("#sign-in-email").isVisible()).toBe(true);
 
         // Wrong credentials → the honest generic error, still on the gate.
         await page.fill("#sign-in-email", ADMIN_EMAIL);
         await page.fill("#sign-in-password", "definitely-wrong");
         await page.click("button[type=submit]");
-        await page.waitForSelector("text=Invalid email or password.", { timeout: 30_000 });
+        await page.waitForSelector("text=Invalid email or password.", { timeout: 15_000 });
 
         // Real credentials through the REAL NextAuth client flow.
         await signIn(page);
@@ -275,11 +288,11 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
 
         // Sign out through the real user menu → back to the gate.
         await page.click('header [aria-label="User menu"]');
-        await page.waitForSelector("text=Sign out", { state: "visible", timeout: 30_000 });
+        await page.waitForSelector("text=Sign out", { state: "visible", timeout: 15_000 });
         await page.click("text=Sign out");
-        await page.waitForSelector("#sign-in-title", { state: "visible", timeout: 60_000 });
+        await page.waitForSelector("#sign-in-title", { state: "visible", timeout: 20_000 });
       } finally {
-        await boundedClose(page);
+        await closeJourneyPage(page, browser);
       }
     },
     180_000
@@ -299,7 +312,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         // The sidebar navigation is really rendered (not just mounted).
         expect(await page.locator("nav").first().isVisible()).toBe(true);
       } finally {
-        await boundedClose(page);
+        await closeJourneyPage(page, browser);
       }
     },
     180_000
@@ -311,13 +324,13 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
       const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
       try {
         await page.goto(`${APP_BASE}/`, { waitUntil: "domcontentloaded" });
-        await page.waitForSelector("#sign-in-title", { state: "visible", timeout: 60_000 });
+        await page.waitForSelector("#sign-in-title", { state: "visible", timeout: 20_000 });
         const violations = (await runAxe(page)).filter(
           (v) => v.impact === "critical" || v.impact === "serious"
         );
         expect(formatViolations(violations) || "(none)").toBe("(none)");
       } finally {
-        await boundedClose(page);
+        await closeJourneyPage(page, browser);
       }
     },
     180_000
@@ -329,13 +342,18 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
       const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
       try {
         await signIn(page);
-        await page.waitForLoadState("networkidle").catch(() => undefined);
+        // networkidle has NO default timeout in Playwright (waits forever) —
+        // unbounded it burned B3b's whole 240s budget when the dashboard's
+        // react-query polling never let the network go idle (run 11 local,
+        // run 36799654823 B3b class). The settle is best-effort by design;
+        // bound it so it can only ever cost 15s.
+        await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
         const violations = (await runAxe(page)).filter(
           (v) => v.impact === "critical" || v.impact === "serious"
         );
         expect(formatViolations(violations) || "(none)").toBe("(none)");
       } finally {
-        await boundedClose(page);
+        await closeJourneyPage(page, browser);
       }
     },
     240_000
@@ -347,7 +365,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
       const page = await newJourneyPage({ viewport: { width: 1440, height: 900 } });
       try {
         await page.goto(`${APP_BASE}/`, { waitUntil: "domcontentloaded" });
-        await page.waitForSelector("#sign-in-email", { state: "visible", timeout: 60_000 });
+        await page.waitForSelector("#sign-in-email", { state: "visible", timeout: 20_000 });
 
         // First Tab from the body lands on an interactive element.
         await pressB(page, "Tab");
@@ -376,7 +394,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         await page.click("button[type=submit]");
         await page.waitForSelector('header [aria-label="User menu"]', {
           state: "visible",
-          timeout: 60_000,
+          timeout: 20_000,
         });
         await evalB(page, () => (document.activeElement as HTMLElement | null)?.blur());
         for (let i = 0; i < 12; i++) {
@@ -392,7 +410,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
           expect(state.interactive).toBe(true);
         }
       } finally {
-        await boundedClose(page);
+        await closeJourneyPage(page, browser);
       }
     },
     180_000
@@ -418,10 +436,10 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         expect(ltr.scroll).toBeLessThanOrEqual(ltr.client + 1);
 
         await page.click('header [aria-label="Switch language"]');
-        await page.waitForSelector('div[role="menu"]', { state: "visible", timeout: 30_000 });
+        await page.waitForSelector('div[role="menu"]', { state: "visible", timeout: 20_000 });
         await page.click('div[role="menuitem"]:has-text("العربية")');
         await page.waitForFunction(() => document.documentElement.dir === "rtl", undefined, {
-          timeout: 30_000,
+          timeout: 20_000,
         });
 
         const rtl = await overflowOf();
@@ -432,24 +450,52 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         // switcher's aria-label is LOCALIZED (it now reads the Arabic
         // string), which is itself an i18n honesty pin. The RTL flip
         // re-renders the header, so the menu is opened via KEYBOARD
-        // (focus + Enter) after a settle — a pointer click races the
-        // re-mount and can be dropped.
-        await page.waitForSelector('[aria-label="تغيير اللغة"]', {
-          state: "visible",
-          timeout: 30_000,
-        });
-        await page.waitForTimeout(300);
-        await page.focus('[aria-label="تغيير اللغة"]');
-        await pressB(page, "Enter");
-        await page.waitForSelector('div[role="menu"]', { state: "visible", timeout: 30_000 });
-        await page.click('div[role="menuitem"]:has-text("English")');
+        // (focus + Enter) — a pointer click races the re-mount and can be
+        // dropped. Under load the renderer can also starve the open OR the
+        // click's stability wait (CI run 36799654823 + local full-suite
+        // reproductions: the popper repositions and the menuitem churns;
+        // idle-box probes show the product is FINE — menu stable, item
+        // click settles in 114ms). An operator presses again: the whole
+        // reopen→click interaction retries once with per-step bounds; the
+        // strict final verification (dir must flip back to ltr) stays
+        // OUTSIDE the loop and still fails the journey if the sweep cannot
+        // complete. Worst case ≈ 90s + 30s verification, inside the 180s
+        // test budget.
+        let backToEnglish = false;
+        for (let attempt = 1; attempt <= 2 && !backToEnglish; attempt++) {
+          try {
+            await page.focus('[aria-label="تغيير اللغة"]', { timeout: 12_000 });
+            await pressB(page, "Enter");
+            await page.waitForSelector('div[role="menu"]', {
+              state: "visible",
+              timeout: 8_000,
+            });
+            await page.click('div[role="menuitem"]:has-text("English")', {
+              timeout: 15_000,
+            });
+            backToEnglish = true;
+          } catch (error) {
+            if (attempt === 2) throw error;
+            console.error(
+              `[browser] B5 back-to-English attempt ${attempt} failed (` +
+                String((error as Error)?.message ?? "").split("\n")[0] +
+                ") — retrying like an operator would"
+            );
+            // Escape any half-open menu before retrying.
+            await pressB(page, "Escape").catch(() => undefined);
+          }
+        }
         await page.waitForFunction(() => document.documentElement.dir === "ltr", undefined, {
-          timeout: 30_000,
+          timeout: 20_000,
         });
       } finally {
-        await boundedClose(page);
+        await closeJourneyPage(page, browser);
       }
     },
-    180_000
+    // Budget fits the resized bounds: goto 30 + sign-in 20 + first menu 20 +
+    // rtl flip 20 + the operator-retry sweep (12+10+8+15)x2 = 90 + ltr
+    // verify 20 => worst case ~200s <= 240s. The sweep's retries are
+    // interaction recovery, not assertion weakening.
+    240_000
   );
 });

@@ -80,7 +80,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { chromium, type Browser, type Page } from "playwright";
 
-import { boundedClose, boundedNewPage } from "./harness-bounds";
+import { boundedBrowserClose, boundedNewPage, closeJourneyPage } from "./harness-bounds";
 
 import {
   ADMIN_EMAIL,
@@ -145,7 +145,10 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
   }, 300_000);
 
   afterAll(async () => {
-    await browser?.close().catch(() => undefined);
+    // Bounded + force-kill reclaim (see harness-bounds.ts): a wedged driver
+    // must never burn the 60s hook timeout or leak its processes into the
+    // file teardown.
+    await boundedBrowserClose(browser);
     // bun test files are sequential: later suites re-boot through the
     // liveness-aware bootE2E() if this suite tore the topology down.
     if (enabled) await teardownE2E();
@@ -164,7 +167,7 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
         await page.fill("#device-hostname", "hq-core-sw-01");
         expect(await detectButton(page).isDisabled()).toBe(false);
       } finally {
-        await boundedClose(page);
+        await closeJourneyPage(page);
       }
     },
     180_000
@@ -202,7 +205,7 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
         // field the operator typed gets the explicit Use / Keep-mine chip).
         expect(await page.inputValue("#device-mgmt-ip")).toBe("127.0.0.1");
       } finally {
-        await boundedClose(page);
+        await closeJourneyPage(page);
       }
     },
     180_000
@@ -240,7 +243,7 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
         expect(detectRequests).toBe(1);
       } finally {
         await page.unroute(`**${AUTO_DETECT_PATH}`).catch(() => undefined);
-        await boundedClose(page);
+        await closeJourneyPage(page);
       }
     },
     180_000
@@ -271,7 +274,7 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
           .first()
           .waitFor({ state: "visible", timeout: 10_000 });
       } finally {
-        await boundedClose(page);
+        await closeJourneyPage(page);
       }
     },
     180_000
@@ -305,7 +308,7 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
         await page.getByRole("button", { name: "Keep mine", exact: true }).click();
         expect(await page.inputValue("#device-mgmt-ip")).toBe("10.99.99.99");
       } finally {
-        await boundedClose(page);
+        await closeJourneyPage(page);
       }
     },
     180_000
@@ -351,7 +354,7 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
           timeout: 10_000,
         });
       } finally {
-        await boundedClose(page);
+        await closeJourneyPage(page);
       }
     },
     240_000
