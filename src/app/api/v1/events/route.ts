@@ -6,6 +6,7 @@ import {
   pageMeta,
   paginationSchema,
 } from "../_lib/api";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,10 @@ export const dynamic = "force-dynamic";
  * action facet with counts, computed over the filtered set WITHOUT the
  * action filter so the facet stays navigable) + entityTypes (top-8
  * resourceType facet, same convention).
+ *
+ * F-008 phase 2 (read-plane defense-in-depth): the handler verifies the
+ * human session itself (requireSessionRead) — the proxy matcher stays the
+ * coarse gate, not the only check, for the events read domain.
  */
 
 const querySchema = paginationSchema.extend({
@@ -55,6 +60,14 @@ function parseJson(value: string | null): unknown {
 }
 
 export async function GET(request: Request) {
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
+
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     page: url.searchParams.get("page") ?? undefined,
