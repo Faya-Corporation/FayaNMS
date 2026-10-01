@@ -94,6 +94,9 @@ export function HealthDistributionCard({
                   dataKey="count"
                   innerRadius={62}
                   isAnimationActive={false}
+                  // The pie layer would otherwise stay tab-reachable inside
+                  // the aria-hidden wrapper (axe: aria-hidden-focus).
+                  rootTabIndex={-1}
                   nameKey="label"
                   outerRadius={88}
                   paddingAngle={2}
