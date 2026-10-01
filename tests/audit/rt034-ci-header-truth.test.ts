@@ -24,8 +24,18 @@ import { describe, expect, test } from "bun:test";
  *   2. the header lists the four enforced required checks (and the
  *      r66 marker line survives verbatim — r66 test B pins it);
  *   3. workflow semantics untouched: the YAML with comment lines stripped
- *      must hash to the pre-RT-034 snapshot below — any semantic edit
- *      must update that hash deliberately, never side-effect-of-a-comment.
+ *      must hash to the pinned snapshot below — any semantic edit must
+ *      update that hash deliberately, never side-effect-of-a-comment.
+ *
+ * Deliberate hash moves (each recorded here, never silent):
+ *   - 91902f72… → 9f761be2… (2026-10-01, F-068 round-trip, commit
+ *     a7a4512): the browser job gained ONE automatic full-suite re-run
+ *     after renderer-starvation flakes across runs
+ *     36768543791..36779703553 burned the job four ways with no product
+ *     bug underneath. Deterministic failures still fail both attempts,
+ *     so the retry only absorbs environment wedges; no assertion,
+ *     violation verdict, or journey step was weakened (see the a7a4512
+ *     commit message for the full bounded-harness rationale).
  *
  * Scope note: docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md still carries a
  * 2026-09-15-era "NOT active" line that p3-hardening pins; refreshing that
@@ -37,9 +47,14 @@ const REPO_ROOT = path.resolve(import.meta.dir, "../..");
 const CI = readFileSync(path.join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8");
 const CI_LINES = CI.split("\n");
 
-/** Non-comment YAML of ci.yml, hashed before this RT touched the header. */
+/**
+ * Non-comment YAML of ci.yml, hashed before this RT touched the header.
+ * Moved deliberately to 9f761be2… on 2026-10-01 (F-068): the browser job
+ * gained one automatic full-suite retry — see the move log in the
+ * docstring above. Comment-only edits must never move this hash.
+ */
 const PRE_RT034_STIPPED_YAML_SHA256 =
-  "91902f72b394a01aae9c56ccf762427bafa9a2137db4dbbc3f4cf7468108ce70";
+  "9f761be25e932d851ab42799d772ac7653acc00c9e6db8b3623215bd85185440";
 
 const HEADER_BLOCK = CI_LINES.slice(0, 30).join("\n");
 
