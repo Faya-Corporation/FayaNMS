@@ -7,6 +7,7 @@ import {
   pageMeta,
   paginationSchema,
 } from "../_lib/api";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,10 @@ export const dynamic = "force-dynamic";
  *
  * Rows carry rule name, device hostname + site code and the incident
  * number for display chips.
+ *
+ * F-008 phase 2 (read-plane defense-in-depth): the handler verifies the
+ * human session itself (requireSessionRead) — the proxy matcher stays the
+ * coarse gate, not the only check, for the alerts read domain.
  */
 
 const SEVERITY_RANK: Record<string, number> = {
@@ -52,6 +57,14 @@ const querySchema = paginationSchema.extend({
 });
 
 export async function GET(request: Request) {
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
+
   const url = new URL(request.url);
   const raw = {
     page: url.searchParams.get("page") ?? undefined,

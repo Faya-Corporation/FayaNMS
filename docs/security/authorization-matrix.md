@@ -167,7 +167,7 @@ only shrink as the sweep lands):
 | Phase | Domain | Status |
 |---|---|---|
 | 1 | dashboard (`/api/v1/dashboard`) | **Gated** |
-| 2 | events / alerts (`events`, `alerts`, `alerts/rules` GETs) | pending |
+| 2 | events / alerts (`events`, `alerts`, `alerts/rules` GETs) | **Gated** |
 | 3 | devices / interfaces (`devices`, `devices/[id]/*`, `interfaces`) | pending |
 | 4 | the rest (admin reads, incidents, changes, cmdb, performance, …) | pending |
 

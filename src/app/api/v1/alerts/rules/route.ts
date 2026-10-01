@@ -7,7 +7,11 @@ import {
 } from "../../_lib/api";
 import { ALERT_RULE_METRICS, ALERT_RULE_OPERATORS } from "@/lib/alerts/evaluate";
 import { parsePolicyScope } from "../../_lib/scope";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSessionRead,
+} from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +21,11 @@ export const dynamic = "force-dynamic";
  *
  * GET: every rule with open-alert count + scoped device count (scope
  * resolved through the same helpers the evaluator uses).
+ *
+ * F-008 phase 2 (read-plane defense-in-depth): the GET handler verifies
+ * the human session itself (requireSessionRead) — the proxy matcher stays
+ * the coarse gate, not the only check; POST stays permission-gated
+ * (admin.system) with the session principal as the audit actor.
  *
  * POST: create. Zod: name (unique → 409 NAME_TAKEN), metric in the allowed
  * set incl. the AVAILABILITY pseudo-metric, operator, threshold number,
@@ -48,7 +57,15 @@ const createRuleSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
+
   const rules = await db.alertRule.findMany({
     orderBy: { name: "asc" },
     select: {

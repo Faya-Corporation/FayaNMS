@@ -24,7 +24,8 @@ import { join } from "node:path";
  * per HANDLER body, not per file — a file whose POST is gated but whose
  * GET is bare fails this matrix). Ungated reads must be explicitly
  * allowlisted with their F-008 phase justification; the allowlist starts
- * at its phase-1 size and may only SHRINK as the per-domain sweep lands.
+ * at its phase-1 size and may only SHRINK as the per-domain sweep lands
+ * (phase 1 gated the dashboard domain, phase 2 gated events/alerts).
  */
 
 const API_ROOT = join(import.meta.dir, "..", "..", "src", "app", "api", "v1");
@@ -134,22 +135,18 @@ const READ_GATES = [
 
 /**
  * F-008 read-route allowlist — route files whose GET handler(s) perform NO
- * handler-level auth. Phase 1 (this commit) gated the dashboard domain and
- * pinned the initial list at 58 entries; every later phase DELETES its
- * domain's entries. The list may never GROW past the pinned cap: a new
- * unguarded read route fails the matrix test, and raising the cap is a
- * deliberate, documented governance edit (RT-034 protocol — never a silent
- * side effect of an unrelated diff).
+ * handler-level auth. Phase 1 gated the dashboard domain and pinned the
+ * initial list at 59 entries; phase 2 gated events/alerts (−3 → 56).
+ * Every later phase DELETES its domain's entries. The list may never GROW
+ * past the pinned cap: a new unguarded read route fails the matrix test,
+ * and raising the cap is a deliberate, documented governance edit (RT-034
+ * protocol — never a silent side effect of an unrelated diff).
  */
 const READ_ALLOWLIST_INITIAL_SIZE = 59;
 const READ_ALLOWLIST: Record<string, string> = {
   // ── deliberate non-gates (bootstrap/reference surfaces) ───────────────
   "meta/route.ts": "public bootstrap (branding/status; read-only)",
   "meta/reference/route.ts": "authenticated filter-bar reference data — proxy-gated today; F-008 candidate once the sweep reaches meta",
-  // ── F-008 phase 2: events / alerts domain ─────────────────────────────
-  "events/route.ts": "F-008 rollout pending (phase 2: events/alerts)",
-  "alerts/route.ts": "F-008 rollout pending (phase 2: events/alerts)",
-  "alerts/rules/route.ts": "F-008 rollout pending (phase 2: events/alerts; POST is permission-gated, GET is not)",
   // ── F-008 phase 3: devices / interfaces domain ────────────────────────
   "devices/route.ts": "F-008 rollout pending (phase 3: devices/interfaces)",
   "devices/[id]/route.ts": "F-008 rollout pending (phase 3: devices/interfaces)",
@@ -322,8 +319,9 @@ describe("F-008 read-route matrix (handler-level read-plane authn)", () => {
   });
 
   test("the read allowlist only shrinks — phase-1 size cap", () => {
-    // 59 entries at phase 1 (dashboard gated). Later phases delete lines;
-    // a deliberate cap raise is a documented governance edit (RT-034).
+    // 59 entries at phase 1 (dashboard gated); 56 after phase 2
+    // (events/alerts gated). Later phases delete lines; a deliberate cap
+    // raise is a documented governance edit (RT-034).
     expect(Object.keys(READ_ALLOWLIST).length).toBeLessThanOrEqual(
       READ_ALLOWLIST_INITIAL_SIZE
     );
@@ -343,5 +341,22 @@ describe("F-008 read-route matrix (handler-level read-plane authn)", () => {
     const bodies = getHandlerBodies(readFileSync(join(API_ROOT, "dashboard", "route.ts"), "utf8"));
     expect(bodies.length).toBe(1);
     expect(bodies[0]).toContain("requireSessionRead(");
+  });
+
+  test("events/alerts domain is handler-gated (F-008 phase 2 landed)", () => {
+    const domain = ["events/route.ts", "alerts/route.ts", "alerts/rules/route.ts"];
+    for (const rel of domain) {
+      expect(READ_ALLOWLIST[rel]).toBeUndefined();
+      const bodies = getHandlerBodies(readFileSync(join(API_ROOT, rel), "utf8"));
+      expect(bodies.length).toBeGreaterThanOrEqual(1);
+      for (const body of bodies) {
+        expect(body).toContain("requireSessionRead(");
+      }
+    }
+    // The rules file keeps its permission-gated POST alongside the newly
+    // session-gated GET — the gate addition must not weaken the mutation
+    // plane.
+    const rules = readFileSync(join(API_ROOT, "alerts", "rules", "route.ts"), "utf8");
+    expect(rules).toContain('requirePermission(request, "admin.system")');
   });
 });
