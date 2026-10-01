@@ -17,7 +17,9 @@ scrape_configs:
           component: app
 
   - job_name: fayanms-worker
-    metrics_path: /metrics
+    # RT-018 / F-023 — the worker serves GET /api/metrics only (mirroring
+    # the app route); a /metrics path here 404s forever.
+    metrics_path: /api/metrics
     static_configs:
       - targets: ["worker:3030"]
         labels:

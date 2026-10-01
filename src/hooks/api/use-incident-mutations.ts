@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -26,23 +27,24 @@ function useInvalidateIncidentSurfaces() {
   };
 }
 
-const ACTION_LABELS: Record<string, string> = {
-  acknowledge: "Incident acknowledged",
-  assign: "Incident assigned",
-  investigate: "Investigation started",
-  mitigate: "Mitigation started",
-  monitor: "Monitoring started",
-  resolve: "Incident resolved",
-  review: "Post-incident review opened",
-  close: "Incident closed",
-  "save-pir": "Post-incident review saved",
-  "link-change": "Change linked",
-  "unlink-change": "Change unlinked",
+const ACTION_TITLE_KEYS: Record<string, string> = {
+  acknowledge: "actions.acknowledge",
+  assign: "actions.assign",
+  investigate: "actions.investigate",
+  mitigate: "actions.mitigate",
+  monitor: "actions.monitor",
+  resolve: "actions.resolve",
+  review: "actions.review",
+  close: "actions.close",
+  "save-pir": "actions.savePir",
+  "link-change": "actions.linkChange",
+  "unlink-change": "actions.unlinkChange",
 };
 
 export function useIncidentAction(action: string) {
   const invalidate = useInvalidateIncidentSurfaces();
   const { toast } = useToast();
+  const t = useTranslations("toast.incidents");
   return useMutation({
     mutationFn: ({
       id,
@@ -57,13 +59,22 @@ export function useIncidentAction(action: string) {
       }),
     onSuccess: (result) => {
       invalidate();
-      const base = ACTION_LABELS[action] ?? "Action applied";
+      // Unmapped actions fall back to the generic "action applied" title.
+      const actionKey = ACTION_TITLE_KEYS[action];
+      const base = actionKey ? t(actionKey) : t("actionFallback");
       const suffix = result.changeNumber ? ` — ${result.changeNumber}` : "";
-      toast({ title: `${base}${suffix}`, description: `${result.incident.number} · ${result.incident.status.replace(/_/g, " ").toLowerCase()}` });
+      // {status} stays the raw lowercased enum token (technical value).
+      toast({
+        title: `${base}${suffix}`,
+        description: t("actionDescription", {
+          number: result.incident.number,
+          status: result.incident.status.replace(/_/g, " ").toLowerCase(),
+        }),
+      });
     },
     onError: (error: Error) =>
       toast({
-        title: "Action failed",
+        title: t("actionFailedTitle"),
         description: error.message,
         variant: "destructive",
       }),

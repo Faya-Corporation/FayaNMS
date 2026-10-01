@@ -21,19 +21,26 @@ import { describe, expect, test } from "bun:test";
  * Pinned here (config-hygiene, dependency-free — structural checks on the
  * raw YAML text, no YAML parser dependency):
  *   1. the config exists at the canonical path and is version: 2;
- *   2. exactly TWO update entries, both `package-ecosystem: "bun"`;
- *   3. BOTH manifest paths are declared (`/` and `/mini-services/worker`)
+ *   2. exactly THREE update entries — TWO `package-ecosystem: "bun"` plus
+ *      ONE `package-ecosystem: "github-actions"` (RT-035/F-065: the actions
+ *      ecosystem keeps the ci.yml SHA pins fresh — without it, nothing
+ *      ever proposed a pin update and an ARCHIVED action
+ *      (returntocorp/semgrep-action) sat unflagged);
+ *   3. BOTH bun manifest paths are declared (`/` and `/mini-services/worker`)
  *      AND both declared manifests actually exist on disk (package.json +
  *      bun.lock each) — config and reality cannot drift apart silently;
- *   4. weekly cadence on both entries;
- *   5. a security-updates GROUP on both entries (applies-to:
+ *      the actions entry pins directory `/` (the workflows live in
+ *      .github/workflows);
+ *   4. weekly cadence on ALL entries;
+ *   5. a security-updates GROUP on the bun entries (applies-to:
  *      security-updates) — CVE bumps land as one reviewable PR;
- *   6. the allow policy on both entries (`dependency-type: "all"`) plus
+ *   6. the allow policy on the entries (`dependency-type: "all"`) plus
  *      the header comment that documents exact-pin preservation;
  *   7. no `ignore` blocks exist that could silently mute security updates;
  *   8. the README supply-chain note exists and states the OWNER-CI-001
  *      activation caveat (config reviewable now, PRs activate with
- *      runners).
+ *      runners);
+ *   9. no duplicate (ecosystem, directory) pairs (RT-035 negative case).
  *
  * Honest scope: GitHub-side behavior (ecosystem key acceptance, first
  * scheduled run, actual PRs) cannot be exercised in this sandbox — it
@@ -83,21 +90,24 @@ describe("HC-5: dependabot config hygiene", () => {
     expect(config).not.toMatch(/^version:\s*1\s*$/m);
   });
 
-  test("exactly TWO update entries, both the bun ecosystem", () => {
+  test("exactly THREE update entries: two bun + one github-actions (RT-035)", () => {
     const blocks = updateEntryBlocks(config);
-    expect(blocks.length).toBe(2);
-    for (const block of blocks) {
-      expect(block).toMatch(/package-ecosystem:\s*"bun"/);
-    }
+    expect(blocks.length).toBe(3);
+    const bunBlocks = blocks.filter((b) => /package-ecosystem:\s*"bun"/.test(b));
+    const actionsBlocks = blocks.filter((b) => /package-ecosystem:\s*"github-actions"/.test(b));
+    expect(bunBlocks.length).toBe(2);
+    expect(actionsBlocks.length).toBe(1);
     // No other ecosystems sneak in.
-    expect(config.match(/package-ecosystem:\s*"(?!bun")/g)).toBeNull();
+    const ecosystems = [...config.matchAll(/package-ecosystem:\s*"([^"]+)"/g)].map((m) => m[1]);
+    expect(ecosystems.sort()).toEqual(["bun", "bun", "github-actions"]);
   });
 
-  test("BOTH manifest paths are declared AND exist on disk (no drift)", () => {
+  test("BOTH bun manifest paths are declared AND exist on disk (no drift)", () => {
     const blocks = updateEntryBlocks(config);
     const root = blockForDirectory(blocks, "/");
     const worker = blockForDirectory(blocks, "/mini-services/worker");
     expect(root).toContain('directory: "/"');
+    expect(root).toContain('package-ecosystem: "bun"');
     expect(worker).toContain('directory: "/mini-services/worker"');
     // Config ↔ reality consistency: each declared manifest really exists
     // with its committed lockfile (the dual-lockfile osv scan pair).
@@ -107,20 +117,23 @@ describe("HC-5: dependabot config hygiene", () => {
     expect(existsSync(path.join(REPO_ROOT, "mini-services/worker/bun.lock"))).toBe(true);
   });
 
-  test("weekly cadence on BOTH entries", () => {
+  test("weekly cadence on ALL entries", () => {
     for (const block of updateEntryBlocks(config)) {
       expect(block).toMatch(/interval:\s*"weekly"/);
     }
   });
 
-  test("security-updates GROUP on BOTH entries (one reviewable PR per wave)", () => {
+  test("security-updates GROUP on the bun entries (one reviewable PR per wave)", () => {
     for (const block of updateEntryBlocks(config)) {
+      if (!block.includes('package-ecosystem: "bun"')) continue;
       expect(block).toMatch(/security-updates:\s*\n\s+applies-to:\s*security-updates/);
     }
-    expect(config.match(/applies-to:\s*security-updates/g)?.length).toBe(2);
+    // All THREE entries (bun ×2 + github-actions) carry the grouped
+    // security policy.
+    expect(config.match(/applies-to:\s*security-updates/g)?.length).toBe(3);
   });
 
-  test("the allow policy is declared on BOTH entries + exact-pin preservation documented", () => {
+  test("the allow policy is declared on ALL entries + exact-pin preservation documented", () => {
     for (const block of updateEntryBlocks(config)) {
       expect(block).toMatch(/allow:\s*\n\s+-\s+dependency-type:\s*"all"/);
     }
@@ -143,5 +156,54 @@ describe("HC-5: dependabot config hygiene", () => {
     expect(readme).toContain(".github/dependabot.yml");
     expect(readme).toContain("OWNER-CI-001");
     expect(readme).toContain("tests/audit/r57-dependabot-config.test.ts");
+  });
+});
+
+describe("RT-035 (F-065): github-actions ecosystem entry", () => {
+  const config = readRepoFile(CONFIG_PATH);
+  const blocks = updateEntryBlocks(config);
+
+  test("github-actions ecosystem present", () => {
+    const actions = blocks.find((b) => /package-ecosystem:\s*"github-actions"/.test(b));
+    expect(actions).toBeDefined();
+    expect(actions).toContain('directory: "/"');
+    expect(actions).toMatch(/interval:\s*"weekly"/);
+    // Scope comment: the entry exists to keep the ci.yml SHA pins fresh,
+    // and the archived semgrep-action follow-up is noted (comment only).
+    expect(config).toMatch(/SHA pins of third-party actions fresh|keeps the SHA pins/);
+    expect(config).toContain("returntocorp/semgrep-action is ARCHIVED upstream");
+  });
+
+  test("existing bun entries untouched (regression guard)", () => {
+    const bunBlocks = blocks.filter((b) => /package-ecosystem:\s*"bun"/.test(b));
+    expect(bunBlocks.length).toBe(2);
+    const [root, worker] = bunBlocks;
+    expect(root).toContain('directory: "/"');
+    expect(root).toContain("open-pull-requests-limit: 10");
+    expect(worker).toContain('directory: "/mini-services/worker"');
+    expect(worker).toContain("open-pull-requests-limit: 5");
+    for (const block of bunBlocks) {
+      expect(block).toMatch(/security-updates:\s*\n\s+applies-to:\s*security-updates/);
+      expect(block).toMatch(/allow:\s*\n\s+-\s+dependency-type:\s*"all"/);
+    }
+  });
+
+  test("schedule/cadence consistent with the house style (weekly/monday/06:00)", () => {
+    const actions = blocks.find((b) => /package-ecosystem:\s*"github-actions"/.test(b)) ?? "";
+    expect(actions).toMatch(/interval:\s*"weekly"/);
+    expect(actions).toMatch(/day:\s*"monday"/);
+    expect(actions).toMatch(/time:\s*"06:00"/);
+    expect(actions).toMatch(/timezone:\s*"Etc\/UTC"/);
+  });
+
+  test("no duplicate ecosystem+directory pairs", () => {
+    const pairs = blocks
+      .map((b) => {
+        const eco = b.match(/package-ecosystem:\s*"([^"]+)"/)?.[1];
+        const dir = b.match(/directory:\s*"([^"]+)"/)?.[1];
+        return `${eco} @ ${dir}`;
+      })
+      .filter((p) => !p.includes("null"));
+    expect(new Set(pairs).size).toBe(pairs.length);
   });
 });

@@ -88,16 +88,48 @@ function spawnLogged(cmd: string[], env: Record<string, string>, label: string) 
   return child;
 }
 
-async function createAndMigrateDatabase(): Promise<void> {
-  const admin = new SQL(pgAdminUrl);
-  await admin.unsafe(`DROP DATABASE IF EXISTS "${E2E_DB}"`);
-  await admin.unsafe(`CREATE DATABASE "${E2E_DB}"`);
-  await admin.close().catch(() => undefined);
+/**
+ * Bounded DB admin op. A wedged/still-connected peer (e.g. a starved app
+ * holding pool connections) must never hang the calling hook: WITH (FORCE)
+ * disconnects other backends instead of waiting on them (PG 13+; same
+ * convention as deploy/oci/restore-drill.sh), and the race bound caps the
+ * connection itself.
+ */
+async function adminDbOp(statement: string, ms = 15_000): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      (async () => {
+        const admin = new SQL(pgAdminUrl);
+        try {
+          await admin.unsafe(statement);
+        } finally {
+          await admin.close().catch(() => undefined);
+        }
+      })(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`[e2e] db op exceeded ${ms}ms bound: ${statement}`)), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
+async function createAndMigrateDatabase(): Promise<void> {
+  // WITH (FORCE): a previous stack's app may still hold pool connections —
+  // a plain DROP waits on them forever (observed as a 300s hook burn on a
+  // starved 2-vCPU runner).
+  await adminDbOp(`DROP DATABASE IF EXISTS "${E2E_DB}" WITH (FORCE)`);
+  await adminDbOp(`CREATE DATABASE "${E2E_DB}"`);
+
+  // Bounded: spawnSync has NO default timeout — a hung migration or seed
+  // would hang the booting hook forever.
   const migrate = Bun.spawnSync(["bunx", "prisma", "migrate", "deploy"], {
     env: { ...process.env, DATABASE_URL: e2eDbUrl, NODE_ENV: "" },
     stdout: "pipe",
     stderr: "pipe",
+    timeout: 120_000,
   });
   if (migrate.exitCode !== 0) {
     throw new Error(`[e2e] migrate deploy failed:\n${new TextDecoder().decode(migrate.stderr).slice(-2000)}`);
@@ -127,6 +159,7 @@ async function createAndMigrateDatabase(): Promise<void> {
     },
     stdout: "pipe",
     stderr: "pipe",
+    timeout: 120_000,
   });
   if (seed.exitCode !== 0) {
     throw new Error(`[e2e] seed failed:\n${new TextDecoder().decode(seed.stderr).slice(-2000)}`);
@@ -163,7 +196,9 @@ async function startStack(): Promise<void> {
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${APP_BASE}/api/v1/meta`);
+      const res = await fetch(`${APP_BASE}/api/v1/meta`, {
+        signal: AbortSignal.timeout(5_000),
+      });
       if (res.ok) return;
     } catch {
       /* not up yet */
@@ -177,7 +212,12 @@ let booted = false;
 
 async function isAppAlive(): Promise<boolean> {
   try {
-    const res = await fetch(`${APP_BASE}/api/v1/meta`);
+    // Bounded: fetch() has no default timeout, and a WEDGED app (event loop
+    // starved on a 2-vCPU runner) would hang the liveness probe — and with
+    // it the calling journey's beforeAll/beforeEach hook — forever.
+    const res = await fetch(`${APP_BASE}/api/v1/meta`, {
+      signal: AbortSignal.timeout(5_000),
+    });
     return res.ok;
   } catch {
     return false;
@@ -201,13 +241,19 @@ export async function bootE2E(): Promise<void> {
 }
 
 export async function teardownE2E(): Promise<void> {
-  for (const child of childProcesses.splice(0)) {
+  const children = childProcesses.splice(0);
+  for (const child of children) {
     child.kill();
   }
+  // Bounded reaping: give the killed processes a grace period to actually
+  // exit so their DB connections close BEFORE the drop — a still-connected
+  // app makes a plain DROP wait on its backends forever.
+  await Promise.race([
+    Promise.all(children.map((child) => child.exited)),
+    new Promise((r) => setTimeout(r, 5_000)),
+  ]);
   try {
-    const admin = new SQL(pgAdminUrl);
-    await admin.unsafe(`DROP DATABASE IF EXISTS "${E2E_DB}"`);
-    await admin.close().catch(() => undefined);
+    await adminDbOp(`DROP DATABASE IF EXISTS "${E2E_DB}" WITH (FORCE)`);
   } catch {
     /* best effort */
   }

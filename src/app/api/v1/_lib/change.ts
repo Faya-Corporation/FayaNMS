@@ -108,11 +108,21 @@ export function scoreChangeServerSide(
 }
 
 /**
+ * The transaction client handed to interactive `db.$transaction` callbacks
+ * (see approval-gate.ts — the extended db's tx delegates carry the
+ * extension's type parameters, so the plain base type is not assignable).
+ */
+type DbTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
  * Next change number CHG-YYYY-NNNNN (max existing + 1, padded 5).
  * Same pattern as the guarded-restore route (Task 3-c).
+ * RT-014: pass the caller's transaction client so the max+1 read shares
+ * the tx snapshot — the global-client read let two concurrent creations
+ * compute the same number (the @@unique P2002 is retried by the caller).
  */
-export async function nextChangeNumber(): Promise<string> {
-  const maxChange = await db.changeRequest.findFirst({
+export async function nextChangeNumber(client?: DbTx): Promise<string> {
+  const maxChange = await (client ?? db).changeRequest.findFirst({
     orderBy: { number: "desc" },
     select: { number: true },
   });

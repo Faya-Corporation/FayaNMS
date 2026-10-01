@@ -1,11 +1,12 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, newJobCorrelationId, ok } from "../../_lib/api";
 import { authenticateServiceRequest } from "@/lib/auth/service-auth";
+import { parsePolicyScope, scopeDeviceWhere } from "../../_lib/scope";
 import {
-  parsePolicyScope,
-  scopeDeviceWhere,
-  type ParsedPolicyScope,
-} from "../../_lib/scope";
+  isSnapshotPruneDue,
+  markSnapshotsPruned,
+  pruneRetention,
+} from "@/lib/backups/retention";
 import { parseStoredDiscoveryPolicy } from "@/lib/discovery/policy";
 import { z } from "zod";
 
@@ -43,9 +44,21 @@ export const dynamic = "force-dynamic";
  *     - CURRENT and BASELINE snapshots are never touched;
  *     - a device's newest HISTORICAL version is never deleted;
  *     - at least 2 snapshots per device always remain;
- *     - max 50 deletes per tick (batch keeps transactions short on SQLite).
- *   A single summary CONFIG_RETENTION_PRUNED audit event is written per
- *   tick when rows were pruned (never one event per snapshot).
+ *     - max 50 deletes per tick (batch keeps transactions short).
+ *   RT-011 FK-cascade protection (engine in src/lib/backups/retention.ts):
+ *   a snapshot referenced by an OPEN DriftRecord (its current or baseline
+ *   snapshot) or by any ConfigBaseline is excluded from the delete set —
+ *   the onDelete: Cascade FKs would otherwise silently destroy the open
+ *   drift finding / approved baseline on a timer. Interaction with
+ *   drift-evaluate: an OPEN record holds the device's latest snapshot; the
+ *   next backup demotes it to HISTORICAL, so retention WAITS for the record
+ *   to be RESOLVED/ACCEPTED before pruning it (intended semantics — the
+ *   excluded ids simply are not deleted this tick and do not consume the
+ *   delete budget). Both protection counts are reported in the summary
+ *   CONFIG_RETENTION_PRUNED audit afterJson (protectedByOpenDrift /
+ *   protectedByBaseline; a zero-delete run that protected rows still writes
+ *   the summary). A single summary audit event is written per pruning tick
+ *   (never one event per snapshot).
  *
  * Drift scheduling (Task 3-c), after the backup enqueue block:
  *   Every device that HAS an approved ConfigBaseline gets a DRIFT_CHECK
@@ -67,6 +80,33 @@ export const dynamic = "force-dynamic";
  *   POST /api/v1/metrics/retention/prune (evaluate-in-Next; a 429
  *   PRUNE_THROTTLED from the 60 s manual-prune guard is a graceful no-op).
  *
+ * Rollup aggregation scheduling (RT-002), next to metric retention:
+ *   ONE recurring ROLLUP_AGGREGATION job per 5 minutes so fresh 5M buckets
+ *   appear promptly — same dedupe shape as METRIC_RETENTION. The worker
+ *   claims it and calls POST /api/v1/metrics/rollup/aggregate
+ *   (evaluate-in-Next; 429 ROLLUP_THROTTLED = a run is already in flight =
+ *   graceful no-op). The aggregation itself is bounded (5,000 bucket
+ *   groups / ~20 s per run, oldest-first) and converges over ticks.
+ *
+ * Protocol queue retention scheduling (RT-003), next to flow retention:
+ *   ONE recurring PROTOCOL_QUEUE_RETENTION job per 24 h — the worker
+ *   triggers the evaluate-in-Next sweep that prunes terminal DELIVERED/DEAD
+ *   ProtocolEventQueue rows (chunked, FlowRecord-guarded). 429
+ *   PROTOCOL_QUEUE_PRUNE_THROTTLED from the 60 s guard is a graceful no-op.
+ *
+ * Retention pruning due-ness gate (RT-016 / F-018):
+ *   The snapshot retention prune (Task 3-a) runs at most once per 24 h —
+ *   gated by an in-memory last-run timestamp with a persisted
+ *   "snapshots.retention" Setting { lastPrunedAt } as the restart-safe
+ *   fallback (same pattern as the metrics-prune route guard). Snapshots only
+ *   become prunable as retention windows move, so running the per-device
+ *   scans on every 30 s tick was pure DB load. A due run stamps the gate at
+ *   the END of the run (even a zero-delete run — the gate is about CADENCE);
+ *   a skipped run answers pruneSkipped: true and issues ZERO snapshot
+ *   queries. Outcomes of a due run are unchanged (caps, newest-HISTORICAL
+ *   protection, RT-011 cascade guard; non-prunable devices cost zero
+ *   per-device queries via the grouped totals).
+ *
  * Stale-job reaper (hardening closeout), after the scheduling blocks:
  *   RUNNING jobs whose startedAt is older than 10 minutes were orphaned
  *   (worker/backend death mid-flight — the in-memory runner state is gone)
@@ -81,8 +121,9 @@ export const dynamic = "force-dynamic";
  *   the rollback-or-fail decision).
  *
  * Returns { enqueued, discoveryEnqueued, driftEnqueued, alertEvalEnqueued,
- * metricRetentionEnqueued, flowRetentionEnqueued, reapedOrphans, pruned,
- * evaluatedAt, policies }.
+ * metricRetentionEnqueued, rollupEnqueued, flowRetentionEnqueued,
+ * protocolQueueRetentionEnqueued, reapedOrphans, pruned, prunedDevices,
+ * pruneSkipped, evaluatedAt, policies }.
  */
 
 const tickSchema = z.object({
@@ -91,13 +132,15 @@ const tickSchema = z.object({
 
 const PER_POLICY_CAP = 10;
 const DEDUPE_WINDOW_MIN = 10;
-const PRUNE_MAX_DELETES_PER_TICK = 50;
-const PRUNE_MIN_SNAPSHOTS_PER_DEVICE = 2;
 const DRIFT_CHECK_CAP_PER_TICK = 20;
 const DRIFT_CHECK_DEDUPE_MIN = 30;
 const ALERT_EVALUATION_DEDUPE_MIN = 3;
 const METRIC_RETENTION_DEDUPE_HOURS = 24;
+const ROLLUP_DEDUPE_MIN = 5;
 const FLOW_RETENTION_DEDUPE_HOURS = 24;
+const PROTOCOL_QUEUE_RETENTION_DEDUPE_HOURS = 24;
+// RT-016 (F-018) — the snapshot prune cadence constant + gate helpers live
+// in src/lib/backups/retention.ts next to the pruner engine.
 
 /* ── tiny 5-field cron matcher ──────────────────────────────────────────── */
 
@@ -161,133 +204,6 @@ function cronDueWithin(expr: string, windowSec: number, now: Date): boolean {
     if (cronMatches(expr, new Date(mark * 60_000))) return true;
   }
   return false;
-}
-
-/* ── retention pruning ──────────────────────────────────────────────────── */
-
-interface PruneOutcome {
-  pruned: number;
-  prunedDevices: number;
-}
-
-/**
- * Prune HISTORICAL snapshots older than each scoped device's retention
- * window. See the route header for the safety caps. Returns the number of
- * rows deleted (0 when nothing was due for pruning).
- */
-async function pruneRetention(
-  policies: Array<{ id: string; retentionDays: number; scopeJson: string }>,
-  now: Date
-): Promise<PruneOutcome> {
-  if (policies.length === 0) return { pruned: 0, prunedDevices: 0 };
-
-  // Per-device retention window. Devices scoped by several policies keep
-  // the longest window (most generous retention wins).
-  const cutoffs = new Map<string, Date>();
-  for (const policy of policies) {
-    const scope: ParsedPolicyScope = parsePolicyScope(policy.scopeJson);
-    const scoped = await db.device.findMany({
-      where: scopeDeviceWhere(scope),
-      select: { id: true },
-    });
-    const cutoff = new Date(
-      now.getTime() - policy.retentionDays * 24 * 60 * 60 * 1000
-    );
-    for (const device of scoped) {
-      const existing = cutoffs.get(device.id);
-      if (!existing || cutoff < existing) {
-        cutoffs.set(device.id, cutoff);
-      }
-    }
-  }
-  if (cutoffs.size === 0) return { pruned: 0, prunedDevices: 0 };
-
-  // Cheap per-device totals in one grouped query (deviceId index).
-  const totals = await db.configSnapshot.groupBy({
-    by: ["deviceId"],
-    _count: { _all: true },
-    where: { deviceId: { in: Array.from(cutoffs.keys()) } },
-  });
-  const totalByDevice = new Map<string, number>(
-    totals.map((row) => [row.deviceId, row._count._all])
-  );
-
-  const deleteIds: string[] = [];
-  const touchedDevices = new Set<string>();
-
-  for (const [deviceId, cutoff] of cutoffs) {
-    if (deleteIds.length >= PRUNE_MAX_DELETES_PER_TICK) break;
-    const total = totalByDevice.get(deviceId) ?? 0;
-    // Hard safety cap: always keep at least 2 snapshots on the device.
-    const maxDeletable = total - PRUNE_MIN_SNAPSHOTS_PER_DEVICE;
-    if (maxDeletable <= 0) continue;
-
-    const budget = Math.min(
-      PRUNE_MAX_DELETES_PER_TICK - deleteIds.length,
-      maxDeletable
-    );
-    const candidates = await db.configSnapshot.findMany({
-      where: {
-        deviceId,
-        status: "HISTORICAL",
-        createdAt: { lt: cutoff },
-      },
-      orderBy: { createdAt: "desc" },
-      take: budget + 1,
-      select: { id: true, createdAt: true },
-    });
-    if (candidates.length === 0) continue;
-
-    // Never delete the device's newest HISTORICAL version: when a newer
-    // HISTORICAL row exists above the cutoff the global newest is outside
-    // this candidate list; otherwise candidates[0] IS the newest HISTORICAL.
-    const hasRecentHistorical =
-      (await db.configSnapshot.count({
-        where: {
-          deviceId,
-          status: "HISTORICAL",
-          createdAt: { gte: cutoff },
-        },
-      })) > 0;
-    const deletable = hasRecentHistorical ? candidates : candidates.slice(1);
-
-    for (const row of deletable) {
-      if (deleteIds.length >= PRUNE_MAX_DELETES_PER_TICK) break;
-      deleteIds.push(row.id);
-      touchedDevices.add(deviceId);
-    }
-  }
-
-  if (deleteIds.length === 0) return { pruned: 0, prunedDevices: 0 };
-
-  // One short interactive transaction: the delete is guarded by
-  // status = HISTORICAL so a snapshot promoted to BASELINE mid-flight
-  // (e.g. baseline approval) is never destroyed.
-  const result = await db.$transaction(
-    async (tx) => {
-      const deleted = await tx.configSnapshot.deleteMany({
-        where: { id: { in: deleteIds }, status: "HISTORICAL" },
-      });
-      await tx.auditEvent.create({
-        data: {
-          actorName: "system:backup-worker",
-          action: "CONFIG_RETENTION_PRUNED",
-          resourceType: "ConfigSnapshot",
-          result: "SUCCESS",
-          correlationId: newCorrelationId("RET"),
-          afterJson: JSON.stringify({
-            count: deleted.count,
-            devices: touchedDevices.size,
-            policies: policies.length,
-          }),
-        },
-      });
-      return deleted;
-    },
-    { maxWait: 5_000, timeout: 20_000 }
-  );
-
-  return { pruned: result.count, prunedDevices: touchedDevices.size };
 }
 
 /* ── continuous discovery scheduling ────────────────────────────────────── */
@@ -506,8 +422,18 @@ export async function POST(request: Request) {
   // job per 24 h — the worker triggers the evaluate-in-Next prune.
   const metricRetentionEnqueued = await enqueueMetricRetention(now);
 
+  // Rollup aggregation scheduling (RT-002): ONE recurring
+  // ROLLUP_AGGREGATION job per 5 min — the worker triggers the
+  // evaluate-in-Next MetricSample → MetricRollup aggregation pass.
+  const rollupEnqueued = await enqueueRollupAggregation(now);
+
   // Flow retention uses an independent 24-hour policy and bounded prune job.
   const flowRetentionEnqueued = await enqueueFlowRetention(now);
+
+  // Protocol queue retention (RT-003): ONE recurring
+  // PROTOCOL_QUEUE_RETENTION job per 24 h — the worker triggers the
+  // evaluate-in-Next terminal-row sweep.
+  const protocolQueueRetentionEnqueued = await enqueueProtocolQueueRetention(now);
 
   // Reaper: RUNNING jobs whose startedAt is older than the stale threshold
   // were orphaned (worker crash / backend restart mid-flight — the
@@ -603,12 +529,24 @@ export async function POST(request: Request) {
   }
 
   // Retention pruning (Task 3-a) — after enqueue processing, before the
-  // response. One console line + one summary audit event per pruning tick.
-  const prune = await pruneRetention(policies, now);
-  if (prune.pruned > 0) {
-    console.log(
-      `[tick] retention prune: removed ${prune.pruned} historical snapshot(s) across ${prune.prunedDevices} device(s)`
-    );
+  // response. RT-016 (F-018): gated by a 24 h due-ness window (in-memory
+  // primary + "snapshots.retention" Setting fallback for restart safety) —
+  // snapshots only become prunable as retention windows move, so running
+  // the per-device scans on every 30 s tick was pure DB load. A skipped run
+  // answers pruneSkipped: true and issues ZERO snapshot queries; a due run
+  // stamps the gate at the END of the run (even when it deletes 0 rows —
+  // the gate is about CADENCE, not work done).
+  let prune = { pruned: 0, prunedDevices: 0, protectedByOpenDrift: 0, protectedByBaseline: 0 };
+  let pruneSkipped = true;
+  if (await isSnapshotPruneDue(now)) {
+    prune = await pruneRetention(policies, now);
+    await markSnapshotsPruned(now);
+    pruneSkipped = false;
+    if (prune.pruned > 0) {
+      console.log(
+        `[tick] retention prune: removed ${prune.pruned} historical snapshot(s) across ${prune.prunedDevices} device(s)`
+      );
+    }
   }
 
   return ok({
@@ -618,10 +556,13 @@ export async function POST(request: Request) {
     driftEnqueued: driftTargets,
     alertEvalEnqueued,
     metricRetentionEnqueued,
+    rollupEnqueued,
     flowRetentionEnqueued,
+    protocolQueueRetentionEnqueued,
     reapedOrphans: reapedCount,
     pruned: prune.pruned,
     prunedDevices: prune.prunedDevices,
+    pruneSkipped,
     evaluatedAt: now.toISOString(),
     policies: policyResults,
   });
@@ -653,6 +594,82 @@ async function enqueueMetricRetention(now: Date): Promise<number> {
   await db.jobExecution.create({
     data: {
       type: "METRIC_RETENTION",
+      targetType: "SYSTEM",
+      status: "QUEUED",
+      progress: 0,
+      priority: 7,
+      maxAttempts: 3,
+      payloadJson: JSON.stringify({ triggeredBy: "SCHEDULE" }),
+      correlationId: newJobCorrelationId(),
+    },
+  });
+  return 1;
+}
+
+/**
+ * Enqueue ONE ROLLUP_AGGREGATION job per 5 minutes (RT-002). Dedupe: skip
+ * when a ROLLUP_AGGREGATION job is QUEUED/RUNNING, or when the last one
+ * finished within the 5-minute cadence window. Returns 0 or 1.
+ */
+async function enqueueRollupAggregation(now: Date): Promise<number> {
+  const inFlight = await db.jobExecution.findFirst({
+    where: {
+      type: "ROLLUP_AGGREGATION",
+      OR: [
+        { status: { in: ["QUEUED", "RUNNING"] } },
+        {
+          status: { in: ["SUCCEEDED", "FAILED", "DEAD", "CANCELLED"] },
+          finishedAt: {
+            gte: new Date(now.getTime() - ROLLUP_DEDUPE_MIN * 60_000),
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  if (inFlight) return 0;
+
+  await db.jobExecution.create({
+    data: {
+      type: "ROLLUP_AGGREGATION",
+      targetType: "SYSTEM",
+      status: "QUEUED",
+      progress: 0,
+      priority: 7,
+      maxAttempts: 3,
+      payloadJson: JSON.stringify({ triggeredBy: "SCHEDULE" }),
+      correlationId: newJobCorrelationId(),
+    },
+  });
+  return 1;
+}
+
+/**
+ * Enqueue ONE PROTOCOL_QUEUE_RETENTION job per 24 h (RT-003). Dedupe: skip
+ * when a PROTOCOL_QUEUE_RETENTION job is QUEUED/RUNNING, or when the last
+ * one finished within the daily cadence window. Returns 0 or 1.
+ */
+async function enqueueProtocolQueueRetention(now: Date): Promise<number> {
+  const recent = await db.jobExecution.findFirst({
+    where: {
+      type: "PROTOCOL_QUEUE_RETENTION",
+      OR: [
+        { status: { in: ["QUEUED", "RUNNING"] } },
+        {
+          status: { in: ["SUCCEEDED", "FAILED", "DEAD", "CANCELLED"] },
+          finishedAt: {
+            gte: new Date(now.getTime() - PROTOCOL_QUEUE_RETENTION_DEDUPE_HOURS * 3_600_000),
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  if (recent) return 0;
+
+  await db.jobExecution.create({
+    data: {
+      type: "PROTOCOL_QUEUE_RETENTION",
       targetType: "SYSTEM",
       status: "QUEUED",
       progress: 0,

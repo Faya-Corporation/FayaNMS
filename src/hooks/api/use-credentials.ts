@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -34,6 +35,7 @@ function invalidateCredentialCaches(queryClient: ReturnType<typeof useQueryClien
 export function useCreateCredential() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.credentials");
 
   return useMutation({
     mutationFn: (payload: CreateCredentialPayload) =>
@@ -44,13 +46,13 @@ export function useCreateCredential() {
     onSuccess: (result) => {
       invalidateCredentialCaches(queryClient);
       toast({
-        title: "Credential profile created",
-        description: `${result.profile.name} — the secret stays in the vault; FayaNMS stores the reference only.`,
+        title: t("createdTitle"),
+        description: t("createdDescription", { name: result.profile.name }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not create credential profile",
+        title: t("createFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -62,6 +64,7 @@ export function useCreateCredential() {
 export function useUpdateCredential() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.credentials");
 
   return useMutation({
     mutationFn: ({
@@ -78,13 +81,13 @@ export function useUpdateCredential() {
     onSuccess: (result) => {
       invalidateCredentialCaches(queryClient);
       toast({
-        title: "Credential profile updated",
-        description: `${result.profile.name} — vault reference unchanged unless you edited it.`,
+        title: t("updatedTitle"),
+        description: t("updatedDescription", { name: result.profile.name }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not update credential profile",
+        title: t("updateFailedTitle"),
         description: error.message,
         variant: "destructive",
       });

@@ -787,6 +787,151 @@ async function runFlowRetentionJob(job: ClaimedJob): Promise<void> {
   );
 }
 
+/* ───────────── ROLLUP_AGGREGATION driver (RT-002) ───────────── */
+
+interface RollupAggregationResult {
+  outcome: "aggregated" | "throttled";
+  groupsComputed?: number;
+  groupsUpserted?: number;
+  remaining?: number;
+  bounded?: boolean;
+  durationMs?: number;
+  reason?: string;
+}
+
+/**
+ * ROLLUP_AGGREGATION execution — the aggregation (bucketing + upserts +
+ * audit) lives entirely in the Next.js API; the worker just triggers it and
+ * reports the summary. An overlapping run (429 ROLLUP_THROTTLED from the
+ * in-flight guard) is a SUCCESS for the job — another tick is aggregating.
+ */
+async function runRollupAggregationJob(job: ClaimedJob): Promise<void> {
+  await reportProgress(job.id, 10, "Aggregating closed MetricSample buckets into MetricRollup");
+
+  try {
+    const summary = (await nextPost(
+      "/api/v1/metrics/rollup/aggregate",
+      { jobId: job.id, triggeredBy: "JOB" },
+      60_000
+    )) as {
+      groupsComputed?: number;
+      groupsUpserted?: number;
+      remaining?: number;
+      bounded?: boolean;
+      durationMs?: number;
+    };
+
+    await reportProgress(
+      job.id,
+      80,
+      `Aggregated upserts=${summary.groupsUpserted ?? 0} remaining=${summary.remaining ?? 0}${summary.bounded ? " (bounded)" : ""}`
+    );
+
+    const result: RollupAggregationResult = { outcome: "aggregated", ...summary };
+    await nextPost(
+      "/api/v1/worker/complete",
+      { jobId: job.id, outcome: "SUCCEEDED", result },
+      15_000
+    );
+    counters.completed += 1;
+    counters.completedByType.ROLLUP_AGGREGATION =
+      (counters.completedByType.ROLLUP_AGGREGATION ?? 0) + 1;
+    await log(
+      `job ${job.id} [${job.correlationId}] SUCCEEDED: rollup-aggregation computed=${summary.groupsComputed ?? 0} upserted=${summary.groupsUpserted ?? 0} remaining=${summary.remaining ?? 0} in ${summary.durationMs ?? "?"}ms`
+    );
+  } catch (e) {
+    const message = (e as Error)?.message ?? String(e);
+    if (message.includes("ROLLUP_THROTTLED") || message.includes("HTTP 429")) {
+      const result: RollupAggregationResult = {
+        outcome: "throttled",
+        reason: "A rollup aggregation is already in flight (ROLLUP_THROTTLED)",
+      };
+      await nextPost(
+        "/api/v1/worker/complete",
+        { jobId: job.id, outcome: "SUCCEEDED", result },
+        15_000
+      );
+      counters.completed += 1;
+      counters.completedByType.ROLLUP_AGGREGATION =
+        (counters.completedByType.ROLLUP_AGGREGATION ?? 0) + 1;
+      await log(
+        `job ${job.id} [${job.correlationId}] SUCCEEDED: rollup-aggregation throttled (run in flight)`
+      );
+      return;
+    }
+    throw e;
+  }
+}
+
+/* ───────────── PROTOCOL_QUEUE_RETENTION driver (RT-003) ───────────── */
+
+interface ProtocolQueueRetentionResult {
+  outcome: "pruned" | "disabled" | "throttled";
+  queueRowsDeleted?: number;
+  durationMs?: number;
+  deliveredDays?: number;
+  deadDays?: number;
+  correlationId?: string;
+  reason?: string;
+}
+
+/**
+ * PROTOCOL_QUEUE_RETENTION execution — the sweep (chunked deletes + Setting
+ * + audit) lives entirely in the Next.js API; the worker just triggers it
+ * and reports the counts. A throttled run (another prune within 60 s) is a
+ * SUCCESS for the job — it means the queue was swept recently enough.
+ */
+async function runProtocolQueueRetentionJob(job: ClaimedJob): Promise<void> {
+  await reportProgress(job.id, 10, "Loading protocol queue retention policy (delivered/dead windows)");
+
+  try {
+    const result = (await nextPost(
+      "/api/v1/protocol/queue/retention/prune",
+      { triggeredBy: "SCHEDULE" },
+      60_000
+    )) as ProtocolQueueRetentionResult;
+
+    await reportProgress(
+      job.id,
+      80,
+      `Pruned queue rows=${result.queueRowsDeleted ?? 0} outcome=${result.outcome}`
+    );
+
+    await nextPost(
+      "/api/v1/worker/complete",
+      { jobId: job.id, outcome: "SUCCEEDED", result },
+      15_000
+    );
+    counters.completed += 1;
+    counters.completedByType.PROTOCOL_QUEUE_RETENTION =
+      (counters.completedByType.PROTOCOL_QUEUE_RETENTION ?? 0) + 1;
+    await log(
+      `job ${job.id} [${job.correlationId}] SUCCEEDED: protocol-queue-retention deleted=${result.queueRowsDeleted ?? 0} deliveredDays=${result.deliveredDays ?? "?"} deadDays=${result.deadDays ?? "?"} in ${result.durationMs ?? "?"}ms`
+    );
+  } catch (e) {
+    const message = (e as Error)?.message ?? String(e);
+    if (message.includes("PROTOCOL_QUEUE_PRUNE_THROTTLED") || message.includes("HTTP 429")) {
+      const result: ProtocolQueueRetentionResult = {
+        outcome: "throttled",
+        reason: "A protocol queue retention prune ran less than 60s ago (PROTOCOL_QUEUE_PRUNE_THROTTLED)",
+      };
+      await nextPost(
+        "/api/v1/worker/complete",
+        { jobId: job.id, outcome: "SUCCEEDED", result },
+        15_000
+      );
+      counters.completed += 1;
+      counters.completedByType.PROTOCOL_QUEUE_RETENTION =
+        (counters.completedByType.PROTOCOL_QUEUE_RETENTION ?? 0) + 1;
+      await log(
+        `job ${job.id} [${job.correlationId}] SUCCEEDED: protocol-queue-retention throttled (recent prune)`
+      );
+      return;
+    }
+    throw e;
+  }
+}
+
 /* ───────────────── FIRMWARE_UPGRADE driver (Phase 13-b) ─────────────── */
 
 /**
@@ -1126,6 +1271,10 @@ async function executeJob(job: ClaimedJob): Promise<void> {
       await raceTimeout(runMetricRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "FLOW_RETENTION") {
       await raceTimeout(runFlowRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "ROLLUP_AGGREGATION") {
+      await raceTimeout(runRollupAggregationJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+    } else if (job.type === "PROTOCOL_QUEUE_RETENTION") {
+      await raceTimeout(runProtocolQueueRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "REPORT_RUN") {
       await raceTimeout(runReportJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "FIRMWARE_UPGRADE") {
@@ -1181,6 +1330,8 @@ async function claimTick(): Promise<"ok" | "failed" | "busy"> {
             "ALERT_EVALUATION",
             "METRIC_RETENTION",
             "FLOW_RETENTION",
+            "ROLLUP_AGGREGATION",
+            "PROTOCOL_QUEUE_RETENTION",
             "REPORT_RUN",
             "FIRMWARE_UPGRADE",
             "ZTP_PROVISION",

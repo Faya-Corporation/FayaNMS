@@ -16,18 +16,30 @@
 #   - Secure cookies: with an https NEXTAUTH_URL the sessions flip to the
 #     __Secure-* cookie names; never run the TLS profile with an http origin.
 {
-	# email ops@example.corp   # uncomment for explicit ACME account contact
+        # email ops@example.corp   # uncomment for explicit ACME account contact
 }
 
 {$FAYANMS_TLS_DOMAIN} {
-	encode zstd gzip
+        encode zstd gzip
 
-	header {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		X-Content-Type-Options "nosniff"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		-Server
-	}
+        # RT-007: the app (next.config.ts headers()) now ALSO serves
+        # nosniff/Referrer-Policy/CSP at the app layer — the values here
+        # remain belt-and-braces and must stay in lockstep with it
+        # (tests/audit/rt007-security-headers.test.ts pins both owners equal).
+        header {
+                Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                X-Content-Type-Options "nosniff"
+                Referrer-Policy "strict-origin-when-cross-origin"
+                -Server
+        }
 
-	reverse_proxy app:3000
+        # RT-031 (F-061): internal process metrics are never reachable from
+        # the public edge — parity with deploy/oci/Caddyfile (source of
+        # truth). The matcher is exactly /api/metrics; /api/v1/* and
+        # /api/health pass through untouched. The edge 404 is the second
+        # layer; the FAYANMS_METRICS_TOKEN check remains the primary control.
+        @internal_metrics path /api/metrics
+        respond @internal_metrics 404
+
+        reverse_proxy app:3000
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -30,6 +31,7 @@ function invalidateRules(queryClient: ReturnType<typeof useQueryClient>) {
 export function useCreateAlertRule() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.alertRules");
   return useMutation({
     mutationFn: (payload: AlertRulePayload) =>
       apiFetch<AlertRuleMutationResult>("/api/v1/alerts/rules", {
@@ -39,18 +41,19 @@ export function useCreateAlertRule() {
     onSuccess: (result) => {
       invalidateRules(queryClient);
       toast({
-        title: "Alert rule created",
-        description: `${result.rule.name} is evaluated every worker tick (~3 min).`,
+        title: t("createdTitle"),
+        description: t("createdDescription", { name: result.rule.name }),
       });
     },
     onError: (error: Error) =>
-      toast({ title: "Could not create alert rule", description: error.message, variant: "destructive" }),
+      toast({ title: t("createFailedTitle"), description: error.message, variant: "destructive" }),
   });
 }
 
 export function useUpdateAlertRule() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.alertRules");
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<AlertRulePayload> }) =>
       apiFetch<AlertRuleMutationResult>(`/api/v1/alerts/rules/${id}`, {
@@ -61,21 +64,22 @@ export function useUpdateAlertRule() {
       invalidateRules(queryClient);
       if (variables.data.isActive !== undefined) {
         toast({
-          title: variables.data.isActive ? "Rule enabled" : "Rule paused",
+          title: variables.data.isActive ? t("enabledTitle") : t("pausedTitle"),
           description: variables.data.isActive
-            ? `${result.rule.name} is evaluated again from the next tick.`
-            : `${result.rule.name} no longer fires — existing alerts are kept.`,
+            ? t("enabledDescription", { name: result.rule.name })
+            : t("pausedDescription", { name: result.rule.name }),
         });
       }
     },
     onError: (error: Error) =>
-      toast({ title: "Could not update alert rule", description: error.message, variant: "destructive" }),
+      toast({ title: t("updateFailedTitle"), description: error.message, variant: "destructive" }),
   });
 }
 
 export function useDeleteAlertRule() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.alertRules");
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<DeleteAlertRuleResult>(`/api/v1/alerts/rules/${id}`, {
@@ -83,9 +87,9 @@ export function useDeleteAlertRule() {
       }),
     onSuccess: () => {
       invalidateRules(queryClient);
-      toast({ title: "Alert rule deleted", description: "The rule is gone — past alerts are kept." });
+      toast({ title: t("deletedTitle"), description: t("deletedDescription") });
     },
     onError: (error: Error) =>
-      toast({ title: "Could not delete alert rule", description: error.message, variant: "destructive" }),
+      toast({ title: t("deleteFailedTitle"), description: error.message, variant: "destructive" }),
   });
 }

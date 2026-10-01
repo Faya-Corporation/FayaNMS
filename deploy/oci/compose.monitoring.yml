@@ -11,6 +11,10 @@ services:
     restart: unless-stopped
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # RT-030 / F-060: the rule_files glob in prometheus.yml
+      # (/etc/prometheus/rules/*.yml) is wired to the starter rules dir —
+      # without this mount Prometheus had rules configured but NONE shipped.
+      - ./monitoring/rules/:/etc/prometheus/rules/:ro
       - prometheus-data:/prometheus
     networks:
       - backend
@@ -20,7 +24,13 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
-      - --web.enable-lifecycle
+      # RT-036 (F-066): --web.enable-lifecycle REMOVED — it exposed the
+      # unauthenticated lifecycle admin endpoints (reload/quit) to the
+      # backend/monitoring networks. Config reloads = container restart
+      # (`docker compose restart prometheus`); the TSDB persists in the
+      # prometheus-data named volume, and at this scale restart is
+      # sufficient (no auth infrastructure exists on that network, so
+      # basic-auth-gated lifecycle was not an option).
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]

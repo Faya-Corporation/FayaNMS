@@ -35,3 +35,5 @@ App and worker must expose authenticated or network-restricted metrics for reque
 ## Alerts
 
 Before calling the stack operational, add and test alerts for service down, PostgreSQL unavailable, queue growth, worker/collector missing, abnormal job failures, disk/memory pressure, and certificate expiry. Retain the firing evidence with the deployment SHA.
+
+Starter rules ship in `monitoring/rules/fayanms-starter.yml` (mounted read-only into the monitoring-profile Prometheus at `/etc/prometheus/rules/`): app down, worker down, worker scheduler failing, and protocol-queue drops. PostgreSQL-down and certificate-expiry are intentionally commented placeholders in that file — they require an exporter decision (postgres_exporter / blackbox or SSL exporter) before any rule can reference a real metric. No alertmanager is configured: alerts evaluate in Prometheus only (review them at `/alerts` over the admin tunnel).

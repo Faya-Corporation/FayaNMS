@@ -11,14 +11,17 @@ import { authErrorToFail } from "@/lib/auth/session";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/v1/admin/audit-chain/verify (Task 7-b)
+ * GET /api/v1/admin/audit-chain/verify (Task 7-b, RT-013)
  *
- * Walk the audit hash chain in canonical order (createdAt ASC, id ASC),
- * recomputing every hash. Response:
- *   { valid, checked, brokenAt?: { id, index, reason } }
+ * Walk the audit hash chain by its links over a TAIL-anchored window (the
+ * NEWEST 5,000 rows), recomputing every hash. Response:
+ *   { valid, verdict, checked, window: "FULL" | "TAIL", anchoredAt?,
+ *     brokenAt?: { id, index, reason }, issues[] }
  * with reason ∈ "unhashed" | "prev-hash-mismatch" | "hash-mismatch".
- * Rows whose hash is null (pre-chain events awaiting backfill) are chain
- * gaps and are reported as "unhashed".
+ * window "TAIL" + anchoredAt report that the scan cap truncated the table
+ * and which row the walk anchored at; a truncated walk caps the verdict at
+ * PARTIALLY_VERIFIED. Rows whose hash is null (pre-chain events awaiting
+ * backfill) are chain gaps and are reported as "unhashed".
  */
 export async function GET(request: Request) {
   try {

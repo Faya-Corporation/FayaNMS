@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -45,6 +46,7 @@ function invalidateBaselineGraph(queryClient: ReturnType<typeof useQueryClient>)
 export function useApproveBaseline() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.baselines");
 
   return useMutation({
     mutationFn: (payload: ApproveBaselinePayload) =>
@@ -54,14 +56,18 @@ export function useApproveBaseline() {
       }),
     onSuccess: (result) => {
       invalidateBaselineGraph(queryClient);
+      // {status} stays the raw lowercased enum token (technical value).
       toast({
-        title: `Baseline approved — v${result.version}`,
-        description: `Snapshot stored as the golden reference (status: ${result.snapshotStatus.toLowerCase()}) — audit ${result.audit.correlationId}.`,
+        title: t("approvedTitle", { version: result.version }),
+        description: t("approvedDescription", {
+          status: result.snapshotStatus.toLowerCase(),
+          correlation: result.audit.correlationId,
+        }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not approve baseline",
+        title: t("approveFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -73,6 +79,7 @@ export function useApproveBaseline() {
 export function useRevokeBaseline() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.baselines");
 
   return useMutation({
     mutationFn: (id: string) =>
@@ -82,13 +89,13 @@ export function useRevokeBaseline() {
     onSuccess: () => {
       invalidateBaselineGraph(queryClient);
       toast({
-        title: "Baseline revoked",
-        description: "The approval was removed — the snapshot returns to Historical.",
+        title: t("revokedTitle"),
+        description: t("revokedDescription"),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not revoke baseline",
+        title: t("revokeFailedTitle"),
         description: error.message,
         variant: "destructive",
       });

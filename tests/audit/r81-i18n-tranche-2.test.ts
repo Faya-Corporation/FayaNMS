@@ -97,7 +97,7 @@ describe("R81 — tranche 2 namespaces exist and are balanced", () => {
       expect(enLeaves, `en.${key} must be non-trivial`).toBeGreaterThan(0);
     }
     expect(leaves(en.drivers).length).toBe(13);
-    expect(leaves(en.systemSettings).length).toBe(44);
+    expect(leaves(en.systemSettings).length).toBe(45);
   });
 
   test("A: capacity.chrome exists in both dictionaries with 35 balanced leaves", () => {

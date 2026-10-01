@@ -433,7 +433,7 @@ export function FlowsView() {
                             </span>
                             <span className="truncate text-sm font-medium">
                               {row.protocol}
-                              <span className="ml-1.5 text-xs text-muted-foreground font-tech ltr-technical">
+                              <span className="ms-1.5 text-xs text-muted-foreground font-tech ltr-technical">
                                 /{row.port}
                               </span>
                             </span>

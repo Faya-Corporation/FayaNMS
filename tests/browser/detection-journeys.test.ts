@@ -80,6 +80,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { chromium, type Browser, type Page } from "playwright";
 
+import { boundedBrowserClose, boundedNewPage, closeJourneyPage } from "./harness-bounds";
+
 import {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
@@ -137,11 +139,16 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
   beforeAll(async () => {
     if (!enabled) return;
     await bootE2E();
-    browser = await chromium.launch({ headless: true });
+    // Bounded launch — mirrors browser-journeys.test.ts: a wedged driver
+    // must fail this hook fast instead of hanging to the hook timeout.
+    browser = await chromium.launch({ headless: true, timeout: 120_000 });
   }, 300_000);
 
   afterAll(async () => {
-    await browser?.close().catch(() => undefined);
+    // Bounded + force-kill reclaim (see harness-bounds.ts): a wedged driver
+    // must never burn the 60s hook timeout or leak its processes into the
+    // file teardown.
+    await boundedBrowserClose(browser);
     // bun test files are sequential: later suites re-boot through the
     // liveness-aware bootE2E() if this suite tore the topology down.
     if (enabled) await teardownE2E();
@@ -150,7 +157,9 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
   browserTest(
     "D6: empty hostname — Detect is disabled until a hostname exists",
     async () => {
-      const page = await browser!.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await boundedNewPage(browser!, {
+        viewport: { width: 1440, height: 900 },
+      });
       try {
         await signIn(page);
         await openAddDeviceSheet(page);
@@ -158,7 +167,7 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
         await page.fill("#device-hostname", "hq-core-sw-01");
         expect(await detectButton(page).isDisabled()).toBe(false);
       } finally {
-        await page.close();
+        await closeJourneyPage(page);
       }
     },
     180_000
@@ -167,7 +176,9 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
   browserTest(
     "D7: no credential selected — vendor skip is honest, address still resolves",
     async () => {
-      const page = await browser!.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await boundedNewPage(browser!, {
+        viewport: { width: 1440, height: 900 },
+      });
       try {
         await signIn(page);
         await openAddDeviceSheet(page);
@@ -194,7 +205,7 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
         // field the operator typed gets the explicit Use / Keep-mine chip).
         expect(await page.inputValue("#device-mgmt-ip")).toBe("127.0.0.1");
       } finally {
-        await page.close();
+        await closeJourneyPage(page);
       }
     },
     180_000
@@ -203,7 +214,9 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
   browserTest(
     "D8+D9: loading state + duplicate click prevention — one request per run",
     async () => {
-      const page = await browser!.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await boundedNewPage(browser!, {
+        viewport: { width: 1440, height: 900 },
+      });
       let detectRequests = 0;
       try {
         await signIn(page);
@@ -230,7 +243,7 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
         expect(detectRequests).toBe(1);
       } finally {
         await page.unroute(`**${AUTO_DETECT_PATH}`).catch(() => undefined);
-        await page.close();
+        await closeJourneyPage(page);
       }
     },
     180_000
@@ -239,20 +252,29 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
   browserTest(
     "D10: typed error toast — loopback literal refused by the target policy",
     async () => {
-      const page = await browser!.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await boundedNewPage(browser!, {
+        viewport: { width: 1440, height: 900 },
+      });
       try {
         await signIn(page);
         await openAddDeviceSheet(page);
         await page.fill("#device-hostname", "127.0.0.1");
         await detectButton(page).click();
-        await page.getByText("Auto-detect failed").waitFor({ state: "visible", timeout: 30_000 });
+        // .first(): the toast list may legitimately render the message more than
+        // once (retry/echo) — a bare waitFor is a strict-mode violation and
+        // hard-fails the journey exactly when the product behaved correctly
+        // (observed twice on real CI runners, run 36779703553 included).
+        await page
+          .getByText("Auto-detect failed")
+          .first()
+          .waitFor({ state: "visible", timeout: 30_000 });
         // The honest, typed refusal copy (not a raw stack or a generic 500).
         await page
           .getByText("refused by the target network policy", { exact: false })
           .first()
           .waitFor({ state: "visible", timeout: 10_000 });
       } finally {
-        await page.close();
+        await closeJourneyPage(page);
       }
     },
     180_000
@@ -261,7 +283,9 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
   browserTest(
     "D11: field conflict (T062) — Use applies, Keep-mine holds the operator's value",
     async () => {
-      const page = await browser!.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await boundedNewPage(browser!, {
+        viewport: { width: 1440, height: 900 },
+      });
       try {
         await signIn(page);
         await openAddDeviceSheet(page);
@@ -284,7 +308,7 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
         await page.getByRole("button", { name: "Keep mine", exact: true }).click();
         expect(await page.inputValue("#device-mgmt-ip")).toBe("10.99.99.99");
       } finally {
-        await page.close();
+        await closeJourneyPage(page);
       }
     },
     180_000
@@ -293,7 +317,9 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
   browserTest(
     "D12: vendor-stage typed error — stable code in the panel, address still succeeds",
     async () => {
-      const page = await browser!.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await boundedNewPage(browser!, {
+        viewport: { width: 1440, height: 900 },
+      });
       try {
         await signIn(page);
         await openAddDeviceSheet(page);
@@ -328,7 +354,7 @@ describe("R50.8: detection-panel journeys (roadmap §10.5 browser cells)", () =>
           timeout: 10_000,
         });
       } finally {
-        await page.close();
+        await closeJourneyPage(page);
       }
     },
     240_000

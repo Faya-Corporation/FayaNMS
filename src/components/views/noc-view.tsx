@@ -226,7 +226,7 @@ export function NocView() {
                 : ""}
             </span>
           </h2>
-          <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
+          <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pe-1">
             {sortedIncidents.length === 0 ? (
               <li className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-4 text-sm text-neutral-400">
                 <CheckCircle2 aria-hidden className="size-4 text-success" />

@@ -93,6 +93,13 @@ export interface PersonaHarnessOptions {
   password?: string;
   /** command → raw output text (the persona's READ-ONLY exec allowlist) */
   commands: Record<string, string | (() => string)>;
+  /**
+   * command → non-zero exit code (RT-027: exercises the genuine exec-
+   * failure path of the transport — the persona writes the command's
+   * allowlisted output to STDERR, if any, and exits with the given code).
+   * Optional; every command not listed here still exits 0.
+   */
+  failingCommands?: Record<string, { exitCode: number; stderr?: string }>;
   /** the authentic CLI line the persona prints for unknown commands */
   invalidCommandLine: string;
   /** interactive config-mode shell (Phase 23 controlled-change plane) */
@@ -226,6 +233,16 @@ export async function startPersonaSshHarness(
       session.on("exec", (acceptExec, _rejectExec, info) => {
         const stream = acceptExec();
         const command = (info.command ?? "").trim();
+        const failure = opts.failingCommands?.[command];
+        if (failure !== undefined) {
+          // RT-027 harness extension: a genuine non-zero exec exit — the
+          // persona may attach device-shaped text on STDERR (the transport
+          // must keep it OUT of the client-facing SshError message).
+          if (failure.stderr) stream.stderr.write(failure.stderr);
+          stream.exit(failure.exitCode);
+          stream.end();
+          return;
+        }
         const entry = allowlist.has(command) ? opts.commands[command] : undefined;
         if (entry !== undefined) {
           stream.stdout.write(typeof entry === "function" ? entry() : entry);

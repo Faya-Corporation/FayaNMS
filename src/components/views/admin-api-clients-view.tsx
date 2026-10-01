@@ -112,7 +112,7 @@ export function AdminApiClientsView() {
         actions={
           canWrite ? (
             <Button onClick={() => setCreateOpen(true)} size="sm">
-              <Plus className="mr-2 size-4" /> {t("actions.newClient")}
+              <Plus className="me-2 size-4" /> {t("actions.newClient")}
             </Button>
           ) : undefined
         }
@@ -153,7 +153,7 @@ export function AdminApiClientsView() {
                 <TableHead>{t("table.lastUsed")}</TableHead>
                 <TableHead>{t("table.created")}</TableHead>
                 <TableHead>{t("table.active")}</TableHead>
-                {canWrite && <TableHead className="text-right">{t("table.actions")}</TableHead>}
+                {canWrite && <TableHead className="text-end">{t("table.actions")}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -193,14 +193,14 @@ export function AdminApiClientsView() {
                     />
                   </TableCell>
                   {canWrite && (
-                    <TableCell className="text-right">
+                    <TableCell className="text-end">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setRotateTarget(client)}
                         disabled={!client.isActive}
                       >
-                        <RefreshCcw className="mr-1 size-3" /> {t("actions.rotate")}
+                        <RefreshCcw className="me-1 size-3" /> {t("actions.rotate")}
                       </Button>
                     </TableCell>
                   )}

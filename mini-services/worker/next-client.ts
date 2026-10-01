@@ -12,6 +12,7 @@
  */
 
 import { appendFile } from "node:fs/promises";
+import { renameSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { serviceAuthHeader } from "./service-token";
@@ -46,11 +47,38 @@ export const SELF_BASE_URL = envBaseUrl("SELF_BASE_URL", "http://localhost:3030"
 
 const LOG_FILE = join(import.meta.dir, "worker.log");
 
-/** Console + append-only worker.log line. Never throws. */
+/**
+ * RT-027 / F-043 — worker.log is BOUNDED: one-generation size-capped
+ * rotation. When the file exceeds LOG_MAX_BYTES it is renamed to
+ * worker.log.1 (overwriting any previous generation) BEFORE the next
+ * append — the live file restarts empty and the old content stays one
+ * generation deep. Simple at this scale: no timestamped multi-file
+ * rotation (deliberate choice, noted here so nobody "completes" it).
+ */
+export const LOG_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Rotate `path` to `${path}.1` when it exceeds `maxBytes` (best-effort:
+ * a missing file or an unwritable dir must never throw — the caller's
+ * append path is allowed to fail silently). Exported for the audit
+ * suite (temp-file tested).
+ */
+export function rotateLogIfOversized(path: string, maxBytes = LOG_MAX_BYTES): void {
+  try {
+    if (statSync(path).size > maxBytes) {
+      renameSync(path, `${path}.1`);
+    }
+  } catch {
+    /* rotation is best-effort; logging must never break the worker */
+  }
+}
+
+/** Console + append-only worker.log line (size-bounded, RT-027). Never throws. */
 export async function log(message: string): Promise<void> {
   const line = `[${new Date().toISOString()}] ${message}`;
   console.log(line);
   try {
+    rotateLogIfOversized(LOG_FILE);
     await appendFile(LOG_FILE, line + "\n");
   } catch {
     /* logging must never break the worker */

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -34,6 +35,7 @@ function errorMessage(error: Error): string {
 export function useAcknowledgeAlert() {
   const invalidate = useInvalidateAlertSurfaces();
   const { toast } = useToast();
+  const t = useTranslations("toast.alerts");
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<AlertActionResult>(`/api/v1/alerts/${id}/acknowledge`, {
@@ -42,16 +44,17 @@ export function useAcknowledgeAlert() {
       }),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Alert acknowledged", description: "Removed from the firing queue." });
+      toast({ title: t("acknowledgedTitle"), description: t("acknowledgedDescription") });
     },
     onError: (error: Error) =>
-      toast({ title: "Could not acknowledge alert", description: errorMessage(error), variant: "destructive" }),
+      toast({ title: t("acknowledgeFailedTitle"), description: errorMessage(error), variant: "destructive" }),
   });
 }
 
 export function useAssignAlert() {
   const invalidate = useInvalidateAlertSurfaces();
   const { toast } = useToast();
+  const t = useTranslations("toast.alerts");
   return useMutation({
     mutationFn: ({ id, assignedToId }: { id: string; assignedToId: string }) =>
       apiFetch<AlertActionResult>(`/api/v1/alerts/${id}/assign`, {
@@ -60,16 +63,17 @@ export function useAssignAlert() {
       }),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Alert assigned", description: "The owner now shows on the stream row." });
+      toast({ title: t("assignedTitle"), description: t("assignedDescription") });
     },
     onError: (error: Error) =>
-      toast({ title: "Could not assign alert", description: errorMessage(error), variant: "destructive" }),
+      toast({ title: t("assignFailedTitle"), description: errorMessage(error), variant: "destructive" }),
   });
 }
 
 export function useSuppressAlert() {
   const invalidate = useInvalidateAlertSurfaces();
   const { toast } = useToast();
+  const t = useTranslations("toast.alerts");
   return useMutation({
     mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
       apiFetch<AlertActionResult>(`/api/v1/alerts/${id}/suppress`, {
@@ -78,16 +82,17 @@ export function useSuppressAlert() {
       }),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Alert suppressed", description: "Hidden from the firing queue until unsuppressed." });
+      toast({ title: t("suppressedTitle"), description: t("suppressedDescription") });
     },
     onError: (error: Error) =>
-      toast({ title: "Could not suppress alert", description: errorMessage(error), variant: "destructive" }),
+      toast({ title: t("suppressFailedTitle"), description: errorMessage(error), variant: "destructive" }),
   });
 }
 
 export function useUnsuppressAlert() {
   const invalidate = useInvalidateAlertSurfaces();
   const { toast } = useToast();
+  const t = useTranslations("toast.alerts");
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<AlertActionResult>(`/api/v1/alerts/${id}/unsuppress`, {
@@ -96,16 +101,17 @@ export function useUnsuppressAlert() {
       }),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Alert unsuppressed", description: "Back in the firing queue." });
+      toast({ title: t("unsuppressedTitle"), description: t("unsuppressedDescription") });
     },
     onError: (error: Error) =>
-      toast({ title: "Could not unsuppress alert", description: errorMessage(error), variant: "destructive" }),
+      toast({ title: t("unsuppressFailedTitle"), description: errorMessage(error), variant: "destructive" }),
   });
 }
 
 export function useResolveAlert() {
   const invalidate = useInvalidateAlertSurfaces();
   const { toast } = useToast();
+  const t = useTranslations("toast.alerts");
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<AlertActionResult>(`/api/v1/alerts/${id}/resolve`, {
@@ -114,16 +120,17 @@ export function useResolveAlert() {
       }),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Alert resolved", description: "Marked resolved — history is kept." });
+      toast({ title: t("resolvedTitle"), description: t("resolvedDescription") });
     },
     onError: (error: Error) =>
-      toast({ title: "Could not resolve alert", description: errorMessage(error), variant: "destructive" }),
+      toast({ title: t("resolveFailedTitle"), description: errorMessage(error), variant: "destructive" }),
   });
 }
 
 export function useCreateIncidentFromAlert() {
   const invalidate = useInvalidateAlertSurfaces();
   const { toast } = useToast();
+  const t = useTranslations("toast.alerts");
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<CreateIncidentFromAlertResult>(`/api/v1/alerts/${id}/create-incident`, {
@@ -132,12 +139,13 @@ export function useCreateIncidentFromAlert() {
       }),
     onSuccess: (result) => {
       invalidate();
+      // {severity} stays the raw enum token (technical value).
       toast({
-        title: `Incident ${result.incident.number} created`,
-        description: `${result.incident.severity} linked to the alert — open Incidents for the timeline.`,
+        title: t("incidentCreatedTitle", { number: result.incident.number }),
+        description: t("incidentCreatedDescription", { severity: result.incident.severity }),
       });
     },
     onError: (error: Error) =>
-      toast({ title: "Could not create incident", description: errorMessage(error), variant: "destructive" }),
+      toast({ title: t("incidentFailedTitle"), description: errorMessage(error), variant: "destructive" }),
   });
 }

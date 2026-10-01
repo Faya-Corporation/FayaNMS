@@ -13,7 +13,7 @@ import { queryKeys } from "@/lib/query-keys";
 export function useMeta() {
   return useQuery({
     queryKey: queryKeys.meta,
-    queryFn: () => apiFetch<MetaPayload>("/api/v1/meta"),
+    queryFn: () => apiFetch<MetaPayload>("/api/v1/meta/reference"),
     staleTime: 5 * 60_000,
   });
 }

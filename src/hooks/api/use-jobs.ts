@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -60,6 +61,7 @@ function invalidateJobSurfaces(
 export function useCreateJob() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.jobs");
 
   return useMutation({
     mutationFn: (payload: CreateJobPayload) =>
@@ -70,13 +72,13 @@ export function useCreateJob() {
     onSuccess: (result) => {
       invalidateJobSurfaces(queryClient);
       toast({
-        title: "Backup job queued",
-        description: `Correlation ${result.job.correlationId} — view progress in the Job Center.`,
+        title: t("backupQueuedTitle"),
+        description: t("backupQueuedDescription", { correlation: result.job.correlationId }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not queue backup job",
+        title: t("backupFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -92,6 +94,7 @@ export function useCreateJob() {
 export function useCancelJob() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.jobs");
 
   return useMutation({
     mutationFn: (id: string) =>
@@ -101,13 +104,13 @@ export function useCancelJob() {
     onSuccess: (result) => {
       invalidateJobSurfaces(queryClient);
       toast({
-        title: "Job cancelled",
-        description: `Correlation ${result.job.correlationId} — the worker drops it on its next heartbeat.`,
+        title: t("cancelledTitle"),
+        description: t("cancelledDescription", { correlation: result.job.correlationId }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not cancel job",
+        title: t("cancelFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -122,6 +125,7 @@ export function useCancelJob() {
 export function useRetryJob() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.jobs");
 
   return useMutation({
     mutationFn: (id: string) =>
@@ -131,13 +135,13 @@ export function useRetryJob() {
     onSuccess: (result) => {
       invalidateJobSurfaces(queryClient);
       toast({
-        title: "Retry queued",
-        description: `New correlation ${result.job.correlationId} — linked to the original run via RETRY_OF.`,
+        title: t("retryQueuedTitle"),
+        description: t("retryQueuedDescription", { correlation: result.job.correlationId }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not queue retry",
+        title: t("retryFailedTitle"),
         description: error.message,
         variant: "destructive",
       });

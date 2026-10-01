@@ -8,6 +8,16 @@
 #   1. the root app  —  /package.json            + /bun.lock
 #   2. the worker    —  mini-services/worker/…   + mini-services/worker/bun.lock
 #
+# …and (RT-035, F-065) the github-actions ecosystem for the CI workflows
+# themselves: every third-party action in ci.yml is SHA-pinned, so pin
+# updates are what keeps those SHAs from rotting silently. Non-security
+# bumps land individually; security updates are grouped (same policy as the
+# bun entries). NOTE (comment only, no workflow change here):
+# returntocorp/semgrep-action is ARCHIVED upstream — migration to the
+# semgrep/semgrep CLI (like the other pinned binaries) is a separate
+# follow-up (BACKLOG under A5-13); its bump PRs are the pin-freshness
+# mechanism until then.
+#
 # Policy (the "known versioning policy", enforced by construction):
 #   - Dependabot PRESERVES each dependency's declared range style when it
 #     bumps: a caret dep (the 61-entry default) gets a caret bump; an exact
@@ -58,6 +68,31 @@ updates:
   # ── Manifest 2/2: worker mini-service (its own package.json + lockfile) ─
   - package-ecosystem: "bun"
     directory: "/mini-services/worker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    allow:
+      - dependency-type: "all"
+    groups:
+      security-updates:
+        applies-to: security-updates
+        dependency-type: "production"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    labels:
+      - "dependencies"
+
+  # ── Ecosystem 3/3: the CI workflows themselves (RT-035, F-065) ─────────
+  # Keeps the SHA pins of third-party actions fresh (the actions are pinned
+  # by policy; without this entry nothing ever proposed a pin update).
+  # Same house policy as the bun entries: non-security bumps individually,
+  # security updates grouped.
+  - package-ecosystem: "github-actions"
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"

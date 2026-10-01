@@ -132,11 +132,14 @@ describe("DOC-001-A: governance docs match the LIVE GitHub state", () => {
   const ci = readRepoFile(".github/workflows/ci.yml");
   const deployDoc = readRepoFile("docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md");
 
-  test("the workflow header no longer claims branch protection is active", () => {
-    expect(ci).not.toContain("Branch protection: active");
-    expect(ci).toContain("Branch protection: NOT ACTIVE");
-    expect(ci).toContain("protected:false");
-    expect(ci).toContain("DOC-001-A");
+  test("the workflow header matches the CURRENT protection state", () => {
+    // DOC-001-A (2026-09-15) pinned the then-truth: protection off. The
+    // owner applied protection on 2026-09-19 (worklog Task 3) and RT-034
+    // refreshed the header — the pin now enforces the CURRENT truth so
+    // the header can never silently drift back either way.
+    expect(ci).not.toContain("Branch protection: NOT ACTIVE");
+    expect(ci).toMatch(/Branch protection:\s*ACTIVE \(owner-applied, worklog Task 3, 2026-09-19\)/);
+    expect(ci).toContain("bun scripts/gov-verify.ts");
   });
 
   test("the deployment runbook states the same live truth", () => {

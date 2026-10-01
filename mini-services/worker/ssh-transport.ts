@@ -39,6 +39,8 @@
 import { createHash } from "node:crypto";
 import { Client } from "ssh2";
 
+import { log } from "./next-client";
+
 export class SshError extends Error {
   constructor(
     public readonly code:
@@ -332,9 +334,16 @@ export async function sshProbe(
 
 /**
  * R50-T025 — the bounded stdout/stderr accumulator. Appends a chunk while
- * the byte budget allows; past the budget the tail is DROPPED (chunk
- * granularity — no partial re-slicing) and the truncation is reported so
- * callers can observe it. Pure: unit-pinned in the audit suite.
+ * the byte budget allows; past the budget the crossing chunk is sliced to
+ * the EXACT remaining budget and the tail is dropped (RT-026: the cap is
+ * enforced exactly — `bytes` never overshoots `maxBytes`) and the
+ * truncation is reported so callers can observe it. Pure: unit-pinned in
+ * the audit suite.
+ *
+ * Byte-accurate note: Buffer.subarray slices at a BYTE boundary and can
+ * split a multi-byte UTF-8 sequence — the trailing replacement char
+ * (\uFFFD) is acceptable at a truncation boundary (the stream is already
+ * `truncated: true`). Do NOT "fix" this into an unbounded decoder loop.
  */
 export function appendBounded(
   current: { text: string; bytes: number; truncated: boolean },
@@ -352,18 +361,33 @@ export function appendBounded(
       truncated: current.truncated,
     };
   }
-  // This chunk crosses the budget: take the whole chunk, drop the rest.
-  return {
-    text: current.text + chunk.toString(),
-    bytes: current.bytes + chunkBytes,
-    truncated: true,
-  };
+  // This chunk crosses the budget: append ONLY the remaining budget and
+  // drop the tail (RT-026 / F-042 — exact cap, no whole-chunk overshoot).
+  const remaining = maxBytes - current.bytes;
+  const sliced =
+    typeof chunk === "string"
+      ? Buffer.from(chunk, "utf8").subarray(0, remaining).toString("utf8")
+      : chunk.subarray(0, remaining).toString("utf8");
+  return { text: current.text + sliced, bytes: maxBytes, truncated: true };
+}
+
+/**
+ * RT-027 / F-043 — the client-facing rejection for a non-zero exec exit.
+ * Extracted (pure) so the audit suite can pin the exact prose hermetically:
+ * the message carries the command + exit code ONLY — device output is
+ * NEVER interpolated into client-facing error text (it goes to the
+ * server-side log at the rejection site in sshExecText).
+ */
+export function sshExecRejection(command: string, exitCode: number | null): SshError {
+  return new SshError("SSH_EXEC_FAILED", `Command "${command}" exited with ${exitCode}`);
 }
 
 /**
  * Connect, execute ONE command on the exec channel, collect stdout,
- * disconnect. Non-zero exit or stderr-backed failures surface as
- * SSH_EXEC_FAILED with a bounded excerpt.
+ * disconnect. Non-zero exit surfaces as SSH_EXEC_FAILED (RT-027 / F-043:
+ * the message carries the command + exit code ONLY — the device-output
+ * excerpt stays server-side in worker.log, it never travels in the error
+ * that reaches job records / control-plane clients).
  */
 export async function sshExecText(
   creds: SshCredentials,
@@ -412,12 +436,15 @@ export async function sshExecText(
         stream.on("close", () => {
           clearTimeout(timer);
           if (exitCode !== null && exitCode !== 0) {
-            reject(
-              new SshError(
-                "SSH_EXEC_FAILED",
-                `Command "${command}" exited with ${exitCode}: ${(errOut || out).slice(0, 200)}`,
-              ),
+            // RT-027 / F-043 — the 200-char device-output excerpt is
+            // SERVER-SIDE ONLY (worker.log). The client-facing SshError
+            // message carries the command + exit code; the code (not the
+            // prose) is the contract, and device text must not travel in
+            // error messages that end up in job records / the UI.
+            void log(
+              `SSH_EXEC_FAILED exit ${exitCode} on "${command}" — device output excerpt (server-side only): ${(errOut || out).slice(0, 200)}`,
             );
+            reject(sshExecRejection(command, exitCode));
             return;
           }
           resolve(out);

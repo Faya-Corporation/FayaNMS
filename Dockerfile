@@ -121,6 +121,6 @@ COPY --from=build --chown=10001:10001 /prisma-runtime/lib/libcrypto.so.3 /usr/li
 USER 10001
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["/usr/local/bin/bun", "-e", "const r = await fetch('http://127.0.0.1:3000/'); process.exit(r.ok ? 0 : 1)"]
+  CMD ["/usr/local/bin/bun", "-e", "const r = await fetch('http://127.0.0.1:3000/api/health'); process.exit(r.ok ? 0 : 1)"]
 ENTRYPOINT ["/usr/local/bin/bun"]
 CMD ["server.js"]

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Import, LoaderCircle, Paperclip } from "lucide-react";
 import { z } from "zod";
 
@@ -43,16 +44,26 @@ const IPV4_PATTERN =
 const HOSTNAME_PATTERN = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
 const CRITICALITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 
+/**
+ * Row schema (RT-022/F-021). Messages are devices.csv.* dictionary KEYS
+ * (resolved at render time via tRowError — the same key-based pattern as
+ * the alert-rules panel), so per-row validation copy localizes with the
+ * locale. DELIBERATE DUPLICATION: the server re-validates every row in
+ * src/app/api/v1/devices/csv-import (unchanged by this RT) — its messages
+ * remain the fallback for API-level rejections; client keys are
+ * authoritative for the client preview. Unknown messages still render
+ * verbatim via the t.has gate in tRowError.
+ */
 const csvRowSchema = z.object({
   hostname: z
     .string()
     .trim()
-    .min(1, "hostname is required")
+    .min(1, "hostnameRequired")
     .max(63)
-    .regex(HOSTNAME_PATTERN, "hostname may contain letters, digits and hyphens"),
-  vendor: z.string().trim().min(1, "vendor is required"),
+    .regex(HOSTNAME_PATTERN, "hostnamePattern"),
+  vendor: z.string().trim().min(1, "vendorRequired"),
   model: z.string().trim().max(120).optional(),
-  mgmtIp: z.string().trim().regex(IPV4_PATTERN, "mgmtIp must be a valid IPv4 address"),
+  mgmtIp: z.string().trim().regex(IPV4_PATTERN, "mgmtIpPattern"),
   siteCode: z.string().trim().max(40).optional(),
   criticality: z.enum(CRITICALITIES).optional(),
   tags: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
@@ -67,6 +78,9 @@ const CSV_TEMPLATE_HEADER =
   "hostname,vendor,model,mgmtIp,siteCode,criticality,tags\n" +
   "BR3-Edge-RTR-01,cisco,ISR4331,10.60.255.1,BR1-HOD,MEDIUM,branch|sdwan\n" +
   "BR3-FW-01,fortinet,FortiGate 90G,10.60.255.2,BR1-HOD,HIGH,firewall";
+
+/** The header line shown inside the localized description (technical data). */
+const CSV_HEADER_ROW = "hostname,vendor,model,mgmtIp,siteCode,criticality,tags";
 
 function parseCsv(text: string): ParsedRow[] {
   const lines = text
@@ -107,7 +121,7 @@ function parseCsv(text: string): ParsedRow[] {
       const field = issue?.path?.length > 0 ? `${issue.path.join(".")}: ` : "";
       parsed.push({
         row: { ...candidate, criticality: candidate.criticality ?? "MEDIUM" },
-        error: `${field}${issue?.message ?? "invalid row"}`,
+        error: `${field}${issue?.message ?? "rowInvalid"}`,
       });
       continue;
     }
@@ -128,6 +142,21 @@ interface CsvImportDialogProps {
 }
 
 export function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
+  const t = useTranslations("devices.csv");
+  /**
+   * Key-based row-error resolver (RT-005 alert-rules-panel pattern):
+   * parseCsv stores `<field>: <key>` strings (existing format); the
+   * technical field prefix is kept verbatim while the message suffix is
+   * translated when it IS a devices.csv key. Unknown suffixes — e.g. a
+   * server-side rejection reason surfaced through the same channel —
+   * render VERBATIM (fallback contract preserved).
+   */
+  const tRowError = (error: string): string => {
+    const separator = error.indexOf(": ");
+    const suffix = separator > -1 ? error.slice(separator + 2) : error;
+    const resolved = t.has(suffix) ? t(suffix) : suffix;
+    return separator > -1 ? `${error.slice(0, separator + 2)}${resolved}` : resolved;
+  };
   const { toast } = useToast();
   const csvImport = useCsvImportDevices();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -160,8 +189,8 @@ export function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
       .map((entry) => entry.row);
     if (rows.length === 0) {
       toast({
-        title: "Nothing to import",
-        description: "Fix the highlighted rows or paste valid CSV content first.",
+        title: t("nothingToImport"),
+        description: t("nothingToImportDescription"),
         variant: "destructive",
       });
       return;
@@ -181,14 +210,19 @@ export function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Import devices from CSV</DialogTitle>
+          <DialogTitle>{t("importTitle")}</DialogTitle>
           <DialogDescription>
-            Expected header:{" "}
-            <span className="font-tech ltr-technical">
-              hostname,vendor,model,mgmtIp,siteCode,criticality,tags
-            </span>{" "}
-            — vendor accepts the key or the display name, tags are separated by{" "}
-            <span className="font-tech">|</span> inside the cell.
+            {t.rich("importDescription", {
+              // The header row and the pipe separator are technical CSV
+              // syntax — kept LTR/technical inside the localized sentence
+              // (RT-020 demoPasswordHint pattern: values inside rich tags).
+              headerValue: CSV_HEADER_ROW,
+              sepValue: "|",
+              header: (chunks) => (
+                <span className="font-tech ltr-technical">{chunks}</span>
+              ),
+              sep: (chunks) => <span className="font-tech">{chunks}</span>,
+            })}
           </DialogDescription>
         </DialogHeader>
 
@@ -201,11 +235,11 @@ export function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
               variant="outline"
             >
               <Paperclip aria-hidden="true" />
-              Choose file…
+              {t("chooseFile")}
             </Button>
             <input
               accept=".csv,text/csv,text/plain"
-              aria-label="CSV file"
+              aria-label={t("csvFileAria")}
               className="hidden"
               onChange={(event) => {
                 void handleFile(event.target.files?.[0]);
@@ -219,7 +253,7 @@ export function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
               onClick={handleDownloadTemplate}
               type="button"
             >
-              Download template
+              {t("downloadTemplate")}
             </button>
           </div>
 
@@ -228,7 +262,7 @@ export function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
               className="text-xs font-medium text-muted-foreground"
               htmlFor="csv-paste"
             >
-              …or paste CSV content
+              {t("pasteLabel")}
             </label>
             <Textarea
               className="font-tech ltr-technical min-h-28"
@@ -243,20 +277,20 @@ export function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
           {parsedRows.length > 0 && (
             <div className="flex flex-col gap-2">
               <p className="text-xs text-muted-foreground">
-                {parsedRows.length} row{parsedRows.length === 1 ? "" : "s"} parsed
-                {invalidCount > 0 ? ` · ${invalidCount} with issues (they will be skipped)` : ""}
-                {parsedRows.length > 10 ? " · showing the first 10" : ""}
+                {t("rowsParsed", { count: parsedRows.length })}
+                {invalidCount > 0 ? ` ${t("rowsWithIssues", { count: invalidCount })}` : ""}
+                {parsedRows.length > 10 ? ` ${t("showingFirst")}` : ""}
               </p>
               <div className="overflow-x-auto rounded-lg border">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Hostname</TableHead>
-                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Vendor</TableHead>
-                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">mgmtIp</TableHead>
-                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Site</TableHead>
-                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Crit.</TableHead>
-                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">Issue</TableHead>
+                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("hostnameCol")}</TableHead>
+                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("vendorCol")}</TableHead>
+                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("mgmtIpCol")}</TableHead>
+                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("siteCol")}</TableHead>
+                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("critCol")}</TableHead>
+                      <TableHead className="h-(--density-row-h) px-(--density-cell-x)">{t("issueCol")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -279,9 +313,9 @@ export function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
                         </TableCell>
                         <TableCell className="h-(--density-row-h) px-(--density-cell-x) text-xs">
                           {entry.error ? (
-                            <span className="text-danger">{entry.error}</span>
+                            <span className="text-danger">{tRowError(entry.error)}</span>
                           ) : (
-                            <span className="text-success">OK</span>
+                            <span className="text-success">{t("okLabel")}</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -295,7 +329,7 @@ export function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
 
         <DialogFooter>
           <Button onClick={() => onOpenChange(false)} type="button" variant="outline">
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             disabled={csvImport.isPending || parsedRows.length === 0}
@@ -307,8 +341,9 @@ export function CsvImportDialog({ open, onOpenChange }: CsvImportDialogProps) {
             ) : (
               <Import aria-hidden="true" />
             )}
-            Import {parsedRows.filter((entry) => entry.error === null).length} row
-            {parsedRows.filter((entry) => entry.error === null).length === 1 ? "" : "s"}
+            {t("importRows", {
+              count: parsedRows.filter((entry) => entry.error === null).length,
+            })}
           </Button>
         </DialogFooter>
       </DialogContent>

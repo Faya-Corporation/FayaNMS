@@ -15,23 +15,31 @@
 # (re)start; in this sandbox the platform owns that lifecycle.
 
 :81 {
-	@port_allowed expression {query.XTransformPort} == "3000" || {query.XTransformPort} == "3030"
+        # RT-031 (F-061): internal process metrics are never reachable from
+        # the sandbox gateway — parity with deploy/oci/Caddyfile (source of
+        # truth). The matcher is exactly /api/metrics; /api/v1/* and
+        # /api/health pass through untouched. Caddy orders site-level
+        # `respond` before `handle`, so this wins over both proxy handles.
+        @internal_metrics path /api/metrics
+        respond @internal_metrics 404
 
-	handle @port_allowed {
-		reverse_proxy localhost:{query.XTransformPort} {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
-	}
+        @port_allowed expression {query.XTransformPort} == "3000" || {query.XTransformPort} == "3030"
 
-	handle {
-		reverse_proxy localhost:3000 {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
-	}
+        handle @port_allowed {
+                reverse_proxy localhost:{query.XTransformPort} {
+                        header_up Host {host}
+                        header_up X-Forwarded-For {remote_host}
+                        header_up X-Forwarded-Proto {scheme}
+                        header_up X-Real-IP {remote_host}
+                }
+        }
+
+        handle {
+                reverse_proxy localhost:3000 {
+                        header_up Host {host}
+                        header_up X-Forwarded-For {remote_host}
+                        header_up X-Forwarded-Proto {scheme}
+                        header_up X-Real-IP {remote_host}
+                }
+        }
 }

@@ -273,6 +273,7 @@ export async function POST(request: Request) {
         devicesConsidered: z.number().int().nonnegative().optional(),
         fired: z.number().int().nonnegative().optional(),
         deduped: z.number().int().nonnegative().optional(),
+        reactivated: z.number().int().nonnegative().optional(),
         suppressed: z.number().int().nonnegative().optional(),
         childrenSuppressed: z.number().int().nonnegative().optional(),
         resolved: z.number().int().nonnegative().optional(),
@@ -380,6 +381,88 @@ export async function POST(request: Request) {
         updated: true,
         status: "SUCCEEDED",
         outcome: parsedFlowRetention.data.outcome,
+      });
+    }
+
+    // ── ROLLUP_AGGREGATION (RT-002): the aggregate endpoint persisted the
+    // upserts + audit — store the summary verbatim as resultJson. outcome
+    // "throttled" is a graceful no-op (another run was in flight). ──
+    if (job.type === "ROLLUP_AGGREGATION") {
+      const rollupShape = z.object({
+        outcome: z.enum(["aggregated", "throttled"]),
+        groupsComputed: z.number().int().nonnegative().optional(),
+        groupsUpserted: z.number().int().nonnegative().optional(),
+        remaining: z.number().int().nonnegative().optional(),
+        bounded: z.boolean().optional(),
+        byGranularity: z.record(z.string(), z.number().int().nonnegative()).optional(),
+        durationMs: z.number().int().nonnegative().optional(),
+        reason: z.string().max(300).optional(),
+      });
+      const parsedRollup = rollupShape.safeParse(result);
+      if (!parsedRollup.success) {
+        return fail(
+          "INVALID_RESULT",
+          "SUCCEEDED ROLLUP_AGGREGATION completion requires result.outcome (aggregated|throttled)",
+          400
+        );
+      }
+      await db.jobExecution.update({
+        where: { id: job.id },
+        data: {
+          status: "SUCCEEDED",
+          progress: 100,
+          finishedAt: now,
+          error: null,
+          resultJson: JSON.stringify(parsedRollup.data),
+        },
+      });
+      return ok({
+        jobId,
+        updated: true,
+        status: "SUCCEEDED",
+        outcome: parsedRollup.data.outcome,
+      });
+    }
+
+    // ── PROTOCOL_QUEUE_RETENTION (RT-003): the prune endpoint persisted the
+    // deletes, the Setting bookkeeping and the audit — store the summary
+    // verbatim as resultJson. outcome "throttled" is a graceful no-op (a
+    // prune ran within the 60 s guard). ──
+    if (job.type === "PROTOCOL_QUEUE_RETENTION") {
+      const queueRetentionShape = z.object({
+        outcome: z.enum(["pruned", "disabled", "throttled"]),
+        queueRowsDeleted: z.number().int().nonnegative().optional(),
+        durationMs: z.number().int().nonnegative().optional(),
+        deliveredDays: z.number().int().min(1).max(3650).optional(),
+        deadDays: z.number().int().min(1).max(3650).optional(),
+        correlationId: z.string().trim().min(1).max(120).optional(),
+        triggeredBy: z.string().trim().min(1).max(40).optional(),
+        prunedAt: z.string().datetime().optional(),
+        reason: z.string().max(300).optional(),
+      });
+      const parsedQueueRetention = queueRetentionShape.safeParse(result);
+      if (!parsedQueueRetention.success) {
+        return fail(
+          "INVALID_RESULT",
+          "SUCCEEDED PROTOCOL_QUEUE_RETENTION completion requires a valid prune summary",
+          400
+        );
+      }
+      await db.jobExecution.update({
+        where: { id: job.id },
+        data: {
+          status: "SUCCEEDED",
+          progress: 100,
+          finishedAt: now,
+          error: null,
+          resultJson: JSON.stringify(parsedQueueRetention.data),
+        },
+      });
+      return ok({
+        jobId,
+        updated: true,
+        status: "SUCCEEDED",
+        outcome: parsedQueueRetention.data.outcome,
       });
     }
 

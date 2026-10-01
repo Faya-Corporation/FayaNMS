@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -66,22 +67,27 @@ export function useApiClients(params: ListParams = {}) {
 export function useCreateApiClient() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: (payload: ApiClientCreatePayload): Promise<ApiClientCreateResult> =>
       createApiClient(payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
-      toast({ title: "API client created", description: "Copy the token now — it is shown only once." });
+      toast({
+        title: t("apiClients.createdTitle"),
+        description: t("apiClients.createdDescription"),
+      });
     },
     onError: (e: Error) =>
-      toast({ title: "Create failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("failures.create"), description: e.message, variant: "destructive" }),
   });
 }
 
 export function useUpdateApiClient() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: ({
       id,
@@ -91,25 +97,29 @@ export function useUpdateApiClient() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
-      toast({ title: "API client updated" });
+      toast({ title: t("apiClients.updatedTitle") });
     },
     onError: (e: Error) =>
-      toast({ title: "Update failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("failures.update"), description: e.message, variant: "destructive" }),
   });
 }
 
 export function useRotateApiClient() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: (id: string): Promise<ApiClientRotateResult> => rotateApiClient(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
-      toast({ title: "Token rotated", description: "The new token is shown once." });
+      toast({
+        title: t("apiClients.rotateTitle"),
+        description: t("apiClients.rotateDescription"),
+      });
     },
     onError: (e: Error) =>
-      toast({ title: "Rotate failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("failures.rotate"), description: e.message, variant: "destructive" }),
   });
 }
 
@@ -125,22 +135,27 @@ export function useWebhooks(params: ListParams = {}) {
 export function useCreateWebhook() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: (payload: WebhookCreatePayload): Promise<WebhookCreateResult> =>
       createWebhook(payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
-      toast({ title: "Webhook created", description: "Store the signing secret — it is shown only once." });
+      toast({
+        title: t("webhooks.createdTitle"),
+        description: t("webhooks.createdDescription"),
+      });
     },
     onError: (e: Error) =>
-      toast({ title: "Create failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("failures.create"), description: e.message, variant: "destructive" }),
   });
 }
 
 export function useUpdateWebhook() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: ({
       id,
@@ -149,46 +164,52 @@ export function useUpdateWebhook() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
-      toast({ title: "Webhook updated" });
+      toast({ title: t("webhooks.updatedTitle") });
     },
     onError: (e: Error) =>
-      toast({ title: "Update failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("failures.update"), description: e.message, variant: "destructive" }),
   });
 }
 
 export function useDeleteWebhook() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: (id: string) => deleteWebhook(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
-      toast({ title: "Webhook deleted" });
+      toast({ title: t("webhooks.deletedTitle") });
     },
     onError: (e: Error) =>
-      toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("failures.delete"), description: e.message, variant: "destructive" }),
   });
 }
 
 export function useTestWebhook() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: (id: string): Promise<WebhookTestResult> => testWebhook(id),
     onSuccess: (result) => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
       toast({
-        title: result.delivered ? "Test delivery succeeded" : "Test delivery failed (recorded)",
+        title: result.delivered ? t("webhooks.testOkTitle") : t("webhooks.testFailedTitle"),
         description: result.delivered
-          ? `HTTP ${result.statusCode} in ${result.durationMs} ms`
-          : (result.error ?? "Unknown error"),
+          ? t("webhooks.testOkDescription", {
+              // String(): template-interpolation parity even for null.
+              status: String(result.statusCode),
+              duration: String(result.durationMs),
+            })
+          : (result.error ?? t("webhooks.unknownError")),
         variant: result.delivered ? "default" : "destructive",
       });
     },
     onError: (e: Error) =>
-      toast({ title: "Test failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("failures.test"), description: e.message, variant: "destructive" }),
   });
 }
 
@@ -204,6 +225,7 @@ export function useNotificationChannels(params: ListParams = {}) {
 export function useCreateNotificationChannel() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: (
       payload: ChannelCreatePayload
@@ -212,16 +234,17 @@ export function useCreateNotificationChannel() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
-      toast({ title: "Channel created" });
+      toast({ title: t("channels.createdTitle") });
     },
     onError: (e: Error) =>
-      toast({ title: "Create failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("failures.create"), description: e.message, variant: "destructive" }),
   });
 }
 
 export function useUpdateNotificationChannel() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: ({
       id,
@@ -231,40 +254,43 @@ export function useUpdateNotificationChannel() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
-      toast({ title: "Channel updated" });
+      toast({ title: t("channels.updatedTitle") });
     },
     onError: (e: Error) =>
-      toast({ title: "Update failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("failures.update"), description: e.message, variant: "destructive" }),
   });
 }
 
 export function useDeleteNotificationChannel() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: (id: string) => deleteNotificationChannel(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
-      toast({ title: "Channel deleted" });
+      toast({ title: t("channels.deletedTitle") });
     },
     onError: (e: Error) =>
-      toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("failures.delete"), description: e.message, variant: "destructive" }),
   });
 }
 
 export function useTestNotificationChannel() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: (id: string): Promise<ChannelTestResult> => testNotificationChannel(id),
     onSuccess: (result) => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
-      toast({ title: "Test sent", description: result.result });
+      // result.result is server copy — kept verbatim.
+      toast({ title: t("channels.testTitle"), description: result.result });
     },
     onError: (e: Error) =>
-      toast({ title: "Test failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("failures.test"), description: e.message, variant: "destructive" }),
   });
 }
 
@@ -297,6 +323,7 @@ export function useAdminSettings() {
 export function useUpdateAdminSettings() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: (
       payload: Parameters<typeof updateAdminSettings>[0]
@@ -306,12 +333,12 @@ export function useUpdateAdminSettings() {
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
       void qc.invalidateQueries({ queryKey: queryKeys.meta });
       toast({
-        title: "Settings saved",
-        description: `Updated: ${result.updated.join(", ")}`,
+        title: t("settings.savedTitle"),
+        description: t("settings.savedDescription", { fields: result.updated.join(", ") }),
       });
     },
     onError: (e: Error) =>
-      toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("settings.saveFailedTitle"), description: e.message, variant: "destructive" }),
   });
 }
 
@@ -328,18 +355,22 @@ export function useAuditChain() {
 export function useBackfillAuditChain() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: backfillAuditChainApi,
     onSuccess: (result) => {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
       toast({
-        title: "Chain backfilled",
-        description: `${result.filled} events hashed, ${result.remaining} remaining`,
+        title: t("audit.backfilledTitle"),
+        description: t("audit.backfilledDescription", {
+          filled: result.filled,
+          remaining: result.remaining,
+        }),
       });
     },
     onError: (e: Error) =>
-      toast({ title: "Backfill failed", description: e.message, variant: "destructive" }),
+      toast({ title: t("audit.backfillFailedTitle"), description: e.message, variant: "destructive" }),
   });
 }
 
@@ -366,6 +397,7 @@ export function usePreviewRebalancePlan() {
 export function useApplyRebalancePlan() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.admin");
   return useMutation({
     mutationFn: (planId: string): Promise<RebalanceApplyResult> =>
       applyRebalancePlan(planId),
@@ -373,13 +405,16 @@ export function useApplyRebalancePlan() {
       void qc.invalidateQueries({ queryKey: ["admin"] });
       void qc.invalidateQueries({ queryKey: queryKeys.events() });
       toast({
-        title: "Rebalance applied",
-        description: `${result.moved} move(s) staged · ${result.correlationId}`,
+        title: t("rebalance.appliedTitle"),
+        description: t("rebalance.appliedDescription", {
+          moved: result.moved,
+          correlation: result.correlationId,
+        }),
       });
     },
     onError: (e: Error) =>
       toast({
-        title: "Rebalance failed",
+        title: t("rebalance.failedTitle"),
         description: e.message,
         variant: "destructive",
       }),

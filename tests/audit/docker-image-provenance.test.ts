@@ -41,7 +41,10 @@ describe("Docker image source provenance", () => {
   test("container certification and CI builds pass their exact candidate SHA", () => {
     const container = read(".github/workflows/container.yml");
     expect(container.match(/--build-arg FAYANMS_SOURCE_SHA=\$\{CANDIDATE_SHA\}/g)?.length).toBe(3);
-    expect(container.match(/FAYANMS_SOURCE_SHA=\$\{\{ github\.event\.workflow_run\.head_sha \}\}/g)?.length).toBe(3);
+    // RT-017: the publish job now builds three LOCAL gate images (push:
+    // false) with the same source-SHA build-arg BEFORE the three multi-arch
+    // push steps — 3 gate builds + 3 pushes carry the exact candidate SHA.
+    expect(container.match(/FAYANMS_SOURCE_SHA=\$\{\{ github\.event\.workflow_run\.head_sha \}\}/g)?.length).toBe(6);
     const ci = read(".github/workflows/ci.yml");
     expect(ci.match(/--build-arg FAYANMS_SOURCE_SHA=\$GITHUB_SHA/g)?.length).toBe(2);
   });

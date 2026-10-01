@@ -11,6 +11,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { useAlerts } from "@/hooks/api/use-alerts";
 import {
@@ -64,6 +65,7 @@ export interface AlertStreamItemProps {
  * under the root when expanded.
  */
 export function AlertStreamItem({ alert, onAssign, onSuppress }: AlertStreamItemProps) {
+  const t = useTranslations("alerts.stream");
   const [expanded, setExpanded] = useState(false);
   const ack = useAcknowledgeAlert();
   const unsuppress = useUnsuppressAlert();
@@ -87,7 +89,7 @@ export function AlertStreamItem({ alert, onAssign, onSuppress }: AlertStreamItem
           <button
             type="button"
             aria-expanded={expanded}
-            aria-label={`${expanded ? "Hide" : "Show"} ${childCount} suppressed child alert${childCount === 1 ? "" : "s"}`}
+            aria-label={t(expanded ? "childHideAria" : "childShowAria", { count: childCount })}
             className="flex w-fit shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
             onClick={() => setExpanded((value) => !value)}
           >
@@ -97,7 +99,7 @@ export function AlertStreamItem({ alert, onAssign, onSuppress }: AlertStreamItem
               <ChevronRight aria-hidden="true" className="size-4" />
             )}
             <span className="rounded-full bg-warning-subtle px-2 py-0.5 text-warning tabular-nums">
-              {childCount} suppressed
+              {t("suppressedCount", { count: childCount })}
             </span>
           </button>
         ) : null}
@@ -108,7 +110,7 @@ export function AlertStreamItem({ alert, onAssign, onSuppress }: AlertStreamItem
             <button
               type="button"
               className="max-w-40 shrink-0 truncate text-sm font-semibold hover:text-primary"
-              title={`Open ${alert.device.hostname}`}
+              title={t("openHostTitle", { host: alert.device.hostname })}
               onClick={() =>
                 useNavigationStore
                   .getState()
@@ -134,7 +136,7 @@ export function AlertStreamItem({ alert, onAssign, onSuppress }: AlertStreamItem
             )}
             {alert.count > 1 && (
               <span
-                aria-label={`Fired ${alert.count} times`}
+                aria-label={t("firedTimesAria", { count: alert.count })}
                 className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium tabular-nums"
               >
                 ×{alert.count}
@@ -160,9 +162,9 @@ export function AlertStreamItem({ alert, onAssign, onSuppress }: AlertStreamItem
             {alert.message}
           </p>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground tabular-nums">
-            <span>first seen {relative(alert.firstSeen)}</span>
+            <span>{t("firstSeen", { time: relative(alert.firstSeen) })}</span>
             <span aria-hidden="true">·</span>
-            <span>last seen {relative(alert.lastSeen)}</span>
+            <span>{t("lastSeen", { time: relative(alert.lastSeen) })}</span>
             {alert.suppressReason && (
               <>
                 <span aria-hidden="true">·</span>
@@ -183,13 +185,13 @@ export function AlertStreamItem({ alert, onAssign, onSuppress }: AlertStreamItem
               disabled={ack.isPending}
               onClick={() => ack.mutate(alert.id)}
             >
-              Ack
+              {t("ack")}
             </Button>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                aria-label={`Actions for alert on ${alert.device.hostname}`}
+                aria-label={t("actionsFor", { host: alert.device.hostname })}
                 size="icon"
                 variant="ghost"
               >
@@ -197,31 +199,31 @@ export function AlertStreamItem({ alert, onAssign, onSuppress }: AlertStreamItem
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuLabel>Alert actions</DropdownMenuLabel>
+              <DropdownMenuLabel>{t("actionsLabel")}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 disabled={alert.status !== "ACTIVE" || ack.isPending}
                 onSelect={() => ack.mutate(alert.id)}
               >
-                Acknowledge
+                {t("acknowledge")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={!isOpen || assign.isPending}
                 onSelect={() => onAssign(alert)}
               >
-                Assign…
+                {t("assign")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={(alert.status !== "ACTIVE" && alert.status !== "ACKNOWLEDGED") || suppress.isPending}
                 onSelect={() => onSuppress(alert)}
               >
-                Suppress…
+                {t("suppress")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={alert.status !== "SUPPRESSED" || unsuppress.isPending}
                 onSelect={() => unsuppress.mutate(alert.id)}
               >
-                Unsuppress
+                {t("unsuppress")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {alert.incident ? (
@@ -230,14 +232,14 @@ export function AlertStreamItem({ alert, onAssign, onSuppress }: AlertStreamItem
                     useNavigationStore.getState().setActiveView("ops.incidents")
                   }
                 >
-                  View incident
+                  {t("viewIncident")}
                 </DropdownMenuItem>
               ) : (
                 <DropdownMenuItem
                   disabled={!isOpen || createIncident.isPending}
                   onSelect={() => createIncident.mutate(alert.id)}
                 >
-                  Create incident…
+                  {t("createIncident")}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
@@ -245,7 +247,7 @@ export function AlertStreamItem({ alert, onAssign, onSuppress }: AlertStreamItem
                 onSelect={() => resolve.mutate(alert.id)}
                 className="text-success focus:text-success"
               >
-                Resolve
+                {t("resolve")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -263,6 +265,7 @@ export function AlertStreamItem({ alert, onAssign, onSuppress }: AlertStreamItem
  * ?parentAlertId= and rendered indented under the root row.
  */
 function AlertChildren({ rootId, rootHostname }: { rootId: string; rootHostname: string }) {
+  const t = useTranslations("alerts.stream");
   const children = useAlerts({ parentAlertId: rootId, pageSize: 20 });
   const rows = children.data?.data ?? [];
 
@@ -278,12 +281,12 @@ function AlertChildren({ rootId, rootHostname }: { rootId: string; rootHostname:
   if (rows.length === 0) {
     return (
       <div className="px-8 py-3 text-xs text-muted-foreground">
-        No child alerts recorded for this root.
+        {t("noChildren")}
       </div>
     );
   }
   return (
-    <ul className="border-t bg-surface-subtle" aria-label={`Suppressed child alerts of ${rootHostname}`}>
+    <ul className="border-t bg-surface-subtle" aria-label={t("childrenAria", { host: rootHostname })}>
       {rows.map((child) => (
         <li
           className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-6 py-2 ps-10 last:border-0 md:px-10"

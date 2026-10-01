@@ -44,8 +44,23 @@ import {
  *      turn the proxy into the only check — refused with a precise 401
  *      until read routes grow gates (see api-client-auth.ts).
  *   4. SESSION PLANE (Task 7-a): no valid session → 401 envelope
- *      { code: "UNAUTHENTICATED" }; authenticated `auditor` performing
- *      any non-GET/HEAD → 403 { code: "RBAC_FORBIDDEN" }.
+ *      { code: "UNAUTHENTICATED" }.
+ *   5. CSRF ORIGIN CHECK (RT-008 / F-010 — defense-in-depth behind the
+ *      cookie policy): a cookie-authenticated MUTATION (POST/PUT/PATCH/
+ *      DELETE) must present same-origin browser credentials —
+ *      `sec-fetch-site: same-origin|none` passes; `cross-site` AND
+ *      `same-site` are 403 { code: "CSRF_ORIGIN_REJECTED" } (same-site is
+ *      NOT safe enough: sibling-subdomain risk); with no Sec-Fetch-Site
+ *      but an Origin header, the Origin host must equal the Host header
+ *      (the NextAuth origin-check pattern). A request carrying NEITHER
+ *      header is allowed: it is a non-browser client that cannot carry the
+ *      cookie cross-site in practice, and SameSite=Lax still guards the
+ *      cookie itself. Machine plane (step 1) and API-client bearer plane
+ *      (step 3b) returned long before this check, and the public bootstrap
+ *      surfaces (step 3a) are untouched — /api/v1/auth/* mutations are
+ *      NextAuth's own CSRF-protected endpoints.
+ *      Authenticated `auditor` performing any non-GET/HEAD → 403
+ *      { code: "RBAC_FORBIDDEN" } (step 6).
  *
  * The matcher is limited to /api/v1/:path*, so /api/auth/*, /_next/* and
  * static assets are never touched by this middleware. Inside /api/v1 the
@@ -84,6 +99,18 @@ const RBAC_FORBIDDEN_BODY = {
   },
 };
 
+/**
+ * RT-008 / F-010 — CSRF origin rejection envelope (typed code so the
+ * browser client and logs can distinguish it from RBAC_FORBIDDEN).
+ */
+const CSRF_REJECTED_BODY = {
+  success: false as const,
+  error: {
+    code: "CSRF_ORIGIN_REJECTED",
+    message: "Cross-site mutation rejected.",
+  },
+};
+
 const API_CLIENT_READS_NOT_WIRED_BODY = {
   success: false as const,
   error: {
@@ -107,6 +134,8 @@ const MACHINE_EXACT_ROUTES: ReadonlySet<string> = new Set([
   "/api/v1/alerts/evaluate",
   "/api/v1/reports/execute",
   "/api/v1/metrics/retention/prune",
+  "/api/v1/metrics/rollup/aggregate",
+  "/api/v1/protocol/queue/retention/prune",
 ]);
 
 function isMachineSurface(pathname: string): boolean {
@@ -164,7 +193,9 @@ export async function proxy(req: NextRequest) {
     pathname === "/api/v1/worker/ztp-provision" ||
     pathname === "/api/v1/alerts/evaluate" ||
     pathname === "/api/v1/reports/execute" ||
-    pathname === "/api/v1/metrics/retention/prune"
+    pathname === "/api/v1/metrics/retention/prune" ||
+    pathname === "/api/v1/metrics/rollup/aggregate" ||
+    pathname === "/api/v1/protocol/queue/retention/prune"
   ) {
     return NextResponse.next();
   }
@@ -200,6 +231,37 @@ export async function proxy(req: NextRequest) {
 
   if (!token || typeof token.id !== "string" || token.id.length === 0) {
     return NextResponse.json(UNAUTHENTICATED_BODY, { status: 401 });
+  }
+
+  // 5. CSRF origin check (RT-008 / F-010) — ONLY for cookie-session
+  // mutations. The API-client bearer plane returned at step 3b and the
+  // machine plane at step 1, so anything reaching here with a mutating
+  // method is cookie-authenticated traffic; the public bootstrap surfaces
+  // returned at step 3a (their mutations are NextAuth's own
+  // CSRF-protected endpoints). Fail-open applies ONLY to a request with
+  // neither Sec-Fetch-Site nor Origin — a non-browser client that cannot
+  // carry the cookie cross-site in practice (SameSite=Lax still guards the
+  // cookie itself). `same-site` is deliberately rejected: sibling-subdomain
+  // compromise makes it not safe enough.
+  const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+  if (token && MUTATING_METHODS.has(req.method)) {
+    const site = req.headers.get("sec-fetch-site");
+    const origin = req.headers.get("origin");
+    const host = req.headers.get("host");
+    let originHost: string | null = null;
+    if (origin !== null) {
+      try {
+        originHost = new URL(origin).host;
+      } catch {
+        originHost = null; // malformed Origin → treated as cross-site below
+      }
+    }
+    const crossSite =
+      (site !== null && site !== "same-origin" && site !== "none") ||
+      (site === null && origin !== null && host !== null && originHost !== host);
+    if (crossSite) {
+      return NextResponse.json(CSRF_REJECTED_BODY, { status: 403 });
+    }
   }
 
   if (token.role === "auditor" && req.method !== "GET" && req.method !== "HEAD") {

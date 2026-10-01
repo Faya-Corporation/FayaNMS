@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { useTranslations } from "next-intl";
 import { Eye, EyeOff, LoaderCircle, LockKeyhole } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ const ROLE_TONE: Record<string, string> = {
 };
 
 export function SignInGate() {
+  const t = useTranslations("auth.signIn");
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -62,9 +64,12 @@ export function SignInGate() {
       if (result?.error) {
         // authorize() surfaces "Account disabled" for inactive accounts and
         // the generic CredentialsSignin for unknown/wrong credentials.
+        // NextAuth error CODES are never translated — only the display copy
+        // for the CredentialsSignin case; any other error string (server-
+        // sent, e.g. "Account disabled") renders verbatim.
         setError(
           result.error === "CredentialsSignin"
-            ? "Invalid email or password."
+            ? t("errorCredentials")
             : result.error
         );
         setPending(false);
@@ -73,7 +78,7 @@ export function SignInGate() {
       // Success → re-render the app shell with the new session.
       router.refresh();
     } catch {
-      setError("Sign-in failed — the server could not be reached.");
+      setError(t("errorServer"));
       setPending(false);
     }
   };
@@ -97,12 +102,12 @@ export function SignInGate() {
               </h1>
 
               <p className="mt-6 text-sm text-muted-foreground">
-                Sign in to your account to access the platform.
+                {t("subtitle")}
               </p>
 
               <form className="mt-4 flex flex-col gap-4" onSubmit={submit}>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="sign-in-email">Email</Label>
+                  <Label htmlFor="sign-in-email">{t("email")}</Label>
                   <Input
                     id="sign-in-email"
                     type="email"
@@ -114,7 +119,7 @@ export function SignInGate() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="sign-in-password">Password</Label>
+                  <Label htmlFor="sign-in-password">{t("password")}</Label>
                   <div className="relative">
                     <Input
                       id="sign-in-password"
@@ -128,7 +133,7 @@ export function SignInGate() {
                     />
                     <button
                       type="button"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={t(showPassword ? "hidePassword" : "showPassword")}
                       className="absolute end-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
                       onClick={() => setShowPassword((prev) => !prev)}
                     >
@@ -157,31 +162,34 @@ export function SignInGate() {
                         aria-hidden="true"
                         className="size-4 animate-spin"
                       />
-                      Signing in…
+                      {t("submitting")}
                     </>
                   ) : (
                     <>
                       <LockKeyhole aria-hidden="true" className="size-4" />
-                      Sign in
+                      {t("submit")}
                     </>
                   )}
                 </Button>
               </form>
             </section>
 
-            {/* Demo credentials hint */}
+            {/* Demo block — all copy sourced from auth.signIn (RT-020) */}
             <aside
-              aria-label="Demo credentials"
+              aria-label={t("demoAsideLabel")}
               className="flex flex-col gap-4 rounded-2xl border bg-card/60 p-6 md:p-8"
             >
               <div>
-                <h2 className="text-sm font-semibold">Demo accounts</h2>
+                <h2 className="text-sm font-semibold">{t("demoTitle")}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Every account uses the password{" "}
-                  <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">
-                    faya123
-                  </code>{" "}
-                  — click a row to fill the form.
+                  {t.rich("demoPasswordHint", {
+                    code: DEMO_PASSWORD,
+                    tech: (chunks) => (
+                      <code className="ltr-technical rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">
+                        {chunks}
+                      </code>
+                    ),
+                  })}
                 </p>
               </div>
               <ul className="flex flex-col gap-2">
@@ -222,10 +230,7 @@ export function SignInGate() {
                 ))}
               </ul>
               <p className="mt-auto text-[11px] leading-relaxed text-muted-foreground">
-                Auditors are read-only: the platform blocks every write for
-                that role, and all secret material stays masked behind vault
-                references. Sessions are signed JWTs — nothing about this demo
-                is stored client-side beyond an httpOnly cookie.
+                {t("privacyNote")}
               </p>
             </aside>
           </div>

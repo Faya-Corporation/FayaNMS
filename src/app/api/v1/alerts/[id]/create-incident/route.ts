@@ -1,7 +1,10 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
-import { createIncidentForAlert } from "@/lib/incidents/create";
+import {
+  createIncidentForAlert,
+  IncidentNumberConflictError,
+} from "@/lib/incidents/create";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -78,23 +81,38 @@ export async function POST(
     );
   }
 
-  const result = await createIncidentForAlert({
-    alert: {
-      id: alert.id,
-      severity: alert.severity,
-      message: alert.message,
-      deviceId: alert.device.id,
-    },
-    device: {
-      id: alert.device.id,
-      hostname: alert.device.hostname,
-      siteId: alert.device.siteId,
-    },
-    source: "MANUAL",
-    actorName: actor.name ?? "Unknown user",
-    actorId: actor.id,
-    title: parsed.data.title,
-  });
+  let result;
+  try {
+    result = await createIncidentForAlert({
+      alert: {
+        id: alert.id,
+        severity: alert.severity,
+        message: alert.message,
+        deviceId: alert.device.id,
+      },
+      device: {
+        id: alert.device.id,
+        hostname: alert.device.hostname,
+        siteId: alert.device.siteId,
+      },
+      source: "MANUAL",
+      actorName: actor.name ?? "Unknown user",
+      actorId: actor.id,
+      title: parsed.data.title,
+    });
+  } catch (error) {
+    // RT-014 — both number-retry attempts lost the @@unique race: answer a
+    // typed retryable 409 instead of surfacing a raw Prisma error (the tx
+    // rolled back atomically, so the alert is still unlinkable/escalatable).
+    if (error instanceof IncidentNumberConflictError) {
+      return fail(
+        "INCIDENT_NUMBER_CONFLICT",
+        "Concurrent incident creation exhausted the number retry — retry the request",
+        409
+      );
+    }
+    throw error;
+  }
 
   if (!result.created || !result.incident) {
     return fail(

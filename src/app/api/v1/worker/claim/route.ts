@@ -27,7 +27,9 @@ export const dynamic = "force-dynamic";
  */
 
 const claimSchema = z.object({
-  types: z.array(z.string().trim().min(1)).min(1).max(12),
+  // 13 job types are claimed (RT-002 rollup + RT-003 queue retention added
+  // two) — the cap keeps one tick ahead so the runner's list always fits.
+  types: z.array(z.string().trim().min(1)).min(1).max(14),
   limit: z.number().int().min(1).max(10).default(3),
 });
 

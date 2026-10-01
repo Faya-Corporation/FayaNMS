@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 const CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +22,13 @@ export async function GET(request: Request): Promise<Response> {
   const configuredToken = process.env.FAYANMS_METRICS_TOKEN?.trim() ?? "";
   if (configuredToken.length > 0) {
     const supplied = request.headers.get("authorization") ?? "";
-    if (supplied !== `Bearer ${configuredToken}`) {
+    // RT-009 / F-027 — constant-time compare (the repo's standard bearer
+    // discipline; length-check first because timingSafeEqual throws on a
+    // length mismatch — the length leak is universally accepted).
+    const expected = Buffer.from(`Bearer ${configuredToken}`, "utf8");
+    const suppliedBuf = Buffer.from(supplied, "utf8");
+    const ok = suppliedBuf.length === expected.length && timingSafeEqual(suppliedBuf, expected);
+    if (!ok) {
       return unauthorized();
     }
   }

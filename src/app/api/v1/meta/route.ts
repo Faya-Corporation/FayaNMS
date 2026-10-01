@@ -1,47 +1,28 @@
-import { db } from "@/lib/db";
 import { ok } from "../_lib/api";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/v1/meta — lightweight reference data for filter bars and
- * form pickers (vendors, sites, credential profiles). Consumed by the
- * device filters, the Add/Edit Device form and the Sites view.
+ * GET /api/v1/meta — session-exempt bootstrap endpoint (see src/proxy.ts,
+ * exact-match exemption). The pre-auth payload is EMPTY by contract.
  *
- * HC-2 (R54, Production-Readiness Roadmap — F-N3): this endpoint is
- * SESSION-EXEMPT (bootstrap surface — see src/proxy.ts, exact-match
- * exemption) and therefore carries ONLY the pre-auth-needed reference
- * data for the sign-in transition. The active-user directory moved to
- * the AUTHENTICATED `/api/v1/meta/users` (the proxy matcher gates it;
- * the alert assign/suppress picker fetches it after hydration), so the
- * pre-auth payload contains ZERO user records — machine-pinned in
- * tests/audit/r54-meta-users-split.test.ts.
+ * Disclosure history (each step machine-pinned):
+ *   - R51-A2: no credential-profile operator usernames.
+ *   - HC-2 (R54): the active-user directory moved to the AUTHENTICATED
+ *     `/api/v1/meta/users`.
+ *   - RT-024 (F-028): vendors, sites and credential profiles moved to the
+ *     AUTHENTICATED `/api/v1/meta/reference` — unauthenticated callers must
+ *     not enumerate credential-profile names/types or the site inventory.
  *
- * R51-A2 (Independent Production ReAudit 2026-09-18, F-2): no
- * credential-profile OPERATOR usernames here either (pickers render
- * `name · type` only). Adding future fields here requires the same
- * pre-auth disclosure review.
+ * Verified at RT-024 time: NO pre-auth surface consumes this route's data
+ * (`useMeta` and every consumer render behind the session shell;
+ * `sign-in-gate.tsx` never calls it), so the sign-in transition needs
+ * nothing here. The route stays as a stable session-exempt liveness /
+ * bootstrap surface (e.g. the e2e readiness probe) and answers the standard
+ * success envelope with an empty data object. Anything a future pre-auth
+ * surface genuinely needs must be added here ONLY after the same disclosure
+ * review, and pinned in tests/audit/rt024-meta-preauth-trim.test.ts.
  */
 export async function GET() {
-  const [vendors, sites, credentialProfiles] = await Promise.all([
-    db.vendor.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, key: true, name: true },
-    }),
-    db.site.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, code: true },
-    }),
-    db.credentialProfile.findMany({
-      orderBy: { name: "asc" },
-      // R51-A2: no `username` here — pre-auth bootstrap surface.
-      select: { id: true, name: true, type: true },
-    }),
-  ]);
-
-  return ok({
-    vendors,
-    sites,
-    credentialProfiles,
-  });
+  return ok({});
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { AlertTriangle, ArrowRight, CheckCircle2, LoaderCircle, ShieldAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,11 @@ export function HighRiskActionDialog({
   danger = true,
   children,
 }: HighRiskActionDialogProps) {
+  // Dialog chrome (RT-021/F-020): the fixed gate copy is keyed; the
+  // caller-provided title/description/impact rows, resultSummary, confirm
+  // label and the confirm PHRASE itself stay untranslated technical text.
+  const t = useTranslations("common.highRisk");
+
   const [phase, setPhase] = useState<Phase>("confirm");
   const [typed, setTyped] = useState("");
   const [resultSummary, setResultSummary] = useState<React.ReactNode>(null);
@@ -95,7 +101,7 @@ export function HighRiskActionDialog({
       setResultSummary(summary);
       setPhase("success");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The action failed");
+      setError(e instanceof Error ? e.message : t("failedFallback"));
       setPhase("error");
     }
   };
@@ -126,7 +132,7 @@ export function HighRiskActionDialog({
             <div className="flex flex-col gap-3 p-4">
               <div className="flex items-center gap-2 text-sm font-medium text-success">
                 <CheckCircle2 aria-hidden="true" className="size-4" />
-                Done — action completed
+                {t("done")}
               </div>
               {resultSummary}
             </div>
@@ -137,14 +143,14 @@ export function HighRiskActionDialog({
                 role="alert"
               >
                 <ShieldAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-                <span>{error ?? "The action failed"}</span>
+                <span>{error ?? t("failedFallback")}</span>
               </div>
               <div className="flex justify-end gap-2">
                 <Button onClick={() => setPhase("confirm")} size="sm" variant="outline">
-                  Back
+                  {t("back")}
                 </Button>
                 <Button onClick={() => onOpenChange(false)} size="sm" variant="ghost">
-                  Close
+                  {t("close")}
                 </Button>
               </div>
             </div>
@@ -173,11 +179,14 @@ export function HighRiskActionDialog({
               {/* Step 2 — typed confirmation */}
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-medium text-muted-foreground" htmlFor="high-risk-confirm-input">
-                  Type{" "}
-                  <span className={cn("font-tech ltr-technical", danger && "text-danger")}>
-                    {confirmHint ?? confirmPhrase}
-                  </span>{" "}
-                  exactly to confirm — case-sensitive
+                  {t.rich("confirmInstruction", {
+                    phrase: (chunks) => (
+                      <span className={cn("font-tech ltr-technical", danger && "text-danger")}>
+                        {chunks}
+                      </span>
+                    ),
+                    text: confirmHint ?? confirmPhrase,
+                  })}
                 </label>
                 <Input
                   aria-describedby="high-risk-confirm-hint"
@@ -197,7 +206,7 @@ export function HighRiskActionDialog({
                     id="high-risk-confirm-hint"
                   >
                     <AlertTriangle aria-hidden="true" className="size-3" />
-                    Text does not match yet.
+                    {t("mismatchHint")}
                   </p>
                 )}
               </div>
@@ -209,7 +218,7 @@ export function HighRiskActionDialog({
                   size="sm"
                   variant="outline"
                 >
-                  Cancel
+                  {t("cancel")}
                 </Button>
                 <Button
                   className={danger ? "bg-danger text-white hover:bg-danger/90" : undefined}
@@ -220,7 +229,7 @@ export function HighRiskActionDialog({
                   {phase === "executing" ? (
                     <>
                       <LoaderCircle aria-hidden="true" className="animate-spin" />
-                      Working…
+                      {t("working")}
                     </>
                   ) : (
                     <>

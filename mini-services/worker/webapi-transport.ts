@@ -49,7 +49,8 @@ export class WebApiError extends Error {
       | "WEBAPI_HTTP_STATUS"
       | "WEBAPI_ACTION_FAILED"
       | "WEBAPI_MALFORMED_RESPONSE"
-      | "WEBAPI_TLS_CA_UNREADABLE",
+      | "WEBAPI_TLS_CA_UNREADABLE"
+      | "WEBAPI_RESPONSE_TOO_LARGE",
     message: string,
   ) {
     super(message);
@@ -65,6 +66,17 @@ export interface WebApiCredentials {
 
 const API_PATH = "/webserver/API";
 const DEFAULT_TIMEOUT_MS = 8000;
+
+/**
+ * RT-010 / F-011 — response budget for the device-facing WebAPI transport.
+ * GetConfig responses are config text; observed SFOS output stays well
+ * under 1 MiB. The SSH plane bounds every stream via appendBounded (1 MiB
+ * default) — this is the WebAPI plane's equivalent hard cap so a hostile
+ * or compromised "device" cannot balloon worker memory with an unbounded
+ * or streamed body (fail-closed: the stream is DESTROYED, not truncated —
+ * a truncated JSON envelope would be silently corrupt).
+ */
+export const WEBAPI_MAX_RESPONSE_BYTES = 4 * 1_048_576; // 4 MiB
 
 /** The one and only read-only action allowlist. */
 export const WEBAPI_ACTIONS = {
@@ -128,8 +140,44 @@ function postJson(
       },
       (res) => {
         const chunks: Buffer[] = [];
-        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        // RT-010 / F-011 — bounded accumulation: a running byte count, and
+        // any chunk that crosses the cap aborts the connection and rejects
+        // with the typed WEBAPI_RESPONSE_TOO_LARGE error. The error message
+        // carries ONLY the byte count — never a device data excerpt (log
+        // hygiene).
+        let bytes = 0;
+        res.on("data", (chunk: Buffer) => {
+          bytes += chunk.length;
+          if (bytes > WEBAPI_MAX_RESPONSE_BYTES) {
+            // Abort the connection and reject typed. Reject is first-settle:
+            // a late resolve (Bun can deliver the response "end" event
+            // while data events are still draining) can no longer override
+            // the typed failure, and a truncated body can never be parsed
+            // as a valid envelope.
+            req.destroy();
+            reject(
+              new WebApiError(
+                "WEBAPI_RESPONSE_TOO_LARGE",
+                `WebAPI response exceeded ${WEBAPI_MAX_RESPONSE_BYTES} bytes`,
+              ),
+            );
+            return;
+          }
+          chunks.push(chunk);
+        });
         res.on("end", () => {
+          // Belt-and-braces for runtimes where "end" is delivered before
+          // the final "data" handler has run its cap check: the accumulated
+          // byte count is the authority, not the event order.
+          if (bytes > WEBAPI_MAX_RESPONSE_BYTES) {
+            reject(
+              new WebApiError(
+                "WEBAPI_RESPONSE_TOO_LARGE",
+                `WebAPI response exceeded ${WEBAPI_MAX_RESPONSE_BYTES} bytes`,
+              ),
+            );
+            return;
+          }
           const socket = res.socket as { getProtocol?: () => string | null } | null;
           resolve({
             status: res.statusCode ?? 0,

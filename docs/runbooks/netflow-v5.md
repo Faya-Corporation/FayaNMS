@@ -14,6 +14,8 @@ The collector relays to `/api/v1/ingest/protocol` with its telemetry service ide
 
 The independent `flows.retention` setting defaults to 14 days (`{ "days": 14, "enabled": true }`). Users with `admin.system` may read or update the complete policy at `/api/v1/flows/retention`; updates write `SETTINGS_UPDATED`. A server-owned daily `FLOW_RETENTION` job prunes records by server `receivedAt`, in chunks of at most 1,000 and no more than 10,000 per run. Additional daily runs continue cleanup. Each run updates the setting’s `lastPrunedAt`/`lastPruneResult` and writes `FLOW_RECORDS_PRUNED`. The prune endpoint is jobs-scope only; operators should not call it with a browser session.
 
+The staging queue itself is swept by the independent `protocolQueue.retention` setting (default `{ "deliveredDays": 7, "deadDays": 30, "enabled": true }`). A daily `PROTOCOL_QUEUE_RETENTION` job prunes terminal `DELIVERED`/`DEAD` `ProtocolEventQueue` rows (chunked 1,000 / 10,000 per run, `PROTOCOL_QUEUE_PRUNED` audit) — never rows that still own flow records: FlowRecord retention reclaims those first, and the queue rows follow on a later sweep.
+
 ## Verification and evidence limits
 
 Run focused tests with `bun test tests/netflow-v5.test.ts tests/protocol-collector.test.ts tests/protocol-flow-batch.test.ts tests/protocol-ingest.test.ts tests/protocol-flow-drain.test.ts tests/flow-retention.test.ts tests/flow-retention-api.test.ts tests/audit/protocol-flow-retention.test.ts tests/audit/netflow-v5-no-flow-api-change.test.ts`. Test and harness success is not physical-vendor or production evidence. `/api/v1/flows` continues to return simulated aggregates; this work does not change its output or UI.

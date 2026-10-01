@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import {
   apiFetch,
@@ -48,6 +49,7 @@ function invalidateDriftGraph(queryClient: ReturnType<typeof useQueryClient>) {
 export function useRunDriftCheck() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.drift");
 
   return useMutation({
     mutationFn: (payload: DriftCheckPayload) =>
@@ -60,17 +62,17 @@ export function useRunDriftCheck() {
       toast({
         title:
           result.enqueued === 1
-            ? "Drift check queued"
-            : `Drift check queued for ${result.enqueued} devices`,
+            ? t("checkQueuedTitle")
+            : t("checkQueuedMultiTitle", { count: result.enqueued }),
         description:
           result.enqueued === 0
-            ? "All covered devices already have a check in flight."
-            : "The worker evaluates baseline vs running config and updates drift records.",
+            ? t("checkIdleDescription")
+            : t("checkQueuedDescription"),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not queue the drift check",
+        title: t("checkFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -82,6 +84,7 @@ export function useRunDriftCheck() {
 export function useTriageDrift() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const t = useTranslations("toast.drift");
 
   return useMutation({
     mutationFn: ({ id, action }: { id: string; action: "ACCEPT" | "RESOLVE" }) =>
@@ -91,17 +94,18 @@ export function useTriageDrift() {
       }),
     onSuccess: (result, variables) => {
       invalidateDriftGraph(queryClient);
+      // {status} stays the raw lowercased enum token (technical value).
       toast({
-        title:
-          variables.action === "ACCEPT"
-            ? "Drift accepted"
-            : "Drift resolved",
-        description: `Record marked ${result.record.status.toLowerCase()} — audit ${result.audit.correlationId}.`,
+        title: variables.action === "ACCEPT" ? t("acceptedTitle") : t("resolvedTitle"),
+        description: t("triagedDescription", {
+          status: result.record.status.toLowerCase(),
+          correlation: result.audit.correlationId,
+        }),
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Could not update the drift record",
+        title: t("triageFailedTitle"),
         description: error.message,
         variant: "destructive",
       });
