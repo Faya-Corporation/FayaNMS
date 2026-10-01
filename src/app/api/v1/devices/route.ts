@@ -8,7 +8,11 @@ import {
   pageMeta,
   paginationSchema,
 } from "../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSessionRead,
+} from "@/lib/auth/session";
 import { requiredLiveCredentialType } from "@/lib/devices/live-transport";
 import { z } from "zod";
 
@@ -22,6 +26,11 @@ export const dynamic = "force-dynamic";
  * Sort whitelist: hostname | name | status | criticality | backupCompliance |
  * lastBackupAt | lastSeen (+ dir asc/desc). Server-side pagination with
  * PageMeta; rows include joined vendor/site names and cheap relation counts.
+ *
+ * F-008 phase 3 (read-plane defense-in-depth): the GET handler verifies the
+ * human session itself (requireSessionRead) — the proxy matcher stays the
+ * coarse gate, not the only check; POST stays permission-gated
+ * (device.write) with the session principal as the audit actor.
  */
 const querySchema = paginationSchema.extend({
   q: z.string().trim().min(1).max(120).optional(),
@@ -47,6 +56,14 @@ const querySchema = paginationSchema.extend({
 });
 
 export async function GET(request: Request) {
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
+
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     page: url.searchParams.get("page") ?? undefined,

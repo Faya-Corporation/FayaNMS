@@ -1,6 +1,10 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSessionRead,
+} from "@/lib/auth/session";
 import { requiredLiveCredentialType } from "@/lib/devices/live-transport";
 import { z } from "zod";
 
@@ -14,6 +18,11 @@ export const dynamic = "force-dynamic";
  *         toggling), credentialProfileId, dataSource (Phase 22 slice 2 —
  *         both PERSISTED with fail-closed invariants: a LIVE_SSH device
  *         always carries a linked SSH_PASSWORD CredentialProfile).
+ *
+ * F-008 phase 3 (read-plane defense-in-depth): the GET handler verifies
+ * the human session itself (requireSessionRead) — the proxy matcher stays
+ * the coarse gate, not the only check; PATCH stays permission-gated
+ * (device.write) with the session principal as the audit actor.
  */
 
 const OPEN_INCIDENT_STATUSES = [
@@ -99,9 +108,17 @@ async function loadDevice(id: string) {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
+
   const { id } = await params;
   if (!id || id.length > 64) {
     return fail("INVALID_ID", "Invalid device id", 400);

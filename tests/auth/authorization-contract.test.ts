@@ -25,7 +25,8 @@ import { join } from "node:path";
  * GET is bare fails this matrix). Ungated reads must be explicitly
  * allowlisted with their F-008 phase justification; the allowlist starts
  * at its phase-1 size and may only SHRINK as the per-domain sweep lands
- * (phase 1 gated the dashboard domain, phase 2 gated events/alerts).
+ * (phase 1 gated the dashboard domain, phase 2 gated events/alerts,
+ * phase 3 gated devices/interfaces).
  */
 
 const API_ROOT = join(import.meta.dir, "..", "..", "src", "app", "api", "v1");
@@ -136,7 +137,8 @@ const READ_GATES = [
 /**
  * F-008 read-route allowlist — route files whose GET handler(s) perform NO
  * handler-level auth. Phase 1 gated the dashboard domain and pinned the
- * initial list at 59 entries; phase 2 gated events/alerts (−3 → 56).
+ * initial list at 59 entries; phase 2 gated events/alerts (−3 → 56);
+ * phase 3 gated devices/interfaces (−9 → 47).
  * Every later phase DELETES its domain's entries. The list may never GROW
  * past the pinned cap: a new unguarded read route fails the matrix test,
  * and raising the cap is a deliberate, documented governance edit (RT-034
@@ -147,17 +149,7 @@ const READ_ALLOWLIST: Record<string, string> = {
   // ── deliberate non-gates (bootstrap/reference surfaces) ───────────────
   "meta/route.ts": "public bootstrap (branding/status; read-only)",
   "meta/reference/route.ts": "authenticated filter-bar reference data — proxy-gated today; F-008 candidate once the sweep reaches meta",
-  // ── F-008 phase 3: devices / interfaces domain ────────────────────────
-  "devices/route.ts": "F-008 rollout pending (phase 3: devices/interfaces)",
-  "devices/[id]/route.ts": "F-008 rollout pending (phase 3: devices/interfaces)",
-  "devices/[id]/alerts/route.ts": "F-008 rollout pending (phase 3: devices/interfaces)",
-  "devices/[id]/audit/route.ts": "F-008 rollout pending (phase 3: devices/interfaces)",
-  "devices/[id]/changes/route.ts": "F-008 rollout pending (phase 3: devices/interfaces)",
-  "devices/[id]/incidents/route.ts": "F-008 rollout pending (phase 3: devices/interfaces)",
-  "devices/[id]/interfaces/route.ts": "F-008 rollout pending (phase 3: devices/interfaces)",
-  "devices/[id]/metrics/route.ts": "F-008 rollout pending (phase 3: devices/interfaces)",
-  "interfaces/route.ts": "F-008 rollout pending (phase 3: devices/interfaces)",
-  // ── F-008 phase 4+: the rest ─────────────────────────────────────────
+  // ── F-008 phase 4+: the rest (admin reads, incidents, changes, cmdb, performance, …) ──
   "admin/api-clients/route.ts": "F-008 rollout pending (phase 4: admin)",
   "admin/audit-chain/verify/route.ts": "F-008 rollout pending (phase 4: admin)",
   "admin/collectors/route.ts": "F-008 rollout pending (phase 4: admin)",
@@ -320,8 +312,9 @@ describe("F-008 read-route matrix (handler-level read-plane authn)", () => {
 
   test("the read allowlist only shrinks — phase-1 size cap", () => {
     // 59 entries at phase 1 (dashboard gated); 56 after phase 2
-    // (events/alerts gated). Later phases delete lines; a deliberate cap
-    // raise is a documented governance edit (RT-034).
+    // (events/alerts gated); 47 after phase 3 (devices/interfaces gated).
+    // Later phases delete lines; a deliberate cap raise is a documented
+    // governance edit (RT-034).
     expect(Object.keys(READ_ALLOWLIST).length).toBeLessThanOrEqual(
       READ_ALLOWLIST_INITIAL_SIZE
     );
@@ -358,5 +351,37 @@ describe("F-008 read-route matrix (handler-level read-plane authn)", () => {
     // plane.
     const rules = readFileSync(join(API_ROOT, "alerts", "rules", "route.ts"), "utf8");
     expect(rules).toContain('requirePermission(request, "admin.system")');
+  });
+
+  test("devices/interfaces domain is handler-gated (F-008 phase 3 landed)", () => {
+    const domain = [
+      "devices/route.ts",
+      "devices/[id]/route.ts",
+      "devices/[id]/alerts/route.ts",
+      "devices/[id]/audit/route.ts",
+      "devices/[id]/changes/route.ts",
+      "devices/[id]/incidents/route.ts",
+      "devices/[id]/interfaces/route.ts",
+      "devices/[id]/metrics/route.ts",
+      "interfaces/route.ts",
+    ];
+    for (const rel of domain) {
+      expect(READ_ALLOWLIST[rel]).toBeUndefined();
+      const bodies = getHandlerBodies(readFileSync(join(API_ROOT, rel), "utf8"));
+      expect(bodies.length).toBeGreaterThanOrEqual(1);
+      for (const body of bodies) {
+        expect(body).toContain("requireSessionRead(");
+      }
+    }
+    // The devices files keep their permission-gated POST/PATCH alongside
+    // the newly session-gated GETs — the gate addition must not weaken the
+    // mutation plane.
+    const devices = readFileSync(join(API_ROOT, "devices", "route.ts"), "utf8");
+    expect(devices).toContain('requirePermission(request, "device.write")');
+    const deviceDetail = readFileSync(
+      join(API_ROOT, "devices", "[id]", "route.ts"),
+      "utf8"
+    );
+    expect(deviceDetail).toContain('requirePermission(request, "device.write")');
   });
 });

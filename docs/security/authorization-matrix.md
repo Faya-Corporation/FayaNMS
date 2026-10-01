@@ -168,7 +168,7 @@ only shrink as the sweep lands):
 |---|---|---|
 | 1 | dashboard (`/api/v1/dashboard`) | **Gated** |
 | 2 | events / alerts (`events`, `alerts`, `alerts/rules` GETs) | **Gated** |
-| 3 | devices / interfaces (`devices`, `devices/[id]/*`, `interfaces`) | pending |
+| 3 | devices / interfaces (`devices`, `devices/[id]/*`, `interfaces`) | **Gated** |
 | 4 | the rest (admin reads, incidents, changes, cmdb, performance, …) | pending |
 
 The proxy's API-client READ refusal (`API_CLIENT_READS_NOT_WIRED_BODY`,
