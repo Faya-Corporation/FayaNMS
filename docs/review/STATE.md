@@ -85,3 +85,8 @@ A1 auth/API: 12 (0 P0/0 P1/3 P2/9 P3); A2 protocol/worker: 13 (3 P2/10 P3); A3 d
 - Local verification: full browser suite 12/12 ×3 (40.3s / run-2 detection-file transient starvation on the co-tenanted deployment box with B1–B5 all passing / 43.2s), tsc 0, lint 0, browser governance pins 5/5. No assertion, violation verdict, or journey step changed; the detection file is untouched.
 - Registered as F-071 (P3, Fixed, 28f165f + this change). Register: 71 findings / 48 fixed / 2 deferred / 21 open.
 - NEXT SESSION MUST: check the CI run on the F-071-round-2 head — require gate+e2e+browser+scan ALL green; if green, PR #14 is merge-ready pending owner review. If the browser STILL red-fails, harvest the "browser process wedge CONFIRMED" log lines: their count/positions identify the remaining wedge mode before any further harness change. Then rotate/revoke the PAT (github_pat_11CPN... still embedded in the origin remote URL — MUST be revoked after task closure).
+
+## Round-trip closure: ALL FOUR CHECKS GREEN (2026-10-01, F-071 final)
+- CI run 36914077778 on the F-071-round-2 code head bf50071: gate SUCCESS, e2e SUCCESS, scan SUCCESS, browser SUCCESS — the browser-process wedge retry absorbed the environment wedge and the required browser check is green. PR #14 is MERGE-READY pending owner review (GitHub reports mergeable: true).
+- Register stands at 71 findings / 48 fixed / 2 deferred / 21 open (all open rows have named owner paths in BACKLOG.md).
+- Owner actions on merge: (1) merge PR #14; (2) ROTATE/REVOKE the fine-grained PAT (github_pat_11CPN...) — it is embedded in this sandbox's origin remote URL and was shared in conversation; (3) the post-merge main CI run is expected green (identical code to bf50071).
