@@ -141,3 +141,25 @@ export async function closeJourneyPage(
 export function pressB(page: Page, key: string, ms = 5_000): Promise<void> {
   return raceBounded(() => page.keyboard.press(key), ms, `keyboard.press("${key}")`);
 }
+
+/**
+ * Wedge probe for the browser PROCESS. A healthy browser spawns a page and
+ * closes it in well under a second; a process wedged by renderer/CPU
+ * starvation (CI runs 36805529852, 36909917240: axe evaluate hung, then
+ * `browser.newPage` hung 60s in the same browser, then `browser.close`
+ * burned its bound) stays unresponsive until force-closed. The probe is
+ * the DISCRIMINATOR between "journey failed because the product is broken"
+ * (browser answers → the original error is the verdict, nothing is retried)
+ * and "journey failed because the browser process went away mid-journey"
+ * (probe unresponsive → environment wedge → the caller may reclaim and
+ * re-run once). Returns true when the browser answered both bounded calls.
+ */
+export async function probeBrowserHealthy(browser: Browser, ms = 15_000): Promise<boolean> {
+  try {
+    const page = await raceBounded(() => browser.newPage(), ms, "wedge-probe browser.newPage");
+    await raceBounded(() => page.close(), 5_000, "wedge-probe page.close");
+    return true;
+  } catch {
+    return false;
+  }
+}
