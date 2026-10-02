@@ -37,6 +37,17 @@
  * suggestIncident }). Per-call 409 STEP_IN_FLIGHT and network/5xx errors
  * propagate to the retryable failure path (existing backoff).
  *
+ * F-044 (budget arithmetic): the driver's race budget is DERIVED at claim
+ * time from the plan's own size — min(stepsTotal, loop bound) × (per-step
+ * HTTP budget + progress post + inter-step beat) + margin — via
+ * src/lib/change/job-budget.ts (the claim route enriches the payload with
+ * stepsTotal; a legacy/absent value falls back to the full loop bound).
+ * The static 600 s budget that could race a slow-but-healthy plan is gone.
+ * When the budget DOES fire (driver loss mid-flight), the job is reported
+ * RESUMED — requeued with a "resumed" label, never labeled FAILED — since
+ * the engine's CAS step claims (SAFE-004) make the replacement attempt's
+ * re-entry at the next PENDING step safe.
+ *
  * ALERT_EVALUATION branch (Task 5-a) — evaluate-in-Next like DRIFT_CHECK:
  * POST /api/v1/alerts/evaluate { jobId } runs the whole threshold engine
  * server-side and answers a summary; the worker reports progress and
@@ -105,6 +116,14 @@ import {
 } from "./discovery";
 import { normalizeDiscoveryPolicyConfig } from "../../src/lib/discovery/policy";
 import { pollSnmpV3, type SnmpV3PollProfileReference } from "./snmpv3-poller";
+import {
+  CHANGE_INTER_STEP_SLEEP_MAX_MS,
+  CHANGE_INTER_STEP_SLEEP_MIN_MS,
+  CHANGE_MAX_STEP_CALLS,
+  CHANGE_STEP_CALL_TIMEOUT_MS,
+  JobTimeoutError,
+  deriveChangeJobBudgetMs,
+} from "../../src/lib/change/job-budget";
 
 const CLAIM_INTERVAL_MS = 3_000;
 /** Claim-loop exponential backoff cap (Task 10-a) — 5 minutes. */
@@ -112,9 +131,11 @@ const MAX_BACKOFF_MS = 300_000;
 const CONCURRENCY_CAP = 3;
 const CLAIM_BATCH = 3;
 const JOB_TIMEOUT_MS = 30_000;
-/** CHANGE_EXECUTE drives a whole step loop — needs its own budget. */
-const CHANGE_JOB_TIMEOUT_MS = 600_000;
-const CHANGE_MAX_STEP_CALLS = 40;
+// F-044: the CHANGE_EXECUTE budget is DERIVED at claim time (see
+// executeJob + src/lib/change/job-budget.ts) — the static 600_000 race
+// against a 40 × 90 s step loop is gone. The loop bound (40) and the
+// per-step HTTP budget (90 s) live next to that arithmetic so the math
+// and the driver cannot drift apart.
 
 export interface ClaimedJob {
   id: string;
@@ -171,6 +192,7 @@ const counters = {
   claimed: 0,
   completed: 0,
   failed: 0,
+  resumed: 0,
   running: 0,
   completedByType: {} as Record<string, number>,
   // Task 10-a resilience observability (exposed via /health):
@@ -184,11 +206,16 @@ export function getCounters() {
   return { ...counters };
 }
 
-/** Bounded promise race: rejects with a clear message after `ms`. */
+/**
+ * Bounded promise race: rejects with a typed JobTimeoutError after `ms`
+ * (F-044: the change driver's catch classifies on the TYPE — a budget
+ * exhaustion is driver loss, reported resumable instead of failed).
+ * The message keeps the historical `${label} timed out after ${ms} ms` shape.
+ */
 function raceTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms`)), ms);
+    timer = setTimeout(() => reject(new JobTimeoutError(label, ms)), ms);
   });
   return Promise.race([p, timeout]).finally(() => {
     if (timer) clearTimeout(timer);
@@ -233,6 +260,29 @@ async function reportFailure(
     await log(`job ${job.id} [${job.correlationId}] FAILED: ${message}`);
   } catch (e) {
     await log(`complete(FAILED) post failed for ${job.id}: ${(e as Error).message}`);
+  }
+}
+
+/**
+ * F-044 — in-flight driver loss is RESUMABLE, not FAILED. When the change
+ * driver outruns its own (claim-derived) budget the BODY stops being
+ * authoritative, but the plan's state never was the body's: every step is
+ * CAS-claimed per call (SAFE-004) and the engine owns all change rows, so
+ * a replacement attempt re-enters at the next PENDING step. The job is
+ * therefore requeued with a "resumed" label instead of a FAILED terminal —
+ * the complete route's RESUMED branch owns the DB semantics (execution
+ * lease stays, attempts remain bounded by maxAttempts).
+ */
+async function reportResumed(
+  job: Pick<ClaimedJob, "id" | "attempts" | "correlationId">,
+  message: string
+) {
+  counters.resumed += 1;
+  try {
+    await completePost(job, { jobId: job.id, outcome: "RESUMED", error: message }, 10_000);
+    await log(`job ${job.id} [${job.correlationId}] RESUMED (driver loss): ${message}`);
+  } catch (e) {
+    await log(`complete(RESUMED) post failed for ${job.id}: ${(e as Error).message}`);
   }
 }
 
@@ -602,7 +652,7 @@ async function runChangeExecutionJob(job: ClaimedJob): Promise<void> {
     const step = (await nextPost(
       "/api/v1/worker/change-step",
       { jobId: job.id },
-      90_000
+      CHANGE_STEP_CALL_TIMEOUT_MS
     )) as ChangeStepResponse;
 
     const total = step.stepsTotal ?? 0;
@@ -639,7 +689,9 @@ async function runChangeExecutionJob(job: ClaimedJob): Promise<void> {
     }
 
     // Small beat between steps so the timeline reads like a real execution.
-    await sleep(randInt(300, 600));
+    // The bounds are the budget module's constants — the derivation's
+    // "(+sleeps)" factor is exactly this beat's upper bound.
+    await sleep(randInt(CHANGE_INTER_STEP_SLEEP_MIN_MS, CHANGE_INTER_STEP_SLEEP_MAX_MS));
   }
 
   throw new Error(
@@ -1283,7 +1335,14 @@ async function executeJob(job: ClaimedJob): Promise<void> {
     } else if (job.type === "DRIFT_CHECK") {
       await raceTimeout(runDriftCheckJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "CHANGE_EXECUTE") {
-      await raceTimeout(runChangeExecutionJob(job), CHANGE_JOB_TIMEOUT_MS, `job ${job.id}`);
+      // F-044 — claim-time budget derivation: the plan's own size bounds
+      // the race. budget = min(stepsTotal, CHANGE_MAX_STEP_CALLS) ×
+      // (stepTimeout + progressPost + maxSleep) + margin; the claim route
+      // enriches the payload with stepsTotal, and a legacy/absent value
+      // falls back to the FULL driver loop bound (fail-safe generosity —
+      // never a premature race).
+      const budgetMs = deriveChangeJobBudgetMs(job.payload?.stepsTotal);
+      await raceTimeout(runChangeExecutionJob(job), budgetMs, `job ${job.id}`);
     } else if (job.type === "ALERT_EVALUATION") {
       await raceTimeout(runAlertEvaluationJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "METRIC_RETENTION") {
@@ -1307,8 +1366,17 @@ async function executeJob(job: ClaimedJob): Promise<void> {
     const message = (e as Error)?.message ?? String(e);
     // Task 10-a: the failure path itself must never produce an unhandled
     // rejection (e.g. backend down → reportFailure can fail too).
+    // F-044: for CHANGE_EXECUTE a typed JobTimeoutError is DRIVER LOSS —
+    // the plan keeps executing app-side, re-entry is safe through the
+    // engine's CAS step claims, so the job is labeled resumed (requeued)
+    // instead of FAILED. Every other error keeps the generic path.
+    const isDriverLoss = job.type === "CHANGE_EXECUTE" && e instanceof JobTimeoutError;
     try {
-      await reportFailure(job, message);
+      if (isDriverLoss) {
+        await reportResumed(job, message);
+      } else {
+        await reportFailure(job, message);
+      }
     } catch (reportErr) {
       await log(
         `failed to report failure for ${job.id}: ${(reportErr as Error)?.message ?? String(reportErr)}`
