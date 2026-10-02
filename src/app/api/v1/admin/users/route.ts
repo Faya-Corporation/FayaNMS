@@ -6,7 +6,6 @@ import { hashPassword } from "@/lib/auth/password";
 import { USER_ROLES } from "@/lib/auth/roles";
 import {
   requireRole,
-  requireUser,
   authErrorToFail,
 } from "@/lib/auth/session";
 import {
@@ -26,8 +25,11 @@ export const dynamic = "force-dynamic";
  * GET  — paginated user list (id/email/name/role/isActive/createdAt).
  *        passwordHash is NEVER selected, let alone serialized.
  *        q filters email/name contains; meta carries role facet counts.
- *        Any active authenticated user may LIST (auditors get read-only
- *        visibility — the middleware already restricts their writes).
+ *        F-029 (batch-10): the full email directory is ROLE-gated to
+ *        admin/auditor via requireRole — the previous requireUser gate
+ *        let EVERY active user (viewer included) enumerate full emails.
+ *        Non-privileged roles keep their directory surface at
+ *        /meta/users (local-part picker only, no full emails).
  * POST — create a user (admin-only). Password arrives as plaintext over the
  *        request and is immediately scrypt-hashed; only the hash is stored.
  *        Audited USER_CREATED (correlationId USR-XXXXXX).
@@ -57,7 +59,8 @@ const createSchema = z.object({
 
 export async function GET(request: Request) {
   try {
-    await requireUser(request);
+    // F-029 (batch-10): full email directory → admin/auditor only.
+    await requireRole(request, "admin", "auditor");
   } catch (error) {
     const envelope = authErrorToFail(error);
     if (envelope) return envelope;
