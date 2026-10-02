@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 import { fail, firstIssueMessage, ok, pageMeta, paginationSchema } from "../../_lib/api";
 import {
   fetchRollups,
@@ -75,6 +76,16 @@ function trendSeries(values: number[], cap = 24): number[] {
 }
 
 export async function GET(request: Request) {
+  // F-008 phase 4b (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     metric: url.searchParams.get("metric") ?? undefined,

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
 import {
   DISCOVERY_ALLOWED_PORTS,
   DISCOVERY_DEFAULT_INTERVAL_MINUTES,
@@ -64,6 +64,16 @@ async function actorFor(request: Request) {
 }
 
 export async function GET(request: Request) {
+  // F-008 phase 4b (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const actor = await actorFor(request);
   if (actor instanceof Response) return actor;
   return ok(

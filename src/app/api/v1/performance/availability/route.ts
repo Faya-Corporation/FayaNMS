@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import {
   fetchRollups,
@@ -51,6 +52,16 @@ const DOWN_THRESHOLD_PCT = 5;
 const UP_THRESHOLD_PCT = 99.5;
 
 export async function GET(request: Request) {
+  // F-008 phase 4b (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     range: url.searchParams.get("range") ?? undefined,

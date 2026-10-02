@@ -7,7 +7,7 @@ import {
   pageMeta,
   paginationSchema,
 } from "../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -103,6 +103,16 @@ async function findOverlap(input: {
 }
 
 export async function GET(request: Request) {
+  // F-008 phase 4b (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     page: url.searchParams.get("page") ?? undefined,

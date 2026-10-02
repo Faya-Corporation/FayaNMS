@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 import { ok } from "../_lib/api";
 import { INCIDENT_OPEN_STATUSES } from "@/lib/incidents/lifecycle";
 import {
@@ -103,7 +104,16 @@ const responseSchema = z.object({
 export type HaTopologyResponse = z.infer<typeof responseSchema>;
 
 export async function GET(request: Request) {
-
+  // F-008 phase 4b (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   /* 1 — pair members, live from the DB (status is never guessed). */
   const memberDevices = await db.device.findMany({
     where: { hostname: { in: [...HA_PAIR_HOSTNAMES] } },

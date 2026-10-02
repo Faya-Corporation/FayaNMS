@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 
 import { ok } from "../../_lib/api";
 
@@ -20,7 +21,17 @@ export const dynamic = "force-dynamic";
  * pickers render `name · type` only. Adding future fields requires the same
  * disclosure review.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  // F-008 phase 4b (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const [vendors, sites, credentialProfiles] = await Promise.all([
     db.vendor.findMany({
       orderBy: { name: "asc" },

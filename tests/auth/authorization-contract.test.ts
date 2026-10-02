@@ -146,44 +146,18 @@ const READ_GATES = [
  * initial list at 59 entries; phase 2 gated events/alerts (−3 → 56);
  * phase 3 gated devices/interfaces (−9 → 47); phase 4a gated
  * incidents/changes/cmdb with requireSessionRead (−11) AND recognized the
- * admin surface's resolveAdminActor → requireRole("admin") gate (−8) → 28.
- * Every later phase DELETES its domain's entries. The list may never GROW
- * past the pinned cap: a new unguarded read route fails the matrix test,
- * and raising the cap is a deliberate, documented governance edit (RT-034
- * protocol — never a silent side effect of an unrelated diff).
+ * admin surface's resolveAdminActor → requireRole("admin") gate (−8) → 28;
+ * phase 4b gated the long tail (−27 → 1). The sole survivor is the
+ * deliberate public bootstrap surface (meta/route.ts — pre-auth branding/
+ * status, empty data by contract). The list may never GROW past the pinned
+ * cap: a new unguarded read route fails the matrix test, and raising the
+ * cap is a deliberate, documented governance edit (RT-034 protocol — never
+ * a silent side effect of an unrelated diff).
  */
 const READ_ALLOWLIST_INITIAL_SIZE = 59;
 const READ_ALLOWLIST: Record<string, string> = {
-  // ── deliberate non-gates (bootstrap/reference surfaces) ───────────────
+  // ── deliberate non-gate (public bootstrap surface) ────────────────────
   "meta/route.ts": "public bootstrap (branding/status; read-only)",
-  "meta/reference/route.ts": "authenticated filter-bar reference data — proxy-gated today; F-008 candidate once the sweep reaches meta",
-  // ── F-008 phase 4b: the long tail (performance, discovery, jobs, …) ──
-  "backup-policies/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "backup-policies/[id]/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "baselines/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "compliance/backup/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "discovery/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "discovery/policies/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "drift/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "firmware/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "flows/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "flows/retention/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "ha/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "jobs/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "maintenance/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "metrics/retention/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "notifications/route.ts": "F-008 rollout pending (phase 4b: the long tail; list reads the caller's own rows)",
-  "performance/overview/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "performance/availability/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "performance/capacity/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "performance/devices/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "performance/interfaces/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "predictive/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "search/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "sites/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "snapshots/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "topology/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
-  "ztp/claims/route.ts": "F-008 rollout pending (phase 4b: the long tail)",
 };
 
 describe("authorization contract inventory", () => {
@@ -301,7 +275,10 @@ describe("F-008 read-route matrix (handler-level read-plane authn)", () => {
 
   test("the read allowlist only shrinks — phase-1 size cap", () => {
     // 59 entries at phase 1 (dashboard gated); 56 after phase 2
-    // (events/alerts gated); 47 after phase 3 (devices/interfaces gated).
+    // (events/alerts gated); 47 after phase 3 (devices/interfaces gated);
+    // 28 after phase 4a (incidents/changes/cmdb + admin recognition);
+    // 1 after phase 4b (the long tail gated — only the public bootstrap
+    // /api/v1/meta remains, deliberately).
     // Later phases delete lines; a deliberate cap raise is a documented
     // governance edit (RT-034).
     expect(Object.keys(READ_ALLOWLIST).length).toBeLessThanOrEqual(
@@ -437,5 +414,65 @@ describe("F-008 read-route matrix (handler-level read-plane authn)", () => {
       "utf8"
     );
     expect(wrapper).toContain('requireRole(req, "admin")');
+  });
+
+  test("the long tail is handler-gated and the allowlist is down to the public bootstrap (F-008 phase 4b landed)", () => {
+    const domain = [
+      "backup-policies/route.ts",
+      "backup-policies/[id]/route.ts",
+      "baselines/route.ts",
+      "compliance/backup/route.ts",
+      "discovery/route.ts",
+      "discovery/policies/route.ts",
+      "drift/route.ts",
+      "firmware/route.ts",
+      "flows/route.ts",
+      "flows/retention/route.ts",
+      "ha/route.ts",
+      "jobs/route.ts",
+      "maintenance/route.ts",
+      "metrics/retention/route.ts",
+      "notifications/route.ts",
+      "performance/overview/route.ts",
+      "performance/availability/route.ts",
+      "performance/capacity/route.ts",
+      "performance/devices/route.ts",
+      "performance/interfaces/route.ts",
+      "predictive/route.ts",
+      "search/route.ts",
+      "sites/route.ts",
+      "snapshots/route.ts",
+      "topology/route.ts",
+      "ztp/claims/route.ts",
+      "meta/reference/route.ts",
+    ];
+    for (const rel of domain) {
+      expect(READ_ALLOWLIST[rel]).toBeUndefined();
+      const bodies = getHandlerBodies(readFileSync(join(API_ROOT, rel), "utf8"));
+      expect(bodies.length).toBeGreaterThanOrEqual(1);
+      for (const body of bodies) {
+        expect(body).toContain("requireSessionRead(");
+      }
+    }
+    // The sweep is COMPLETE: the only remaining non-gate is the public
+    // bootstrap surface, pinned by name.
+    expect(Object.keys(READ_ALLOWLIST)).toEqual(["meta/route.ts"]);
+    // The locally-wrapped permission gates survived the gate addition —
+    // the session gate runs FIRST, the stricter check still runs after.
+    const discoveryPolicies = readFileSync(
+      join(API_ROOT, "discovery", "policies", "route.ts"),
+      "utf8"
+    );
+    expect(discoveryPolicies).toContain('requirePermission(request, "device.read")');
+    const flowsRetention = readFileSync(
+      join(API_ROOT, "flows", "retention", "route.ts"),
+      "utf8"
+    );
+    expect(flowsRetention).toContain('requirePermission(request, "admin.system")');
+    // The public bootstrap stays EMPTY by contract (RT-024) — the meta/
+    // reference split is now enforced by the session gate, not the proxy
+    // alone.
+    const metaRoute = readFileSync(join(API_ROOT, "meta", "route.ts"), "utf8");
+    expect(metaRoute).not.toContain("db.user.findMany");
   });
 });
