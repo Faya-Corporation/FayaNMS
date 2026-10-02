@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
 import { ZTP_TEMPLATES, getZtpTemplate } from "@/lib/ztp/templates";
 import { projectMgmtIp } from "@/lib/ztp/provision";
 import { z } from "zod";
@@ -68,7 +68,16 @@ function safeParseJson(text: string | null | undefined): Record<string, unknown>
 }
 
 export async function GET(request: Request) {
-
+  // F-008 phase 4b (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const [claims, siteRows, vendorRows, ztpAudits] = await Promise.all([
     db.ztpClaim.findMany({ orderBy: { createdAt: "desc" } }),
     db.site.findMany({ orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),

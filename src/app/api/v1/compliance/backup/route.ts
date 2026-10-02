@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 import { ok } from "../../_lib/api";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,17 @@ const STALE_LIMIT = 10;
 
 const round1 = (value: number): number => Math.round(value * 10) / 10;
 
-export async function GET() {
+export async function GET(request: Request) {
+  // F-008 phase 4b (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const now = Date.now();
   const compliantCutoff = new Date(now - COMPLIANT_WINDOW_MS);
   const atRiskCutoff = new Date(now - AT_RISK_WINDOW_MS);

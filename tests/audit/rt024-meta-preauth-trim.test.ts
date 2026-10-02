@@ -16,6 +16,47 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 const REPO = join(import.meta.dir, "..", "..");
 
+/**
+ * F-008 phase 4b: GET /api/v1/meta/reference verifies the human session at
+ * the handler (requireSessionRead) — the proxy is no longer its only gate.
+ * This helper mints a REAL next-auth session for a self-contained ensured
+ * admin (rt012/rt014 pattern: the CI gate replays only `migrate deploy`, so
+ * the admin identity is upserted here, never deleted).
+ */
+async function metaReferenceRequest(): Promise<Response> {
+  const { NextRequest } = await import("next/server");
+  const { encode } = await import("next-auth/jwt");
+  const { db } = await import("../../src/lib/db");
+  const { ROLE_MATRIX } = await import("../../src/lib/auth/role-matrix");
+  const adminEntry = ROLE_MATRIX.find((role) => role.name === "admin");
+  await db.role.upsert({
+    where: { name: "admin" },
+    update: {},
+    create: {
+      name: "admin",
+      description: adminEntry?.description ?? "Full platform administration",
+      permissionsJson: JSON.stringify(adminEntry?.permissions ?? ["*"]),
+    },
+  });
+  const user = await db.user.upsert({
+    where: { email: "admin@faya.local" },
+    update: { isActive: true },
+    create: { email: "admin@faya.local", name: "F008 Admin", role: "admin", isActive: true },
+    select: { id: true, email: true, name: true, role: true },
+  });
+  const session = await encode({
+    token: { id: user.id, email: user.email, name: user.name ?? undefined, role: user.role },
+    secret: process.env.NEXTAUTH_SECRET ?? "",
+  });
+  const { GET } = await import("@/app/api/v1/meta/reference/route");
+  return GET(
+    new NextRequest("http://app.local/api/v1/meta/reference", {
+      method: "GET",
+      headers: { cookie: `next-auth.session-token=${session}` },
+    })
+  );
+}
+
 describe("RT-024 — pre-auth meta trim", () => {
   test("pre-auth GET /api/v1/meta returns an empty data object", async () => {
     const { GET } = await import("@/app/api/v1/meta/route");
@@ -44,8 +85,7 @@ describe("RT-024 — pre-auth meta trim", () => {
   });
 
   test("reference route handler serves the picker data (R51-A2: no usernames)", async () => {
-    const { GET } = await import("@/app/api/v1/meta/reference/route");
-    const response = await GET();
+    const response = await metaReferenceRequest();
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       success: boolean;

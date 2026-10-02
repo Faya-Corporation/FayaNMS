@@ -28,6 +28,47 @@ function readRepo(rel: string): string {
   return readFileSync(join(REPO, rel), "utf8");
 }
 
+/**
+ * F-008 phase 4b: GET /api/v1/meta/reference verifies the human session at
+ * the handler (requireSessionRead) — it is no longer probe-able bare. This
+ * helper mints a REAL next-auth session for a self-contained ensured admin
+ * (rt012/rt014 pattern: the CI gate replays only `migrate deploy`, so the
+ * admin identity is upserted here, never deleted).
+ */
+async function metaReferenceRequest(): Promise<Response> {
+  const { NextRequest } = await import("next/server");
+  const { encode } = await import("next-auth/jwt");
+  const { db } = await import("../../src/lib/db");
+  const { ROLE_MATRIX } = await import("../../src/lib/auth/role-matrix");
+  const adminEntry = ROLE_MATRIX.find((role) => role.name === "admin");
+  await db.role.upsert({
+    where: { name: "admin" },
+    update: {},
+    create: {
+      name: "admin",
+      description: adminEntry?.description ?? "Full platform administration",
+      permissionsJson: JSON.stringify(adminEntry?.permissions ?? ["*"]),
+    },
+  });
+  const user = await db.user.upsert({
+    where: { email: "admin@faya.local" },
+    update: { isActive: true },
+    create: { email: "admin@faya.local", name: "F008 Admin", role: "admin", isActive: true },
+    select: { id: true, email: true, name: true, role: true },
+  });
+  const session = await encode({
+    token: { id: user.id, email: user.email, name: user.name ?? undefined, role: user.role },
+    secret: process.env.NEXTAUTH_SECRET ?? "",
+  });
+  const { GET } = await import("@/app/api/v1/meta/reference/route");
+  return GET(
+    new NextRequest("http://app.local/api/v1/meta/reference", {
+      method: "GET",
+      headers: { cookie: `next-auth.session-token=${session}` },
+    })
+  );
+}
+
 describe("HC-2 — the bootstrap payload carries zero user records", () => {
   test("wire-level: GET /api/v1/meta (handler, real DB) has no users key", async () => {
     const { GET } = await import("@/app/api/v1/meta/route");
@@ -49,8 +90,7 @@ describe("HC-2 — the bootstrap payload carries zero user records", () => {
   });
 
   test("wire-level: GET /api/v1/meta/reference (handler, real DB) carries the pickers", async () => {
-    const { GET } = await import("@/app/api/v1/meta/reference/route");
-    const response = await GET();
+    const response = await metaReferenceRequest();
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       success: boolean;
