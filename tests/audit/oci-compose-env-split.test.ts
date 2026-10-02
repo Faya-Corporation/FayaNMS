@@ -200,7 +200,8 @@ describe("RT-006: per-service environment maps stay inside their zone", () => {
     expect(envFileValues(app)).toEqual([".env.app"]);
     expect(app).toContain("DATABASE_URL");
     expect(app).toContain("NEXTAUTH_URL");
-    expect(app).toContain("NEXT_PUBLIC_SITE_URL");
+    // F-026: the origin is the RUNTIME SITE_URL in the app zone.
+    expect(app).toContain("SITE_URL");
   });
 });
 
@@ -220,7 +221,7 @@ describe("RT-006: env.example documents the three-file layout with the zone cont
       "FAYANMS_MIGRATOR_IMAGE",
       "FAYANMS_TLS_DOMAIN",
       "NEXTAUTH_URL",
-      "NEXT_PUBLIC_SITE_URL",
+      "SITE_URL",
       "POSTGRES_PASSWORD",
       "DATABASE_URL",
     ]) {
@@ -298,7 +299,7 @@ describe("RT-006: env.example documents the three-file layout with the zone cont
       "POSTGRES_PASSWORD",
       "DATABASE_URL",
       "FAYANMS_TRUST_PROXY_HOPS",
-      "NEXT_PUBLIC_SITE_URL",
+      "SITE_URL",
     ]) {
       expect(keys).not.toContain(key);
     }

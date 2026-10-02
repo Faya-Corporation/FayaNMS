@@ -41,7 +41,7 @@ File: `tests/audit/rt017-scan-before-publish.test.ts` (workflow-YAML police test
 1. `scan steps precede push steps` — parse container.yml; assert every trivy gate step index < every `push: true` step index.
 2. `gate targets local refs` — assert the three gate steps' `image-ref` values are the local `:gate` tags, not `ghcr.io/…` (negative case: no trivy step references ghcr).
 3. `push steps keep multi-arch + provenance + sbom` — assert the push steps retain `platforms: linux/amd64,linux/arm64`, `sbom: true`, `provenance: mode=max` (no silent weakening while reordering).
-4. `build-args unchanged` — `NEXT_PUBLIC_SITE_URL`/`FAYANMS_SOURCE_SHA` build-args preserved on the final push steps (guards A5-05-adjacent contract from drifting accidentally).
+4. `build-args unchanged` — the `FAYANMS_SOURCE_SHA` build-arg preserved on the final push steps (guards the provenance contract from drifting accidentally). F-026 (batch 9, 2026-10-02) retired the `NEXT_PUBLIC_SITE_URL` build-arg deliberately: the origin is a RUNTIME env (SITE_URL, per-request resolution) — its absence from the build args is the CORRECT state, not drift.
 5. `SARIF evidence remains after the push` — evidence steps ordered last (documented evidence-not-gate role).
 
 ## Acceptance criteria

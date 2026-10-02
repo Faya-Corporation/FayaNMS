@@ -28,7 +28,7 @@ execute and tick.
 | App → worker calls go through `WORKER_BASE_URL` (env-configurable, runbook T5 as landed 2026-09-13; default preserves the historical `http://localhost:3030` loopback) in 4 route files (`devices/test-connection`, `worker/change-step`, `worker/status`, `admin/collectors`) | src/lib/worker/worker-url.ts + src/app/api/v1/** | Bare-metal dev needs NO env var; compose sets `WORKER_BASE_URL=http://worker:3030` on a normal bridge network (T3/T5) |
 | Worker → app calls go through `NEXT_BASE_URL` (env-configurable, T5; default preserves `http://localhost:3000`) | mini-services/worker/next-client.ts | Same — compose sets `NEXT_BASE_URL=http://app:3000`; the worker's loopback self-calls stay container-local (`SELF_BASE_URL`) |
 | Worker port **hardcoded 3030**, "do not read PORT env" (Task 2-b contract) | mini-services/worker/index.ts | The stack exposes exactly **one** port (3000); 3030 stays internal — same model as the sandbox gateway |
-| `siteUrl()` **throws** in production without `NEXT_PUBLIC_SITE_URL`, and **rejects `localhost` / `127.0.0.1` / `0.0.0.0` / `*.local` hostnames** in production | src/lib/brand/identity.ts (B3-029) | You need a real DNS name (or a raw LAN IP — IPs pass the guard) baked at **build time** |
+| `siteUrl()` **throws** in a production RUNTIME without `SITE_URL`, and **rejects `localhost` / `127.0.0.1` / `0.0.0.0` / `*.local` hostnames** in production | src/lib/brand/site-url.ts (B3-029; F-026 moved the variable) | You need a real DNS name (or a raw LAN IP — IPs pass the guard) set as a RUNTIME env — NO rebuild needed (F-026) |
 | Startup security policy (production) **aborts** unless: `NEXTAUTH_SECRET` ≥ 32 chars, `FAYANMS_CONFIG_ENC_KEY` 64-hex, `FAYANMS_DEMO_MODE ≠ true`, and the SERVICE IDENTITY configuration is valid — RECOMMENDED: Ed25519 keys (app private key + worker public key, **no shared secret at all**); the 64-hex `FAYANMS_SERVICE_SECRET` is required ONLY while the legacy HS256 plane is in use (migration/legacy modes, SVC-001-A) | src/lib/startup/security-policy.ts, .env.example | Secrets must be generated per environment; demo seeding is a separate, non-production step |
 | Demo seed gate: requires `FAYANMS_DEMO_MODE=true` **and** refuses under production NODE_ENV | prisma/seed.ts:2443 | Seed in a one-off container without `NODE_ENV=production`, then run the app clean |
 | CI `scan` job's trivy step **is ACTIVE since 2026-09-12** (fs scan, HIGH/CRITICAL, exit-code 1; first verified scans: 0 vulns / 0 misconfigs / 0 secrets — the planned `.trivyignore` mirror never had to land, see T4) | .github/workflows/ci.yml step 12 | Any new HIGH/CRITICAL advisory or Dockerfile misconfig turns CI red — fix forward; the `osv-scanner.toml` accepted-risk ledger is EMPTY today, keep it that way unless a finding genuinely requires a major migration |
@@ -125,8 +125,7 @@ COPY prisma ./prisma
 RUN bun install --frozen-lockfile
 
 FROM deps AS build
-ARG NEXT_PUBLIC_SITE_URL          # REAL origin, e.g. http://fayanms.corp.example.com
-ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+ARG FAYANMS_SOURCE_SHA=unknown      # provenance label only (F-026: NO site-URL build arg)
 COPY . .
 RUN bunx prisma generate && bun run build   # cp -r steps inside the script are POSIX — fine in Linux
 
@@ -150,8 +149,9 @@ CMD ["bun", "server.js"]
 
 Acceptance criteria:
 - [ ] Image builds from a clean clone; `docker run` serves the sign-in gate on :3000.
-- [ ] `NEXT_PUBLIC_SITE_URL` is a **build ARG carrying the real origin** — NOT the CI
-      `.invalid` placeholder (OG/metadata are baked into the bundle at build time).
+- [ ] `SITE_URL` is a **RUNTIME env carrying the real origin** — NOT baked into the
+      image or client bundles (F-026: the origin resolves per request; host-side
+      values take effect WITHOUT a rebuild).
 - [ ] No `DATABASE_URL` baked into the image — it arrives from compose
       (`postgresql://fayanms:<POSTGRES_PASSWORD>@postgres:5432/fayanms`); a container
       started without it aborts at the startup security policy.
@@ -166,8 +166,11 @@ As-landed deviations from the reference above (deliberate, recorded for honesty)
   PostgreSQL the app container is STATELESS — the original `/data/fayanms` volume, its
   chown, and the provision-time ownership handback are all GONE; the uid remains as
   defense-in-depth.
-- A fail-fast `RUN test -n "$NEXT_PUBLIC_SITE_URL"` guard turns a missing build arg into
-  a human-readable error instead of a deep `siteUrl()` throw during prerender.
+- F-026 (batch 9) retired the build-time site-URL contract: the origin is a
+  RUNTIME env (`SITE_URL` in the app env zone), resolved per request by
+  `src/lib/brand/site-url.ts` — the former `RUN test -n "$NEXT_PUBLIC_SITE_URL"`
+  build guard and `.invalid` placeholder era ended; the fail-fast now happens
+  at request time in a production runtime without `SITE_URL`.
 - `PORT=3000` / `HOSTNAME=0.0.0.0` pinned explicitly for the standalone server binding.
 
 ### T1b — `.dockerignore` — **LANDED 2026-09-12 (R12)**
@@ -226,7 +229,7 @@ services:
   app:
     build:
       context: .
-      args: { NEXT_PUBLIC_SITE_URL: "${NEXT_PUBLIC_SITE_URL}" }
+      # F-026: NO site-URL build arg (runtime-only origin)
     image: fayanms-app:latest
     restart: unless-stopped
     env_file: .env.production.app    # SEC-ENV-001: app zone only
@@ -332,8 +335,9 @@ cp docs/deploy/env.app.production.example .env.production.app     # app zone (se
 cp docs/deploy/env.worker.production.example .env.production.worker  # worker zone (identity/vault/CA pin)
 ```
 
-- **Host-side file:** `NEXT_PUBLIC_SITE_URL` (build arg) + `POSTGRES_PASSWORD`
+- **Host-side file:** `POSTGRES_PASSWORD`
   (composes the DATABASE_URL) + optional port/URL overrides. No runtime secrets.
+  F-026: the site origin moved INTO the app zone as the RUNTIME `SITE_URL`.
 - **App zone (`.env.production.app`):** `NEXTAUTH_URL`, `NEXTAUTH_SECRET`,
   `FAYANMS_CONFIG_ENC_KEY(+_ID)`, the CONTROL service-identity keypair, proxy/login
   knobs. NO `FAYANMS_VAULT_*` — the app stores vault references only.
@@ -433,7 +437,7 @@ In Windows PowerShell, set the build provenance variable before running Compose:
 - [ ] Golden path (R8's browser script): dashboard → Devices search/filter → command
       palette → Device Detail → Job Center shows a runner claim → audit trail row exists.
 - [ ] `docker compose logs app` shows **no** `security-policy` abort, **no**
-      `NEXT_PUBLIC_SITE_URL` throw.
+      `SITE_URL` throw.
 
 ---
 

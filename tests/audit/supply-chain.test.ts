@@ -96,18 +96,18 @@ describe("SUPPLY-001-A: CI builds and scans the runtime images (image-level)", (
   const ci = readRepoFile(".github/workflows/ci.yml");
 
   test("both runtime images are built in CI", () => {
-    // R74 (run 35420764756): the app build carries the production origin
-    // build-arg — the Dockerfile's own T1 guard refuses to build without
-    // it, and CI builds SCAN-TARGET images (IETF-reserved example.com
-    // origin, never run or deployed). Shape evolved from the single-line
+    // R74 (run 35420764756): shape evolved from the single-line
     // `docker build -t fayanms-app:ci .`; the governance intent is unchanged:
     // both images are built from the checkout and scanned as images.
+    // F-026 (batch 9): NO site-URL build arg — the origin is the RUNTIME
+    // SITE_URL (per-request resolution); the old T1 guard/placeholder era
+    // is retired and the client bundles ship origin-free.
     const buildStep = ci.slice(
       ci.indexOf("- name: Build runtime images (app + worker)"),
       ci.indexOf("- name: Image scan — app")
     );
     expect(buildStep).toContain("- name: Build runtime images (app + worker)");
-    expect(buildStep).toContain("--build-arg NEXT_PUBLIC_SITE_URL=https://ci-gate.fayanms.example.com");
+    expect(buildStep).not.toContain("NEXT_PUBLIC_SITE_URL");
     expect(buildStep).toContain("-t fayanms-app:ci .");
     expect(ci).toMatch(/docker build -f Dockerfile\.worker\b[^\r\n]*--build-arg FAYANMS_SOURCE_SHA=\$GITHUB_SHA[^\r\n]*-t fayanms-worker:ci \./);
   });

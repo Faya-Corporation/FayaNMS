@@ -266,12 +266,11 @@ jobs:
           console.log("i18n parity OK:", en.size, "EN keys ==", ar.size, "AR keys");
           '
 
-      # Build gate only. siteUrl() (src/lib/brand/identity.ts, re-audit B3-029)
-      # throws in production without NEXT_PUBLIC_SITE_URL and rejects localhost
-      # in production (allowed only in dev/test), so the committed `build:gate`
-      # script (package.json — the SAME command as the local verification gate)
-      # supplies the reserved .invalid build-only placeholder. Real production
-      # deploys MUST set NEXT_PUBLIC_SITE_URL to the real public https origin.
+      # Build gate only. F-026 (batch 9): siteUrl() moved to a server-only
+      # module evaluated PER REQUEST (root layout generateMetadata under
+      # force-dynamic) reading the RUNTIME `SITE_URL` — the production build
+      # no longer evaluates any site origin, so build:gate needs NO env and
+      # the old .invalid build placeholder is retired.
       - name: Production build (typecheck-bypassing is disabled)
         run: bun run build:gate
 
@@ -525,15 +524,14 @@ jobs:
       # IMAGES (OS packages inside the bases included), with per-image SBOMs
       # retained as artifacts. Base images are digest-pinned in the
       # Dockerfiles/compose files (immutable inputs; bump procedure inline).
-      # R74 record (run 35420764756): the build step's FIRST execution was
-      # refused by the Dockerfile's own T1 guard — the production
-      # NEXT_PUBLIC_SITE_URL build-arg is mandatory (localhost/127.0.0.1/
-      # 0.0.0.0/*.local are rejected by src/lib/brand/identity.ts siteUrl()
-      # in the production build). CI builds SCAN-TARGET images that are
-      # never run or deployed: the IETF-reserved example.com origin passes
-      # the siteUrl production guard while being honestly non-routable.
-      # Real deployments pass the REAL canonical origin via the compose
-      # --env-file interpolation (docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md §T1).
+      # R74 record (run 35420764756, HISTORY): the build step's FIRST
+      # execution was refused by the Dockerfile's own T1 guard — back then
+      # the production NEXT_PUBLIC_SITE_URL build-arg was mandatory.
+      # F-026 (batch 9) retired that contract: the origin is a RUNTIME env
+      # (SITE_URL, resolved per request by src/lib/brand/site-url.ts), so the
+      # image build passes NO site-URL arg at all and the client bundles ship
+      # origin-free. Real deployments set the REAL canonical origin via the
+      # runtime env in the compose --env-file (deploy/oci/env.example).
       # R77 (run 35423093770): the image build consumed the runner's last
       # bytes ("Free space left: 0 MB" warning mid-build). The hosted image
       # ships multi-GB toolchains the scan job never uses — remove the known
@@ -550,7 +548,6 @@ jobs:
       - name: Build runtime images (app + worker)
         run: |
           docker build \
-            --build-arg NEXT_PUBLIC_SITE_URL=https://ci-gate.fayanms.example.com \
             --build-arg FAYANMS_SOURCE_SHA=$GITHUB_SHA \
             -t fayanms-app:ci .
           docker build -f Dockerfile.worker --build-arg FAYANMS_SOURCE_SHA=$GITHUB_SHA -t fayanms-worker:ci .
