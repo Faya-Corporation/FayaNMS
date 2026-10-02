@@ -148,7 +148,7 @@ validity re-verified at execute time (`APPROVAL_FINGERPRINT_MISMATCH`,
 | `/reports/schedules/[id]/run` | POST | `report.schedule` |
 | `/reports/runs/[id]/download` | GET | `report.read` (`*.read` holders pass) |
 
-## 2.1 Read-plane handler gates (F-008 series — in progress)
+## 2.1 Read-plane handler gates (F-008 series — COMPLETE)
 
 Audit finding F-008 (P2): operational GETs under `/api/v1` were
 authenticated ONLY by the proxy matcher (`/api/v1/:path*`) — a single
@@ -170,11 +170,23 @@ only shrink as the sweep lands):
 | 2 | events / alerts (`events`, `alerts`, `alerts/rules` GETs) | **Gated** |
 | 3 | devices / interfaces (`devices`, `devices/[id]/*`, `interfaces`) | **Gated** |
 | 4a | incidents / changes / cmdb (11 GETs) **Gated** + admin reads RECOGNIZED as already admin-gated (`resolveAdminActor` → `requireRole("admin")` — a wrapper marker the matrix had not recognized, no code change; −19 → 28) | **Gated** |
-| 4b | the long tail (backup-policies, baselines, compliance/backup, discovery, drift, firmware, flows, ha, jobs, maintenance, metrics/retention, notifications, performance, predictive, search, sites, snapshots, topology, ztp/claims, meta/reference) | pending |
+| 4b | the long tail (backup-policies ×2, baselines, compliance/backup, discovery ×2, drift, firmware, flows ×2, ha, jobs, maintenance, metrics/retention, notifications, performance ×5, predictive, search, sites, snapshots, topology, ztp/claims) + the meta/reference DECISION (gated — with the sweep complete there is no remaining justification for a handler-bare authenticated surface; the public PRE-AUTH bootstrap stays `/api/v1/meta`, empty data by the RT-024 contract) | **Gated** |
+
+**End-state:** the ungated read allowlist is down to exactly
+`["meta/route.ts"]` (public bootstrap — pre-auth branding/status,
+deliberate non-gate, empty data by contract), pinned BY NAME in the
+matrix test. Every other GET handler under `/api/v1` verifies the human
+session itself. Seven no-param GETs gained `request: Request`
+signatures to feed the gate; locally-wrapped stricter permission gates
+(`discovery/policies` → `device.read`, `flows/retention` →
+`admin.system`) run AFTER the session gate, untouched.
 
 The proxy's API-client READ refusal (`API_CLIENT_READS_NOT_WIRED_BODY`,
-src/proxy.ts) stays in force until every read handler is gated — only
-then can the documented API-client read scopes ship safely.
+src/proxy.ts) stays in force. Its revisit is now ELIGIBLE (every read
+handler is session-gated) but remains a deliberate design decision, not
+an automatic unlock: shipping the documented API-client read scopes
+requires wiring the API-client credential plane into the read handlers
+or a dedicated service-read gate first.
 
 ## 3. Machine (service) endpoints — scope enforcement
 
