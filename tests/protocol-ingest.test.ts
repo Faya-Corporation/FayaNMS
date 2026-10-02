@@ -23,7 +23,10 @@ test("protocol normalization bounds messages and attributes", () => {
   expect(event.attributes.drop).toBeNull();
 });
 
-test("protocol association prefers hostname over source IP", () => {
+test("protocol association: the SOURCE IP is the trust anchor (F-036 flip)", () => {
+  // FLIPPED DELIBERATELY (batch-11): this test previously pinned the DEFECT
+  // ("prefers hostname over source IP") — a spoofed hostname hint could
+  // re-attribute any event. The source IP now wins outright.
   const candidates = [
     { id: "by-host", hostname: "router-a", mgmtIp: "192.0.2.21" },
     { id: "by-ip", hostname: "router-b", mgmtIp: "192.0.2.20" },
@@ -32,8 +35,57 @@ test("protocol association prefers hostname over source IP", () => {
     { sourceIp: "192.0.2.20", deviceHint: { hostname: "router-a" } },
     candidates,
   );
+  expect(result.method).toBe("management-ip");
+  expect(result.device?.id).toBe("by-ip");
+  // The contradicted hostname claim is flagged (spoof indicator).
+  expect(result.attributionUnverified).toBe(true);
+});
+
+test("protocol association: hostname agreeing with the source resolves verified", () => {
+  const candidates = [{ id: "device-a", hostname: "router-a", mgmtIp: "192.0.2.20" }];
+  const result = associateProtocolDevice(
+    { sourceIp: "192.0.2.20", deviceHint: { hostname: "router-a" } },
+    candidates,
+  );
+  expect(result.method).toBe("management-ip");
+  expect(result.device?.id).toBe("device-a");
+  expect(result.attributionUnverified).toBeUndefined();
+});
+
+test("protocol association: hostname-only attribution is honored but flagged unverified", () => {
+  const candidates = [{ id: "device-a", hostname: "router-a", mgmtIp: "192.0.2.21" }];
+  const result = associateProtocolDevice(
+    { sourceIp: "192.0.2.99", deviceHint: { hostname: "router-a" } },
+    candidates,
+  );
   expect(result.method).toBe("hostname");
-  expect(result.device?.id).toBe("by-host");
+  expect(result.device?.id).toBe("device-a");
+  expect(result.attributionUnverified).toBe(true);
+});
+
+test("protocol association: IP-only attribution (no hint) is verified with no flag", () => {
+  const candidates = [{ id: "device-a", hostname: "router-a", mgmtIp: "192.0.2.20" }];
+  const result = associateProtocolDevice(
+    { sourceIp: "192.0.2.20", deviceHint: undefined },
+    candidates,
+  );
+  expect(result.method).toBe("management-ip");
+  expect(result.attributionUnverified).toBeUndefined();
+  expect(associateProtocolDevice({ sourceIp: "10.9.9.9", deviceHint: undefined }, candidates)).toEqual({
+    device: null,
+    method: "unmatched",
+  });
+});
+
+test("ingest route persists attributionUnverified and documents the IP-anchor contract (F-036)", () => {
+  const route = readFileSync("src/app/api/v1/ingest/protocol/route.ts", "utf8");
+  expect(route).toContain("attributionUnverified: association.attributionUnverified ?? false");
+  expect(route).toContain("unverified: association.attributionUnverified ?? false");
+  // The retired "exact hostname first" claim must not come back.
+  expect(route).not.toContain("exact hostname first");
+  expect(route).toContain("SOURCE IP is the trust anchor");
+  const schema = readFileSync("prisma/schema.prisma", "utf8");
+  expect(schema).toContain("attributionUnverified");
 });
 
 test("ingestion route requires telemetry scope and stores no raw packet field", () => {

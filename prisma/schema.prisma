@@ -881,6 +881,11 @@ model ProtocolEventQueue {
   correlationId   String
   // status: QUEUED | IN_FLIGHT | DELIVERED | DEAD
   status          String    @default("QUEUED")
+  // F-036 (batch-11): the device attribution could not be corroborated
+  // against the event's source IP (hostname hint contradicted it, or the
+  // attribution rests solely on the caller's hostname claim). Honesty
+  // marker for display (UI badge surface) — the association itself stands.
+  attributionUnverified Boolean @default(false)
   attempts        Int       @default(0)
   maxAttempts     Int       @default(5)
   nextAttemptAt   DateTime  @default(now())

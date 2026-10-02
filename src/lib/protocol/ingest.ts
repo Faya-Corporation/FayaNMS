@@ -34,6 +34,17 @@ export interface ProtocolDeviceCandidate {
 export interface ProtocolDeviceAssociation {
   device: ProtocolDeviceCandidate | null;
   method: "hostname" | "management-ip" | "unmatched";
+  /**
+   * F-036 (batch-11): the caller-supplied hostname hint could NOT be
+   * corroborated against the event's source IP — either it named a device
+   * whose management IP differs from the source (contradiction: possible
+   * spoofed attribution), or no device matched the source at all and the
+   * attribution rests solely on the caller's claim. True means "honor the
+   * association, but display it as unverified" (queue column
+   * `attributionUnverified` + the ingest response's associatedDevice.unverified).
+   * Absent/false = the source IP anchored the attribution (or nothing matched).
+   */
+  attributionUnverified?: boolean;
 }
 
 export interface NormalizedProtocolEvent {
@@ -92,12 +103,29 @@ export function associateProtocolDevice(
   candidates: readonly ProtocolDeviceCandidate[],
 ): ProtocolDeviceAssociation {
   const hostname = input.deviceHint?.hostname?.trim().toLowerCase();
-  if (hostname) {
-    const byHostname = candidates.find((candidate) => candidate.hostname.toLowerCase() === hostname);
-    if (byHostname) return { device: byHostname, method: "hostname" };
-  }
   const byIp = candidates.find((candidate) => candidate.mgmtIp === input.sourceIp);
-  if (byIp) return { device: byIp, method: "management-ip" };
+  const byHostname = hostname
+    ? candidates.find((candidate) => candidate.hostname.toLowerCase() === hostname)
+    : undefined;
+
+  // F-036 (batch-11): the SOURCE IP is the trust anchor — a hostname hint
+  // arrives from the network and can name ANY device. IP attribution wins
+  // outright; a hostname that disagrees with it (or an attribution resting
+  // on the hostname alone) is honored only with the unverified marker.
+  if (byIp) {
+    if (byHostname && byHostname.id !== byIp.id) {
+      // Contradicted hostname claim — attribute by source IP and flag the
+      // event (a spoof indicator, not a refusal: the source IP is verified).
+      return { device: byIp, method: "management-ip", attributionUnverified: true };
+    }
+    return { device: byIp, method: "management-ip" };
+  }
+  // No device owns this source IP: a hostname match is honored for the
+  // legitimate relay/NAT case, but it is caller-claimed and unverifiable —
+  // mark the event attributionUnverified (schema flag + UI badge surface).
+  if (byHostname) {
+    return { device: byHostname, method: "hostname", attributionUnverified: true };
+  }
   return { device: null, method: "unmatched" };
 }
 

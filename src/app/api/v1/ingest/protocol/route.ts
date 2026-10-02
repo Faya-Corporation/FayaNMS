@@ -42,11 +42,17 @@ const ingestSchema = z.object({
 
 /**
  * POST /api/v1/ingest/protocol — authenticated collector event relay.
- * UDP packets are never trusted as device identity. Association is an
- * ordered hint: exact hostname first, exact management IP second. SNMP traps
- * are stricter: only verified authPriv traffic with an exact SNMPV3
- * CredentialProfile bound to the associated device is accepted. Raw packets
- * and secret material are intentionally not accepted or stored.
+ * UDP packets are never trusted as device identity. F-036 (batch-11): the
+ * event's SOURCE IP is the trust anchor — an exact mgmtIp match attributes
+ * the device outright; a hostname hint is honored only when it AGREES with
+ * that resolution, or (no source match) for the legitimate relay/NAT case
+ * with the event flagged `attributionUnverified` (queue column + response).
+ * A hostname that CONTRADICTS the source-resolved device never wins the
+ * attribution — the event keeps the source-verified device and the
+ * contradiction is flagged. SNMP traps are stricter: only verified authPriv
+ * traffic with an exact SNMPV3 CredentialProfile bound to the associated
+ * device is accepted. Raw packets and secret material are intentionally not
+ * accepted or stored.
  *
  * Accepted events are written to ProtocolEventQueue in the same transaction as
  * the queue audit entry. The worker drains that durable handoff separately,
@@ -120,6 +126,7 @@ export async function POST(request: Request) {
         securityLevel: event.securityLevel,
         flowBatchJson: input.flowBatch ? JSON.stringify(input.flowBatch) : null,
         deviceId: association.device?.id ?? null,
+        attributionUnverified: association.attributionUnverified ?? false,
         attributesJson: JSON.stringify(event.attributes),
         correlationId,
         status: "QUEUED",
@@ -156,6 +163,7 @@ export async function POST(request: Request) {
           association: {
             method: association.method,
             deviceId: association.device?.id ?? null,
+            attributionUnverified: association.attributionUnverified ?? false,
           },
           status: "QUEUED",
         }),
@@ -173,7 +181,12 @@ export async function POST(request: Request) {
     protocol: event.protocol,
     flowRecordsAccepted: input.flowBatch?.records.length ?? 0,
     associatedDevice: association.device
-      ? { id: association.device.id, hostname: association.device.hostname, method: association.method }
+      ? {
+          id: association.device.id,
+          hostname: association.device.hostname,
+          method: association.method,
+          unverified: association.attributionUnverified ?? false,
+        }
       : null,
   }, undefined, 202);
 }
