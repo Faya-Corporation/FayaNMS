@@ -3452,7 +3452,7 @@
       "namePlaceholder": "Branch sweep — September",
       "subnetsLabel": "Subnets *",
       "invalid": "Invalid subnets: {issues} — expected a.b.c.d/prefix.",
-      "helper": "Up to 8 subnets per scan (e.g. 10.60.0.0/24).",
+      "helper": "Up to 8 subnets per scan (e.g. 10.60.0.0/24). Governed blocks (loopback, link-local, multicast, reserved) are refused.",
       "cancel": "Cancel",
       "queue": "Queue scan"
     },

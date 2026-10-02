@@ -4,13 +4,19 @@ import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/au
 import {
   DISCOVERY_ALLOWED_PORTS,
   DISCOVERY_DEFAULT_INTERVAL_MINUTES,
+  firstGovernedDiscoverySubnet,
   normalizeDiscoveryPolicyConfig,
 } from "@/lib/discovery/policy";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
-const ipv4Cidr = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\/(\d|[12]\d|3[0-2])$/;
+// F-038 sub-fix (found while pinning the route): this regex previously had
+// only THREE octet groups — it rejected EVERY valid 4-octet CIDR (the whole
+// policy-POST surface was dead on arrival with INVALID_BODY) while ACCEPTING
+// malformed 3-octet shapes ("10.60.0/24"). Now four octets + /24-/32 prefix,
+// matching the scan route's CIDR_PATTERN and discoveryTargetCount.
+const ipv4Cidr = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\/(3[0-2]|2[4-9])$/;
 
 const policySchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -104,6 +110,17 @@ export async function POST(request: Request) {
 
   const config = normalizeDiscoveryPolicyConfig(parsed.data);
   if (!config) {
+    // F-038 — governed special-address subnets get a precise detail
+    // (the class + the documented lab hatch) instead of the generic policy
+    // message; the generic message keeps the other refusal reasons.
+    const governed = firstGovernedDiscoverySubnet(parsed.data.subnets);
+    if (governed) {
+      return fail(
+        "INVALID_POLICY",
+        "Discovery subnet " + governed.subnet + " targets a governed address class (" + governed.addressClass + ") — remove it or set FAYANMS_PROBE_ALLOW_SPECIAL=true for lab environments.",
+        400,
+      );
+    }
     return fail(
       "INVALID_POLICY",
       "Discovery policy must contain only bounded /24-/32 subnets, approved TCP management ports, and no more than 1,024 targets.",

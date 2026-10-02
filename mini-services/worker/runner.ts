@@ -397,7 +397,7 @@ async function runDiscoveryJob(job: ClaimedJob): Promise<void> {
     enabled: true,
   });
   if (!config) {
-    throw new Error("Invalid discovery payload: only bounded /24-/32 subnets and approved TCP ports are allowed");
+    throw new Error("Invalid discovery payload: only bounded /24-/32 subnets, approved TCP ports, and non-governed address classes are allowed");
   }
   const subnets = config.subnets;
   const ports = config.ports;

@@ -38,6 +38,9 @@ COPY --chown=10001:10001 scripts/protocol-lab/snmpv3.ts /scripts/protocol-lab/sn
 COPY --chown=10001:10001 src/lib/protocol/snmpv3-policy.ts /src/lib/protocol/snmpv3-policy.ts
 COPY --chown=10001:10001 src/lib/protocol/ingest.ts /src/lib/protocol/ingest.ts
 COPY --chown=10001:10001 src/lib/protocol/netflow-v5.ts /src/lib/protocol/netflow-v5.ts
+# Shared policy modules are runtime imports of the worker (F-038: the discovery
+# policy imports its sibling classifier — the COPY pair is pinned by tests).
+COPY --chown=10001:10001 src/lib/net/target-policy.ts /src/lib/net/target-policy.ts
 COPY --chown=10001:10001 src/lib/discovery/policy.ts /src/lib/discovery/policy.ts
 USER 10001
 ENV NODE_ENV=production
