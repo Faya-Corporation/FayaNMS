@@ -181,12 +181,25 @@ signatures to feed the gate; locally-wrapped stricter permission gates
 (`discovery/policies` → `device.read`, `flows/retention` →
 `admin.system`) run AFTER the session gate, untouched.
 
-The proxy's API-client READ refusal (`API_CLIENT_READS_NOT_WIRED_BODY`,
-src/proxy.ts) stays in force. Its revisit is now ELIGIBLE (every read
-handler is session-gated) but remains a deliberate design decision, not
-an automatic unlock: shipping the documented API-client read scopes
-requires wiring the API-client credential plane into the read handlers
-or a dedicated service-read gate first.
+**API-client read scopes — WIRED (the F-008 follow-up, batch 7):** the
+proxy's old read-plane refusal (`API_CLIENT_READS_NOT_WIRED_BODY`) is
+DELETED (984c479). With every read handler principal-gated, opaque
+bearer candidates are admitted to BOTH planes and the handlers are the
+validation authority: `requireSessionRead` authenticates API clients
+through `authenticateApiClientRead` over `API_CLIENT_READ_DOMAINS` — a
+CODE table (pathname prefix → route permission) deliberately narrower
+than the human surface (devices/interfaces/cmdb/discovery →
+`device.read`; alerts/events → `alert.read`; incidents →
+`incident.read`; changes/approvals → `change.read`; metrics/performance
+→ `metrics.read`; backup/baseline/compliance/snapshots → `config.read`).
+`admin.read` stays catalog-RESERVED: admin surfaces are ROLE-gated
+(`resolveAdminActor` → `requireRole("admin")`) and never consult the
+client branch. Unwired domains answer a VALID client 403
+`API_CLIENT_READS_DOMAIN_NOT_WIRED` (precise signal, never silent data);
+stricter local gates keep their place AFTER the read gate
+(`discovery/policies` → `requirePermission("device.read")` without the
+opt-in → 403 `API_CLIENT_HUMAN_REQUIRED`; permission-gated reads such as
+`credentials` → `admin.credential` answer with their own codes).
 
 ## 3. Machine (service) endpoints — scope enforcement
 
