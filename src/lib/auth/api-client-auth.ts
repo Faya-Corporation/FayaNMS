@@ -33,11 +33,17 @@ import { roleHasPermission } from "@/lib/auth/permissions";
  *     module — API clients cannot manage API clients;
  *   - requireApprovalEntitlement / SoD stay human-only — an API client can
  *     never satisfy a human approval quorum (POL-001's two-person CAB);
- *   - READ routes are proxy-session-gated and do not consult this module —
- *     the `.read` catalog scopes are RESERVED until read routes grow
- *     handler-level gates (documented honest limitation);
- *   - the proxy passes opaque bearer candidates ONLY for mutations and
- *     rate-limits them like any external caller (no service-JWT exemption).
+ *   - READ routes consult authenticateApiClientRead() (the F-008 follow-up,
+ *     batch-7): the F-008 sweep handler-gated every /api/v1 GET, so the
+ *     read plane now admits ACTIVE clients whose catalog scope maps onto
+ *     the route's domain through API_CLIENT_READ_DOMAINS — a CODE table,
+ *     deliberately narrower than the human surface (admin.read stays
+ *     RESERVED; unwired domains answer 403
+ *     API_CLIENT_READS_DOMAIN_NOT_WIRED so integrators get a precise
+ *     signal);
+ *   - the proxy passes opaque bearer candidates to BOTH planes and
+ *     rate-limits them like any external caller (no service-JWT
+ *     exemption); the handler layer is the validation authority.
  */
 
 /** The token shape minted by POST /admin/api-clients (32-byte base64url). */
@@ -63,17 +69,80 @@ export const API_CLIENT_SCOPE_PERMISSIONS: Record<string, string[]> = {
     "ztp.provision",
     "firmware.execute",
   ],
-  // Read scopes are catalog-reserved: no route consults them yet (see the
-  // plane-boundaries note). Listed so the UI keeps offering the full set
-  // and the mapping table documents their status explicitly.
-  "devices.read": [],
-  "config.read": [],
-  "alerts.read": [],
-  "incidents.read": [],
-  "changes.read": [],
-  "metrics.read": [],
+  // Read scopes (F-008 follow-up, batch-7): each maps onto the matching
+  // seeded route permission (role-matrix.ts vocabulary) — the read gate
+  // (requireSessionRead → authenticateApiClientRead) consults these
+  // through the wired-domain table below. "admin.read" stays RESERVED
+  // (empty): admin surfaces are ROLE-gated (resolveAdminActor →
+  // requireRole("admin")), not permission-gated — wiring them would need
+  // a deliberate resolveAdminActor change, out of batch-7's scope.
+  "devices.read": ["device.read"],
+  "config.read": ["config.read"],
+  "alerts.read": ["alert.read"],
+  "incidents.read": ["incident.read"],
+  "changes.read": ["change.read"],
+  "metrics.read": ["metrics.read"],
   "admin.read": [],
 };
+
+/**
+ * API-client READ-DOMAIN table (F-008 follow-up, batch-7): pathname
+ * prefix → the route permission a read scope must grant for the client
+ * principal to pass requireSessionRead on that subtree. CODE, not env —
+ * same convention as the scope table above (stable external contract vs
+ * evolving RBAC vocabulary).
+ *
+ * Deliberately NARROWER than the human read surface:
+ *   - credentials, dashboard, maintenance, jobs, flows, topology, sites,
+ *     search, firmware, ha, drift, notifications, predictive, reports,
+ *     meta/*, admin/*, auth/*, worker/* are NOT wired (no matching
+ *     catalog scope, or human-accountability surface) — a VALID client
+ *     token there answers 403 API_CLIENT_READS_DOMAIN_NOT_WIRED, never a
+ *     silent 401 masquerading as "no such domain";
+ *   - stricter LOCAL gates keep their place AFTER the read gate
+ *     (discovery/policies → requirePermission("device.read") without the
+ *     opt-in → 403 API_CLIENT_HUMAN_REQUIRED; flows/retention →
+ *     requirePermission("admin.system") likewise): admitting a client
+ *     past requireSessionRead never bypasses a route's own stricter
+ *     plane decision.
+ */
+export const API_CLIENT_READ_DOMAINS: ReadonlyArray<readonly [string, string]> = [
+  ["/api/v1/devices", "device.read"],
+  ["/api/v1/interfaces", "device.read"],
+  ["/api/v1/cmdb", "device.read"], // cmdb = device inventory domain (devices.write already grants cmdb.write on mutations)
+  ["/api/v1/discovery", "device.read"], // discovery/policies keeps its stricter human-only gate AFTER this
+  ["/api/v1/alerts", "alert.read"],
+  ["/api/v1/events", "alert.read"], // the event stream is the alerts domain; the catalog has no events scope
+  ["/api/v1/incidents", "incident.read"],
+  ["/api/v1/changes", "change.read"],
+  ["/api/v1/approvals", "change.read"], // approval DECISIONS stay human-only on the mutation plane
+  ["/api/v1/metrics", "metrics.read"],
+  ["/api/v1/performance", "metrics.read"],
+  ["/api/v1/backup-policies", "config.read"],
+  ["/api/v1/baselines", "config.read"],
+  ["/api/v1/compliance", "config.read"],
+  ["/api/v1/snapshots", "config.read"],
+];
+
+/**
+ * Pure read-plane domain resolution (exported for pins): the permission a
+ * client must hold for this pathname, or null when the subtree is NOT
+ * wired for API-client reads. Longest-prefix wins so /api/v1/devices and
+ * /api/v1/devices/[id]/metrics resolve identically.
+ */
+export function readPlanePermissionFor(pathname: string): string | null {
+  let best: string | null = null;
+  let bestLen = -1;
+  for (const [prefix, permission] of API_CLIENT_READ_DOMAINS) {
+    if (pathname === prefix || pathname.startsWith(prefix + "/")) {
+      if (prefix.length > bestLen) {
+        best = permission;
+        bestLen = prefix.length;
+      }
+    }
+  }
+  return best;
+}
 
 /** Route permissions granted by a client's scope list for ONE permission. */
 export function apiClientScopesGrant(scopes: string[], permission: string): boolean {
@@ -82,6 +151,53 @@ export function apiClientScopesGrant(scopes: string[], permission: string): bool
     granted.push(...(API_CLIENT_SCOPE_PERMISSIONS[scope] ?? []));
   }
   return roleHasPermission(granted, permission);
+}
+
+/** Internally shared resolution shape (never returned to callers). */
+type ResolvedApiClient =
+  | { outcome: "unknown" }
+  | { outcome: "rejected"; code: string; message: string; status: number }
+  | {
+      outcome: "client";
+      row: { id: string; name: string; tokenPrefix: string; lastUsedAt: Date | null };
+      scopes: string[];
+    };
+
+/**
+ * Shared token-resolution core: shape check → sha256 row lookup → active
+ * check → scope parse. Callers add their plane's grant decision. Extracted
+ * verbatim from authenticateApiClient (P1-012) — behavior byte-equivalent.
+ */
+async function resolveActiveClient(authorization: string | null): Promise<ResolvedApiClient> {
+  const token = bearerTokenOf(authorization);
+  if (!token || !API_CLIENT_TOKEN_PATTERN.test(token)) {
+    return { outcome: "unknown" };
+  }
+
+  const row = await db.apiClient.findUnique({
+    where: { tokenHash: apiClientTokenHash(token) },
+  });
+  if (!row) return { outcome: "unknown" };
+
+  if (!row.isActive) {
+    return {
+      outcome: "rejected",
+      code: "API_CLIENT_INACTIVE",
+      message: "This API client has been deactivated.",
+      status: 401,
+    };
+  }
+
+  let scopes: string[] = [];
+  try {
+    const parsed: unknown = JSON.parse(row.scopesJson);
+    if (Array.isArray(parsed)) {
+      scopes = parsed.filter((s): s is string => typeof s === "string");
+    }
+  } catch {
+    scopes = [];
+  }
+  return { outcome: "client", row, scopes };
 }
 
 /** sha256 of the bearer token — matches POST creation storage exactly. */
@@ -182,42 +298,18 @@ export type ApiClientAuthResult =
 
 /**
  * Authenticate an Authorization header as an API-client token against ONE
- * required route permission. Non-bearer headers resolve "unknown" instantly
- * (the caller's session path handles them).
+ * required route permission (the MUTATION plane). Non-bearer headers
+ * resolve "unknown" instantly (the caller's session path handles them).
  */
 export async function authenticateApiClient(
   authorization: string | null,
   permission: string
 ): Promise<ApiClientAuthResult> {
-  const token = bearerTokenOf(authorization);
-  if (!token || !API_CLIENT_TOKEN_PATTERN.test(token)) {
-    return { outcome: "unknown" };
-  }
+  const resolved = await resolveActiveClient(authorization);
+  if (resolved.outcome === "unknown") return { outcome: "unknown" };
+  if (resolved.outcome === "rejected") return resolved;
 
-  const row = await db.apiClient.findUnique({
-    where: { tokenHash: apiClientTokenHash(token) },
-  });
-  if (!row) return { outcome: "unknown" };
-
-  if (!row.isActive) {
-    return {
-      outcome: "rejected",
-      code: "API_CLIENT_INACTIVE",
-      message: "This API client has been deactivated.",
-      status: 401,
-    };
-  }
-
-  let scopes: string[] = [];
-  try {
-    const parsed: unknown = JSON.parse(row.scopesJson);
-    if (Array.isArray(parsed)) {
-      scopes = parsed.filter((s): s is string => typeof s === "string");
-    }
-  } catch {
-    scopes = [];
-  }
-  if (!apiClientScopesGrant(scopes, permission)) {
+  if (!apiClientScopesGrant(resolved.scopes, permission)) {
     return {
       outcome: "rejected",
       code: "API_CLIENT_SCOPE_INSUFFICIENT",
@@ -226,6 +318,47 @@ export async function authenticateApiClient(
     };
   }
 
-  await stampLastUsed(row.id, row.lastUsedAt);
-  return { outcome: "principal", principal: apiClientPrincipal(row) };
+  await stampLastUsed(resolved.row.id, resolved.row.lastUsedAt);
+  return { outcome: "principal", principal: apiClientPrincipal(resolved.row) };
+}
+
+/**
+ * Authenticate an Authorization header as an API-client token on the READ
+ * plane (F-008 follow-up, batch-7): the domain is derived from the request
+ * pathname through API_CLIENT_READ_DOMAINS, and the client's scopes must
+ * grant the derived route permission. Unwired domains answer a precise
+ * 403 API_CLIENT_READS_DOMAIN_NOT_WIRED (a VALID client token is required
+ * to reach that signal — unknown tokens stay "unknown" so the caller's
+ * session/fail-closed path decides).
+ */
+export async function authenticateApiClientRead(
+  authorization: string | null,
+  pathname: string
+): Promise<ApiClientAuthResult> {
+  const resolved = await resolveActiveClient(authorization);
+  if (resolved.outcome === "unknown") return { outcome: "unknown" };
+  if (resolved.outcome === "rejected") return resolved;
+
+  const permission = readPlanePermissionFor(pathname);
+  if (permission === null) {
+    return {
+      outcome: "rejected",
+      code: "API_CLIENT_READS_DOMAIN_NOT_WIRED",
+      message:
+        "This API client's read scopes do not cover this domain — see API_CLIENT_READ_DOMAINS (docs/security/authorization-matrix.md §2.1).",
+      status: 403,
+    };
+  }
+
+  if (!apiClientScopesGrant(resolved.scopes, permission)) {
+    return {
+      outcome: "rejected",
+      code: "API_CLIENT_SCOPE_INSUFFICIENT",
+      message: `This API client's scopes do not grant the "${permission}" permission.`,
+      status: 403,
+    };
+  }
+
+  await stampLastUsed(resolved.row.id, resolved.row.lastUsedAt);
+  return { outcome: "principal", principal: apiClientPrincipal(resolved.row) };
 }
