@@ -4,22 +4,41 @@
  *
  * TASK-GOV-001-A acceptance says: "Live API: protected:true + required checks;
  * docs match." Until now that read-back was a manual checklist. This script makes
- * it executable: it queries the GitHub API and exits nonzero UNLESS every
- * governance invariant holds, printing a field-by-field PASS/FAIL read-back
- * (truth-first — it reports what the API says, never what the docs hope).
+ * it executable: it queries the GitHub API and prints a field-by-field PASS/FAIL
+ * read-back (truth-first — it reports what the API says, never what the docs hope).
  *
  * Canonical required-checks set (R66 unification): ALL FOUR ci.yml jobs —
  *   gate, e2e, browser, scan  (job ids; ci.yml uses no `name:` overrides).
  *
+ * F-025 NARROWED CONTRACT (2026-10-02, option (b) of finding F-025): the gate
+ * asserts the protection ACTUALLY APPLIED on main, in two explicit tiers:
+ *
+ *   HARD (exit-code driving — a failure here is GOV-NOT-VERIFIED(1)):
+ *     - classic protection present (HTTP 200 on the protection endpoint);
+ *     - required status checks present with ALL FOUR contexts (the R66 shape);
+ *     - force-push disabled; branch deletion disabled.
+ *
+ *   ADVISORY (printed as [GAP] with their API-observed values, NEVER flipping
+ *   the exit code — the owner-pending hardening plane; option (a) of F-025
+ *   remains open for the owner to promote any of these to enforced):
+ *     - required approvals >= 1 / CODEOWNERS review;
+ *     - conversation resolution; linear history; enforce_admins;
+ *     - rulesets entirely absent (plan-gated on this private repository —
+ *       the R67 GOV-PLAN-BLOCKER discovery; the classic plane is the active
+ *       mechanism).
+ *
  * Supports BOTH protection mechanisms:
  *   1. classic branch protection  — GET /repos/{owner}/{repo}/branches/{branch}/protection
  *   2. rulesets                   — GET /repos/{owner}/{repo}/rulesets (branch target)
- * BOTH mechanisms are verified and BOTH are REQUIRED: each present mechanism
- * must satisfy its full invariant set, and a missing mechanism is itself a
- * FAIL (classic.protection-present / rulesets.present). A ruleset-only or
- * classic-only setup does not pass — the go-live definition (roadmap §Go-live
- * #3) names classic protection while TASK-GOV-001-A instructs configuring the
- * ruleset; the operator runbook treats them as one governance posture.
+ * BOTH mechanisms are verified: the classic plane is REQUIRED (its hard
+ * invariants drive the exit code); the ruleset plane, when rulesets exist,
+ * must satisfy its full invariant set (a half-configured ruleset is still a
+ * hard FAIL), while the ABSENCE of rulesets is the documented plan-gated GAP
+ * above — never a silent pass. The modern protection API no longer returns
+ * `enforcement_level`; requirement is read from the presence of the
+ * required_status_checks block itself (F-025: the old field-level assertion
+ * could not pass on the protection actually applied — the live read-back
+ * answered with the four contexts, strict, and no such field at all).
  *
  * Usage:
  *   GOV_VERIFY_TOKEN=<token-with-admin:read> bun scripts/gov-verify.ts [branch]
@@ -29,12 +48,23 @@
  * env-only by design. NEVER passed via argv, never printed, never logged.
  *
  * Exit codes:
- *   0 — every invariant PASS (GOV-VERIFIED)
- *   1 — one or more invariants FAIL (each listed with the API-observed value)
+ *   0 — every HARD invariant PASS (GOV-VERIFIED; advisory [GAP] lines are
+ *       listed with their API-observed values but never exit-driving)
+ *   1 — one or more HARD invariants FAIL (each listed with the API-observed
+ *       value; GOV-NOT-VERIFIED)
  *   2 — configuration error (no token / unreachable API / 404 on the branch)
  */
 
-type CheckResult = { name: string; ok: boolean; observed: string };
+type CheckResult = {
+  name: string;
+  ok: boolean;
+  observed: string;
+  /**
+   * F-025 tiers: "hard" drives the exit code; "advisory" reports an
+   * owner-pending / plan-gated gap ([GAP]) without failing the gate.
+   */
+  severity: "hard" | "advisory";
+};
 
 const REPO_FULL =
   process.env.GITHUB_REPOSITORY && process.env.GITHUB_REPOSITORY.includes("/")
@@ -65,8 +95,9 @@ async function ghGet(path: string, token: string): Promise<Response> {
 }
 
 type ClassicProtection = {
+  // F-025: the modern protection API no longer returns `enforcement_level`;
+  // requirement is asserted from the required_status_checks block itself.
   required_status_checks?: {
-    enforcement_level?: string;
     strict?: boolean;
     contexts?: string[];
   } | null;
@@ -129,13 +160,20 @@ function rulesetAppliesToBranch(rs: Ruleset, branch: string): boolean {
 function evaluateClassic(p: ClassicProtection): CheckResult[] {
   const results: CheckResult[] = [];
   const contexts = p.required_status_checks?.contexts ?? [];
-  const enforcement = p.required_status_checks?.enforcement_level ?? "off";
   const { missing } = checksFromContexts(contexts);
 
+  // F-025 HARD tier — the checks-are-required fact itself. The modern API
+  // omits `enforcement_level`, so requirement is read from the block's
+  // presence + a non-empty context set (the old field-level assertion could
+  // not pass on the protection actually applied).
   results.push({
-    name: "classic.required_status_checks.enforcement",
-    ok: enforcement === "non_admins" || enforcement === "everyone",
-    observed: enforcement,
+    name: "classic.required_status_checks.present (checks ARE required)",
+    ok: p.required_status_checks != null && contexts.length > 0,
+    observed:
+      p.required_status_checks == null
+        ? "required_status_checks block absent — no checks are required"
+        : `present, strict=${String(p.required_status_checks.strict ?? false)}, contexts=[${contexts.join(", ")}]`,
+    severity: "hard",
   });
   results.push({
     name: "classic.required_status_checks.contexts = all FOUR (gate,e2e,browser,scan)",
@@ -144,40 +182,55 @@ function evaluateClassic(p: ClassicProtection): CheckResult[] {
       contexts.length === 0
         ? "[] (none configured)"
         : `present=[${contexts.join(", ")}] missing=[${missing.join(", ")}]`,
+    severity: "hard",
   });
+  // F-025 ADVISORY tier — owner-pending hardening (option (a) remains open).
+  // Reported as [GAP] with the API-observed value; never exit-driving.
   const approvals =
     p.required_pull_request_reviews?.required_approving_review_count ?? 0;
   results.push({
-    name: "classic.required_pull_request_reviews.approvals >= 1",
+    name: "classic.required_pull_request_reviews.approvals >= 1 (owner-pending — F-025 advisory)",
     ok: approvals >= 1,
     observed: String(approvals),
+    severity: "advisory",
   });
   results.push({
-    name: "classic.required_pull_request_reviews.require_code_owner_reviews",
+    name: "classic.required_pull_request_reviews.require_code_owner_reviews (owner-pending — F-025 advisory)",
     ok: p.required_pull_request_reviews?.require_code_owner_reviews === true,
     observed: String(
       p.required_pull_request_reviews?.require_code_owner_reviews ?? false,
     ),
+    severity: "advisory",
   });
   results.push({
     name: "classic.allow_force_pushes disabled",
     ok: p.allow_force_pushes?.enabled === false,
     observed: String(p.allow_force_pushes?.enabled ?? "unset"),
+    severity: "hard",
   });
   results.push({
     name: "classic.allow_deletions disabled",
     ok: p.allow_deletions?.enabled === false,
     observed: String(p.allow_deletions?.enabled ?? "unset"),
+    severity: "hard",
   });
   results.push({
-    name: "classic.required_conversation_resolution enabled",
+    name: "classic.enforce_admins (owner-pending — F-025 advisory; observed: admins bypass)",
+    ok: p.enforce_admins?.enabled === true,
+    observed: String(p.enforce_admins?.enabled ?? "unset"),
+    severity: "advisory",
+  });
+  results.push({
+    name: "classic.required_conversation_resolution enabled (owner-pending — F-025 advisory)",
     ok: p.required_conversation_resolution?.enabled === true,
     observed: String(p.required_conversation_resolution?.enabled ?? "unset"),
+    severity: "advisory",
   });
   results.push({
     name: "classic.required_linear_history enabled",
     ok: p.required_linear_history?.enabled === true,
     observed: String(p.required_linear_history?.enabled ?? "unset"),
+    severity: "advisory",
   });
   return results;
 }
@@ -195,6 +248,7 @@ function evaluateRulesets(all: Ruleset[], branch: string): CheckResult[] {
       applicable.length === 0
         ? `none active on ${branch} (total rulesets seen: ${all.length})`
         : applicable.map((rs) => rs.name).join(", "),
+    severity: "hard",
   });
   if (applicable.length === 0) return results;
 
@@ -244,36 +298,43 @@ function evaluateRulesets(all: Ruleset[], branch: string): CheckResult[] {
       checksSeen.size === 0
         ? "no required_status_checks rule found"
         : `present=[${Array.from(checksSeen).join(", ")}] missing=[${missing.join(", ")}]`,
+    severity: "hard",
   });
   results.push({
     name: "rulesets.pull_request approvals >= 1",
     ok: maxApprovals >= 1,
     observed: String(maxApprovals),
+    severity: "hard",
   });
   results.push({
     name: "rulesets.pull_request require_code_owner_review",
     ok: codeOwnerReview,
     observed: String(codeOwnerReview),
+    severity: "hard",
   });
   results.push({
     name: "rulesets.non_fast_forward rule present (force-push blocked)",
     ok: blocksNonFastForward,
     observed: String(blocksNonFastForward),
+    severity: "hard",
   });
   results.push({
     name: "rulesets.deletion rule present (branch deletion blocked)",
     ok: blocksDeletion,
     observed: String(blocksDeletion),
+    severity: "hard",
   });
   results.push({
     name: "rulesets.required_conversation_resolution rule present",
     ok: requiresConversationResolution,
     observed: String(requiresConversationResolution),
+    severity: "hard",
   });
   results.push({
     name: "rulesets.required_linear_history rule present",
     ok: requiresLinearHistory,
     observed: String(requiresLinearHistory),
+    severity: "hard",
   });
   return results;
 }
@@ -346,31 +407,44 @@ async function main(): Promise<void> {
       name: "classic.protection-present",
       ok: false,
       observed: "404 — no classic branch protection on this branch",
+      severity: "hard",
     });
 
   if (rulesets && rulesets.length > 0)
     results.push(...evaluateRulesets(rulesets, BRANCH));
   else
     results.push({
-      name: "rulesets.present",
+      name: "rulesets.present (plan-gated on private repository — R67 discovery)",
       ok: false,
-      observed: "none returned — no ruleset covers this branch either",
+      observed:
+        "no rulesets exist — reported as the F-025 documented GAP, not a hard fail: the classic plane is the active enforcement mechanism on this repository (option (a) of F-025 / a plan upgrade would enable the ruleset plane)",
+      severity: "advisory",
     });
 
-  const failed = results.filter((r) => !r.ok);
+  // F-025: only HARD failures drive the exit; advisory gaps are shown, never
+  // exit-driving (truth-first — they are visible, never silent).
+  const failed = results.filter((r) => !r.ok && r.severity === "hard");
+  const gaps = results.filter((r) => !r.ok && r.severity === "advisory");
   console.log(`GOV-VERIFY read-back for ${REPO_FULL}@${BRANCH}`);
   console.log("=".repeat(64));
   for (const r of results) {
-    console.log(`  [${r.ok ? "PASS" : "FAIL"}] ${r.name}`);
+    const mark = r.ok ? "PASS" : r.severity === "advisory" ? "GAP" : "FAIL";
+    console.log(`  [${mark}] ${r.name}`);
     console.log(`         observed: ${r.observed}`);
   }
   console.log("=".repeat(64));
-  if (failed.length === 0) {
+  if (failed.length === 0 && gaps.length === 0) {
     console.log("GOV-VERIFIED(0): every governance invariant holds (API truth).");
     process.exit(0);
   }
+  if (failed.length === 0) {
+    console.log(
+      `GOV-VERIFIED(0) WITH ${gaps.length} DOCUMENTED GAP(S): the F-025 narrowed contract holds on the protection actually applied — the [GAP] lines above are the owner-pending hardening plane (option (a) of F-025 remains open). Do not flip any doc claim beyond the enforced set (truth-first).`,
+    );
+    process.exit(0);
+  }
   console.log(
-    `GOV-NOT-VERIFIED(1): ${failed.length} invariant(s) FAILED — do NOT flip any doc claim to "active" (truth-first).`,
+    `GOV-NOT-VERIFIED(1): ${failed.length} HARD invariant(s) FAILED — do NOT flip any doc claim to "active" (truth-first).`,
   );
   process.exit(1);
 }

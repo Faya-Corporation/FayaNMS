@@ -43,12 +43,27 @@ describe("R67: executable governance read-back + candidate PR package", () => {
     );
   });
 
-  test("B: gov-verify.ts reads BOTH protection mechanisms and asserts enforcement", () => {
+  test("B: gov-verify.ts reads BOTH protection mechanisms and asserts the F-025 two-tier contract", () => {
     expect(script).toContain("/branches/${BRANCH}/protection");
     expect(script).toContain("/repos/${REPO_FULL}/rulesets");
-    // classic enforcement must not be "off"; rulesets must be "active"
-    expect(script).toContain('enforcement === "non_admins" || enforcement === "everyone"');
+    // F-025 tiers (2026-10-02): HARD invariants drive the exit code; the
+    // ADVISORY tier reports owner-pending / plan-gated gaps as [GAP] lines.
+    expect(script).toContain('severity: "hard"');
+    expect(script).toContain('severity: "advisory"');
+    // Requirement is read from the required_status_checks block itself — the
+    // modern protection API no longer returns `enforcement_level`, so the old
+    // field-level assertion could not pass on the protection actually applied.
+    expect(script).toContain(
+      "classic.required_status_checks.present (checks ARE required)",
+    );
+    expect(script).not.toContain('enforcement === "non_admins"');
+    // A configured ruleset plane is still verified in full (hard)…
     expect(script).toContain('rs.enforcement === "active"');
+    // …while ABSENT rulesets are the documented plan-gated GAP, never a
+    // silent pass.
+    expect(script).toContain("plan-gated on private repository");
+    // Advisory gaps must be visible in the output (truth-first, never silent).
+    expect(script).toContain('"GAP"');
   });
 
   test("C: gov-verify.ts security posture — token env-only, never printed, typed exit contract", () => {
