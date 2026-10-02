@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { fail, newCorrelationId } from "../../_lib/api";
 import { computeSlaState, formatSlaCountdown } from "@/lib/incidents/lifecycle";
 import { FAYANMS_BRAND } from "@/lib/brand/identity";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,16 @@ function duration(from: Date, to: Date): string {
 }
 
 export async function GET(request: Request) {
+  // F-008 phase 4a (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const url = new URL(request.url);
   const id = url.searchParams.get("id")?.trim() ?? "";
   if (!id || id.length > 64) {

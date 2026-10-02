@@ -169,7 +169,8 @@ only shrink as the sweep lands):
 | 1 | dashboard (`/api/v1/dashboard`) | **Gated** |
 | 2 | events / alerts (`events`, `alerts`, `alerts/rules` GETs) | **Gated** |
 | 3 | devices / interfaces (`devices`, `devices/[id]/*`, `interfaces`) | **Gated** |
-| 4 | the rest (admin reads, incidents, changes, cmdb, performance, …) | pending |
+| 4a | incidents / changes / cmdb (11 GETs) **Gated** + admin reads RECOGNIZED as already admin-gated (`resolveAdminActor` → `requireRole("admin")` — a wrapper marker the matrix had not recognized, no code change; −19 → 28) | **Gated** |
+| 4b | the long tail (backup-policies, baselines, compliance/backup, discovery, drift, firmware, flows, ha, jobs, maintenance, metrics/retention, notifications, performance, predictive, search, sites, snapshots, topology, ztp/claims, meta/reference) | pending |
 
 The proxy's API-client READ refusal (`API_CLIENT_READS_NOT_WIRED_BODY`,
 src/proxy.ts) stays in force until every read handler is gated — only

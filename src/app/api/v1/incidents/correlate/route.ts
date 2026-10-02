@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import { z } from "zod";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,16 @@ const querySchema = z.object({
 });
 
 export async function GET(request: Request) {
+  // F-008 phase 4a (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     changeId: url.searchParams.get("changeId") ?? undefined,

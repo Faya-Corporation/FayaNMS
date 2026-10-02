@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { ok } from "../../_lib/api";
 import { INCIDENT_OPEN_STATUSES } from "@/lib/incidents/lifecycle";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,17 @@ export const dynamic = "force-dynamic";
 const MTTA_MTTR_DAYS = 30;
 const TREND_DAYS = 14;
 
-export async function GET() {
+export async function GET(request: Request) {
+  // F-008 phase 4a (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const now = new Date();
   const windowStart = new Date(now.getTime() - MTTA_MTTR_DAYS * 86_400_000);
   const trendStart = new Date(now.getTime() - (TREND_DAYS - 1) * 86_400_000);

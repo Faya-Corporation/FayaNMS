@@ -8,6 +8,7 @@ import {
 } from "@/lib/cmdb/impact";
 import { resolveCmdbItem } from "@/lib/cmdb/server";
 import { z } from "zod";
+import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,16 @@ const responseSchema = z.object({
 export type CmdbImpactResponse = z.infer<typeof responseSchema>;
 
 export async function GET(request: Request) {
+  // F-008 phase 4a (read-plane defense-in-depth): the GET handler verifies
+  // the human session itself (requireSessionRead) — the proxy matcher stays
+  // the coarse gate, not the only check.
+  try {
+    await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
   const url = new URL(request.url);
 
   const itemId = url.searchParams.get("itemId");
