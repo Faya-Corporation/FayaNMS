@@ -24,7 +24,7 @@ The lab CIDR, VPN peer, firewall rules, exporter addresses, hardware inventory, 
 
 ## Optional repository-side collector relay
 
-The worker contains an opt-in UDP receiver and authenticated relay. It is disabled unless FAYANMS_PROTOCOL_COLLECTOR_ENABLED=true, binds to 127.0.0.1 by default, uses non-privileged ports, bounds packets and relay concurrency, and sends normalized events to POST /api/v1/ingest/protocol with the worker service identity's telemetry scope.
+The worker contains an opt-in UDP receiver and authenticated relay. It is disabled unless FAYANMS_PROTOCOL_COLLECTOR_ENABLED=true, binds to 127.0.0.1 by default, uses non-privileged ports, bounds packets and relay concurrency, and sends normalized events to POST /api/v1/ingest/protocol with the worker service identity's telemetry scope. Relay retries re-send the same normalized event and carry no client idempotency key; NetFlow v5 batches are deduped server-side on the derived (collector, exporter peer, flowSequence, export timestamp) key within the queue-retention window, while other protocols keep at-least-once semantics (see the NetFlow v5 runbook, "Idempotency (F-048)").
 
 Set an explicit lab bind address and ports only on the operator host:
 
