@@ -3,7 +3,7 @@ import type { User } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { fail } from "@/app/api/v1/_lib/api";
-import { authenticateApiClient } from "@/lib/auth/api-client-auth";
+import { authenticateApiClient, authenticateApiClientRead } from "@/lib/auth/api-client-auth";
 import {
   APPROVAL_LEVEL_PERMISSIONS,
   APPROVE_GATE_PERMISSION,
@@ -146,9 +146,17 @@ export async function requireRole(
  * Fail-closed by construction:
  *   - no/invalid session                    → 401 UNAUTHENTICATED
  *   - session for a mid-flight deactivated  → 401 ACCOUNT_DISABLED
- *   - machine/API-client bearer credentials → 401 (they are NOT session
- *     tokens — getToken cannot verify them under NEXTAUTH_SECRET; the
- *     proxy already refuses both planes before any read handler)
+ *   - API-client bearer, wired domain +     → 200-series (the F-008
+ *     scope grants the route permission      follow-up, batch-7: the read
+ *                                           plane accepts ACTIVE ApiClient
+ *                                           tokens via
+ *                                           authenticateApiClientRead over
+ *                                           API_CLIENT_READ_DOMAINS —
+ *                                           precise 401/403 codes
+ *                                           otherwise)
+ *   - machine/service-JWT bearer            → 401 (NOT session tokens —
+ *                                           getToken cannot verify them
+ *                                           under NEXTAUTH_SECRET)
  *
  * Read handlers call this once at the top; the per-request WeakMap (keyed
  * by the Request object itself) dedupes any repeated calls within the same
@@ -163,9 +171,56 @@ const readSessionCache = new WeakMap<object, Promise<User>>();
 export function requireSessionRead(req: Request): Promise<User> {
   const cached = readSessionCache.get(req);
   if (cached) return cached;
-  const pending = requireUser(req);
+  const pending = requireReadPrincipal(req);
   readSessionCache.set(req, pending);
   return pending;
+}
+
+/**
+ * The requireSessionRead resolution body: a human session wins if present
+ * (getToken + active-user DB re-verification); otherwise an API-client
+ * bearer may authenticate through the wired read-domain table (batch-7);
+ * everything else fails closed with the UNAUTHENTICATED envelope.
+ */
+async function requireReadPrincipal(req: Request): Promise<User> {
+  const claims = await getSessionUser(req as never);
+  if (claims) {
+    const user = await db.user.findUnique({ where: { id: claims.id } });
+    if (!user || !user.isActive) {
+      throw new AuthError(
+        "ACCOUNT_DISABLED",
+        "This account is no longer active.",
+        401
+      );
+    }
+    return user;
+  }
+
+  // F-008 follow-up (batch-7): the API-client read plane. Runs ONLY when
+  // no session resolved — a human request is never attributed to a client
+  // principal. Unknown/garbage tokens resolve "unknown" and fall through
+  // to the same fail-closed envelope as before batch-7.
+  let pathname = "";
+  try {
+    pathname = new URL(req.url).pathname;
+  } catch {
+    // framework-provided req.url is always absolute — defensive only
+  }
+  const result = await authenticateApiClientRead(
+    req.headers.get("authorization"),
+    pathname
+  );
+  if (result.outcome === "principal") {
+    return result.principal;
+  }
+  if (result.outcome === "rejected") {
+    throw new AuthError(result.code, result.message, result.status);
+  }
+  throw new AuthError(
+    "UNAUTHENTICATED",
+    "Sign in required — no valid session was provided.",
+    401
+  );
 }
 
 /**

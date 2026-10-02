@@ -4,10 +4,12 @@ import { describe, expect, test } from "bun:test";
 import {
   API_CLIENT_SCOPE_PERMISSIONS,
   API_CLIENT_TOKEN_PATTERN,
+  API_CLIENT_READ_DOMAINS,
   apiClientPrincipal,
   apiClientScopesGrant,
   apiClientTokenHash,
   auditAttribution,
+  readPlanePermissionFor,
   shouldStampLastUsed,
 } from "../../src/lib/auth/api-client-auth";
 
@@ -44,18 +46,19 @@ describe("API_CLIENT_SCOPE_PERMISSIONS — mapping integrity", () => {
     }
   });
 
-  test("read scopes are explicitly catalog-reserved (empty mappings)", () => {
-    for (const scope of [
-      "devices.read",
-      "config.read",
-      "alerts.read",
-      "incidents.read",
-      "changes.read",
-      "metrics.read",
-      "admin.read",
-    ]) {
-      expect(API_CLIENT_SCOPE_PERMISSIONS[scope], scope).toEqual([]);
-    }
+  test("read scopes map onto their seeded route permissions; admin.read stays RESERVED", () => {
+    // F-008 follow-up (batch-7): the read plane consults these mappings
+    // through requireSessionRead → authenticateApiClientRead over
+    // API_CLIENT_READ_DOMAINS. admin.read stays empty: admin surfaces are
+    // ROLE-gated (resolveAdminActor → requireRole("admin")), not
+    // permission-gated — wiring them is a deliberate separate decision.
+    expect(API_CLIENT_SCOPE_PERMISSIONS["devices.read"]).toEqual(["device.read"]);
+    expect(API_CLIENT_SCOPE_PERMISSIONS["config.read"]).toEqual(["config.read"]);
+    expect(API_CLIENT_SCOPE_PERMISSIONS["alerts.read"]).toEqual(["alert.read"]);
+    expect(API_CLIENT_SCOPE_PERMISSIONS["incidents.read"]).toEqual(["incident.read"]);
+    expect(API_CLIENT_SCOPE_PERMISSIONS["changes.read"]).toEqual(["change.read"]);
+    expect(API_CLIENT_SCOPE_PERMISSIONS["metrics.read"]).toEqual(["metrics.read"]);
+    expect(API_CLIENT_SCOPE_PERMISSIONS["admin.read"]).toEqual([]);
   });
 
   test("the mutation permission vocabulary is covered by write scopes (drift pin)", () => {
@@ -93,6 +96,59 @@ describe("API_CLIENT_SCOPE_PERMISSIONS — mapping integrity", () => {
   });
 });
 
+/* ───────────── read-domain table (batch-7) ───────────── */
+
+describe("readPlanePermissionFor — API_CLIENT_READ_DOMAINS resolution", () => {
+  test("wired domains resolve to their route permission (exact + nested)", () => {
+    expect(readPlanePermissionFor("/api/v1/devices")).toBe("device.read");
+    expect(readPlanePermissionFor("/api/v1/devices/dev-1/metrics")).toBe("device.read");
+    expect(readPlanePermissionFor("/api/v1/interfaces")).toBe("device.read");
+    expect(readPlanePermissionFor("/api/v1/cmdb/items")).toBe("device.read");
+    expect(readPlanePermissionFor("/api/v1/alerts")).toBe("alert.read");
+    expect(readPlanePermissionFor("/api/v1/events")).toBe("alert.read");
+    expect(readPlanePermissionFor("/api/v1/incidents/stats")).toBe("incident.read");
+    expect(readPlanePermissionFor("/api/v1/changes/chg-1")).toBe("change.read");
+    expect(readPlanePermissionFor("/api/v1/approvals")).toBe("change.read");
+    expect(readPlanePermissionFor("/api/v1/metrics/retention")).toBe("metrics.read");
+    expect(readPlanePermissionFor("/api/v1/performance/overview")).toBe("metrics.read");
+    expect(readPlanePermissionFor("/api/v1/backup-policies/bp-1")).toBe("config.read");
+    expect(readPlanePermissionFor("/api/v1/compliance/backup")).toBe("config.read");
+    expect(readPlanePermissionFor("/api/v1/snapshots")).toBe("config.read");
+  });
+
+  test("unwired domains resolve null (precise 403, never silent data)", () => {
+    expect(readPlanePermissionFor("/api/v1/credentials")).toBe(null);
+    expect(readPlanePermissionFor("/api/v1/dashboard")).toBe(null);
+    expect(readPlanePermissionFor("/api/v1/sites")).toBe(null);
+    expect(readPlanePermissionFor("/api/v1/topology")).toBe(null);
+    expect(readPlanePermissionFor("/api/v1/search")).toBe(null);
+    expect(readPlanePermissionFor("/api/v1/flows")).toBe(null);
+    expect(readPlanePermissionFor("/api/v1/admin/api-clients")).toBe(null);
+    expect(readPlanePermissionFor("/api/v1/meta/reference")).toBe(null);
+    expect(readPlanePermissionFor("/api/v1/meta")).toBe(null);
+    expect(readPlanePermissionFor("/api/v1/worker/claim")).toBe(null);
+    expect(readPlanePermissionFor("")).toBe(null);
+  });
+
+  test("prefix matching is boundary-safe (no substring collisions)", () => {
+    // "/api/v1/devicesx" must NOT match the /api/v1/devices prefix.
+    expect(readPlanePermissionFor("/api/v1/devicesx")).toBe(null);
+    // "/api/v1/alertsfoo" must NOT match /api/v1/alerts.
+    expect(readPlanePermissionFor("/api/v1/alertsfoo")).toBe(null);
+  });
+
+  test("every wired permission is granted by at least one read scope (drift pin)", () => {
+    const covered = new Set(
+      Object.entries(API_CLIENT_SCOPE_PERMISSIONS)
+        .filter(([scope]) => scope.endsWith(".read"))
+        .flatMap(([, permissions]) => permissions)
+    );
+    for (const [, permission] of API_CLIENT_READ_DOMAINS) {
+      expect(covered.has(permission), permission).toBe(true);
+    }
+  });
+});
+
 /* ───────────── grant decisions ───────────── */
 
 describe("apiClientScopesGrant — decision logic", () => {
@@ -117,7 +173,14 @@ describe("apiClientScopesGrant — decision logic", () => {
     expect(apiClientScopesGrant([], "device.write")).toBe(false);
   });
 
-  test("a read scope never grants a write permission (reserved)", () => {
+  test("a read scope grants exactly its read family (batch-7)", () => {
+    expect(apiClientScopesGrant(["devices.read"], "device.read")).toBe(true);
+    expect(apiClientScopesGrant(["devices.read"], "device.write")).toBe(false);
+    expect(apiClientScopesGrant(["metrics.read"], "metrics.read")).toBe(true);
+    expect(apiClientScopesGrant(["metrics.read"], "device.read")).toBe(false);
+  });
+
+  test("a read scope never grants a write permission", () => {
     expect(apiClientScopesGrant(["alerts.read"], "alert.ack")).toBe(false);
     expect(apiClientScopesGrant(["admin.read"], "admin.system")).toBe(false);
   });

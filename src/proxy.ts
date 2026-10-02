@@ -111,14 +111,16 @@ const CSRF_REJECTED_BODY = {
   },
 };
 
-const API_CLIENT_READS_NOT_WIRED_BODY = {
-  success: false as const,
-  error: {
-    code: "UNAUTHENTICATED",
-    message:
-      "API-client tokens are accepted on the mutation plane only — read routes do not carry handler-level token gates yet (P1-012 plane boundaries).",
-  },
-};
+/**
+ * P1-012 history: this body used to refuse opaque bearers on the READ
+ * plane ("reads do not carry handler-level token gates yet"). The F-008
+ * sweep closed that gap — every /api/v1 GET except the public bootstrap
+ * /api/v1/meta verifies its principal at the handler (requireSessionRead,
+ * which since batch-7 also authenticates API clients over the wired
+ * read-domain table) — so the refusal is DELETED and both planes admit
+ * opaque candidates to their handler-level gates. Fail-closed lives in
+ * the handlers, where the real credential validation always was.
+ */
 
 /**
  * R61 P1 — the MACHINE SURFACE: the pathnames a service principal is
@@ -200,19 +202,21 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 3b. API-client plane (P1-012): an opaque bearer candidate is admitted
-  // to the MUTATION plane only — the handler (requirePermission →
-  // authenticateApiClient) performs the real sha256 + active + scope
-  // validation; the proxy merely refuses to let the session plane eat the
-  // request. A candidate on the read plane is refused outright: reads are
-  // proxy-session-gated and would otherwise trust an unvalidated token.
+  // 3b. API-client plane (P1-012 + the F-008 follow-up, batch-7): an
+  // opaque bearer candidate is admitted to BOTH planes. The handler
+  // performs the real sha256 + active + scope validation:
+  //   mutations → requirePermission → authenticateApiClient (opt-in per
+  //   route for human accountability);
+  //   reads     → requireSessionRead → authenticateApiClientRead over
+  //   API_CLIENT_READ_DOMAINS (the wired-domain table).
+  // The proxy's old read-plane refusal body is deleted (see the history
+  // note above): with the F-008 sweep complete, NO read surface trusts an
+  // unvalidated token — the session gate would otherwise 401 the opaque
+  // header before the handler's own gate could see it (next-auth getToken
+  // cannot verify an opaque token), which is why both planes branch here.
   const bearerCandidate = bearerTokenOf(req.headers.get("authorization"));
   if (bearerCandidate && OPAQUE_BEARER_PATTERN.test(bearerCandidate)) {
-    const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
-    if (isMutation) {
-      return NextResponse.next();
-    }
-    return NextResponse.json(API_CLIENT_READS_NOT_WIRED_BODY, { status: 401 });
+    return NextResponse.next();
   }
 
   // GHSA-xmf8-cvqr-rfgj (next-auth v4): getToken() throws an uncaught
