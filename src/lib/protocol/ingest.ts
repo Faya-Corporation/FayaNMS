@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { NetFlowV5Batch } from "./netflow-v5";
 
 export const PROTOCOLS = ["syslog", "snmp-trap", "netflow", "ipfix", "sflow"] as const;
@@ -127,6 +128,86 @@ export function associateProtocolDevice(
     return { device: byHostname, method: "hostname", attributionUnverified: true };
   }
   return { device: null, method: "unmatched" };
+}
+
+/* ── F-048 (batch-18): ingest idempotency ─────────────────────────────────
+ * Collector delivery is at-least-once: a relay that retries after a lost
+ * 202 must not duplicate queue rows (and through them FlowRecords, which
+ * would double-count bytes/talkers in flow analytics). The ingest accepts
+ * an optional client `idempotencyKey` and, for NetFlow v5 without one,
+ * derives a key from the datagram header — the same datagram (a retry or a
+ * duplicate UDP transmission) always decodes to the same header fields, so
+ * the derived key is stable across collector retries while every NEW batch
+ * differs (exporters increment flowSequence per datagram).
+ *
+ * The dedupe key maps DETERMINISTICALLY onto the queue row's correlationId
+ * (normally a random `NET-XXXXXX` minted per POST). The ingest transaction
+ * therefore preflights a live prior attempt (QUEUED/IN_FLIGHT/DELIVERED)
+ * by (collectorId, correlationId) — no schema change — and a
+ * transaction-scoped Postgres advisory lock makes that check-then-insert
+ * race-safe: a concurrent double-submit blocks on the lock until the first
+ * transaction commits, then observes the committed row instead of inserting
+ * a second one. The dedupe WINDOW is the lifetime of the original queue
+ * row: DELIVERED rows are pruned by `protocolQueue.retention` (default 7
+ * delivered days), and a DEAD prior attempt releases the key so the retry
+ * is re-queued (at-least-once for failures). Outside the window — or with
+ * no key and no derivable NetFlow header — behavior is exactly as before.
+ */
+export const IDEMPOTENCY_KEY_MAX_LENGTH = 128;
+export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
+
+export interface ProtocolIdempotencyInput {
+  collectorId: string;
+  idempotencyKey?: string;
+  protocol: string;
+  protocolVersion?: string | null;
+  sourceIp: string;
+  sourcePort: number;
+  flowBatch?: NetFlowV5Batch;
+}
+
+export type ProtocolIdempotency =
+  | { mode: "client"; dedupeKey: string; correlationId: string }
+  | { mode: "derived"; dedupeKey: string; correlationId: string }
+  | null;
+
+function idempotentCorrelationId(dedupeKey: string): string {
+  return "NET-" + createHash("sha256").update(dedupeKey).digest("hex").slice(0, 32);
+}
+
+/**
+ * Resolve the ingest idempotency identity: an explicit client key wins;
+ * otherwise a NetFlow v5 batch derives one from collector + exporter peer
+ * + flowSequence + export timestamps (the audit finding's named tuple).
+ * JSON encoding keeps the tuple unambiguous (collectorIds may contain ":").
+ * Returns null when nothing is derivable — the event keeps today's
+ * at-least-once behavior (a fresh random correlation id per POST).
+ */
+export function resolveProtocolIdempotency(
+  input: ProtocolIdempotencyInput,
+): ProtocolIdempotency {
+  if (input.idempotencyKey) {
+    const dedupeKey = JSON.stringify(["client", input.collectorId, input.idempotencyKey]);
+    return { mode: "client", dedupeKey, correlationId: idempotentCorrelationId(dedupeKey) };
+  }
+  if (
+    input.protocol === "netflow" &&
+    input.protocolVersion === "NETFLOW_V5" &&
+    input.flowBatch
+  ) {
+    const header = input.flowBatch.header;
+    const dedupeKey = JSON.stringify([
+      "netflow-v5",
+      input.collectorId,
+      input.sourceIp,
+      input.sourcePort,
+      header.flowSequence,
+      header.unixSeconds,
+      header.unixNanoseconds,
+    ]);
+    return { mode: "derived", dedupeKey, correlationId: idempotentCorrelationId(dedupeKey) };
+  }
+  return null;
 }
 
 export const PROTOCOL_NORMALIZATION_LIMITS = {
