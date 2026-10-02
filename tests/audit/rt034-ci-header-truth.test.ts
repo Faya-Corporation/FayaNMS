@@ -36,6 +36,14 @@ import { describe, expect, test } from "bun:test";
  *     so the retry only absorbs environment wedges; no assertion,
  *     violation verdict, or journey step was weakened (see the a7a4512
  *     commit message for the full bounded-harness rationale).
+ *   - 9f761be2… → 33ca4961… (2026-10-02, F-026 batch 9): the "Build
+ *     runtime images (app + worker)" step dropped the
+ *     `--build-arg NEXT_PUBLIC_SITE_URL=…` line — the origin is now the
+ *     RUNTIME `SITE_URL` resolved per request by
+ *     src/lib/brand/site-url.ts (root layout generateMetadata under
+ *     force-dynamic), so the client bundles ship origin-free. The
+ *     semantic delta is the build-arg removal ONLY; no job, step, gate,
+ *     or scan assertion was added/removed/weakened.
  *
  * Scope note: docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md still carries a
  * 2026-09-15-era "NOT active" line that p3-hardening pins; refreshing that
@@ -51,10 +59,12 @@ const CI_LINES = CI.split("\n");
  * Non-comment YAML of ci.yml, hashed before this RT touched the header.
  * Moved deliberately to 9f761be2… on 2026-10-01 (F-068): the browser job
  * gained one automatic full-suite retry — see the move log in the
- * docstring above. Comment-only edits must never move this hash.
+ * docstring above. Moved again to 33ca4961… on 2026-10-02 (F-026, batch
+ * 9): the image-build step dropped the NEXT_PUBLIC_SITE_URL build-arg
+ * (runtime-only origin). Comment-only edits must never move this hash.
  */
 const PRE_RT034_STIPPED_YAML_SHA256 =
-  "9f761be25e932d851ab42799d772ac7653acc00c9e6db8b3623215bd85185440";
+  "33ca4961fbfd58a868574bd1d2e7219e91d7e1153a3e8c08c6fa058856dfc22d";
 
 const HEADER_BLOCK = CI_LINES.slice(0, 30).join("\n");
 

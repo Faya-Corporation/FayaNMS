@@ -105,7 +105,10 @@ describe("RT-017: scan-before-publish ordering (container.yml publish job)", () 
     const appPush = pushSteps.find((s) => s.text.includes("steps.meta.outputs.tags"));
     const workerPush = pushSteps.find((s) => s.text.includes("steps.worker-meta.outputs.tags"));
     const migratorPush = pushSteps.find((s) => s.text.includes("steps.migrator-meta.outputs.tags"));
-    expect(appPush?.text).toContain("NEXT_PUBLIC_SITE_URL=https://fayanms.invalid");
+    // F-026 (batch 9): the NEXT_PUBLIC_SITE_URL build-arg is retired
+    // deliberately — the origin is a RUNTIME env (SITE_URL, per-request
+    // resolution); its ABSENCE from the build args is the correct state.
+    expect(appPush?.text).not.toContain("NEXT_PUBLIC_SITE_URL");
     for (const push of [appPush, workerPush, migratorPush]) {
       expect(push?.text).toContain("FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}");
     }

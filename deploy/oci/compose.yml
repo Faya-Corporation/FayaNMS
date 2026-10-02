@@ -69,7 +69,9 @@ services:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in /opt/fayanms/.env}
       NEXTAUTH_URL: ${NEXTAUTH_URL:?NEXTAUTH_URL must be set in /opt/fayanms/.env}
-      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:?NEXT_PUBLIC_SITE_URL must be set in /opt/fayanms/.env}
+      # F-026: RUNTIME origin — takes effect WITHOUT a rebuild (the site URL is
+      # resolved per request by src/lib/brand/site-url.ts from the server env).
+      SITE_URL: ${SITE_URL:?SITE_URL must be set in /opt/fayanms/.env}
       WORKER_BASE_URL: http://worker:3030
     depends_on:
       postgres:

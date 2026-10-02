@@ -51,7 +51,7 @@ jobs:
 
       - name: Build ARM64 application image
         run: |
-          docker buildx build             --platform linux/arm64             --load             --tag fayanms:arm64-${CANDIDATE_SHA}             --build-arg NEXT_PUBLIC_SITE_URL=https://fayanms.invalid             --build-arg FAYANMS_SOURCE_SHA=${CANDIDATE_SHA}             --label org.opencontainers.image.revision=${CANDIDATE_SHA}             --label org.opencontainers.image.source=https://github.com/Faya-Corporation/FayaNMS             --provenance=false             .
+          docker buildx build             --platform linux/arm64             --load             --tag fayanms:arm64-${CANDIDATE_SHA}             --build-arg FAYANMS_SOURCE_SHA=${CANDIDATE_SHA}             --label org.opencontainers.image.revision=${CANDIDATE_SHA}             --label org.opencontainers.image.source=https://github.com/Faya-Corporation/FayaNMS             --provenance=false             .
 
       - name: Build ARM64 worker image
         run: |
@@ -187,7 +187,6 @@ jobs:
           load: true
           tags: fayanms:gate
           build-args: |
-            NEXT_PUBLIC_SITE_URL=https://fayanms.invalid
             FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
 
       - name: Build gate worker image (local, never pushed)
@@ -261,7 +260,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            NEXT_PUBLIC_SITE_URL=https://fayanms.invalid
             FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
           sbom: true
           provenance: mode=max

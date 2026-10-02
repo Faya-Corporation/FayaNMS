@@ -139,7 +139,8 @@ describe("SEC-ENV-001: host-side interpolation template stays host-side", () => 
   const keys = activeEnvKeys(content);
 
   test("carries the host-side values compose interpolates", () => {
-    expect(keys).toContain("NEXT_PUBLIC_SITE_URL");
+    // F-026: SITE_URL is the runtime origin key (host-side .env feeds it).
+    expect(keys).toContain("SITE_URL");
     expect(keys).toContain("POSTGRES_PASSWORD");
   });
 
@@ -232,7 +233,7 @@ describe("SEC-ENV-001: worker template is worker-zone only", () => {
       "FAYANMS_LOGIN_MAX_ATTEMPTS_PER_SOURCE",
       "FAYANMS_LOGIN_MAX_ATTEMPTS_PER_ACCOUNT",
       "FAYANMS_DEMO_MODE",
-      "NEXT_PUBLIC_SITE_URL",
+      "SITE_URL",
       "WORKER_BASE_URL",
       "FAYANMS_DB_QUERY_LOG",
     ]) {
@@ -338,14 +339,14 @@ describe("SEC-ENV-001: worker boot warns on out-of-zone secrets (never echoes va
       FAYANMS_TRUST_PROXY_HOPS: "1",
       FAYANMS_LOGIN_WINDOW_SECONDS: "300",
       FAYANMS_DEMO_MODE: "true",
-      NEXT_PUBLIC_SITE_URL: "http://fayanms.example.corp",
+      SITE_URL: "http://fayanms.example.corp",
       WORKER_BASE_URL: "http://worker:3030",
     });
     expect(warnings.map((w) => w.variable).sort()).toEqual([
       "FAYANMS_DEMO_MODE",
       "FAYANMS_LOGIN_WINDOW_SECONDS",
       "FAYANMS_TRUST_PROXY_HOPS",
-      "NEXT_PUBLIC_SITE_URL",
+      "SITE_URL",
       "WORKER_BASE_URL",
     ]);
   });

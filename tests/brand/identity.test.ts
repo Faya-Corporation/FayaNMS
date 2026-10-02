@@ -8,8 +8,8 @@ import {
   BRAND_TITLE,
   BRAND_TITLE_TEMPLATE,
   FAYANMS_BRAND,
-  siteUrl,
 } from "../../src/lib/brand/identity";
+import { siteUrl } from "../../src/lib/brand/site-url";
 
 /**
  * Brand identity unit tests (task R3-a).
@@ -19,7 +19,9 @@ import {
  *    BRAND_THEME_COLOR / BRAND_SOCIAL_ALT) must exist, be derived from the
  *    single FAYANMS_BRAND source, and never drift from the governed values;
  *  - B3-029 — siteUrl() must fail fast in production (missing/localhost
- *    origin rejected) while keeping the localhost dev fallback;
+ *    origin rejected) while keeping the localhost dev fallback; F-026 moved
+ *    it to src/lib/brand/site-url.ts reading the RUNTIME `SITE_URL` (the
+ *    NEXT_PUBLIC_ prefix inline-mechanism was the client-bundle freeze).
  *  - B2-027 — the brand governance now has a dedicated automated test suite
  *    (this file) instead of relying on validation scripts alone.
  *
@@ -99,15 +101,15 @@ describe("siteUrl()", () => {
   let savedNodeEnv: string | undefined;
 
   beforeEach(() => {
-    savedSiteUrl = env.NEXT_PUBLIC_SITE_URL;
+    savedSiteUrl = env.SITE_URL;
     savedNodeEnv = env.NODE_ENV;
   });
 
   afterEach(() => {
     if (savedSiteUrl === undefined) {
-      delete env.NEXT_PUBLIC_SITE_URL;
+      delete env.SITE_URL;
     } else {
-      env.NEXT_PUBLIC_SITE_URL = savedSiteUrl;
+      env.SITE_URL = savedSiteUrl;
     }
     if (savedNodeEnv === undefined) {
       delete env.NODE_ENV;
@@ -117,23 +119,23 @@ describe("siteUrl()", () => {
   });
 
   test("development fallback: no env → http://localhost:3000", () => {
-    delete env.NEXT_PUBLIC_SITE_URL;
+    delete env.SITE_URL;
     expect(env.NODE_ENV).not.toBe("production");
     expect(siteUrl()).toBe("http://localhost:3000");
   });
 
   test("respects an explicit https origin (trailing slash normalized away)", () => {
-    env.NEXT_PUBLIC_SITE_URL = "https://nms.example.com/";
+    env.SITE_URL = "https://nms.example.com/";
     expect(siteUrl()).toBe("https://nms.example.com");
   });
 
   test("throws on a value that is not a URL", () => {
-    env.NEXT_PUBLIC_SITE_URL = "not-a-url";
+    env.SITE_URL = "not-a-url";
     expect(() => siteUrl()).toThrow();
   });
 
   test("throws on a non-http(s) scheme (ftp://)", () => {
-    env.NEXT_PUBLIC_SITE_URL = "ftp://files.example.com";
+    env.SITE_URL = "ftp://files.example.com";
     expect(() => siteUrl()).toThrow();
   });
 
@@ -141,8 +143,8 @@ describe("siteUrl()", () => {
     const prev = env.NODE_ENV;
     env.NODE_ENV = "production";
     try {
-      delete env.NEXT_PUBLIC_SITE_URL;
-      expect(() => siteUrl()).toThrow(/NEXT_PUBLIC_SITE_URL/);
+      delete env.SITE_URL;
+      expect(() => siteUrl()).toThrow(/SITE_URL/);
     } finally {
       env.NODE_ENV = prev;
     }
@@ -152,7 +154,7 @@ describe("siteUrl()", () => {
     const prev = env.NODE_ENV;
     env.NODE_ENV = "production";
     try {
-      env.NEXT_PUBLIC_SITE_URL = "http://localhost:3000";
+      env.SITE_URL = "http://localhost:3000";
       expect(() => siteUrl()).toThrow(/localhost/);
     } finally {
       env.NODE_ENV = prev;
@@ -163,9 +165,9 @@ describe("siteUrl()", () => {
     const prev = env.NODE_ENV;
     env.NODE_ENV = "production";
     try {
-      env.NEXT_PUBLIC_SITE_URL = "https://example.com";
+      env.SITE_URL = "https://example.com";
       expect(siteUrl()).toBe("https://example.com");
-      env.NEXT_PUBLIC_SITE_URL = "https://example.com/";
+      env.SITE_URL = "https://example.com/";
       expect(siteUrl()).toBe("https://example.com");
     } finally {
       env.NODE_ENV = prev;

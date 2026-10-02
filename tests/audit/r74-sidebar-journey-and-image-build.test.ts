@@ -14,12 +14,12 @@
  *     FIX: openAddDeviceSheet expands the group (scoped to the sidebar nav)
  *     before clicking the item — the same journey an operator performs.
  *   - scan: the image-build step's FIRST execution was refused by the
- *     Dockerfile's own T1 guard — the production NEXT_PUBLIC_SITE_URL
- *     build-arg is mandatory (localhost/127.0.0.1/0.0.0.0/*.local rejected
- *     by src/lib/brand/identity.ts siteUrl() during the production build).
- *     FIX: CI passes an IETF-reserved example.com origin for the SCAN-TARGET
- *     images (never run or deployed); real deployments pass the real origin
- *     via compose --env-file interpolation.
+ *     Dockerfile's own T1 guard (the then-mandatory NEXT_PUBLIC_SITE_URL
+ *     build-arg); the fix passed an IETF-reserved example.com origin for
+ *     the SCAN-TARGET images. HISTORY NOTE: F-026 (batch 9) retired the
+ *     whole build-time origin contract — the origin is the RUNTIME
+ *     SITE_URL (per-request resolution), the build passes NO site-URL
+ *     arg, and the client bundles ship origin-free.
  *
  * These pins freeze the group-expansion journey, the build-arg provenance,
  * and the run record. They never execute the harness or docker.
@@ -62,21 +62,23 @@ describe("R74-A: the Devices journey expands the sidebar group like an operator"
 });
 
 describe("R74-B: the CI image build satisfies the production origin guard honestly", () => {
-  test("the app image build passes the scan-target NEXT_PUBLIC_SITE_URL arg", () => {
+  test("the app image build passes NO site-URL arg (F-026 runtime-only origin)", () => {
     const step = CI.slice(
       CI.indexOf("- name: Build runtime images (app + worker)"),
       CI.indexOf("- name: Image scan — app")
     );
-    expect(step).toContain("--build-arg NEXT_PUBLIC_SITE_URL=");
-    expect(step).toContain("ci-gate.fayanms.example.com");
+    expect(step).not.toContain("NEXT_PUBLIC_SITE_URL");
+    expect(step).toContain("--build-arg FAYANMS_SOURCE_SHA=$GITHUB_SHA");
     // The worker has no origin guard, but still carries source provenance.
     expect(step).toMatch(/docker build -f Dockerfile\.worker\b[^\r\n]*--build-arg FAYANMS_SOURCE_SHA=\$GITHUB_SHA[^\r\n]*-t fayanms-worker:ci \./);
   });
 
-  test("the triage note records the guard provenance and the scan-target scope", () => {
+  test("the triage note records the guard provenance and the F-026 retirement", () => {
     expect(CI).toContain("35420764756");
-    expect(CI).toContain("siteUrl()");
-    expect(CI).toContain("never run or deployed");
+    // F-026 (batch 9): the build-time origin guard era is recorded as
+    // HISTORY and its retirement is stated in the CI comment itself.
+    expect(CI).toContain("src/lib/brand/site-url.ts");
+    expect(CI).toContain("F-026 (batch 9) retired that contract");
     // the example.com origin must NOT appear as any runtime default elsewhere
     const identity = read("src/lib/brand/identity.ts");
     expect(identity).not.toContain("ci-gate.fayanms.example.com");

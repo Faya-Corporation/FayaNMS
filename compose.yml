@@ -75,9 +75,9 @@ services:
       context: .
       args:
         FAYANMS_SOURCE_SHA: "${FAYANMS_SOURCE_SHA:-unknown}"
-        # Interpolated from the --env-file (e.g. .env.production). Public origin,
-        # NOT a secret; baked into the client bundle at build time (Dockerfile T1).
-        NEXT_PUBLIC_SITE_URL: "${NEXT_PUBLIC_SITE_URL:?Set NEXT_PUBLIC_SITE_URL in the --env-file — the real canonical origin; localhost and *.local are rejected in production}"
+        # F-026: NO site-URL build arg — the origin is a RUNTIME env
+        # (SITE_URL, resolved per request by src/lib/brand/site-url.ts);
+        # building a value in would freeze it into the client bundle.
     image: fayanms-app:latest
     restart: unless-stopped
     # SEC-ENV-001: app-zone runtime env ONLY (session/KEK/service identity).
@@ -145,7 +145,6 @@ services:
       target: build
       args:
         FAYANMS_SOURCE_SHA: "${FAYANMS_SOURCE_SHA:-unknown}"
-        NEXT_PUBLIC_SITE_URL: "${NEXT_PUBLIC_SITE_URL:?Set NEXT_PUBLIC_SITE_URL in the --env-file}"
     image: fayanms-provision:latest
     profiles: ["provision"]
     restart: "no"

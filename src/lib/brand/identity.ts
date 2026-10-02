@@ -67,46 +67,11 @@ export const BRAND_THEME_COLOR = FAYANMS_BRAND.colors.primary;
 export const BRAND_SOCIAL_ALT = `${FAYANMS_BRAND.name} — ${FAYANMS_BRAND.descriptor}`;
 
 /**
- * Canonical site URL for metadata (`metadataBase`, OG absolutes). Configure
- * via `NEXT_PUBLIC_SITE_URL` in real deployments; the localhost fallback is
- * for development and preview environments only.
- *
- * Re-audit B3-029: silently emitting localhost metadata in production is a
- * branding/SEO defect, so a production build without the variable now fails
- * fast at module load. Localhost is rejected outside development/test.
+ * Canonical site URL: moved to `./site-url` (F-026, batch 9) — the origin is
+ * a SERVER-RUNTIME concern (`SITE_URL`, evaluated per request by the root
+ * layout's generateMetadata) and must NOT live in this module: identity.ts is
+ * imported by client components, and a `NEXT_PUBLIC_*` read here caused
+ * Next.js to inline the build-time value into every client bundle (the exact
+ * mechanism that froze `https://fayanms.invalid` into the published GHCR
+ * images). Client imports of identity are now origin-free by construction.
  */
-export function siteUrl(): string {
-  const raw = process.env.NEXT_PUBLIC_SITE_URL;
-
-  if (!raw) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error(
-        "NEXT_PUBLIC_SITE_URL is required in production — set it to the canonical https:// origin so metadataBase/OG URLs are absolute and correct."
-      );
-    }
-    return "http://localhost:3000";
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    throw new Error(`NEXT_PUBLIC_SITE_URL is not a valid URL: "${raw}"`);
-  }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error(
-      `NEXT_PUBLIC_SITE_URL must be an http(s) URL, got: "${raw}"`
-    );
-  }
-  const isLocal =
-    parsed.hostname === "localhost" ||
-    parsed.hostname === "127.0.0.1" ||
-    parsed.hostname === "0.0.0.0" ||
-    parsed.hostname.endsWith(".local");
-  if (isLocal && process.env.NODE_ENV === "production") {
-    throw new Error(
-      `NEXT_PUBLIC_SITE_URL must not point at localhost in production (got "${raw}") — deploy with the canonical public origin.`
-    );
-  }
-  return parsed.toString().replace(/\/$/, "");
-}

@@ -5,10 +5,12 @@
 # output:"standalone").
 #
 # Deployment contract (do not weaken without updating the runbook):
-#   * NEXT_PUBLIC_SITE_URL is a BUILD-TIME arg carrying the REAL canonical
-#     origin. It is baked into the client bundle (metadataBase / OG absolutes)
-#     and siteUrl() throws in production without it (B3-029). Never build with
-#     a placeholder — it is a public hostname, not a secret.
+#   * SITE_URL is a RUNTIME env carrying the REAL canonical origin (F-026,
+#     batch 9): the origin is resolved PER REQUEST by
+#     src/lib/brand/site-url.ts (root layout generateMetadata under
+#     force-dynamic) and is deliberately NOT baked into the image or the
+#     client bundles — host-side values take effect WITHOUT a rebuild.
+#     siteUrl() still fails fast in a production runtime without it (B3-029).
 #   * DATABASE_URL is NOT baked into the image: production persistence is
 #     PostgreSQL (Phase 21 slice 1) and the URL is composed by compose.yml from
 #     POSTGRES_PASSWORD (postgresql://fayanms:…@postgres:5432/fayanms). The
@@ -47,12 +49,9 @@ RUN sed -i 's/\r$//' /usr/local/bin/prepare-prisma-runtime.sh \
 FROM deps AS build
 ARG FAYANMS_SOURCE_SHA=unknown
 LABEL org.opencontainers.image.revision="${FAYANMS_SOURCE_SHA}"
-# Fail fast with a human message instead of a deep siteUrl()/next-build throw.
-ARG NEXT_PUBLIC_SITE_URL
-RUN test -n "$NEXT_PUBLIC_SITE_URL" || { \
-      echo "BUILD FAILED: pass the REAL canonical origin as the NEXT_PUBLIC_SITE_URL build arg (e.g. http://fayanms.corp.example.com — localhost and *.local are rejected in production). See docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md §T1." >&2; \
-      exit 1; }
-ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+# F-026: NO site-URL build arg — the origin is runtime-only (SITE_URL),
+# resolved per request; building a value in would freeze it into the client
+# bundle (the exact defect F-026 closed).
 # R76 (run 35422501995): next build type-checks the WHOLE repo per the root
 # tsconfig (include: **/*.ts — the documented "src/ + worker zero-error
 # policy"), so the worker's TS files must resolve ssh2/@types/ssh2 inside
