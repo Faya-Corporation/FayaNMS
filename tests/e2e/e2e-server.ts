@@ -53,6 +53,16 @@ const appEnv: Record<string, string> = {
   NODE_ENV: "production",
   DATABASE_URL: e2eDbUrl,
   NEXTAUTH_URL: "http://localhost:3100",
+  // F-026: the origin is a RUNTIME env resolved per request by
+  // src/lib/brand/site-url.ts (root layout generateMetadata) — a production
+  // runtime without it fails fast (B3-029), which is exactly how the browser
+  // journeys' FIRST F-026-era run caught the missing variable (page journeys
+  // 500'd while the API-only e2e journeys never rendered the layout). The
+  // value follows the R74 scan-target precedent: an IETF-reserved,
+  // honestly-non-routable example.com origin that passes the production
+  // guard (localhost/*.local rejected) — journeys hit 127.0.0.1 directly;
+  // SITE_URL only feeds metadata.
+  SITE_URL: "http://ci-gate.fayanms.example.com",
   NEXTAUTH_SECRET: RUN_SECRET,
   FAYANMS_SERVICE_SECRET: RUN_SECRET,
   FAYANMS_CONFIG_ENC_KEY: RUN_SECRET,
