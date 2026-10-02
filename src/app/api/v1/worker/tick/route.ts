@@ -8,6 +8,10 @@ import {
   pruneRetention,
 } from "@/lib/backups/retention";
 import { parseStoredDiscoveryPolicy } from "@/lib/discovery/policy";
+import {
+  changeReaperThresholdForPayload,
+  MIN_CHANGE_REAPER_THRESHOLD_MS,
+} from "@/lib/change/job-budget";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -116,9 +120,13 @@ type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
  *   and are failed so the Job Center shows the truth. Type-agnostic: every
  *   non-change job has a 30 s worker budget, so 10 minutes without
  *   completion is always a lie. CHANGE_EXECUTE is the one legitimately
- *   long job (worker budget 10 min / ≤40 step calls) and gets a 15-minute
- *   threshold so the reaper can never race a live run. Side-effects: a
- *   reaped ZTP_PROVISION flips its claim provisioning→failed; one summary
+ *   long job: since F-044 its worker budget is DERIVED from the plan's own
+ *   size (stepsTotal × per-iteration cost + margin —
+ *   src/lib/change/job-budget.ts), so its reaper threshold is derived per
+ *   job from the SAME math (+ a grace window) — a live driver can never be
+ *   reaped, no matter how long the plan runs (the old hardcoded 15-minute
+ *   ceiling assumed the retired 10-minute budget). Side-effects: a reaped
+ *   ZTP_PROVISION flips its claim provisioning→failed; one summary
  *   JOB_ORPHAN_REAPED audit row per tick. Recovery = jobs/[id]/retry (for
  *   CHANGE_EXECUTE the change-step engine's orphan-step reaper then owns
  *   the rollback-or-fail decision).
@@ -456,17 +464,22 @@ export async function POST(request: Request) {
   // in-memory runner state is gone) and would otherwise stay RUNNING
   // forever. Type-agnostic by design: every non-change job has a 30 s
   // worker budget, so 10 minutes without completion is always a lie.
-  // CHANGE_EXECUTE is the one legitimately long job (worker budget
-  // CHANGE_JOB_TIMEOUT_MS = 10 min, ≤40 step calls) — its threshold is 15
-  // minutes so the reaper can never race a live run. The Job Center then
-  // shows the truth; recovery is the standard jobs/[id]/retry re-enqueue
-  // (for CHANGE_EXECUTE the change-step engine's own orphan-step reaper
-  // engages on the retry's first step call and rolls back or fails the
-  // change — that ownership stays with the engine, deliberately not
-  // duplicated here).
+  // CHANGE_EXECUTE is the one legitimately long job — F-044: its worker
+  // budget is DERIVED from the plan's own size (stepsTotal × per-iteration
+  // cost + margin, the exact math the worker races at claim time), so the
+  // reaper threshold is derived PER JOB from the same module (+ a grace
+  // window for the driver's own completion post): a live driver can never
+  // be reaped even for a 40-step plan. The SQL pre-filter uses the
+  // smallest possible derived threshold (a 1-step plan — the derivation is
+  // monotonic in stepsTotal and the legacy/absent fallback derives even
+  // larger), then the per-job JS filter applies each payload's threshold.
+  // The Job Center then shows the truth; recovery is the standard
+  // jobs/[id]/retry re-enqueue (for CHANGE_EXECUTE the change-step
+  // engine's own orphan-step reaper engages on the retry's first step call
+  // and rolls back or fails the change — that ownership stays with the
+  // engine, deliberately not duplicated here).
   const STALE_RUNNING_MS = 10 * 60_000;
-  const STALE_CHANGE_MS = 15 * 60_000;
-  const staleJobs = await db.jobExecution.findMany({
+  const staleCandidates = await db.jobExecution.findMany({
     where: {
       status: "RUNNING",
       startedAt: { not: null },
@@ -477,11 +490,15 @@ export async function POST(request: Request) {
         },
         {
           type: "CHANGE_EXECUTE",
-          startedAt: { lt: new Date(now.getTime() - STALE_CHANGE_MS) },
+          startedAt: { lt: new Date(now.getTime() - MIN_CHANGE_REAPER_THRESHOLD_MS) },
         },
       ],
     },
-    select: { id: true, type: true, targetId: true },
+    select: { id: true, type: true, targetId: true, startedAt: true, payloadJson: true },
+  });
+  const staleJobs = staleCandidates.filter((job) => {
+    if (job.type !== "CHANGE_EXECUTE" || !job.startedAt) return true;
+    return now.getTime() - job.startedAt.getTime() > changeReaperThresholdForPayload(job.payloadJson);
   });
 
   let reapedCount = 0;

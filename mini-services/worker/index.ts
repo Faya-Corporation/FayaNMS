@@ -183,6 +183,8 @@ export async function handle(req: Request): Promise<Response> {
         `fayanms_worker_jobs_total{state="running"} ${counters.running}`,
         `fayanms_worker_jobs_total{state="completed"} ${counters.completed}`,
         `fayanms_worker_jobs_total{state="failed"} ${counters.failed}`,
+        // F-044 — resumable change-driver requeues (never counted as failed).
+        `fayanms_worker_jobs_total{state="resumed"} ${counters.resumed}`,
         "# HELP fayanms_worker_scheduler_up Whether the scheduler has no consecutive failures.",
         "# TYPE fayanms_worker_scheduler_up gauge",
         `fayanms_worker_scheduler_up ${scheduler.consecutiveTickFailures === 0 ? 1 : 0}`,
