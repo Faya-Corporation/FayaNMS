@@ -14,6 +14,14 @@
  * (configure → set interface comment → commit → exit);
  * `set network interface ethernet … comment` MUTATES the persona config
  * so a post-apply fetch reflects the delta.
+ *
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │ ⚠ DEMO DATA — SIMULATED DEVICE PERSONA                                  │
+ * │ The config text below (including the demo SNMP community FayaRO) is     │
+ * │ INVENTED persona content for the LIVE_SSH certification harness —       │
+ * │ not real device secrets. Pinned by                                      │
+ * │ tests/audit/open-findings-batch-19.test.ts (F-045 grep-guard).          │
+ * └─────────────────────────────────────────────────────────────────────────┘
  */
 
 import {
