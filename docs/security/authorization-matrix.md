@@ -231,7 +231,7 @@ mutation or are bootstrap surfaces. The contract test pins this list:
 |---|---|
 | `/api/v1/meta` | public bootstrap (branding/status, read-only) |
 | `/api/v1/auth/*` | session bootstrap; answers its own 401 envelope |
-| `/api/v1/ai/assist`, `/api/v1/ai/query`, `/api/v1/ai/change-draft`, `/api/v1/ai/rca-draft` | session-gated generation helpers; no persistent state change (drafts are returned, never stored) |
+| `/api/v1/ai/assist`, `/api/v1/ai/query`, `/api/v1/ai/change-draft`, `/api/v1/ai/rca-draft` | session-gated generation helpers; no persistent state change (drafts are returned, never stored). F-030: each route consumes a durable per-user daily quota in-handler (`consumeAiDailyQuota` → `AiUsageDay`, `FAYANMS_AI_DAILY_LIMIT` default 200/day UTC; over-limit → 429 `AI_DAILY_QUOTA_EXCEEDED`; store failure → fail-closed 503) — the in-handler complement to the proxy's IP-keyed 10/min `ai` burst budget |
 | `/api/v1/notifications/read` | user-scoped: marks the CALLER's own notifications read |
 
 Anything not in §2, §3 or §4 is a violation — the contract test fails the
