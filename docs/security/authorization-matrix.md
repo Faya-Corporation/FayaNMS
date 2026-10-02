@@ -126,6 +126,7 @@ validity re-verified at execute time (`APPROVAL_FINGERPRINT_MISMATCH`,
 
 | Endpoint | Method | Permission |
 |---|---|---|
+| `/admin/users` | GET | `admin`/`auditor` ROLE gate (`requireRole("admin","auditor")`) — the full email directory; other roles use `/meta/users` (local-part picker only) (F-029) |
 | `/admin/users`, `/admin/users/[id]`, `/admin/users/[id]/reset-password` | POST/PATCH | `admin` ROLE gate (`requireRole("admin")`) |
 | `/admin/api-clients` (+`/[id]`, `/[id]/rotate`) | POST/PATCH/DELETE | `admin` ROLE gate |
 | `/admin/webhooks` (+`/[id]`) | POST/PATCH/DELETE | `admin` ROLE gate |
