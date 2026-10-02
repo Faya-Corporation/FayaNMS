@@ -47,8 +47,13 @@ import { computeHostKeyFingerprint, parseHostKeyType } from "../ssh-transport";
  * key material in the repository. ssh2's in-process key converter is not
  * reliable under the Bun runner, while ssh2.Server requires OpenSSH format.
  * The hosted CI runner and the reproducible Codespaces image provide
- * ssh-keygen; failures remain hard failures rather than silently degrading
- * the protocol harness.
+ * ssh-keygen. F-041 rig note: environments WITHOUT ssh-keygen (minimal
+ * containers, sandboxes) fall back to ssh2's in-process OpenSSH-format
+ * generator — still a REAL Ed25519 key, so the harness remains a genuine
+ * SSH protocol endpoint and persona certification stays runnable there.
+ * Failures remain hard failures rather than silently degrading the
+ * protocol harness: the fallback must produce a parseable OpenSSH key or
+ * the error is re-thrown.
  */
 function generateEphemeralHostKey(): string {
   const dir = mkdtempSync(join(tmpdir(), "fayanms-ssh-harness-"));
@@ -60,6 +65,11 @@ function generateEphemeralHostKey(): string {
       { encoding: "utf8" },
     );
     if (result.error || result.status !== 0) {
+      const generated = utils.generateKeyPairSync("ed25519");
+      const pem = typeof generated.private === "string" ? generated.private : String(generated.private);
+      if (pem.includes("OPENSSH PRIVATE KEY") && !(utils.parseKey(pem) instanceof Error)) {
+        return pem;
+      }
       throw new Error("ssh-keygen failed to create the ephemeral harness host key");
     }
     return readFileSync(keyPath, "utf8");
