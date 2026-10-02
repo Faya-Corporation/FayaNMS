@@ -124,4 +124,26 @@ describe("R66: required-checks shape unification (4 jobs)", () => {
       "the 4 required checks (`gate`, `e2e`, `browser`, `scan`)",
     );
   });
+
+  test("G: governance runbook required-checks line = the four-check shape (F-025: ARM64 not required while container.yml is disabled)", () => {
+    // F-025 (2026-10-02): the runbook listed "…browser, scan, and the ARM64
+    // certification workflow" as required while container.yml is
+    // disabled_manually — a required context that cannot exist. The narrowed
+    // runbook carries exactly the FOUR ci.yml jobs and documents the
+    // deliberate re-enable path (with RT-017) instead of a silent drop.
+    const gov = readRepoFile("docs/runbooks/governance.md");
+    expect(gov).toContain(
+      "required status checks: gate, e2e, browser, scan",
+    );
+    // the stale fifth context is gone from the required set
+    expect(gov).not.toContain(
+      "browser, scan, and the ARM64 certification workflow",
+    );
+    // the re-enable path is documented, not silently dropped
+    expect(gov).toContain("container.yml");
+    expect(gov).toContain("RT-017");
+    // the F-025 honesty rule: owner-pending controls are reported as [GAP],
+    // never claimed enforced
+    expect(gov).toContain("[GAP]");
+  });
 });

@@ -159,13 +159,26 @@ describe("R69-F3: gov-verify ruleset plane asserts the full protective-rule set"
     expect(script).toContain('name: "rulesets.required_linear_history rule present"');
   });
 
-  test("SOURCE: the header describes the BOTH-mechanisms-required contract (no 'first source wins')", () => {
+  test("SOURCE: the header describes the F-025 two-tier contract (classic plane REQUIRED, ruleset absence = documented gap)", () => {
     const script = readRepo(GOV_SCRIPT);
     expect(script).not.toContain("The first source that reports an ACTIVE enforcement wins");
-    expect(script).toContain("BOTH mechanisms are verified and BOTH are REQUIRED");
+    // F-025 (2026-10-02) replaced the BOTH-REQUIRED contract: the classic
+    // plane's hard invariants drive the exit; the ruleset plane is verified
+    // in full when rulesets exist, and their absence is the documented
+    // plan-gated GAP (never a silent pass).
+    expect(script).toContain(
+      "BOTH mechanisms are verified: the classic plane is REQUIRED (its hard",
+    );
   });
 
   test("SOURCE: linear history is no longer mislabeled 'advisory — record-only'", () => {
+    // F-025 note (2026-10-02): linear history now sits in the ADVISORY tier
+    // of the narrowed contract (owner-pending, reported as [GAP]). The R69
+    // defect guarded against the OLD "(advisory — record-only)" mislabel —
+    // the phrase stays forbidden and the pinned name string below still
+    // exists with its API-observed value, so the gap is REPORTED, never
+    // silently dropped (the honesty this test guards survives the F-025
+    // reclassification).
     const script = readRepo(GOV_SCRIPT);
     expect(script).not.toContain("(advisory — record-only)");
     expect(script).toContain('"classic.required_linear_history enabled"');
