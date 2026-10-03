@@ -11,7 +11,7 @@
 #   The file is the SFOS protocol-harness persona's self-signed loopback TLS
 #   key (F-045 decision: banner-labeled demo personas are NOT secrets). It
 #   CANNOT carry an inline annotation: any text before the
-#   -----BEGIN OPENSSH PRIVATE KEY----- line (or appended to it) makes
+#   BEGIN-key marker line (or appended to it) makes
 #   OpenSSL reject the key ("NO_START LINE" — verified with
 #   crypto.createPrivateKey), and a trailing comment after the END line does
 #   not cover the finding's line range for semgrep.
