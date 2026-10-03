@@ -318,7 +318,7 @@ describe("RT-022 — dictionaries carry devices.form + devices.csv in both local
     const en = leaves(readJson("messages/en.json"));
     const ar = leaves(readJson("messages/ar.json"));
     expect(new Set(en)).toEqual(new Set(ar));
-    expect(en.length).toBe(3312);
-    expect(ar.length).toBe(3312);
+    expect(en.length).toBe(3314);
+    expect(ar.length).toBe(3314);
   });
 });

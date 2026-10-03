@@ -192,7 +192,7 @@ describe("RT-005 — alert components use next-intl", () => {
 });
 
 describe("RT-005 — en/ar parity holds with the new namespaces", () => {
-  test("leaf sets are identical and totals pin at 3312 per side", () => {
+  test("leaf sets are identical and totals pin at 3314 per side", () => {
     const en = readJson("messages/en.json");
     const ar = readJson("messages/ar.json");
     const enLeaves = leaves(en);
@@ -201,10 +201,11 @@ describe("RT-005 — en/ar parity holds with the new namespaces", () => {
     // 2850 (R102) → 2856 (RT-004) → 3193 (RT-005: +337 toast/detect/alerts)
     // → 3206 (RT-020: +13 auth.signIn) → 3214 (RT-021: +8 common.highRisk)
     // → 3309 (RT-022: +95 devices.form/devices.csv) → 3311 (RT-037: +2
-    // common.errors). This pin tracks the CURRENT total and is retotaled by
-    // every later dictionary-touching RT (repo rule).
-    expect(enLeaves.length).toBe(3312);
-    expect(arLeaves.length).toBe(3312);
+    // common.errors) → 3314 (F-034: +2 auth.signIn totpCode/totpHint). This
+    // pin tracks the CURRENT total and is retotaled by every later
+    // dictionary-touching RT (repo rule).
+    expect(enLeaves.length).toBe(3314);
+    expect(arLeaves.length).toBe(3314);
   });
 
   test("alerts.stream/dialogs/rules and detect.hints exist in both locales", () => {
