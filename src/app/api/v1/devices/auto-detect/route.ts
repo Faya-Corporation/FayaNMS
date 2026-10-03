@@ -214,7 +214,9 @@ async function auditProbeFailureBestEffort(entry: {
       },
     });
   } catch (auditError) {
-    console.error(`[auto-detect] ${entry.action} audit emission failed`, auditError);
+    // Constant format string + positional args — entry.action is an internal
+    // audit action id, but the log line must not treat it as format input.
+    console.error("[auto-detect] audit emission failed:", entry.action, auditError);
   }
 }
 

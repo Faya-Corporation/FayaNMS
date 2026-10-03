@@ -116,6 +116,19 @@ beforeAll(async () => {
     where: { key: SNAPSHOT_PRUNE_SETTING_KEY },
     select: { key: true, valueJson: true },
   });
+  // Order-independence hardening (CI gate flake): bun test executes every
+  // suite in ONE process in nondeterministic file order, and other suites
+  // (open-findings-batch-1's F-052 concurrent-tick pin, batch-16's reaper
+  // pins) drive the REAL tick route — which stamps the gate's own persisted
+  // "snapshots.retention" Setting when it runs due on a fresh database. If
+  // such a suite ran earlier, the row exists and this file's first test —
+  // whose contract is "fresh process + no Setting → due" — would read the
+  // Setting fallback and see a minute-old stamp (not due). batch-22's F-047
+  // gate test already self-hardens exactly this way (it deletes its own
+  // Setting row in-test). Capture the pre-existing row above, CLEAR it, and
+  // let afterAll restore it — the suite is then order-independent and the
+  // Setting-fallback path below is exercised as a fresh process sees it.
+  await db.setting.deleteMany({ where: { key: SNAPSHOT_PRUNE_SETTING_KEY } });
   resetSnapshotPruneGateForTests();
 });
 
