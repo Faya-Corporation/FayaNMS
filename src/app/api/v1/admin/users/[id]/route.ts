@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { hashPassword } from "@/lib/auth/password";
+import { hashPassword, validatePasswordPolicy } from "@/lib/auth/password";
 import { USER_ROLES } from "@/lib/auth/roles";
 import { userSiteScopeClaim } from "@/lib/auth/scope";
 import { requireRole, authErrorToFail } from "@/lib/auth/session";
@@ -12,6 +12,11 @@ export const dynamic = "force-dynamic";
 /**
  * PATCH /api/v1/admin/users/[id] (Task 7-a) — update name/role/isActive/
  * password. Admin-only, audited USER_UPDATED (USR-XXXXXX).
+ *
+ * F-034 phase 1: when the payload carries a password, the role-aware
+ * policy is enforced against the EFFECTIVE role (the payload's role when a
+ * promotion is in flight, else the target's current role) — an 11-char
+ * password can never ride along with an admin promotion.
  *
  * F-031 — siteScope (string[] | null): admin-only write surface for the
  * per-user SITE SCOPE the session JWT `sites` claim is minted from at
@@ -128,6 +133,15 @@ export async function PATCH(
         "You cannot change your own role — ask another admin.",
         409
       );
+    }
+  }
+
+  // F-034 phase 1: the effective (post-update) role decides the bar.
+  if (data.password !== undefined) {
+    const effectiveRole = data.role ?? target.role;
+    const policyIssue = validatePasswordPolicy(data.password, effectiveRole);
+    if (policyIssue) {
+      return fail(policyIssue.code, policyIssue.message, 400);
     }
   }
 

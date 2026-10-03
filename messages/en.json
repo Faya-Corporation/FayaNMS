@@ -4522,6 +4522,8 @@
       "password": "Password",
       "showPassword": "Show password",
       "hidePassword": "Hide password",
+      "totpCode": "2FA code (optional)",
+      "totpHint": "6-digit code from your authenticator app or an unused recovery code — only needed for accounts with two-factor enabled.",
       "submit": "Sign in",
       "submitting": "Signing in…",
       "errorCredentials": "Invalid email or password.",

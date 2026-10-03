@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
+import { evaluateMfaChallenge } from "@/lib/auth/mfa";
 import { userSiteScopeClaim } from "@/lib/auth/scope";
 import {
   checkLoginAllowed,
@@ -77,6 +78,10 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        // F-034 phase 2: the second factor rides in the SAME sign-in POST
+        // (NextAuth v4 credentials model) — a current 6-digit TOTP code or
+        // an unused recovery code. Optional for accounts without MFA.
+        totp: { label: "2FA code", type: "text" },
       },
       async authorize(credentials, req) {
         const email = credentials?.email?.trim().toLowerCase();
@@ -107,6 +112,25 @@ export const authOptions: NextAuthOptions = {
 
         const valid = await verifyPassword(password, user.passwordHash);
         if (!valid) {
+          await recordLoginFailure(loginIdentity);
+          return null;
+        }
+
+        // F-034 phase 2 — the TOTP second factor (privileged roles). After
+        // the password verifies, an enabled enrollment MUST present the
+        // second factor in this same POST: a current 6-digit code (±1 step
+        // window, per-step anti-replay) or an unused single-use recovery
+        // code. Absent/invalid → null, i.e. a failed sign-in — the login
+        // guard's (source, account) budgets above naturally cover
+        // brute-force on the second factor. Fail-open exists ONLY under
+        // FAYANMS_MFA_MODE=disabled, the documented rollback lever.
+        const submittedCode =
+          typeof credentials?.totp === "string" ? credentials.totp : undefined;
+        const mfaVerdict = await evaluateMfaChallenge(user, submittedCode);
+        if (mfaVerdict.outcome === "failed") {
+          // The challenge already audited MFA_LOGIN_FAILED; counting the
+          // failure into the login guard keeps the second factor inside
+          // the same brute-force budget as the first.
           await recordLoginFailure(loginIdentity);
           return null;
         }
