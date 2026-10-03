@@ -106,7 +106,13 @@ function gcmEncrypt(key: Buffer, plain: string, aad: string | null): { ct: Buffe
 }
 
 function gcmDecrypt(key: Buffer, ctB64: string, ivB64: string, tagB64: string, aad: string | null): string {
-  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB64, "base64"));
+  // authTagLength: 16 pins the expected GCM tag length — a truncated/spoofed
+  // shorter tag now fails loudly instead of being accepted (semgrep
+  // gcm-no-tag-length hardening; the envelope always stores the full 16-byte
+  // getAuthTag() output, so every legacy row stays decryptable).
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB64, "base64"), {
+    authTagLength: 16,
+  });
   decipher.setAuthTag(Buffer.from(tagB64, "base64"));
   if (aad) decipher.setAAD(Buffer.from(aad, "utf8"));
   return Buffer.concat([
@@ -164,7 +170,10 @@ function unwrapDek(
   aad: string | null
 ): Buffer {
   const { key } = masterKeyMaterial();
-  const unwrap = createDecipheriv("aes-256-gcm", key, Buffer.from(wrapIv, "base64"));
+  // authTagLength: 16 — same GCM tag-length pin as gcmDecrypt (see above).
+  const unwrap = createDecipheriv("aes-256-gcm", key, Buffer.from(wrapIv, "base64"), {
+    authTagLength: 16,
+  });
   unwrap.setAuthTag(Buffer.from(wrapTag, "base64"));
   if (aad) unwrap.setAAD(Buffer.from(aad, "utf8"));
   return Buffer.concat([
