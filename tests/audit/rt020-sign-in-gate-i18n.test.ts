@@ -144,9 +144,11 @@ describe("RT-020 — dictionaries carry auth.signIn in both locales", () => {
     expect(en.auth.signIn.errorCredentials).toBe("Invalid email or password.");
 
     // Identical leaf sets; totals moved 3193 → 3206 in RT-020 (later
-    // retotaled by the repo rule — 3309 after RT-021+RT-022).
+    // retotaled by the repo rule — 3309 after RT-021+RT-022; 3312 after
+    // RT-020's own later retotal; +2 totpCode/totpHint in F-034 batch-24
+    // — the sign-in gate's second-factor field).
     expect(new Set(leaves(en))).toEqual(new Set(leaves(ar)));
-    expect(leaves(en).length).toBe(3312);
-    expect(leaves(ar).length).toBe(3312);
+    expect(leaves(en).length).toBe(3314);
+    expect(leaves(ar).length).toBe(3314);
   });
 });

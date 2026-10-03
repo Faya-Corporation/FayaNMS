@@ -35,3 +35,25 @@ Scale-out checklist (each step is required before traffic):
 4. Scale down symmetrically: when returning to a single instance, set `FAYANMS_EXPECTED_REPLICAS=1` (or unset it) — a stale declaration does not block boot but misdocuments the posture.
 
 Migration note: switching an already-running fleet from the in-memory store to the shared store starts every budget from an empty table (in-flight windows reset once; lockout state in the old process memory is not carried over). Do it in a maintenance window if the budgets were actively absorbing abuse.
+
+## Two-factor authentication (TOTP) — privileged roles (F-034)
+
+Privileged accounts (`admin`, `operator`) can enroll a TOTP second factor (RFC 6238: HMAC-SHA1, 30 s step, 6 digits, ±1 step window) and single-use recovery codes. An ENABLED enrollment challenges at every sign-in: the login form posts the password AND the 2FA code (6-digit code or unused recovery code) in the same request; the login guard's (source, account) budgets cover brute-force on the second factor exactly like the first. The TOTP secret is stored encrypted at rest under the SAME `FAYANMS_CONFIG_ENC_KEY` master key as configuration snapshots and webhook signing secrets (AES-256-GCM envelope, AAD-bound to the user id) — no new key material.
+
+Lifecycle (API-only at this stage; the settings UI wave owns the form):
+
+1. `POST /api/v1/auth/mfa/enroll` (session for admin/operator) → returns the Base32 secret + `otpauth://totp/FayaNMS:<email>?...` URI. The enrollment is PENDING (disabled) — nothing challenges yet. Re-enrolling rotates a pending secret.
+2. Provision the secret into any authenticator app, then `POST /api/v1/auth/mfa/confirm` with the current 6-digit code → the enrollment flips ENABLED and the response carries TEN single-use recovery codes — shown exactly once, stored only as sha256 hashes.
+3. Sign-in: submit the 6-digit code (or an unused recovery code) in the `totp` field of the credentials sign-in POST. A code is valid for one sign-in per 30 s step (anti-replay); a second sign-in inside the same step needs a recovery code.
+4. Disable: `DELETE /api/v1/auth/mfa` with `{ password, code }` — fail-tight (password re-entry AND a current TOTP code or an unused recovery code). Audited (`MFA_ENROLLED`, `MFA_CONFIRMED`, `MFA_DISABLED`, `MFA_RECOVERY_USED`, `MFA_LOGIN_FAILED`).
+
+Rollback lever: `FAYANMS_MFA_MODE` in the app env file.
+
+| Value | Behavior |
+|---|---|
+| `enforce` (default/unset) | Enrollment allowed; enabled enrollments challenge at sign-in. |
+| `disabled` | The second factor is structurally OFF: enrollment routes answer `MFA_DISABLED`, and every existing enrollment is BYPASSED at sign-in (documented, deliberate fail-open — the recovery path when devices are lost). |
+
+An unknown value clamps to `enforce` with a one-shot `[security-policy]` startup warning.
+
+Key-rotation note: the TOTP secret shares the snapshot/webhook master-key envelope, so a `FAYANMS_CONFIG_ENC_KEY` rotation must re-encrypt MFA rows too (same procedure as `scripts/migrate-encrypt-snapshots.ts`; an unavailable key fails authentication loudly — `SECRET_AT_REST_KEY_UNAVAILABLE` / `MFA_CODE_INVALID` — never silently single-factor).
