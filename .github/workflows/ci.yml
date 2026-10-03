@@ -438,14 +438,24 @@ jobs:
           test "${GITLEAKS_DIR_STATUS}" -eq 0
 
       # ── 9. P20-011 — SAST ──
-      # Action path preserved verbatim from docs/ci/ci-gate.yml; the same v1
-      # action also exists under the current org name semgrep/semgrep-action@v1.
+      # History: ran the returntocorp/semgrep-action@v1 SHA-pin (2026-09-11)
+      # until its frozen returntocorp/semgrep-agent:v1 image (semgrep 1.36.0)
+      # could no longer parse the live p/default registry — the registry now
+      # serves rules with `severity: MEDIUM`, which 1.36.0's RuleSeverity
+      # enum rejects with "ValueError: invalid rule severity value: MEDIUM"
+      # (every CI run since 2026-10-02T23:11Z failed scan; latest semgrep
+      # 1.179.0 accepts MEDIUM — verified against a local MEDIUM rule).
+      # Replaced 2026-10-03 with the official image DIGEST-pinned per the
+      # house CI-supply-chain style (actions by SHA, binaries by checksum,
+      # images by digest). `semgrep scan --error` keeps the gate policy:
+      # any finding at the rule's severity fails the build.
       - name: SAST (semgrep)
-        uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1 (SHA-pinned 2026-09-11)
-        with:
-          config: p/default
-          # Gate policy: any ERROR finding fails the build. Audit findings are
-          # triaged before enabling; this is the audit's required SAST gate.
+        run: >
+          docker run --rm -v "$PWD:/src" --workdir /src
+          semgrep/semgrep@sha256:93963d9295a366f59e4850127b1550400ee7b388f04fe144e4a1f6325d96e01b
+          semgrep scan --config p/default --error --metrics=off
+        # Gate policy: any ERROR finding fails the build. Audit findings are
+        # triaged before enabling; this is the audit's required SAST gate.
 
       # ── 10. P20-012 — dependency scan ──
       # History: the upstream raw install.sh (main branch) 404'd in run 34532398506,
