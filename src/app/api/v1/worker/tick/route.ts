@@ -7,6 +7,11 @@ import {
   markSnapshotsPruned,
   pruneRetention,
 } from "@/lib/backups/retention";
+import {
+  isOpsDataPruneDue,
+  markOpsDataPruned,
+  pruneOpsData,
+} from "@/lib/ops/retention";
 import { parseStoredDiscoveryPolicy } from "@/lib/discovery/policy";
 import {
   changeReaperThresholdForPayload,
@@ -582,6 +587,44 @@ export async function POST(request: Request) {
     }
   }
 
+  // F-047 (batch-22) — ops-data retention sweep: terminal JobExecutions,
+  // read Notifications, aged DiscoveryObservations (Setting
+  // "opsData.retention" — 30d / 30d / 90d defaults, operator-overridable).
+  // Due-ness gated exactly like the snapshot prune above (24 h in-memory
+  // primary + persisted Setting fallback): the ops tables age daily, so a
+  // 30 s tick cadence would be pure DB load. A skipped run answers
+  // opsPruneSkipped: true and issues ZERO ops-table queries; a due run is
+  // chunked (≤ 1,000 rows per statement, ≤ 10,000 per table) and writes ONE
+  // OPS_DATA_PRUNED summary audit row. AuditEvent is NEVER swept here — it
+  // is the append-only, chain-stamped audit trail (see src/lib/ops/retention.ts).
+  let opsPrune = {
+    outcome: "pruned" as string,
+    jobExecutionsDeleted: 0,
+    notificationsDeleted: 0,
+    discoveryObservationsDeleted: 0,
+  };
+  let opsPruneSkipped = true;
+  if (await isOpsDataPruneDue(now)) {
+    const sweep = await pruneOpsData({ now, triggeredBy: "TICK" });
+    await markOpsDataPruned(now);
+    opsPruneSkipped = false;
+    opsPrune = {
+      outcome: sweep.outcome,
+      jobExecutionsDeleted: sweep.jobExecutionsDeleted,
+      notificationsDeleted: sweep.notificationsDeleted,
+      discoveryObservationsDeleted: sweep.discoveryObservationsDeleted,
+    };
+    const opsDeleted =
+      sweep.jobExecutionsDeleted +
+      sweep.notificationsDeleted +
+      sweep.discoveryObservationsDeleted;
+    if (opsDeleted > 0) {
+      console.log(
+        `[tick] ops-data retention sweep: removed ${sweep.jobExecutionsDeleted} terminal job(s), ${sweep.notificationsDeleted} read notification(s), ${sweep.discoveryObservationsDeleted} discovery observation(s)`
+      );
+    }
+  }
+
   return ok({
     enqueued: enqueuedTotal,
     discoveryEnqueued: discovery.enqueued,
@@ -596,6 +639,10 @@ export async function POST(request: Request) {
     pruned: prune.pruned,
     prunedDevices: prune.prunedDevices,
     pruneSkipped,
+    opsPruneSkipped,
+    opsJobExecutionsDeleted: opsPrune.jobExecutionsDeleted,
+    opsNotificationsDeleted: opsPrune.notificationsDeleted,
+    opsDiscoveryObservationsDeleted: opsPrune.discoveryObservationsDeleted,
     evaluatedAt: now.toISOString(),
     policies: policyResults,
   });
