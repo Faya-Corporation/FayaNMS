@@ -198,7 +198,9 @@ export async function handle(req: Request): Promise<Response> {
         `fayanms_worker_protocol_packets_total{state="rejected"} ${protocol.packetsRejected}`,
         `fayanms_worker_protocol_packets_total{state="queue_dropped"} ${protocol.queueDrops}`,
         `fayanms_worker_protocol_relay_failures_total ${protocol.relayFailures}`,
-        `fayanms_worker_protocol_collector_up ${protocol.enabled ? 1 : 0}`,
+        // F-037: `up` is derived (enabled + every configured socket bound,
+        // no bind failures) — a bind failure now reports collector_up 0.
+        `fayanms_worker_protocol_collector_up ${protocol.up ? 1 : 0}`,
       ];
 
       return new Response(`${metricLines.join("\n")}\n`, {
