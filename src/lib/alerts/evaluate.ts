@@ -66,6 +66,16 @@ import {
  *      (actor "system:alert-engine").
  *
  * Flood caps per run: 50 new alerts, 10 incidents, 40 notifications.
+ *
+ * F-046 batching (outcome-preserving): rule scopes resolve from ONE
+ * device.findMany + in-memory filtering (ruleDevicePredicate /
+ * resolveRuleDevicePairs — the pair walk stays rule-major); the dedup
+ * refresh writes are buffered per write-payload group and flushed as ONE
+ * alert.updateMany per group after the pair walk (DedupUpdateBatch — legacy
+ * rows still migrating onto the fingerprint dedupKey keep their per-row
+ * update; pendingReactivatedRoots reproduces the old inline-write visibility
+ * for openRootExists); the sample load is row-capped at
+ * MAX_SAMPLES_PER_QUERY keeping the NEWEST rows.
  */
 
 export const ALERT_RULE_METRICS = [
@@ -157,6 +167,18 @@ const MAX_NEW_ALERTS_PER_RUN = 50;
 const MAX_INCIDENTS_PER_RUN = 10;
 const MAX_NOTIFICATIONS_PER_RUN = 40;
 
+/**
+ * F-046: hard row cap on the evaluation's metricSample load. At the fleet's
+ * 5-minute collection cadence 20 000 rows ≈ 69 days of continuous history
+ * for a single (device, metric) series — far above any rule window — so the
+ * cap only binds on runaway retention gaps, bounding memory/IO per pass.
+ * When it binds, the NEWEST rows win (orderBy ts desc + take): the
+ * in-progress breach window stays intact and only previous-window rows can
+ * be dropped, which lands in pass 2's documented sparse-data skip (never a
+ * false fire or false resolve).
+ */
+export const MAX_SAMPLES_PER_QUERY = 20_000;
+
 /** Human label/unit per metric for alert messages + notifications. */
 const METRIC_LABELS: Record<string, { label: string; unit: string }> = {
   CPU: { label: "CPU utilization", unit: "%" },
@@ -196,7 +218,7 @@ export interface AlertEvaluationSummary {
   caps: { newAlerts: boolean; incidents: boolean; notifications: boolean };
 }
 
-interface EvalRule {
+export interface EvalRule {
   id: string;
   name: string;
   metric: string;
@@ -206,12 +228,16 @@ interface EvalRule {
   severity: string;
 }
 
-interface EvalDevice {
+export interface EvalDevice {
   id: string;
   hostname: string;
   status: string;
   lastSeen: Date | null;
   siteId: string | null;
+  /** F-046: in-memory scope-filter inputs for the single device query. */
+  criticality: string | null;
+  role: string | null;
+  siteCode: string | null;
 }
 
 interface ExistingAlert {
@@ -259,49 +285,195 @@ function availabilityOf(device: EvalDevice, now: Date): number {
   return 1;
 }
 
-/**
- * Device set for one rule. Reuses the 3-a scope parsing conventions
- * (siteCodes/criticalities via parsePolicyScope) and adds deviceRoles.
- * OFFLINE devices are excluded for everything except AVAILABILITY.
- */
-async function ruleDeviceWhere(
-  rule: EvalRule,
-  scopeText: string | null | undefined
-) {
-  const scope = parsePolicyScope(scopeText);
-  const roles =
-    scopeText
-      ? (() => {
-          try {
-            const parsed: unknown = JSON.parse(scopeText);
-            const raw =
-              parsed && typeof parsed === "object" && !Array.isArray(parsed)
-                ? (parsed as Record<string, unknown>).deviceRoles
-                : null;
-            return Array.isArray(raw)
-              ? raw.filter((r): r is string => typeof r === "string" && r.length > 0)
-              : null;
-          } catch {
-            return null;
-          }
-        })()
-      : null;
+/** One metricSample row as selected by the evaluation pass. */
+export interface SampleRow {
+  deviceId: string;
+  metric: string;
+  value: number;
+  ts: Date;
+}
 
+/**
+ * F-046: index the sample rows per "<deviceId>:<metric>" series. The capped
+ * load fetches newest-first (orderBy ts desc + take MAX_SAMPLES_PER_QUERY —
+ * see that constant); this restores the ascending per-series order the old
+ * uncapped asc load produced (the window math is order-independent, the asc
+ * structure keeps the map identical).
+ */
+export function indexSamples(
+  samples: SampleRow[]
+): Map<string, Array<{ ts: Date; value: number }>> {
+  const byDeviceMetric = new Map<string, Array<{ ts: Date; value: number }>>();
+  for (const s of samples) {
+    const key = `${s.deviceId}:${s.metric}`;
+    const list = byDeviceMetric.get(key);
+    if (list) list.push({ ts: s.ts, value: s.value });
+    else byDeviceMetric.set(key, [{ ts: s.ts, value: s.value }]);
+  }
+  for (const list of byDeviceMetric.values()) list.reverse();
+  return byDeviceMetric;
+}
+
+/**
+ * F-046: deviceRoles scope parsing (was inlined in the old Prisma-where
+ * builder) — array of non-empty strings, or null when absent/malformed.
+ */
+function parseDeviceRoles(
+  scopeText: string | null | undefined
+): string[] | null {
+  if (!scopeText) return null;
+  try {
+    const parsed: unknown = JSON.parse(scopeText);
+    const raw =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>).deviceRoles
+        : null;
+    return Array.isArray(raw)
+      ? raw.filter((r): r is string => typeof r === "string" && r.length > 0)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Device-set predicate for one rule — the F-046 in-memory twin of the old
+ * per-rule Prisma where-builder. Reuses the 3-a scope parsing conventions
+ * (siteCodes/criticalities via parsePolicyScope) and adds deviceRoles.
+ * Semantics match the old SQL filters exactly:
+ *   - UNMANAGED devices are always excluded; OFFLINE is excluded for
+ *     everything except AVAILABILITY (they are exactly its target);
+ *   - a scope list matches non-null values only (SQL `IN` never matches
+ *     NULL — siteless/roleless devices stay out of scoped rules);
+ *   - siteCodes containing "*" (or absent) = every site, siteless included.
+ */
+export function ruleDevicePredicate(
+  rule: Pick<EvalRule, "metric">,
+  scopeText: string | null | undefined
+): (device: EvalDevice) => boolean {
+  const scope = parsePolicyScope(scopeText);
+  const roles = parseDeviceRoles(scopeText);
   const statusExclusions: string[] = ["UNMANAGED"];
   if (rule.metric !== "AVAILABILITY") statusExclusions.push("OFFLINE");
 
-  return {
-    AND: [
-      { status: { notIn: statusExclusions } },
-      ...(scope.criticalities
-        ? [{ criticality: { in: scope.criticalities } }]
-        : []),
-      ...(scope.siteCodes && !scope.siteCodes.includes("*")
-        ? [{ site: { code: { in: scope.siteCodes } } }]
-        : []),
-      ...(roles ? [{ role: { in: roles } }] : []),
-    ],
+  return (device) => {
+    if (statusExclusions.includes(device.status)) return false;
+    if (
+      scope.criticalities &&
+      !scope.criticalities.includes(device.criticality ?? "")
+    ) {
+      return false;
+    }
+    if (scope.siteCodes && !scope.siteCodes.includes("*")) {
+      if (!device.siteCode || !scope.siteCodes.includes(device.siteCode)) {
+        return false;
+      }
+    }
+    if (roles && (device.role === null || !roles.includes(device.role))) {
+      return false;
+    }
+    return true;
   };
+}
+
+/**
+ * F-046: resolve every rule's device set from ONE device list with
+ * in-memory filtering (the old engine ran one device.findMany per rule).
+ * Pairs are built rule-major — rules in the given order, devices in list
+ * order within each rule — matching the old per-rule query flow; the caller
+ * keeps the AVAILABILITY-first stable sort on top. `deviceById` holds the
+ * union of matched devices (summary.devicesConsidered).
+ */
+export function resolveRuleDevicePairs(
+  rules: Array<EvalRule & { scopeJson: string | null }>,
+  devices: EvalDevice[]
+): {
+  deviceById: Map<string, EvalDevice>;
+  pairs: Array<{ rule: EvalRule; device: EvalDevice }>;
+} {
+  const predicates = rules.map((rule) => ({
+    rule,
+    matches: ruleDevicePredicate(rule, rule.scopeJson),
+  }));
+  const deviceById = new Map<string, EvalDevice>();
+  const pairs: Array<{ rule: EvalRule; device: EvalDevice }> = [];
+  for (const { rule, matches } of predicates) {
+    for (const device of devices) {
+      if (!matches(device)) continue;
+      deviceById.set(device.id, device);
+      pairs.push({ rule, device });
+    }
+  }
+  return { deviceById, pairs };
+}
+
+/* ── F-046: batched dedup writes ───────────────────────────────────────
+ *
+ * Pass 1 used to run one `alert.update` per open breaching pair; identical
+ * write payloads are now grouped and flushed as ONE `alert.updateMany` per
+ * group after the pair walk. Groups are keyed by write payload:
+ *   - "dedup:touch" — the plain lastSeen/count refresh (ACTIVE rows,
+ *     ACKNOWLEDGED rows and still-suppressed rows share the payload);
+ *   - "suppress:window:<name>" — ACTIVE → SUPPRESSED under a maintenance
+ *     window (one group per window NAME: the reason embeds it);
+ *   - "reactivate:root-release" — the RT-001 re-activation.
+ * Rows still migrating onto the fingerprint dedupKey (legacy ruleId-only
+ * rows) keep the exact per-row update — the key value is row-specific.
+ */
+
+/** Write payload shared by every member of one dedup update group. */
+export interface DedupUpdateGroupData {
+  status?: string;
+  suppressReason?: string | null;
+  parentAlertId?: string | null;
+  lastSeen?: Date;
+  count?: { increment: number };
+}
+
+/** Minimal executor surface — `db.alert` satisfies it; tests can stub it. */
+export interface DedupUpdateExecutor {
+  updateMany(args: {
+    where: { id: { in: string[] } };
+    data: DedupUpdateGroupData;
+  }): Promise<unknown>;
+}
+
+/** Buffered dedup writes: one updateMany per write-payload group. */
+export class DedupUpdateBatch {
+  private groups = new Map<
+    string,
+    { where: { id: { in: string[] } }; data: DedupUpdateGroupData }
+  >();
+
+  /** Buffer one alert row id under a write-payload group key. */
+  add(groupKey: string, data: DedupUpdateGroupData, alertId: string): void {
+    const group = this.groups.get(groupKey);
+    if (group) {
+      group.where.id.in.push(alertId);
+      return;
+    }
+    this.groups.set(groupKey, { where: { id: { in: [alertId] } }, data });
+  }
+
+  /** Distinct write-payload groups buffered (one updateMany each on flush). */
+  get groupCount(): number {
+    return this.groups.size;
+  }
+
+  /** Buffered row ids of one group (inspection surface). */
+  idsIn(groupKey: string): string[] {
+    return this.groups.get(groupKey)?.where.id.in ?? [];
+  }
+
+  /** Flush every buffered group as one updateMany; returns writes executed. */
+  async flush(executor: DedupUpdateExecutor): Promise<number> {
+    let executed = 0;
+    for (const group of this.groups.values()) {
+      await executor.updateMany(group);
+      executed += 1;
+    }
+    return executed;
+  }
 }
 
 /**
@@ -338,26 +510,31 @@ export async function runAlertEvaluation(options: {
   }
   summary.rulesEvaluated = rules.length;
 
-  /* ── resolve scopes → device sets ──────────────────────────────────── */
-  const deviceById = new Map<string, EvalDevice>();
-  const pairs: Array<{ rule: EvalRule; device: EvalDevice }> = [];
-  for (const rule of rules) {
-    const where = await ruleDeviceWhere(rule, rule.scopeJson);
-    const devices = await db.device.findMany({
-      where,
-      select: {
-        id: true,
-        hostname: true,
-        status: true,
-        lastSeen: true,
-        siteId: true,
-      },
-    });
-    for (const device of devices) {
-      deviceById.set(device.id, device);
-      pairs.push({ rule, device });
-    }
-  }
+  /* ── resolve scopes → device sets (F-046: ONE device query, in-memory
+     filtering — was one device.findMany per rule) ─────────────────────── */
+  const allDevices = await db.device.findMany({
+    select: {
+      id: true,
+      hostname: true,
+      status: true,
+      lastSeen: true,
+      siteId: true,
+      criticality: true,
+      role: true,
+      site: { select: { code: true } },
+    },
+  });
+  const scopedDevices: EvalDevice[] = allDevices.map((device) => ({
+    id: device.id,
+    hostname: device.hostname,
+    status: device.status,
+    lastSeen: device.lastSeen,
+    siteId: device.siteId,
+    criticality: device.criticality,
+    role: device.role,
+    siteCode: device.site?.code ?? null,
+  }));
+  const { deviceById, pairs } = resolveRuleDevicePairs(rules, scopedDevices);
   summary.devicesConsidered = deviceById.size;
   if (pairs.length === 0) return summary;
 
@@ -399,9 +576,21 @@ export async function runAlertEvaluation(options: {
    * roots breached in THIS run — the DB check also sees roots opened by an
    * earlier pass (e.g. an acknowledged outage), so a child can never
    * re-activate while its root is still open.
+   *
+   * F-046: AVAILABILITY roots re-activated in THIS pass are batched (not
+   * yet flushed) while openRootExists runs. The pre-F-046 engine wrote the
+   * re-activation inline, so later DB checks saw the fresh ACTIVE root
+   * immediately — tracking the pending root here reproduces that visibility
+   * exactly (registered at the same pair position the old write happened).
    */
+  const pendingReactivatedRoots = new Set<string>();
   const openRootExists = async (device: EvalDevice): Promise<boolean> => {
-    if (openRootByDevice.has(device.id)) return true;
+    if (
+      openRootByDevice.has(device.id) ||
+      pendingReactivatedRoots.has(device.id)
+    ) {
+      return true;
+    }
     const openRoot = await db.alert.findFirst({
       where: {
         deviceId: device.id,
@@ -463,7 +652,7 @@ export async function runAlertEvaluation(options: {
     ...rules.filter((r) => r.metric !== "AVAILABILITY").map((r) => r.durationMinutes),
     0
   );
-  const samplesByDeviceMetric = new Map<string, Array<{ ts: Date; value: number }>>();
+  let samplesByDeviceMetric = new Map<string, Array<{ ts: Date; value: number }>>();
   if (neededMetrics.size > 0 && maxWindowMin > 0) {
     // Resolve pass needs the previous window too → load 2× the max window.
     const since = new Date(now.getTime() - 2 * maxWindowMin * 60_000);
@@ -474,14 +663,14 @@ export async function runAlertEvaluation(options: {
         ts: { gte: since },
       },
       select: { deviceId: true, metric: true, value: true, ts: true },
-      orderBy: { ts: "asc" },
+      // F-046: row cap — newest rows win (desc + take); indexSamples
+      // restores the ascending per-series order in memory. A truncated
+      // load can only drop previous-window rows, which lands in pass 2's
+      // documented sparse-data skip (never a false fire or false resolve).
+      orderBy: { ts: "desc" },
+      take: MAX_SAMPLES_PER_QUERY,
     });
-    for (const s of samples) {
-      const key = `${s.deviceId}:${s.metric}`;
-      const list = samplesByDeviceMetric.get(key);
-      if (list) list.push({ ts: s.ts, value: s.value });
-      else samplesByDeviceMetric.set(key, [{ ts: s.ts, value: s.value }]);
-    }
+    samplesByDeviceMetric = indexSamples(samples);
   }
 
   const windowAvg = (
@@ -536,6 +725,30 @@ export async function runAlertEvaluation(options: {
     summary.notificationsCreated += 1;
   };
 
+  const dedupBatch = new DedupUpdateBatch();
+
+  /**
+   * F-046: buffer a dedup write for the batched flush — or, for the rare
+   * legacy row still migrating onto the fingerprint dedupKey (its value is
+   * row-specific), keep the exact per-row update of the pre-F-046 engine,
+   * awaited inline where the old write happened.
+   */
+  const bufferDedupWrite = async (
+    groupKey: string,
+    data: DedupUpdateGroupData,
+    existing: ExistingAlert,
+    key: string
+  ): Promise<void> => {
+    if (existing.dedupKey !== key) {
+      await db.alert.update({
+        where: { id: existing.id },
+        data: { ...data, dedupKey: key },
+      });
+      return;
+    }
+    dedupBatch.add(groupKey, data, existing.id);
+  };
+
   /* ── pass 1: fires / dedup / suppression ───────────────────────────── */
   for (const { rule, device } of pairs) {
     const { breached, observed } = breaches(rule, device);
@@ -547,27 +760,33 @@ export async function runAlertEvaluation(options: {
 
     if (existing) {
       // DEDUP — refresh the open alert instead of creating a duplicate.
+      // F-046: writes are buffered per payload group and flushed as ONE
+      // updateMany per group right after this walk; the in-memory root
+      // bookkeeping below happens exactly where it always did.
       if (existing.status === "ACTIVE" || existing.status === "ACKNOWLEDGED") {
         const inMaintenance = maintenanceFor(device);
         if (existing.status === "ACTIVE" && inMaintenance) {
           // Existing ACTIVE alerts that fall inside a window are suppressed
           // too (ACKNOWLEDGED keeps human ownership — documented choice).
-          await db.alert.update({
-            where: { id: existing.id },
-            data: {
+          await bufferDedupWrite(
+            `suppress:window:${inMaintenance}`,
+            {
               status: "SUPPRESSED",
               suppressReason: `${MAINTENANCE_REASON_PREFIX}${inMaintenance}`,
               lastSeen: now,
               count: { increment: 1 },
-              dedupKey: key,
             },
-          });
+            existing,
+            key
+          );
           summary.suppressed += 1;
         } else {
-          await db.alert.update({
-            where: { id: existing.id },
-            data: { lastSeen: now, count: { increment: 1 }, dedupKey: key },
-          });
+          await bufferDedupWrite(
+            "dedup:touch",
+            { lastSeen: now, count: { increment: 1 } },
+            existing,
+            key
+          );
           summary.deduped += 1;
         }
         if (rule.metric === "AVAILABILITY") openRootByDevice.set(device.id, existing);
@@ -586,23 +805,32 @@ export async function runAlertEvaluation(options: {
           await openRootExists(device)
         )
       ) {
-        await db.alert.update({
-          where: { id: existing.id },
-          data: {
+        await bufferDedupWrite(
+          "reactivate:root-release",
+          {
             status: "ACTIVE",
             suppressReason: null,
             parentAlertId: null,
             lastSeen: now,
             count: { increment: 1 },
-            dedupKey: key,
           },
-        });
+          existing,
+          key
+        );
+        // A re-activated AVAILABILITY root becomes DB-visible to later
+        // openRootExists checks in the old inline-write flow — replicate
+        // that visibility for the batched (not-yet-flushed) write.
+        if (rule.metric === "AVAILABILITY") {
+          pendingReactivatedRoots.add(device.id);
+        }
         summary.reactivated += 1;
       } else {
-        await db.alert.update({
-          where: { id: existing.id },
-          data: { lastSeen: now, count: { increment: 1 }, dedupKey: key },
-        });
+        await bufferDedupWrite(
+          "dedup:touch",
+          { lastSeen: now, count: { increment: 1 } },
+          existing,
+          key
+        );
         summary.deduped += 1;
       }
       continue;
@@ -739,6 +967,17 @@ export async function runAlertEvaluation(options: {
       });
     }
   }
+
+  /* ── F-046: flush the buffered dedup groups — one updateMany per group.
+   * Outcome parity: nothing between the walk and here reads those rows
+   * back — the children sweep and pass 2 decide on the in-memory
+   * existingRows snapshot, and the sweep's SUPPRESSED transition can only
+   * meet the status-less touch group (window-suppressed devices are skipped
+   * by the sweep; re-activated rows have no open root by definition), so
+   * the write-order change is invisible. The one DB-visibility dependency
+   * — a re-activated AVAILABILITY root seen by later openRootExists checks
+   * — is carried by pendingReactivatedRoots during the walk. */
+  await dedupBatch.flush(db.alert);
 
   /* ── children sweep: existing ACTIVE alerts on unreachable devices ── */
   for (const [deviceId, root] of openRootByDevice) {
