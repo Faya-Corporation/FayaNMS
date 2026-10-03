@@ -107,8 +107,11 @@ jobs:
     env:
       DATABASE_URL: "postgresql://fayanms:fayanms-ci-only@localhost:5433/fayanms"
       NEXTAUTH_URL: "http://localhost:3000"
+      # nosemgrep: generic.secrets.security.detected-generic-secret.detected-generic-secret — throwaway CI fixture per the header policy above ("CI uses well-formed THROWAWAY hex values — no real secret ever lives in this repo").
       NEXTAUTH_SECRET: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
+      # nosemgrep: generic.secrets.security.detected-generic-secret.detected-generic-secret — throwaway CI fixture per the header policy above; same documented dummy value as NEXTAUTH_SECRET.
       FAYANMS_SERVICE_SECRET: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
+      # nosemgrep: generic.secrets.security.detected-generic-secret.detected-generic-secret — throwaway CI fixture per the header policy above; same documented dummy value (shape-validated by the startup security policy, never a real key).
       FAYANMS_CONFIG_ENC_KEY: "6b1f0f4c2c5e4d9a8f3c7e2b1a5d9f8e3c7b2a6d1e9f4c8b3a7d2e6f1c5b9a03"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (SHA-pinned 2026-09-11)

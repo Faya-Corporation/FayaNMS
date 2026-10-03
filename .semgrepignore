@@ -1,0 +1,69 @@
+# W3-D (2026-10-03) — semgrep ignore file for the FayaNMS repository.
+#
+# WHY THIS FILE EXISTS
+#   The semgrep 1.179.0 upgrade (PR #56) surfaced exactly one finding that is
+#   NOT resolvable by either a code fix or an inline `# nosemgrep:`
+#   annotation:
+#
+#     generic.secrets.security.detected-private-key.detected-private-key
+#     → mini-services/worker/harness/tls/sfos-webapi-key.pem
+#
+#   The file is the SFOS protocol-harness persona's self-signed loopback TLS
+#   key (F-045 decision: banner-labeled demo personas are NOT secrets). It
+#   CANNOT carry an inline annotation: any text before the
+#   -----BEGIN OPENSSH PRIVATE KEY----- line (or appended to it) makes
+#   OpenSSL reject the key ("NO_START LINE" — verified with
+#   crypto.createPrivateKey), and a trailing comment after the END line does
+#   not cover the finding's line range for semgrep.
+#
+#   This is the same fixture already machine-triaged for the other scanners,
+#   following the established per-scanner scoped-exception discipline:
+#     - gitleaks:      .gitleaks.toml allowlist `^mini-services/worker/harness/`
+#     - trivy fs:      ci.yml trivy step skip-files `mini-services/worker/harness/tls/*`
+#     - docker images: .dockerignore excludes `mini-services/worker/harness/tls`
+#   The exception below is scoped to THAT ONE FILE (the .crt is public
+#   material and stays scanned). Widening it requires a new note here.
+#
+# REPLICATED DEFAULTS (do not remove)
+#   The presence of this file REPLACES semgrep's built-in default ignore
+#   template (verified empirically: adding this file changes the scanned
+#   target set). The block below is the upstream default template verbatim
+#   (semgrep docs "Understand Semgrep defaults", semgrep 1.179.0) so the
+#   effective scan surface stays IDENTICAL to the pre-file baseline except
+#   for the single harness fixture above.
+
+# Administrative folder or file used by popular version control systems
+.git
+.svn
+.hg
+_darcs
+CVS
+
+# Paths to files and folders that are typically large and ignorable
+build/
+vendor/
+dist/
+*.min.js
+.env/
+.tox/
+
+# Package managers
+node_modules/
+.npm/
+.yarn/
+.venv/
+_opam/
+_build/
+_cargo/
+
+# Note that PHP composer uses vendor/ and C++ conan uses build/
+# .venv is used both by Go and Python.
+
+# Common test paths
+test/
+tests/
+testsuite/
+*_test.go
+
+# ── W3-D scoped exception: SFOS harness demo-persona TLS key (F-045) ──
+mini-services/worker/harness/tls/sfos-webapi-key.pem
