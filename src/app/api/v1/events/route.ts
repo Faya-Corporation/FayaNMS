@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import {
   fail,
   firstIssueMessage,
@@ -26,7 +27,17 @@ export const dynamic = "force-dynamic";
  *                 CONFIG_DOWNLOAD audit rows)
  *   from / to     ISO timestamps on createdAt
  *   q             contains across actorName/action/resourceType/resourceLabel/
- *                 resourceId/correlationId (SQLite LIKE is case-insensitive)
+ *                 resourceId/correlationId — CASE-INSENSITIVE substring match.
+ *                 F-047: the documented contract is case-insensitivity (the
+ *                 pre-Phase-21 SQLite LIKE behavior); on Postgres each filter
+ *                 passes Prisma `mode: "insensitive"` (compiles to ILIKE).
+ *                 Cost honesty: ILIKE cannot use a plain btree index, so a
+ *                 q filter is a 6-column scan — heavier than a case-sensitive
+ *                 LIKE. The bounded page size (pageSize hard-capped at 100 in
+ *                 paginationSchema) and the 120-char q cap keep per-load cost
+ *                 acceptable; if AuditEvent volume demands more, the named
+ *                 follow-up is a dedicated normalized search column or a
+ *                 pg_trgm GIN index — see docs/adr/ADR-events-search-contract.md.
  *
  * meta: pagination + total + last24h (events in the trailing 24 h over the
  * same filters minus the time range) + distinctActors + topActions (top-8
@@ -98,8 +109,9 @@ export async function GET(request: Request) {
     q,
   } = parsed.data;
 
-  /** All filters — used for the page itself. */
-  const listWhere = {
+  /** All filters — used for the page itself. (Contextually typed so the
+   *  `mode: "insensitive"` literals stay narrow for Prisma's Exact<>.) */
+  const listWhere: Prisma.AuditEventWhereInput = {
     AND: [
       actor
         ? { OR: [{ actorId: actor }, { actorName: actor }] }
@@ -113,12 +125,12 @@ export async function GET(request: Request) {
       q
         ? {
             OR: [
-              { actorName: { contains: q } },
-              { action: { contains: q } },
-              { resourceType: { contains: q } },
-              { resourceLabel: { contains: q } },
-              { resourceId: { contains: q } },
-              { correlationId: { contains: q } },
+              { actorName: { contains: q, mode: "insensitive" } },
+              { action: { contains: q, mode: "insensitive" } },
+              { resourceType: { contains: q, mode: "insensitive" } },
+              { resourceLabel: { contains: q, mode: "insensitive" } },
+              { resourceId: { contains: q, mode: "insensitive" } },
+              { correlationId: { contains: q, mode: "insensitive" } },
             ],
           }
         : {},
@@ -126,7 +138,7 @@ export async function GET(request: Request) {
   };
 
   /** Filters minus the facet's own dimension — facets stay navigable. */
-  const scopeWhere = {
+  const scopeWhere: Prisma.AuditEventWhereInput = {
     AND: [
       actor ? { OR: [{ actorId: actor }, { actorName: actor }] } : {},
       entityType ? { resourceType: entityType } : {},
@@ -137,12 +149,12 @@ export async function GET(request: Request) {
       q
         ? {
             OR: [
-              { actorName: { contains: q } },
-              { action: { contains: q } },
-              { resourceType: { contains: q } },
-              { resourceLabel: { contains: q } },
-              { resourceId: { contains: q } },
-              { correlationId: { contains: q } },
+              { actorName: { contains: q, mode: "insensitive" } },
+              { action: { contains: q, mode: "insensitive" } },
+              { resourceType: { contains: q, mode: "insensitive" } },
+              { resourceLabel: { contains: q, mode: "insensitive" } },
+              { resourceId: { contains: q, mode: "insensitive" } },
+              { correlationId: { contains: q, mode: "insensitive" } },
             ],
           }
         : {},
@@ -161,7 +173,8 @@ export async function GET(request: Request) {
         take: pageSize,
       }),
       db.auditEvent.count({
-        where: { AND: [...scopeWhere.AND, { createdAt: { gte: last24hFloor } }] },
+        // AND-of-AND ≡ flat AND — no spread needed (AND is Input|Input[]).
+        where: { AND: [scopeWhere, { createdAt: { gte: last24hFloor } }] },
       }),
       db.auditEvent.groupBy({
         by: ["action"],
@@ -190,11 +203,11 @@ export async function GET(request: Request) {
             q
               ? {
                   OR: [
-                    { action: { contains: q } },
-                    { resourceType: { contains: q } },
-                    { resourceLabel: { contains: q } },
-                    { resourceId: { contains: q } },
-                    { correlationId: { contains: q } },
+                    { action: { contains: q, mode: "insensitive" } },
+                    { resourceType: { contains: q, mode: "insensitive" } },
+                    { resourceLabel: { contains: q, mode: "insensitive" } },
+                    { resourceId: { contains: q, mode: "insensitive" } },
+                    { correlationId: { contains: q, mode: "insensitive" } },
                   ],
                 }
               : {},
