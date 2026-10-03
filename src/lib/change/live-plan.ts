@@ -154,6 +154,7 @@ export function extractOriginalDescription(
     case "junos": {
       // Set-style first (some devices return | display set), hierarchical
       // otherwise.
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp — `anchor` is an INTERNAL interface identifier from the change-plan model (never user input) and is passed through escapeRegExp() below, so the pattern cannot be injected into or blow up ReDoS-style.
       const setStyle = new RegExp(`^set interfaces ${escapeRegExp(anchor)} description (.+?);?\\s*$`, "m").exec(rawText);
       if (setStyle) return setStyle[1].trim().replace(/^"|"$/g, "");
       const blockStart = lines.findIndex((l) => l === "interfaces {");
@@ -170,6 +171,7 @@ export function extractOriginalDescription(
       return null;
     }
     case "panos": {
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp — `anchor` is an INTERNAL interface identifier (never user input), escaped via escapeRegExp(); same mitigation as the junos case above.
       const match = new RegExp(
         `^set network interface ethernet ${escapeRegExp(anchor)} comment "(.*)" *$`,
         "m",
@@ -177,6 +179,7 @@ export function extractOriginalDescription(
       if (match) return match[1].trim();
       // No comment line at all is a legitimate "none" — but only when the
       // interface exists at all.
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp — same escaped INTERNAL anchor as above; existence probe only, no user-controlled pattern.
       return new RegExp(`^set network interface ethernet ${escapeRegExp(anchor)} `, "m").test(rawText)
         ? null
         : LIVE_NO_ANCHOR;

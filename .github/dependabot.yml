@@ -50,6 +50,13 @@ updates:
       time: "06:00"
       timezone: "Etc/UTC"
     open-pull-requests-limit: 10
+    # W3-D (semgrep dependabot-missing-cooldown): rate-limit how fresh a
+    # release must be before Dependabot proposes it — newly published
+    # versions get a 7-day soak before Dependabot proposes them (the value
+    # the rule pins as the floor; it dampens supply-chain churn without
+    # muting security updates).
+    cooldown:
+      default-days: 7
     # Allow list — the versioning policy: everything is auto-updatable, but
     # bumps preserve the declared range style (exact pins stay exact pins).
     allow:
@@ -74,6 +81,9 @@ updates:
       time: "06:00"
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
+    # W3-D: same 7-day cooldown policy as the root-app entry (see above).
+    cooldown:
+      default-days: 7
     allow:
       - dependency-type: "all"
     groups:
@@ -99,6 +109,9 @@ updates:
       time: "06:00"
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
+    # W3-D: same 7-day cooldown policy as the bun entries (see above).
+    cooldown:
+      default-days: 7
     allow:
       - dependency-type: "all"
     groups:

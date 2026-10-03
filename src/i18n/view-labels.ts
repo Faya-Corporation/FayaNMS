@@ -50,6 +50,7 @@ function resolveMessage(
       typeof current === "object" &&
       segment in (current as Record<string, unknown>)
     ) {
+      // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop — the walked tree is the server-loaded i18n dictionary (plain-JSON messages/*.json) and the segments are INTERNAL constants from the label schema (registry labelKey paths + hardcoded nav keys), never user input; the resolved value must also land on a string leaf to be returned, so prototype keys cannot flow out.
       current = (current as Record<string, unknown>)[segment];
     } else {
       return undefined;
