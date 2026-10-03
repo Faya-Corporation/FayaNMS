@@ -386,7 +386,7 @@ jobs:
 
       - name: Upload browser diagnostics
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: browser-diagnostics-${{ github.run_id }}
           path: |
@@ -491,7 +491,7 @@ jobs:
           install -m 0755 /tmp/syft-extract/syft /usr/local/bin/syft
           syft dir:. -o cyclonedx-json > sbom.cdx.json
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 (SHA-pinned 2026-09-11)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4 (SHA-pinned 2026-09-11)
         with:
           name: sbom-cyclonedx
           path: sbom.cdx.json
@@ -595,7 +595,7 @@ jobs:
           syft fayanms-worker:ci -o cyclonedx-json > sbom-worker-image.cdx.json
 
       - name: Upload image SBOM artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 (SHA-pinned 2026-09-11)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4 (SHA-pinned 2026-09-11)
         with:
           name: sbom-runtime-images
           path: |
