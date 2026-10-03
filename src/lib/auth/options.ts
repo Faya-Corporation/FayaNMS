@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
+import { userSiteScopeClaim } from "@/lib/auth/scope";
 import {
   checkLoginAllowed,
   recordLoginFailure,
@@ -16,11 +17,18 @@ import type { UserRole } from "@/lib/auth/roles";
  * JWT session (no database adapter; the User table is queried directly in
  * `authorize`).
  *
- * Session/JWT claims: { id, email, name, role }. The jwt callback refreshes
- * those claims from the database whenever the session is re-fetched, so a
- * role change (or deactivation) propagates without waiting for a new
- * sign-in. If the account disappears or is disabled mid-session the claims
- * are stripped, which makes every guarded request answer 401.
+ * Session/JWT claims: { id, email, name, role, sites? }. The jwt callback
+ * refreshes the identity claims from the database whenever the session is
+ * re-fetched, so a role change (or deactivation) propagates without waiting
+ * for a new sign-in. If the account disappears or is disabled mid-session
+ * the claims are stripped, which makes every guarded request answer 401.
+ *
+ * F-031 resource-level scoping: the OPTIONAL `sites` claim (site codes) is
+ * minted ONLY at sign-in, from the user's User.siteScopeJson column (null
+ * column → no claim → wildcard = the single-tenant default). The session
+ * refresh branch deliberately does NOT touch it — a scope change takes
+ * effect on the user's NEXT sign-in (no live token revocation; documented
+ * in docs/security/authorization-matrix.md §5).
  *
  * AUTH-001-A: the credentials verification path is guarded by the dedicated
  * login abuse-control module (src/lib/auth/login-guard.ts) — throttling,
@@ -124,11 +132,17 @@ export const authOptions: NextAuthOptions = {
           // Auditing must never block sign-in.
         }
 
+        // F-031: the site scope rides the sign-in claims — null column →
+        // undefined → the `sites` claim key is OMITTED (wildcard). The
+        // userSiteScopeClaim parser is fail-closed (malformed row → []),
+        // so a hand-edited siteScopeJson can never mint wildcard access.
+        const siteScope = userSiteScopeClaim(user.siteScopeJson);
         return {
           id: user.id,
           email: user.email,
           name: user.name,
           role: user.role as UserRole,
+          ...(siteScope !== undefined ? { sites: siteScope } : {}),
         };
       },
     }),
@@ -141,6 +155,12 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email ?? token.email;
         token.name = user.name ?? token.name;
         token.role = (user as { role?: string }).role ?? "viewer";
+        // F-031: the `sites` claim is stamped ONLY here (sign-in time).
+        // Absent → no claim → wildcard (single-tenant default).
+        const sites = (user as { sites?: unknown }).sites;
+        if (Array.isArray(sites)) {
+          token.sites = sites;
+        }
         return token;
       }
 
@@ -164,6 +184,8 @@ export const authOptions: NextAuthOptions = {
           token.email = fresh.email;
           token.name = fresh.name ?? undefined;
           token.role = fresh.role;
+          // F-031: token.sites is deliberately NOT refreshed here — scope
+          // changes land on the NEXT sign-in (the JWT is minted at login).
         } catch {
           // keep previous claims
         }
