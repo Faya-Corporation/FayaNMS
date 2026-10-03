@@ -10,7 +10,7 @@ import { fail, firstIssueMessage, ok } from "../../../_lib/api";
 export const dynamic = "force-dynamic";
 
 /**
- * POST /api/v1/auth/mfa/confirm (F-034 phase 2) — complete a pending TOTP
+ * POST /api/v1/me/mfa/confirm (F-034 phase 2) — complete a pending TOTP
  * enrollment with the first valid 6-digit code (proof the caller actually
  * provisioned the secret). Privileged roles only (admin/operator).
  *

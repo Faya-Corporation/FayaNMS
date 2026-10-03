@@ -10,22 +10,23 @@ import { fail, firstIssueMessage, ok } from "../../../_lib/api";
 export const dynamic = "force-dynamic";
 
 /**
- * POST /api/v1/auth/mfa/enroll (F-034 phase 2) — begin self-service TOTP
+ * POST /api/v1/me/mfa/enroll (F-034 phase 2) — begin self-service TOTP
  * enrollment for PRIVILEGED roles (admin/operator; other roles answer
  * 403 RBAC_FORBIDDEN — the second factor targets the config-pushing plane).
  *
  * Generates a fresh Base32 secret + otpauth:// URI (issuer FayaNMS) for the
  * caller's authenticator app. The enrollment row is stored DISABLED —
  * nothing challenges at sign-in until the first valid code is confirmed via
- * POST /api/v1/auth/mfa/confirm (proof of possession).
+ * POST /api/v1/me/mfa/confirm (proof of possession).
  *
  * Rollback knob: FAYANMS_MFA_MODE=disabled answers 400 MFA_DISABLED here —
  * the documented operator lever (see src/lib/auth/mfa.ts).
  *
- * Proxy note: /api/v1/auth/* is the public-bootstrap prefix (step 3a in
- * src/proxy.ts), so THIS handler owns authentication (requireRole answers
- * the 401 envelope) — anonymous callers fail closed here, and the
- * session cookie's SameSite=Lax policy guards the mutation itself.
+ * Rate-gate note: this handler lives under the /api/v1/me family (NOT the
+ * public-bootstrap /api/v1/auth prefix — the NEW-1 governance pin keeps that
+ * prefix read-only). It therefore sits behind the normal /api/v1 rate gate,
+ * and requireRole still answers the 401 envelope — anonymous callers fail
+ * closed, and the session cookie's SameSite=Lax policy guards the mutation.
  *
  * Honest limitation (documented in the PR): enrollment is API-only at this
  * stage (curl / OpenAPI); the settings-UI wave owns the form.
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
       enabled: false,
       secret: enrollment.secret,
       otpauth: enrollment.otpauth,
-      confirm: "POST /api/v1/auth/mfa/confirm with the 6-digit code",
+      confirm: "POST /api/v1/me/mfa/confirm with the 6-digit code",
     });
   } catch (error) {
     const envelope = mfaErrorToFail(error);

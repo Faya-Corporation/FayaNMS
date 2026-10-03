@@ -7,7 +7,7 @@ import { fail, firstIssueMessage, ok } from "../../_lib/api";
 export const dynamic = "force-dynamic";
 
 /**
- * DELETE /api/v1/auth/mfa (F-034 phase 2) — disable the caller's TOTP
+ * DELETE /api/v1/me/mfa (F-034 phase 2) — disable the caller's TOTP
  * second factor. Privileged roles only (admin/operator).
  *
  * FAIL-TIGHT by design: requires BOTH the account password (re-entry) AND
@@ -20,10 +20,11 @@ export const dynamic = "force-dynamic";
  * data-driven (the stored secret still validates codes while the knob is
  * off).
  *
- * Proxy note: /api/v1/auth/* is the public-bootstrap prefix (step 3a in
- * src/proxy.ts), so THIS handler owns authentication (requireRole answers
- * the 401 envelope); the session cookie's SameSite=Lax policy guards the
- * mutation itself.
+ * Rate-gate note: this handler lives under the /api/v1/me family (NOT the
+ * public-bootstrap /api/v1/auth prefix — the NEW-1 governance pin keeps that
+ * prefix read-only). It sits behind the normal /api/v1 rate gate, and
+ * requireRole still answers the 401 envelope; the session cookie's
+ * SameSite=Lax policy guards the mutation itself.
  */
 
 const disableSchema = z.object({

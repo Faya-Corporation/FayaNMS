@@ -591,9 +591,9 @@ describe("F-034 phase 2 — enroll → confirm → challenge → disable (DB)", 
     resetMfaModeForTests();
     try {
       const cookie = await sessionCookieFor({ id: operator!.id, email: operator!.email, role: "operator" });
-      const mod = await import("../../src/app/api/v1/auth/mfa/enroll/route");
+      const mod = await import("../../src/app/api/v1/me/mfa/enroll/route");
       const res = await mod.POST(
-        new NextRequest("http://app.local/api/v1/auth/mfa/enroll", {
+        new NextRequest("http://app.local/api/v1/me/mfa/enroll", {
           method: "POST",
           headers: { "Content-Type": "application/json", Cookie: cookie },
         })
@@ -609,9 +609,9 @@ describe("F-034 phase 2 — enroll → confirm → challenge → disable (DB)", 
   test("LIVE HANDLER PIN: enroll is role-gated; anonymous fails closed", async () => {
     // viewer session → 403 RBAC_FORBIDDEN (the second factor is privileged-only).
     const viewerCookie = await sessionCookieFor({ id: viewer!.id, email: viewer!.email, role: "viewer" });
-    const mod = await import("../../src/app/api/v1/auth/mfa/enroll/route");
+    const mod = await import("../../src/app/api/v1/me/mfa/enroll/route");
     const forbidden = await mod.POST(
-      new NextRequest("http://app.local/api/v1/auth/mfa/enroll", {
+      new NextRequest("http://app.local/api/v1/me/mfa/enroll", {
         method: "POST",
         headers: { "Content-Type": "application/json", Cookie: viewerCookie },
       })
@@ -621,10 +621,10 @@ describe("F-034 phase 2 — enroll → confirm → challenge → disable (DB)", 
       "RBAC_FORBIDDEN"
     );
 
-    // No cookie at all → 401 UNAUTHENTICATED (the route owns the public-
-    // bootstrap prefix: /api/v1/auth/* skips the proxy session gate).
+    // No cookie at all → 401 UNAUTHENTICATED (requireRole on the gated
+    // /api/v1/me family owns authentication — anonymous callers fail closed).
     const anonymous = await mod.POST(
-      new NextRequest("http://app.local/api/v1/auth/mfa/enroll", { method: "POST" })
+      new NextRequest("http://app.local/api/v1/me/mfa/enroll", { method: "POST" })
     );
     expect(anonymous.status).toBe(401);
     expect(((await anonymous.json()) as { error?: { code?: string } }).error?.code).toBe(
@@ -634,8 +634,8 @@ describe("F-034 phase 2 — enroll → confirm → challenge → disable (DB)", 
 
   test("LIVE HANDLER PIN: DELETE disable is fail-tight (password AND code)", async () => {
     const cookie = await sessionCookieFor({ id: operator!.id, email: operator!.email, role: "operator" });
-    const url = "http://app.local/api/v1/auth/mfa";
-    const mod = await import("../../src/app/api/v1/auth/mfa/route");
+    const url = "http://app.local/api/v1/me/mfa";
+    const mod = await import("../../src/app/api/v1/me/mfa/route");
 
     // Wrong password → refused even with a valid code.
     const goodCode = totpCodeAt(secret, Math.floor(Date.now() / 1000));
@@ -733,8 +733,8 @@ describe("F-034 phase 2 — wiring pins (source + schema)", () => {
     expect(runbook).toContain("FAYANMS_CONFIG_ENC_KEY");
     expect(runbook).toContain("single-use recovery codes");
     const matrix = read("docs/security/authorization-matrix.md");
-    expect(matrix).toContain("/auth/mfa/enroll");
-    expect(matrix).toContain("/auth/mfa/confirm");
+    expect(matrix).toContain("/me/mfa/enroll");
+    expect(matrix).toContain("/me/mfa/confirm");
     expect(matrix).toContain("fail-tight disable");
   });
 });

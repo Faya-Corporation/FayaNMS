@@ -42,10 +42,10 @@ Privileged accounts (`admin`, `operator`) can enroll a TOTP second factor (RFC 6
 
 Lifecycle (API-only at this stage; the settings UI wave owns the form):
 
-1. `POST /api/v1/auth/mfa/enroll` (session for admin/operator) → returns the Base32 secret + `otpauth://totp/FayaNMS:<email>?...` URI. The enrollment is PENDING (disabled) — nothing challenges yet. Re-enrolling rotates a pending secret.
-2. Provision the secret into any authenticator app, then `POST /api/v1/auth/mfa/confirm` with the current 6-digit code → the enrollment flips ENABLED and the response carries TEN single-use recovery codes — shown exactly once, stored only as sha256 hashes.
+1. `POST /api/v1/me/mfa/enroll` (session for admin/operator) → returns the Base32 secret + `otpauth://totp/FayaNMS:<email>?...` URI. The enrollment is PENDING (disabled) — nothing challenges yet. Re-enrolling rotates a pending secret.
+2. Provision the secret into any authenticator app, then `POST /api/v1/me/mfa/confirm` with the current 6-digit code → the enrollment flips ENABLED and the response carries TEN single-use recovery codes — shown exactly once, stored only as sha256 hashes.
 3. Sign-in: submit the 6-digit code (or an unused recovery code) in the `totp` field of the credentials sign-in POST. A code is valid for one sign-in per 30 s step (anti-replay); a second sign-in inside the same step needs a recovery code.
-4. Disable: `DELETE /api/v1/auth/mfa` with `{ password, code }` — fail-tight (password re-entry AND a current TOTP code or an unused recovery code). Audited (`MFA_ENROLLED`, `MFA_CONFIRMED`, `MFA_DISABLED`, `MFA_RECOVERY_USED`, `MFA_LOGIN_FAILED`).
+4. Disable: `DELETE /api/v1/me/mfa` with `{ password, code }` — fail-tight (password re-entry AND a current TOTP code or an unused recovery code). Audited (`MFA_ENROLLED`, `MFA_CONFIRMED`, `MFA_DISABLED`, `MFA_RECOVERY_USED`, `MFA_LOGIN_FAILED`).
 
 Rollback lever: `FAYANMS_MFA_MODE` in the app env file.
 

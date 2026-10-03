@@ -540,7 +540,7 @@ export async function confirmMfaEnrollment(
   if (!mfa) {
     throw new MfaError(
       "MFA_NOT_ENROLLED",
-      "No pending enrollment — call POST /api/v1/auth/mfa/enroll first."
+      "No pending enrollment — call POST /api/v1/me/mfa/enroll first."
     );
   }
   if (mfa.enabled) {
