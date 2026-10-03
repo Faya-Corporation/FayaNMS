@@ -111,7 +111,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on('error', (error) => {
-    console.error(`Socket error (${socket.id}):`, error)
+    console.error('Socket error:', socket.id, error)
   })
 })
 
