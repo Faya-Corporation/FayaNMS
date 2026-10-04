@@ -46,13 +46,26 @@ export const SITE_SCOPE_CLAIM_KEY = "sites";
  * code array (first-occurrence order preserved) or null when the value is
  * MALFORMED (not an array, or any member is not a non-empty string).
  * An empty array is VALID (it means deny-all, the fail-closed choice).
+ *
+ * Size bound (post-register audit wave 5): more than SITE_SCOPE_MAX_CODES
+ * codes is treated as MALFORMED — the admin write surface caps at 32 and
+ * the parser's own threat model (a hand-edited DB row) must not mint an
+ * unbounded claim whose per-request re-normalization degrades the request
+ * path. Fail-closed: an oversized list denies all, never truncates.
  */
+export const SITE_SCOPE_MAX_CODES = 32;
+
 export function normalizeSiteScopeCodes(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
+  if (value.length > SITE_SCOPE_MAX_CODES) return null;
+  const seen = new Set<string>();
   const codes: string[] = [];
   for (const member of value) {
     if (typeof member !== "string" || member.length === 0) return null;
-    if (!codes.includes(member)) codes.push(member);
+    if (!seen.has(member)) {
+      seen.add(member);
+      codes.push(member);
+    }
   }
   return codes;
 }

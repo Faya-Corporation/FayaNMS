@@ -127,8 +127,8 @@ validity re-verified at execute time (`APPROVAL_FINGERPRINT_MISMATCH`,
 | Endpoint | Method | Permission |
 |---|---|---|
 | `/me/mfa/enroll` | POST | `admin`/`operator` ROLE gate (`requireRole("admin","operator")`) — self-service TOTP enrollment (F-034); pending until confirm; answers `MFA_DISABLED` under `FAYANMS_MFA_MODE=disabled` |
-| `/me/mfa/confirm` | POST | `admin`/`operator` ROLE gate — first valid code enables the factor and issues single-use recovery codes (plaintexts shown once) (F-034) |
-| `/me/mfa` | DELETE | `admin`/`operator` ROLE gate — fail-tight disable: password re-entry AND current TOTP code or unused recovery code (F-034) |
+| `/me/mfa/confirm` | POST | `admin`/`operator` ROLE gate — first valid code enables the factor and issues single-use recovery codes (plaintexts shown once) (F-034). Post-register audit wave 5: gated by `FAYANMS_MFA_MODE` like enroll; the ENABLED flip is a conditional claim (concurrent confirms cannot both win); failed code checks are audited `MFA_CONFIRM_FAILED` and feed the login guard's ACCOUNT budget (locked account → 429) |
+| `/me/mfa` | DELETE | `admin`/`operator` ROLE gate — fail-tight disable: password re-entry AND current TOTP code or unused recovery code (F-034). Post-register audit wave 5: failed password re-entry / code checks are audited `MFA_DISABLE_FAILED` and feed the login guard's ACCOUNT budget (locked account → 429) — an online guessing attack can no longer ride the shared per-IP pool un-logged |
 | `/admin/users` | GET | `admin`/`auditor` ROLE gate (`requireRole("admin","auditor")`) — the full email directory; other roles use `/meta/users` (local-part picker only) (F-029) |
 | `/admin/users`, `/admin/users/[id]`, `/admin/users/[id]/reset-password` | POST/PATCH | `admin` ROLE gate (`requireRole("admin")`) — password SETs enforce the F-034 role-aware policy (privileged roles ≥ 12 chars, offline common-password denylist for all roles); with `FAYANMS_HIBP_MODE=enforce` a k-anonymity breach check also gates the SET (5-char SHA-1 prefix only; breached → `PASSWORD_BREACHED`, check unavailable → fail-closed `PASSWORD_BREACH_CHECK_UNAVAILABLE`; never at login) |
 | `/admin/api-clients` (+`/[id]`, `/[id]/rotate`) | POST/PATCH/DELETE | `admin` ROLE gate |
@@ -224,12 +224,18 @@ worker's outbound calls (override: `FAYANMS_SERVICE_ISSUERS`).
 | `/ingest/protocol`, `/ingest/protocol/snmpv3-profile`, `/ingest/protocol/snmpv3-profile/poll`, `/ingest/protocol/snmpv3-profile/accept` | `telemetry` |
 | `/worker/status` | human session (diagnostic; deliberately not service-exempt) |
 
-Proxy confinement (R62 P1, extended): a VERIFIED service JWT passes the proxy
-ONLY on the machine surface — the `/api/v1/worker/` prefix plus the exact
-non-worker routes above. The pass-through list (3a) and the verified-token
-surface (step 1) are kept in lockstep — the pass-through rides the same
-worker-prefix rule, so a newly added worker job route can never silently
-miss registration. Every route in this table enforces token+scope at the
+Proxy confinement (R62 P1, extended; post-register audit wave 5): a VERIFIED
+service JWT passes the proxy ONLY on the machine surface — the
+`/api/v1/worker/` prefix plus the exact non-worker routes above. The
+pass-through list (3a) now DERIVES from the same `MACHINE_EXACT_ROUTES`
+constant as the verified-token surface (step 1) — a single source of truth,
+so the two can never drift. A REGISTRATION SCAN
+(tests/audit/machine-surface-registration coverage inside
+tests/audit/post-register-audit-fixes.test.ts) walks every handler under
+src/app that authenticates a service principal and asserts its route is
+covered by the machine-surface rules — a future unregistered machine route
+fails the suite instead of failing production (the wave-4 lesson). Every
+route in this table enforces token+scope at the
 HANDLER layer (`authenticateServiceRequest` / `requireServiceOrPermission`);
 the proxy merely confines the principal.
 

@@ -308,7 +308,14 @@ export function mfaErrorToFail(error: unknown): ReturnType<typeof fail> | null {
 async function auditMfa(input: {
   userId: string;
   actorName: string;
-  action: "MFA_ENROLLED" | "MFA_CONFIRMED" | "MFA_DISABLED" | "MFA_RECOVERY_USED" | "MFA_LOGIN_FAILED";
+  action:
+    | "MFA_ENROLLED"
+    | "MFA_CONFIRMED"
+    | "MFA_DISABLED"
+    | "MFA_RECOVERY_USED"
+    | "MFA_LOGIN_FAILED"
+    | "MFA_CONFIRM_FAILED"
+    | "MFA_DISABLE_FAILED";
   result: "SUCCESS" | "FAILURE";
   detail: Record<string, unknown>;
 }): Promise<void> {
@@ -527,12 +534,28 @@ export async function beginMfaEnrollment(user: {
  * stamps the anti-replay step so the confirming code cannot be replayed at
  * sign-in, and generates the single-use recovery codes (plaintexts are
  * returned EXACTLY ONCE; only sha256 hashes are stored).
+ *
+ * Fail-closed details (post-register audit wave 5):
+ *   - the knob gates confirm the same way it gates enroll — a pending row
+ *     can NEVER flip enabled while FAYANMS_MFA_MODE=disabled;
+ *   - the ENABLED flip is a conditional claim (`enabled: false` in the
+ *     where) inside the transaction — two concurrent confirms cannot both
+ *     win and silently invalidate the first caller's issued recovery
+ *     codes (the loser answers MFA_ALREADY_ENABLED);
+ *   - a failed code verification is audited MFA_CONFIRM_FAILED so the
+ *     guessing attempt leaves an audit trail.
  */
 export async function confirmMfaEnrollment(
   user: { id: string; email: string },
   code: string | null | undefined,
   opts: { now?: Date } = {}
 ): Promise<{ recoveryCodes: string[] }> {
+  if (resolveMfaMode() === "disabled") {
+    throw new MfaError(
+      "MFA_DISABLED",
+      "Multi-factor authentication is disabled by FAYANMS_MFA_MODE — the rollback lever is set to disabled."
+    );
+  }
   const mfa = await db.userMfa.findUnique({
     where: { userId: user.id },
     select: { id: true, enabled: true, totpSecretEnc: true },
@@ -572,6 +595,13 @@ export async function confirmMfaEnrollment(
   const unixSeconds = Math.floor((opts.now ?? new Date()).getTime() / 1000);
   const verification = verifyTotpCode(secret, code, unixSeconds);
   if (!verification.matched) {
+    await auditMfa({
+      userId: user.id,
+      actorName: user.email,
+      action: "MFA_CONFIRM_FAILED",
+      result: "FAILURE",
+      detail: { reason: "MFA_CODE_INVALID" },
+    });
     throw new MfaError(
       "MFA_CODE_INVALID",
       "That code does not match the pending enrollment secret."
@@ -580,10 +610,21 @@ export async function confirmMfaEnrollment(
 
   const recoveryCodes = generateRecoveryCodes();
   await db.$transaction(async (tx) => {
-    await tx.userMfa.update({
-      where: { id: mfa.id },
+    // Conditional claim — only a still-DISABLED row can flip. Two
+    // concurrent confirms of the same pending enrollment produce exactly
+    // one winner; the loser's MFA_ALREADY_ENABLED propagates out of the
+    // transaction (its locally generated codes are never returned).
+    const claimed = await tx.userMfa.updateMany({
+      where: { id: mfa.id, enabled: false },
       data: { enabled: true, lastTotpStep: verification.step },
     });
+    if (claimed.count !== 1) {
+      throw new MfaError(
+        "MFA_ALREADY_ENABLED",
+        "Multi-factor authentication is already enabled.",
+        409
+      );
+    }
     // Fresh codes for a fresh enrollment (replaces any stale pending set).
     await tx.userMfaRecoveryCode.deleteMany({ where: { mfaId: mfa.id } });
     await tx.userMfaRecoveryCode.createMany({
@@ -614,6 +655,11 @@ export async function confirmMfaEnrollment(
  * TOTP code or an unused recovery code — a stolen session alone can never
  * strip the second factor. Deletes the enrollment (recovery codes cascade)
  * and stamps the anti-replay state with it.
+ *
+ * Post-register audit wave 5: failed verification attempts are audited
+ * (MFA_DISABLE_FAILED) so an online guessing attack against the password
+ * re-entry or the code leaves an audit trail; the route layer additionally
+ * feeds guessing-class failures into the login guard's account budget.
  */
 export async function disableMfa(
   user: { id: string; email: string },
@@ -632,6 +678,13 @@ export async function disableMfa(
     select: { passwordHash: true },
   });
   if (!account || !(await verifyPassword(password, account.passwordHash))) {
+    await auditMfa({
+      userId: user.id,
+      actorName: user.email,
+      action: "MFA_DISABLE_FAILED",
+      result: "FAILURE",
+      detail: { reason: "MFA_PASSWORD_INVALID" },
+    });
     throw new MfaError(
       "MFA_PASSWORD_INVALID",
       "Password re-entry failed — multi-factor authentication stays enabled."
@@ -689,6 +742,13 @@ export async function disableMfa(
     }
   }
   if (!matched) {
+    await auditMfa({
+      userId: user.id,
+      actorName: user.email,
+      action: "MFA_DISABLE_FAILED",
+      result: "FAILURE",
+      detail: { reason: "MFA_CODE_INVALID" },
+    });
     throw new MfaError(
       "MFA_CODE_INVALID",
       "That code is not a current TOTP code or an unused recovery code."
