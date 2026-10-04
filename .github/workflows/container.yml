@@ -181,7 +181,7 @@ jobs:
       # locally, and the arm64 attestation still ships via the later
       # multi-arch push (buildx cache makes the second build cheap).
       - name: Build gate image (local, never pushed)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64
@@ -192,7 +192,7 @@ jobs:
             FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
 
       - name: Build gate worker image (local, never pushed)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile.worker
@@ -204,7 +204,7 @@ jobs:
             FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
 
       - name: Build gate migration image (local, never pushed)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile.migrator
@@ -254,7 +254,7 @@ jobs:
 
       # Reached only after all three gates above passed on the local image.
       - name: Build and push immutable multi-architecture image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -267,7 +267,7 @@ jobs:
           provenance: mode=max
 
       - name: Build and push immutable worker image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile.worker
@@ -281,7 +281,7 @@ jobs:
           provenance: mode=max
 
       - name: Build and push immutable migration image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile.migrator
