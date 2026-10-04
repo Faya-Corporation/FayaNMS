@@ -130,7 +130,7 @@ validity re-verified at execute time (`APPROVAL_FINGERPRINT_MISMATCH`,
 | `/me/mfa/confirm` | POST | `admin`/`operator` ROLE gate — first valid code enables the factor and issues single-use recovery codes (plaintexts shown once) (F-034) |
 | `/me/mfa` | DELETE | `admin`/`operator` ROLE gate — fail-tight disable: password re-entry AND current TOTP code or unused recovery code (F-034) |
 | `/admin/users` | GET | `admin`/`auditor` ROLE gate (`requireRole("admin","auditor")`) — the full email directory; other roles use `/meta/users` (local-part picker only) (F-029) |
-| `/admin/users`, `/admin/users/[id]`, `/admin/users/[id]/reset-password` | POST/PATCH | `admin` ROLE gate (`requireRole("admin")`) — password SETs enforce the F-034 role-aware policy (privileged roles ≥ 12 chars, offline common-password denylist for all roles) |
+| `/admin/users`, `/admin/users/[id]`, `/admin/users/[id]/reset-password` | POST/PATCH | `admin` ROLE gate (`requireRole("admin")`) — password SETs enforce the F-034 role-aware policy (privileged roles ≥ 12 chars, offline common-password denylist for all roles); with `FAYANMS_HIBP_MODE=enforce` a k-anonymity breach check also gates the SET (5-char SHA-1 prefix only; breached → `PASSWORD_BREACHED`, check unavailable → fail-closed `PASSWORD_BREACH_CHECK_UNAVAILABLE`; never at login) |
 | `/admin/api-clients` (+`/[id]`, `/[id]/rotate`) | POST/PATCH/DELETE | `admin` ROLE gate |
 | `/admin/webhooks` (+`/[id]`) | POST/PATCH/DELETE | `admin` ROLE gate |
 | `/admin/notification-channels` (+`/[id]`) | POST/PATCH/DELETE | `admin` ROLE gate |

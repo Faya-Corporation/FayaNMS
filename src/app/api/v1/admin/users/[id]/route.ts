@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { db } from "@/lib/db";
+import { breachIssueToFail, checkPasswordBreach } from "@/lib/auth/hibp";
 import { hashPassword, validatePasswordPolicy } from "@/lib/auth/password";
 import { USER_ROLES } from "@/lib/auth/roles";
 import { userSiteScopeClaim } from "@/lib/auth/scope";
@@ -16,7 +17,9 @@ export const dynamic = "force-dynamic";
  * F-034 phase 1: when the payload carries a password, the role-aware
  * policy is enforced against the EFFECTIVE role (the payload's role when a
  * promotion is in flight, else the target's current role) — an 11-char
- * password can never ride along with an admin promotion.
+ * password can never ride along with an admin promotion. The F-034
+ * follow-up's config-gated HIBP breach check (FAYANMS_HIBP_MODE=enforce)
+ * gates the same SET after the offline policy, before any hashing.
  *
  * F-031 — siteScope (string[] | null): admin-only write surface for the
  * per-user SITE SCOPE the session JWT `sites` claim is minted from at
@@ -142,6 +145,13 @@ export async function PATCH(
     const policyIssue = validatePasswordPolicy(data.password, effectiveRole);
     if (policyIssue) {
       return fail(policyIssue.code, policyIssue.message, 400);
+    }
+    // F-034 follow-up: the config-gated HIBP k-anonymity breach check —
+    // only after the offline policy passed, off (default) = no-op null,
+    // enforce + breach/unavailable refuses the SET fail-closed.
+    const breachIssue = await checkPasswordBreach(data.password);
+    if (breachIssue) {
+      return breachIssueToFail(breachIssue);
     }
   }
 

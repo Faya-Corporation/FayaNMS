@@ -57,3 +57,18 @@ Rollback lever: `FAYANMS_MFA_MODE` in the app env file.
 An unknown value clamps to `enforce` with a one-shot `[security-policy]` startup warning.
 
 Key-rotation note: the TOTP secret shares the snapshot/webhook master-key envelope, so a `FAYANMS_CONFIG_ENC_KEY` rotation must re-encrypt MFA rows too (same procedure as `scripts/migrate-encrypt-snapshots.ts`; an unavailable key fails authentication loudly — `SECRET_AT_REST_KEY_UNAVAILABLE` / `MFA_CODE_INVALID` — never silently single-factor).
+
+## Password breach check — HIBP k-anonymity (F-034 documented follow-up)
+
+The role-aware password policy (privileged roles ≥ 12 chars, regular ≥ 8) plus the offline common-password denylist run at EVERY password SET surface (admin user create, admin PATCH, admin reset-password — never at login; the login guard owns that plane). Operators can additionally enable a breach-corpus check against the Pwned Passwords range API using **k-anonymity**: the password is SHA-1-hashed locally and ONLY the 5-character hash prefix is transmitted — the full hash and the password itself never leave the process. The response's suffix/count lines are matched locally against the candidate.
+
+Mode knob: `FAYANMS_HIBP_MODE` in the app env file.
+
+| Value | Behavior |
+|---|---|
+| `off` (default/unset) | The check is never called — zero network, byte-unchanged provisioning. The offline policy remains the only breach protection (offline CI/sandboxes stay hermetic). |
+| `enforce` | A password that passed the offline policy is ALSO checked before acceptance: present in the corpus → `PASSWORD_BREACHED` (the occurrence count rides in the error detail); the check itself failing (transport, timeout, malformed response) → `PASSWORD_BREACH_CHECK_UNAVAILABLE` and the password is REFUSED — a deliberate **fail-closed** posture (the operator explicitly opted in; a password that cannot be verified is not accepted, the same posture as the AI quota store). |
+
+An unknown value clamps to `off` with a one-shot `[security-policy]` warning. The request deadline `FAYANMS_HIBP_TIMEOUT_MS` (default 1500) clamps to 500–10000 ms; garbage falls back to the default.
+
+Honest limitations (v1): no caching and no retries — each password SET performs at most ONE range request (both are the documented next steps, not silent behavior); the breach corpus is HIBP's, so "clean" means "not known to Have I Been Pwned" — with the mode off, only the denylist stands between a breached password and acceptance. A HIBP outage under `enforce` therefore blocks password provisioning until connectivity returns — clear the knob to `off` (the documented rollback lever) or restore egress.
