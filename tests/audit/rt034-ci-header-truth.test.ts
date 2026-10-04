@@ -54,8 +54,18 @@ import { describe, expect, test } from "bun:test";
  *     --metrics=off`. The gate policy is unchanged (--error keeps any
  *     finding failing the build); the pre-planned A5-13/RT-035
  *     migration, forced by the upstream drift.
- *   - 376b3736… → 97288d31… (2026-10-04, dependabot
- *     actions/upload-artifact 4.6.2 → 7.0.1, PR #20): the three
+ *   - 376b3736… → 666f8c70… (2026-10-04, dependabot actions/checkout
+ *     5.1.0 → 7.0.1, PR #15): the four `actions/checkout@` pin SHAs
+ *     moved to the real v7.0.1 commit (3d3c42e…) with their trailing
+ *     pin comments refreshed to name it (deliberate-pin governance).
+ *     Zero semantic delta: same action, same inputs (fetch-depth: 0
+ *     kept where present), no job/step/gate/scan change. The hash move
+ *     is the SHA text + trailing comment text on those four lines
+ *     (trailing comments are part of the stripped-YAML snapshot by
+ *     design — the stripper removes whole-line comments only).
+ *   - 666f8c70… → ddb33d56… (2026-10-04, dependabot
+ *     actions/upload-artifact 4.6.2 → 7.0.1, PR #20 — branch snapshot
+ *     includes the merged-in PR #15 checkout refresh): the three
  *     `actions/upload-artifact@` pin SHAs moved to the real v7.0.1
  *     commit (043fb46d…) with their trailing pin comments refreshed to
  *     name it (deliberate-pin governance). Zero semantic delta: same
@@ -82,12 +92,14 @@ const CI_LINES = CI.split("\n");
  * docstring above. Moved again to 33ca4961… on 2026-10-02 (F-026, batch
  * 9): the image-build step dropped the NEXT_PUBLIC_SITE_URL build-arg
  * (runtime-only origin). Comment-only edits must never move this hash.
- * Moved to 97288d31… on 2026-10-04 (PR #20): dependabot
+ * Moved to 666f8c70… on 2026-10-04 (PR #15): dependabot checkout
+ * v5.1.0 → v7.0.1 pin-SHA refresh — see the move log in the docstring.
+ * *Moved to ddb33d56… on 2026-10-04 (PR #20 merge of main): dependabot
  * upload-artifact v4.6.2 → v7.0.1 pin-SHA refresh — see the move log
  * in the docstring.
  */
 const PRE_RT034_STIPPED_YAML_SHA256 =
-  "97288d312dfda910734c6e3cbb6eecc465d298e97f4c8456bd12a52188614e9f";
+  "ddb33d567a937bf241a19df98800d51797c94c02b4366e06c72a85124c28b3c7";
 
 const HEADER_BLOCK = CI_LINES.slice(0, 30).join("\n");
 

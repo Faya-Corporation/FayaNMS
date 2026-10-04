@@ -40,7 +40,7 @@ jobs:
     steps:
       # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout — the arm64 job holds ONLY `contents: read` and NO secrets; it builds and scans images locally and never pushes. Checking out the workflow_run head is exposure-equivalent to this same workflow's own pull_request trigger (untrusted PR code is already built locally there). It would become unsafe ONLY if a secret or push capability were added to this job without first pinning the ref to a trusted commit.
       - name: Checkout exact candidate
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (SHA-pinned 2026-10-04)
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
@@ -115,7 +115,7 @@ jobs:
     steps:
       # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout — the publish job's `if:` gate admits ONLY workflow_run events where the triggering run was event == 'push' to head_branch == 'main' AND concluded 'success'; head_sha is therefore a branch-protected main commit already validated by the CI gate, never a fork/PR head. It would become a pwn-request risk ONLY if the if-gate were widened (e.g. to pull_request events or other head_branches).
       - name: Checkout exact candidate
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (SHA-pinned 2026-10-04)
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
@@ -126,7 +126,7 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR with the workflow token
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -134,7 +134,7 @@ jobs:
 
       - name: Extract OCI metadata
         id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/faya-corporation/fayanms
           tags: |
@@ -146,7 +146,7 @@ jobs:
 
       - name: Extract worker OCI metadata
         id: worker-meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/faya-corporation/fayanms-worker
           tags: |
@@ -158,7 +158,7 @@ jobs:
 
       - name: Extract migration OCI metadata
         id: migrator-meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/faya-corporation/fayanms-migrator
           tags: |
@@ -181,7 +181,7 @@ jobs:
       # locally, and the arm64 attestation still ships via the later
       # multi-arch push (buildx cache makes the second build cheap).
       - name: Build gate image (local, never pushed)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64
@@ -192,7 +192,7 @@ jobs:
             FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
 
       - name: Build gate worker image (local, never pushed)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile.worker
@@ -204,7 +204,7 @@ jobs:
             FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
 
       - name: Build gate migration image (local, never pushed)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile.migrator
@@ -254,7 +254,7 @@ jobs:
 
       # Reached only after all three gates above passed on the local image.
       - name: Build and push immutable multi-architecture image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -267,7 +267,7 @@ jobs:
           provenance: mode=max
 
       - name: Build and push immutable worker image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile.worker
@@ -281,7 +281,7 @@ jobs:
           provenance: mode=max
 
       - name: Build and push immutable migration image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile.migrator
