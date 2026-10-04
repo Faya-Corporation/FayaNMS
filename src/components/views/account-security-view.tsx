@@ -11,12 +11,8 @@ import {
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
-import {
-  mfaErrorKey,
-  useConfirmMfa,
-  useDisableMfa,
-  useEnrollMfa,
-} from "@/hooks/api/use-mfa";
+import { mfaErrorKey, useConfirmMfa, useDisableMfa } from "@/hooks/api/use-mfa";
+import { enrollMfa, type MfaEnrollResult } from "@/lib/api-client";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -70,6 +66,17 @@ type MfaStatus =
   | { kind: "roleDenied" }
   | { kind: "error"; reasonKey: string };
 
+/**
+ * Mount-probe plumbing: a module-scoped generation counter so only the
+ * LATEST probe (the one belonging to the currently-mounted instance) may
+ * write component state.
+ */
+let probeGeneration = 0;
+
+type ProbeOutcome =
+  | { ok: true; data: MfaEnrollResult }
+  | { ok: false; error: unknown };
+
 /** Display form: the raw Base32 secret grouped in readable 4-char chunks. */
 function groupedSecret(secret: string): string {
   return secret.replace(/(.{4})/g, "$1 ").trim();
@@ -80,7 +87,6 @@ export function AccountSecurityView() {
   const tToast = useTranslations("toast.mfa");
   const { toast } = useToast();
 
-  const enroll = useEnrollMfa();
   const confirm = useConfirmMfa();
   const disable = useDisableMfa();
 
@@ -101,44 +107,61 @@ export function AccountSecurityView() {
     [toast, tToast]
   );
 
+  const applyProbeResult = useCallback((result: ProbeOutcome) => {
+    setCode("");
+    setConfirmErrorKey(null);
+    if (result.ok) {
+      setStatus({ kind: "pending", secret: result.data.secret, otpauth: result.data.otpauth });
+      return;
+    }
+    const apiCode = result.error instanceof Error ? (result.error as { code?: string }).code : undefined;
+    if (apiCode === "MFA_ALREADY_ENABLED") {
+      setStatus({ kind: "active" });
+      return;
+    }
+    if (apiCode === "MFA_DISABLED") {
+      setStatus({ kind: "modeOff" });
+      return;
+    }
+    if (apiCode === "RBAC_FORBIDDEN") {
+      setStatus({ kind: "roleDenied" });
+      return;
+    }
+    setStatus({ kind: "error", reasonKey: mfaErrorKey(result.error) });
+  }, []);
+
+  const startProbe = useCallback(() => {
+    const generation = ++probeGeneration;
+    enrollMfa()
+      .then((data) => {
+        if (generation === probeGeneration) applyProbeResult({ ok: true, data });
+      })
+      .catch((error: unknown) => {
+        if (generation === probeGeneration) applyProbeResult({ ok: false, error });
+      });
+  }, [applyProbeResult]);
+
   const runProbe = useCallback(() => {
     setStatus({ kind: "checking" });
-    enroll.mutate(undefined, {
-      onSuccess: (data) => {
-        setCode("");
-        setConfirmErrorKey(null);
-        setStatus({ kind: "pending", secret: data.secret, otpauth: data.otpauth });
-      },
-      onError: (error) => {
-        if (error instanceof Error && "code" in error) {
-          const apiCode = (error as { code: string }).code;
-          if (apiCode === "MFA_ALREADY_ENABLED") {
-            setStatus({ kind: "active" });
-            return;
-          }
-          if (apiCode === "MFA_DISABLED") {
-            setStatus({ kind: "modeOff" });
-            return;
-          }
-          if (apiCode === "RBAC_FORBIDDEN") {
-            setStatus({ kind: "roleDenied" });
-            return;
-          }
-        }
-        setStatus({ kind: "error", reasonKey: mfaErrorKey(error) });
-      },
-    });
-  }, [enroll]);
+    startProbe();
+  }, [startProbe]);
 
-  // One probe per mount (ref-guarded so React strict-mode double effects
-  // cannot fire two rotations). Enabled accounts answer 409 with zero side
-  // effects; a fresh probe for un-enrolled accounts creates the pending row.
-  const probedRef = useRef(false);
+  // Probe on mount AND whenever the view regains focus of the status card.
+  // Deliberately a DIRECT cancellation-guarded fetch (not a react-query
+  // mutation with per-call callbacks): the shell's keyed error boundary
+  // legitimately remounts views on navigation, and per-call mutate
+  // callbacks are dropped when an observer unmounts mid-flight — the
+  // generation guard makes the LATEST probe the only one allowed to write
+  // state, so a remount's probe always wins and a stale response never
+  // clobbers fresher state. Side-effect honesty (unchanged): probing enroll
+  // creates/rotates a DISABLED pending row; a pending row never challenges
+  // at sign-in until confirm succeeds.
   useEffect(() => {
-    if (probedRef.current) return;
-    probedRef.current = true;
-    runProbe();
-  }, [runProbe]);
+    startProbe();
+    return () => {
+      probeGeneration++;
+    };
+  }, [startProbe]);
 
   const onConfirm = () => {
     setConfirmErrorKey(null);
@@ -168,7 +191,7 @@ export function AccountSecurityView() {
       />
 
       <StatusCard
-        error={enroll.isError && status.kind === "error" ? enroll.error : null}
+        error={null}
         onCheckAgain={runProbe}
         onSetup={runProbe}
         status={status}
@@ -200,7 +223,7 @@ export function AccountSecurityView() {
       )}
 
       {status.kind === "active" && !recoveryCodes && (
-        <DisableCard />
+        <DisableCard onDisabled={() => setStatus({ kind: "single" })} />
       )}
     </div>
   );
@@ -522,7 +545,7 @@ function RecoveryCodesCard({ codes, onCopy, onDone }: RecoveryCodesCardProps) {
 
 /* ───────────────────────────── disable card ─────────────────────────── */
 
-function DisableCard() {
+function DisableCard({ onDisabled }: { onDisabled: () => void }) {
   const t = useTranslations("accountSecurity");
   const tToast = useTranslations("toast.mfa");
   const { toast } = useToast();
@@ -548,6 +571,7 @@ function DisableCard() {
       {
         onSuccess: () => {
           closeAndReset();
+          onDisabled();
           toast({
             title: tToast("disabledTitle"),
             description: tToast("disabledDescription"),
