@@ -369,6 +369,18 @@ export const VIEW_REGISTRY: Record<ViewKey, ViewMeta> = {
     group: "Administration",
     labelKey: "nav.items.admin.system",
   },
+
+  // Self-service surface (F-034 follow-up): opened from the header user
+  // menu, NOT the sidebar — it manages the SIGNED-IN USER's second factor,
+  // not a fleet module. Kept in the registry so breadcrumbs/localization
+  // and the compile-time icon contract keep working for every ViewKey.
+  "account.security": {
+    title: "Account Security",
+    description: "Your account's two-factor authentication and recovery codes",
+    phase: "F-034 follow-up — self-service MFA settings UI",
+    group: "Administration",
+    labelKey: "nav.items.account.security",
+  },
 };
 
 export function getViewMeta(view: ViewKey): ViewMeta {
