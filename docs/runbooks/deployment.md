@@ -9,3 +9,66 @@
 7. Record image digests, migration version, health output, timestamp, CI run, and smoke evidence without secrets.
 
 The script fails closed on mutable/mismatched image tags, missing secrets, missing migration image, or failed health. It does not use db push or rebuild source on the staging host.
+
+## Horizontal scaling — per-instance budget math (F-032)
+
+The API rate gate's budgets AND the login guard's throttle/lockout state are **per-process** by default (bounded in-memory store, SCALE-001-A/B). When the app runs as N instances behind a load balancer on that default, every documented ceiling silently multiplies:
+
+| Plane | Documented budget | Effective fleet budget on the default store |
+|---|---|---|
+| `/api/v1` GET | 300/min/client | N × 300/min/client (each instance keeps its own buckets) |
+| `/api/v1` mutation | 120/min/client | N × 120/min/client |
+| AI family (HC-1) | 10/min/client | N × 10/min/client |
+| CSV import (HC-1) | 5/min/client | N × 5/min/client |
+| Login attempts per source | 10 / 300 s | N × 10 / 300 s |
+| Login attempts per account | 30 / 300 s | N × 30 / 300 s (lockout state never propagates — an attacker rotating across instances multiplies attempts and dilutes lockout) |
+
+The shared store (`FAYANMS_RATE_STORE=postgres`) restores ONE budget per plane — every instance draws from the same advisory-lock-serialized rows in the database the app already depends on.
+
+Because orchestrator scale is not visible in-process, the instance count is an explicit declaration: `FAYANMS_EXPECTED_REPLICAS` (positive integer, default/unset = 1). The startup security policy refuses to boot production with 2+ declared instances unless the shared store is selected; a malformed declaration is also refused. Development warns and never aborts.
+
+Scale-out checklist (each step is required before traffic):
+
+1. Set `FAYANMS_RATE_STORE=postgres` in the app env file (`.env.production.app`) on EVERY instance.
+2. Set `FAYANMS_EXPECTED_REPLICAS=<N>` on every instance — all instances must declare the same value (the guard only sees its own declaration).
+3. Keep `FAYANMS_TRUST_PROXY_HOPS` at the REAL proxy depth on every instance (the load balancer joins the proxy chain).
+4. Scale down symmetrically: when returning to a single instance, set `FAYANMS_EXPECTED_REPLICAS=1` (or unset it) — a stale declaration does not block boot but misdocuments the posture.
+
+Migration note: switching an already-running fleet from the in-memory store to the shared store starts every budget from an empty table (in-flight windows reset once; lockout state in the old process memory is not carried over). Do it in a maintenance window if the budgets were actively absorbing abuse.
+
+## Two-factor authentication (TOTP) — privileged roles (F-034)
+
+Privileged accounts (`admin`, `operator`) can enroll a TOTP second factor (RFC 6238: HMAC-SHA1, 30 s step, 6 digits, ±1 step window) and single-use recovery codes. An ENABLED enrollment challenges at every sign-in: the login form posts the password AND the 2FA code (6-digit code or unused recovery code) in the same request; the login guard's (source, account) budgets cover brute-force on the second factor exactly like the first. The TOTP secret is stored encrypted at rest under the SAME `FAYANMS_CONFIG_ENC_KEY` master key as configuration snapshots and webhook signing secrets (AES-256-GCM envelope, AAD-bound to the user id) — no new key material.
+
+Lifecycle (API-only at this stage; the settings UI wave owns the form):
+
+1. `POST /api/v1/me/mfa/enroll` (session for admin/operator) → returns the Base32 secret + `otpauth://totp/FayaNMS:<email>?...` URI. The enrollment is PENDING (disabled) — nothing challenges yet. Re-enrolling rotates a pending secret.
+2. Provision the secret into any authenticator app, then `POST /api/v1/me/mfa/confirm` with the current 6-digit code → the enrollment flips ENABLED and the response carries TEN single-use recovery codes — shown exactly once, stored only as sha256 hashes.
+3. Sign-in: submit the 6-digit code (or an unused recovery code) in the `totp` field of the credentials sign-in POST. A code is valid for one sign-in per 30 s step (anti-replay); a second sign-in inside the same step needs a recovery code.
+4. Disable: `DELETE /api/v1/me/mfa` with `{ password, code }` — fail-tight (password re-entry AND a current TOTP code or an unused recovery code). Audited (`MFA_ENROLLED`, `MFA_CONFIRMED`, `MFA_DISABLED`, `MFA_RECOVERY_USED`, `MFA_LOGIN_FAILED`).
+
+Rollback lever: `FAYANMS_MFA_MODE` in the app env file.
+
+| Value | Behavior |
+|---|---|
+| `enforce` (default/unset) | Enrollment allowed; enabled enrollments challenge at sign-in. |
+| `disabled` | The second factor is structurally OFF: enrollment routes answer `MFA_DISABLED`, and every existing enrollment is BYPASSED at sign-in (documented, deliberate fail-open — the recovery path when devices are lost). |
+
+An unknown value clamps to `enforce` with a one-shot `[security-policy]` startup warning.
+
+Key-rotation note: the TOTP secret shares the snapshot/webhook master-key envelope, so a `FAYANMS_CONFIG_ENC_KEY` rotation must re-encrypt MFA rows too (same procedure as `scripts/migrate-encrypt-snapshots.ts`; an unavailable key fails authentication loudly — `SECRET_AT_REST_KEY_UNAVAILABLE` / `MFA_CODE_INVALID` — never silently single-factor).
+
+## Password breach check — HIBP k-anonymity (F-034 documented follow-up)
+
+The role-aware password policy (privileged roles ≥ 12 chars, regular ≥ 8) plus the offline common-password denylist run at EVERY password SET surface (admin user create, admin PATCH, admin reset-password — never at login; the login guard owns that plane). Operators can additionally enable a breach-corpus check against the Pwned Passwords range API using **k-anonymity**: the password is SHA-1-hashed locally and ONLY the 5-character hash prefix is transmitted — the full hash and the password itself never leave the process. The response's suffix/count lines are matched locally against the candidate.
+
+Mode knob: `FAYANMS_HIBP_MODE` in the app env file.
+
+| Value | Behavior |
+|---|---|
+| `off` (default/unset) | The check is never called — zero network, byte-unchanged provisioning. The offline policy remains the only breach protection (offline CI/sandboxes stay hermetic). |
+| `enforce` | A password that passed the offline policy is ALSO checked before acceptance: present in the corpus → `PASSWORD_BREACHED` (the occurrence count rides in the error detail); the check itself failing (transport, timeout, malformed response) → `PASSWORD_BREACH_CHECK_UNAVAILABLE` and the password is REFUSED — a deliberate **fail-closed** posture (the operator explicitly opted in; a password that cannot be verified is not accepted, the same posture as the AI quota store). |
+
+An unknown value clamps to `off` with a one-shot `[security-policy]` warning. The request deadline `FAYANMS_HIBP_TIMEOUT_MS` (default 1500) clamps to 500–10000 ms; garbage falls back to the default.
+
+Honest limitations (v1): no caching and no retries — each password SET performs at most ONE range request (both are the documented next steps, not silent behavior); the breach corpus is HIBP's, so "clean" means "not known to Have I Been Pwned" — with the mode off, only the denylist stands between a breached password and acceptance. A HIBP outage under `enforce` therefore blocks password provisioning until connectivity returns — clear the knob to `off` (the documented rollback lever) or restore egress.

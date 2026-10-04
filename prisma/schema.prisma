@@ -49,6 +49,12 @@ model User {
   // passwordHash is populated in the auth phase (roadmap 7-a); null = login disabled.
   // Plaintext secrets are never stored.
   passwordHash String?
+  // F-031: optional per-user site scope. NULL = wildcard (every site — the
+  // single-tenant default, byte-unchanged behavior). A JSON array of
+  // Site.code strings (e.g. ["HQ-SAN","DC-ADN"]) limits the session's device
+  // visibility; parsed fail-closed and minted into the session JWT `sites`
+  // claim at sign-in (docs/security/authorization-matrix.md §5).
+  siteScopeJson String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -65,6 +71,8 @@ model User {
   assignedAlerts    Alert[]                  @relation("AlertAssignee")
   notifications     Notification[]           @relation("NotificationRecipient")
   auditEvents       AuditEvent[]
+  aiUsageDays       AiUsageDay[]
+  mfa               UserMfa?
 
   @@index([role])
 }
@@ -880,6 +888,11 @@ model ProtocolEventQueue {
   correlationId   String
   // status: QUEUED | IN_FLIGHT | DELIVERED | DEAD
   status          String    @default("QUEUED")
+  // F-036 (batch-11): the device attribution could not be corroborated
+  // against the event's source IP (hostname hint contradicted it, or the
+  // attribution rests solely on the caller's hostname claim). Honesty
+  // marker for display (UI badge surface) — the association itself stands.
+  attributionUnverified Boolean @default(false)
   attempts        Int       @default(0)
   maxAttempts     Int       @default(5)
   nextAttemptAt   DateTime  @default(now())
@@ -1013,6 +1026,67 @@ model Setting {
   // valueJson: serialized JSON value (string, number, boolean, object…)
   valueJson String
   updatedAt DateTime @updatedAt
+}
+
+// F-030 (batch-11): persisted per-user daily AI quota. One row per
+// (user, UTC day) with the running request count — the durable half of
+// the cost cap (the 10/min burst gate stays in the proxy's named-budget
+// plane, which is IP-keyed and cannot see the user identity).
+model AiUsageDay {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // day: UTC calendar date, "YYYY-MM-DD" (aiQuotaDay()) — string-keyed so
+  // the counter needs no date arithmetic or timezone plumbing.
+  day       String
+  // count: AI requests consumed by this user on this day (LLM round-trips
+  // the 4 /api/v1/ai routes would have started — consumed BEFORE the call).
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, day])
+}
+
+// F-034 (batch-24): TOTP second factor for privileged roles (admin/operator).
+// One row per user (userId unique). The Base32 TOTP secret is stored ONLY in
+// the enc1: AES-256-GCM at-rest envelope (src/lib/config/crypto.ts — the
+// SAME master key + envelope pattern as webhook signing secrets), AAD-bound
+// to the user id; plaintext never touches the database.
+model UserMfa {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // totpSecretEnc: "enc1:<keyId>:<ivB64>:<tagB64>:<ctB64>" envelope of the
+  // Base32 secret (AAD context: "user-mfa-totp|v1|<userId>").
+  totpSecretEnc  String
+  // enabled: false between enroll and first valid confirm; only an enabled
+  // row actually challenges at sign-in.
+  enabled        Boolean  @default(false)
+  // Anti-replay: the highest TOTP time-step accepted at sign-in. A code for
+  // step S is only accepted when S > lastTotpStep (conditional updateMany —
+  // exactly one login per step wins).
+  lastTotpStep   Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  recoveryCodes  UserMfaRecoveryCode[]
+
+  @@index([enabled])
+}
+
+// F-034 (batch-24): single-use recovery codes. Rows (not a JSON array) so
+// consumption is ONE conditional updateMany (usedAt: null → stamped) — an
+// atomic single-use guarantee a JSON array column could not provide.
+model UserMfaRecoveryCode {
+  id        String    @id @default(cuid())
+  mfaId     String
+  mfa       UserMfa   @relation(fields: [mfaId], references: [id], onDelete: Cascade)
+  // codeHash: sha256 hex of the plaintext recovery code (plaintext shown
+  // ONCE at confirm; never stored, never logged).
+  codeHash  String
+  usedAt    DateTime?
+
+  @@index([mfaId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
