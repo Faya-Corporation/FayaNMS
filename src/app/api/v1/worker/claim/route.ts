@@ -23,7 +23,10 @@ export const dynamic = "force-dynamic";
  * lookup. Raw stored payload stays available as `payloadJson`.
  *
  * CHANGE_EXECUTE jobs (Task 4-b) are enriched with the change header
- * ({ changeNumber, changeTitle, changeStatus, riskLevel }) the same way.
+ * ({ changeNumber, changeTitle, changeStatus, riskLevel }) the same way,
+ * plus F-044's claim-time budget input: `stepsTotal` (the change's step
+ * count) — the worker derives the driver's race budget from it
+ * (src/lib/change/job-budget.ts) instead of racing a static constant.
  */
 
 const claimSchema = z.object({
@@ -160,12 +163,23 @@ export async function POST(request: Request) {
           select: { number: true, title: true, riskLevel: true, status: true },
         });
         if (change) {
+          // F-044 — claim-time budget input: the plan's step count, so the
+          // worker derives the driver budget as
+          //   min(stepsTotal, loop bound) × per-iteration cost + margin
+          // (src/lib/change/job-budget.ts). The FULL plan is counted (not
+          // the remaining steps) on purpose: a resumed attempt may still
+          // trigger appended rollback steps, and an over-generous budget
+          // can never race a live driver — an under-count could.
+          const stepsTotal = await tx.changeStep.count({
+            where: { changeId: job.targetId },
+          });
           payload = {
             ...payload,
             changeNumber: change.number,
             changeTitle: change.title,
             changeStatus: change.status,
             riskLevel: change.riskLevel,
+            stepsTotal,
           };
         }
       }

@@ -15,6 +15,15 @@
  *   - DATABASE_URL missing or not a postgres(ql):// URL (Phase 21 slice 1:
  *     production persistence is PostgreSQL — compose ships the `postgres`
  *     service; a stray SQLite file: URL must never serve production traffic)
+ *   - the declared app replica count (FAYANMS_EXPECTED_REPLICAS, default 1)
+ *     exceeds 1 while the rate/login budgets would stay PER-PROCESS
+ *     (F-032 / A1-09: the in-memory store multiplies every budget by the
+ *     instance count — N instances behind a load balancer allow N× the
+ *     documented rate ceiling and keep login lockout state per instance).
+ *     The shared store (FAYANMS_RATE_STORE=postgres — the SAME knob that
+ *     drives both the API gate and the login guard, SCALE-001-A/B) is
+ *     required before a multi-instance declaration may boot; a single
+ *     instance (or an unset declaration) boots unchanged on the default.
  *
  * Service identity modes (TASK-SVC-001-A, derived EXCLUSIVELY from the
  * configured environment — never from token metadata; runtime half lives
@@ -57,6 +66,7 @@
  * signal visible.
  */
 
+import { RATE_STORE_ENV, resolveRateStoreKind } from "@/lib/api/rate-store";
 import {
   getServiceSecrets,
   parseServicePrivateKey,
@@ -241,6 +251,107 @@ export function findServiceIdentityViolations(
   return violations;
 }
 
+/* ───────────────── F-032 / A1-09: rate-budget scale guard ───────────────── */
+
+/**
+ * The ONLY replica-count source this process accepts (F-032): compose
+ * `--scale`/orchestrator state is not visible in-process, so the operator
+ * DECLARES the intended instance count explicitly. Unset/empty means 1 —
+ * the documented single-host default boots unchanged.
+ */
+export const EXPECTED_REPLICAS_ENV = "FAYANMS_EXPECTED_REPLICAS";
+
+export type ExpectedReplicasResolution =
+  | { ok: true; replicas: number }
+  | { ok: false; reason: string };
+
+/**
+ * Pure parse of the declared app instance count. A positive integer ≥ 1 is
+ * accepted; ANY other non-empty value is a fail-loud declaration error (an
+ * operator who wrote a malformed count must not get a silently mis-scoped
+ * guard decision).
+ */
+export function resolveExpectedReplicas(
+  env: NodeJS.ProcessEnv = process.env
+): ExpectedReplicasResolution {
+  const raw = (env[EXPECTED_REPLICAS_ENV] ?? "").trim();
+  if (raw === "") return { ok: true, replicas: 1 };
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return {
+      ok: false,
+      reason:
+        `not a positive integer — declare the number of app instances ` +
+        `behind the load balancer (e.g. ${EXPECTED_REPLICAS_ENV}=1); ` +
+        "unset means 1",
+    };
+  }
+  return { ok: true, replicas: parsed };
+}
+
+/**
+ * F-032 (A1-09): the rate gate's budgets AND the login guard's
+ * throttle/lockout state are PER-PROCESS unless the shared store is
+ * selected — ONE knob (FAYANMS_RATE_STORE, SCALE-001-A/B) drives both
+ * planes. With N declared instances on the in-memory default every
+ * documented ceiling silently becomes N× (fleet rate budget) and login
+ * lockout state stops propagating (a distributed attack rotates sources
+ * AND instances). A multi-instance production declaration therefore
+ * refuses to boot on anything but the shared store; the same guard warns
+ * (never aborts) in development.
+ */
+export function findRateStoreScaleViolations(
+  env: NodeJS.ProcessEnv = process.env
+): PolicyViolation[] {
+  const violations: PolicyViolation[] = [];
+
+  const resolution = resolveExpectedReplicas(env);
+  if (!resolution.ok) {
+    violations.push({
+      variable: EXPECTED_REPLICAS_ENV,
+      reason: resolution.reason,
+    });
+    return violations;
+  }
+  const { replicas } = resolution;
+  if (replicas <= 1) return violations;
+
+  let storeKind: "memory" | "postgres";
+  try {
+    storeKind = resolveRateStoreKind(env);
+  } catch {
+    violations.push({
+      variable: RATE_STORE_ENV,
+      reason:
+        `not a supported store — with ${EXPECTED_REPLICAS_ENV}=${replicas} the ` +
+        "shared store is required before boot (supported values: unset/\"memory\" " +
+        "single-host, \"postgres\" shared); per-instance budgets would multiply " +
+        `every documented ceiling by ${replicas}`,
+    });
+    return violations;
+  }
+  if (storeKind === "postgres") return violations;
+
+  violations.push({
+    variable: RATE_STORE_ENV,
+    reason:
+      `the rate/login budget store is per-process (in-memory default) while ` +
+      `${EXPECTED_REPLICAS_ENV}=${replicas} — every instance enforces its OWN ` +
+      `budget, so N instances allow N× the documented rate ceiling and login ` +
+      `lockout state never propagates between them. Set ` +
+      `${RATE_STORE_ENV}=postgres (the shared store over the database the app ` +
+      "already depends on) or correct the instance declaration.",
+  });
+  return violations;
+}
+
+/** Dev-path emitter: the same F-032 signal, never fatal outside production. */
+export function warnRateStoreScale(env: NodeJS.ProcessEnv = process.env): void {
+  for (const violation of findRateStoreScaleViolations(env)) {
+    console.warn(`[security-policy] ${violation.variable}: ${violation.reason}`);
+  }
+}
+
 /** Validate the production posture. Returns every violation found. */
 export function findProductionPolicyViolations(
   env: NodeJS.ProcessEnv = process.env
@@ -304,6 +415,11 @@ export function findProductionPolicyViolations(
         "must start with postgresql:// or postgres:// — the SQLite provider was retired in Phase 21 slice 1 (2026-09-13)",
     });
   }
+
+  // F-032 (A1-09): a multi-instance production declaration on the per-process
+  // budget store is an insecure posture — fail loud at boot (see the guard's
+  // contract above; dev gets the same signal as a non-fatal warning).
+  violations.push(...findRateStoreScaleViolations(env));
 
   return violations;
 }
@@ -424,4 +540,6 @@ export function enforceStartupSecurityPolicy(): void {
     return;
   }
   warnOnInsecureDevSecrets();
+  // F-032 dev signal: the same scale guard, warn-only outside production.
+  warnRateStoreScale();
 }

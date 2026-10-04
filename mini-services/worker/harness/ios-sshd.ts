@@ -16,6 +16,15 @@
  * exactly the ones change-commands.ts can emit (configure terminal →
  * interface → description → end → write memory), and `description` MUTATES
  * the persona's running config so a post-apply fetch reflects the delta.
+ *
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │ ⚠ DEMO DATA — SIMULATED DEVICE PERSONA                                  │
+ * │ The config text below (including the demo SNMP community                │
+ * │ faya-readonly and the demo enable-secret hash) is INVENTED persona      │
+ * │ content for the LIVE_SSH certification harness — not real device        │
+ * │ secrets. Pinned by tests/audit/open-findings-batch-19.test.ts           │
+ * │ (F-045 grep-guard).                                                     │
+ * └─────────────────────────────────────────────────────────────────────────┘
  */
 
 import {

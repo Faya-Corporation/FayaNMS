@@ -19,6 +19,7 @@ import {
   PanelLeftOpen,
   Rows3,
   Search,
+  ShieldCheck,
   Sparkles,
   Sun,
   User,
@@ -520,6 +521,16 @@ export function AppHeader({
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {/* Self-service account security (F-034 follow-up) — the
+                primary entry point for the second-factor settings view. */}
+            <DropdownMenuItem
+              onClick={() => {
+                setActiveView("account.security");
+              }}
+            >
+              <ShieldCheck aria-hidden="true" />
+              {tHeader("accountSecurity")}
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => {
                 setActiveView("admin.users");

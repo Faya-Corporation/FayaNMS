@@ -23,8 +23,10 @@
  * Execution lease TTL (SAFE-003 crash valve). A lease normally lives until
  * its job reaches a terminal state; this bounds the damage of a lease whose
  * job could never terminate (scheduler dead + worker dead + stuck row).
- * Generous by design — well beyond the tick reaper's 15-min RUNNING reap —
- * so it can only ever fire long after the execution itself is impossible.
+ * Generous by design — well beyond any reaper threshold the tick can apply
+ * (a CHANGE_EXECUTE job's threshold derives from its own claim-time budget
+ * per F-044; the largest 40-step case stays under 1.5 h) — so it can only
+ * ever fire long after the execution itself is impossible.
  */
 export const EXECUTION_LEASE_TTL_MS = 4 * 60 * 60 * 1000;
 

@@ -70,7 +70,13 @@ beforeAll(
 afterAll(async () => {
   if (!E2E_ENABLED) return;
   await teardownE2E();
-});
+  // 60 s hook timeout (browser-journeys.test.ts precedent): teardownE2E is
+  // internally bounded (5 s reap race + best-effort DROP), but right after a
+  // long journey (J5 runs ~31 s) a loaded runner can exceed bun's DEFAULT
+  // 5 s hook timeout inside the DROP — run 2026-10-03 (PR #56 e2e):
+  // "(fail) (unnamed) [5000.43ms] a beforeEach/afterEach hook timed out"
+  // after six green journeys. The boot side already carries 180 s.
+}, 60_000);
 
 describe("J1 — authentication journey", () => {
   test.skipIf(!E2E_ENABLED)(

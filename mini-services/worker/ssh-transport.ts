@@ -490,9 +490,46 @@ interface ShellChannel {
 }
 
 /**
+ * F-041 — the CLI session buffer's bounded self-trim, extracted (pure) so
+ * the audit suite can pin the scanner-cursor invariant hermetically.
+ *
+ * The session buffer accumulates device output and self-trims to its last
+ * `keep` characters once the `cap` is crossed (bounded memory). The trim
+ * drops the HEAD of the buffer, so every index tracked against the buffer
+ * must shift by the same delta — in particular `scanFrom`, the scanner's
+ * cursor marking where the current command's output starts. Before F-041
+ * the trim left `scanFrom` at its stale absolute value (> the new buffer
+ * length), desyncing the prompt scan: a command whose output crossed the
+ * cap stranded the next prompt-lookbehind in dropped territory → "CLI
+ * prompt not observed" → the session aborted mid-plan and the change
+ * failed SPURIOUSLY on chatty devices. The chosen design (the BACKLOG
+ * plan's option 2): reset `scanFrom` together with the trim — the cursor
+ * stays a buffer-relative index and every existing consumer (prompt
+ * lookbehind, per-command output slice) keeps its exact semantics with
+ * zero call-site changes. When the delta exceeds the cursor itself the
+ * result clamps to 0 (the surviving tail IS the current command's output).
+ */
+export function trimCliBuffer(
+  buffer: string,
+  scanFrom: number,
+  cap: number,
+  keep: number,
+): { buffer: string; scanFrom: number } {
+  if (buffer.length <= cap) {
+    return { buffer, scanFrom };
+  }
+  const dropped = buffer.length - keep;
+  return { buffer: buffer.slice(-keep), scanFrom: Math.max(0, scanFrom - dropped) };
+}
+
+/**
  * Drive an interactive PTY shell channel prompt-to-prompt: wait for the
  * login prompt, then per command write the line, wait for the next prompt,
  * and classify the delta output against the flavor's error patterns.
+ *
+ * Bounded memory with a CONSISTENT scanner cursor (F-041): the buffer
+ * self-trims via trimCliBuffer, which shifts `scanFrom` by the trim delta —
+ * accumulated output crossing the cap can never desync the prompt scan.
  *
  * Stop-on-first-rejected-command (controlled behavior): a failed
  * configuration step aborts the remaining plan instead of pushing a
@@ -513,7 +550,10 @@ export async function sshCliSession(
   try {
     return await new Promise<CliCommandResult[]>((resolve, reject) => {
       let buffer = "";
-      let scanFrom = 0; // index where the current command's output starts
+      // Buffer-relative index where the current command's output starts.
+      // F-041: shifted by the self-trim delta (trimCliBuffer) so it never
+      // desyncs when the buffer drops its head.
+      let scanFrom = 0;
       let closed = false;
       let aborted = false;
       let channel: ShellChannel | null = null;
@@ -553,12 +593,13 @@ export async function sshCliSession(
         if (closed || !waiter) {
           // Data before the first waiter is the initial banner — keep it
           // (it carries no per-command output) but cap the buffer.
-          buffer += chunk.toString();
-          if (buffer.length > 64_000) buffer = buffer.slice(-32_000);
+          ({ buffer } = trimCliBuffer(buffer + chunk.toString(), scanFrom, 64_000, 32_000));
           return;
         }
-        buffer += chunk.toString();
-        if (buffer.length > 128_000) buffer = buffer.slice(-64_000);
+        // F-041: the trim and the scanner cursor move TOGETHER — a stale
+        // absolute scanFrom here is what stranded the prompt scan on
+        // >64 KiB command outputs.
+        ({ buffer, scanFrom } = trimCliBuffer(buffer + chunk.toString(), scanFrom, 128_000, 64_000));
         if (waiter.test(buffer)) {
           const w = waiter;
           waiter = null;
