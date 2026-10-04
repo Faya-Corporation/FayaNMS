@@ -158,8 +158,12 @@ export async function aiChat(
       return await completeOnce(messages, timeoutMs);
     } catch (error) {
       lastError = error;
+      // Constant format string + positional args — the variable parts are a
+      // loop counter and an error value, never format-string input.
       console.error(
-        `[ai] completion attempt ${attempt + 1}/2 failed:`,
+        "[ai] completion attempt failed:",
+        attempt + 1,
+        "of 2:",
         error instanceof Error ? error.message : error
       );
     }

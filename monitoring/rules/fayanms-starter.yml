@@ -47,6 +47,19 @@ groups:
           summary: "FayaNMS worker scheduler is failing"
           description: 'The worker reports fayanms_worker_scheduler_up == 0 (consecutive scheduler tick failures) for 5 minutes. Job claiming/tick drives are degraded even though the process is up.'
 
+      # F-037: collector_up is derived (enabled AND every configured UDP
+      # socket bound with no bind failure). Before this rule a bind failure
+      # (EADDRINUSE/EACCES/…) still reported collector_up 1.
+      - alert: FayanmsWorkerProtocolCollectorDown
+        expr: fayanms_worker_protocol_collector_up == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "FayaNMS protocol collector is not fully bound"
+          description: 'The worker reports fayanms_worker_protocol_collector_up == 0 for 5 minutes: the collector is enabled but no confirmed healthy bind exists (a configured UDP socket failed to bind, e.g. EADDRINUSE/EACCES, the collector is starting, or every protocol is disabled). Traps/syslog/flows on the affected ports are not being received; check worker.log for "bind failed" lines.'
+
       - alert: FayanmsQueueGrowth
         expr: increase(fayanms_worker_protocol_packets_total{state="queue_dropped"}[15m]) > 0
         for: 0m

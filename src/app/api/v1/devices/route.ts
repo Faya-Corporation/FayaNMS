@@ -12,7 +12,9 @@ import {
   authErrorToFail,
   requirePermission,
   requireSessionRead,
+  sessionScopeFor,
 } from "@/lib/auth/session";
+import { scopedDeviceWhere } from "@/lib/auth/scope";
 import { requiredLiveCredentialType } from "@/lib/devices/live-transport";
 import { z } from "zod";
 
@@ -31,6 +33,15 @@ export const dynamic = "force-dynamic";
  * human session itself (requireSessionRead) — the proxy matcher stays the
  * coarse gate, not the only check; POST stays permission-gated
  * (device.write) with the session principal as the audit actor.
+ *
+ * F-031 (resource-level site scoping — the REFERENCE route migration): the
+ * where clause is composed through scopedDeviceWhere(sessionScopeFor(req)).
+ * Sessions WITHOUT a `sites` JWT claim (the single-tenant default — every
+ * session minted before F-031, and every user whose scope was never set)
+ * resolve wildcard, so the filter degenerates to the base where clause and
+ * behavior is byte-unchanged. A sites-limited session sees only devices
+ * whose site.code is in its scope list (API-client bearer principals stay
+ * unscoped by design — authorization-matrix.md §5).
  */
 const querySchema = paginationSchema.extend({
   q: z.string().trim().min(1).max(120).optional(),
@@ -95,7 +106,9 @@ export async function GET(request: Request) {
   const criticalities = csvParam(parsed.data.criticality);
   const compliances = csvParam(parsed.data.backupCompliance);
 
-  const where = {
+  const scopeClaims = await sessionScopeFor(request);
+
+  const where = scopedDeviceWhere(scopeClaims, {
     AND: [
       search
         ? {
@@ -112,7 +125,7 @@ export async function GET(request: Request) {
       vendorId ? { vendorId } : {},
       siteId ? { siteId } : {},
     ],
-  };
+  });
 
   // "name" sorts by the display name (sortable whitelist per Phase 2 spec).
   const orderBy =
