@@ -23,8 +23,17 @@ const MAX_RELAY_ATTEMPTS = 3;
 const RELAY_BACKOFF_BASE_MS = 250;
 
 export interface ProtocolCollectorMetrics {
+  /** Collector env-enabled. `up` is the honest liveness signal (F-037). */
   enabled: boolean;
+  /**
+   * F-037: true only when enabled, at least one socket is configured, EVERY
+   * configured socket completed its bind, and no bind failed. A bind failure
+   * (EADDRINUSE/EACCES/…) previously still reported collector_up 1.
+   */
+  up: boolean;
   sockets: number;
+  boundSockets: number;
+  bindFailures: number;
   packetsReceived: number;
   packetsAccepted: number;
   packetsRejected: number;
@@ -37,7 +46,10 @@ export interface ProtocolCollectorMetrics {
 
 let metrics: ProtocolCollectorMetrics = {
   enabled: false,
+  up: false,
   sockets: 0,
+  boundSockets: 0,
+  bindFailures: 0,
   packetsReceived: 0,
   packetsAccepted: 0,
   packetsRejected: 0,
@@ -173,6 +185,143 @@ export function decodeProtocolPacket(
   };
 }
 
+/* ───────────────────────── F-037 secret cache ──────────────────────────
+ *
+ * HISTORY: every datagram on the snmp-trap socket triggered a full vault
+ * resolution (provider=file re-reads the secrets JSON; provider=exec SPAWNS
+ * a process). An unauthenticated UDP flood therefore bought the worker one
+ * file read or process spawn PER PACKET — asymmetric attacker→defender
+ * cost. The closure is the BACKLOG plan's named decision: cache the
+ * RESOLVED secret per profile behind a short TTL, and single-flight the
+ * in-flight resolution so a concurrent burst for the same profile costs
+ * exactly ONE vault round-trip.
+ *
+ * SEMANTICS (pinned by tests/audit/open-findings-batch-21.test.ts):
+ *   - Keyed by credentialProfileId + secretRef — entries NEVER leak across
+ *     profiles (different profile ⇒ different key even if a ref collides).
+ *   - The cached value is exactly the string resolveVaultSecret returned —
+ *     no trimming, no normalization, no fallback; verification still fails
+ *     closed on any other value.
+ *   - TTL default 30s (SNMPV3_SECRET_CACHE_DEFAULT_TTL_MS): bounds the
+ *     staleness window after a vault rotation to ≤30s while collapsing
+ *     per-packet resolutions; during the window a rotated secret fails USM
+ *     auth (fail-closed, packetsRejected), never a wrong-accept.
+ *   - FAYANMS_SNMPV3_SECRET_CACHE_TTL_MS overrides the TTL, clamped to
+ *     [250ms, 600s] — the low bound keeps the cache from being effectively
+ *     disabled by a typo, and lets the lab exercise real expiry quickly.
+ *   - Bounded to 256 entries (oldest-inserted evicted): the key includes
+ *     attacker-influenced profile data, so the map must not grow with it.
+ *   - Failed resolutions are never cached; concurrent callers of a failing
+ *     resolution share the single in-flight rejection (fail-closed).
+ *   - stop() clears the cache: resolved VALUES do not outlive the collector.
+ */
+
+export const SNMPV3_SECRET_CACHE_DEFAULT_TTL_MS = 30_000;
+const SNMPV3_SECRET_CACHE_TTL_MIN_MS = 250;
+const SNMPV3_SECRET_CACHE_TTL_MAX_MS = 600_000;
+const SNMPV3_SECRET_CACHE_MAX_ENTRIES = 256;
+
+/** Effective TTL (clamped). Re-read per resolution so the lab can exercise expiry. */
+export function snmpv3SecretCacheTtlMs(): number {
+  const parsed = Number.parseInt(
+    process.env.FAYANMS_SNMPV3_SECRET_CACHE_TTL_MS ?? "",
+    10,
+  );
+  if (!Number.isFinite(parsed)) return SNMPV3_SECRET_CACHE_DEFAULT_TTL_MS;
+  return Math.min(
+    SNMPV3_SECRET_CACHE_TTL_MAX_MS,
+    Math.max(SNMPV3_SECRET_CACHE_TTL_MIN_MS, parsed),
+  );
+}
+
+export interface SnmpV3SecretCacheStats {
+  entries: number;
+  /** Actual vault round-trips (file re-reads / exec spawns). */
+  resolutions: number;
+  /** Served from the TTL cache without touching the vault. */
+  cacheHits: number;
+  /** Joined an already in-flight resolution (single-flight). */
+  coalesced: number;
+  /** Entries dropped because their TTL had expired. */
+  expired: number;
+  /** Entries evicted by the capacity bound. */
+  evictions: number;
+}
+
+interface SnmpV3SecretCacheEntry {
+  secret: string;
+  expiresAt: number;
+}
+
+const snmpV3SecretCache = new Map<string, SnmpV3SecretCacheEntry>();
+const snmpV3SecretInFlight = new Map<string, Promise<string>>();
+const snmpV3SecretCacheCounters = {
+  resolutions: 0,
+  cacheHits: 0,
+  coalesced: 0,
+  expired: 0,
+  evictions: 0,
+};
+
+export function getSnmpV3SecretCacheStats(): SnmpV3SecretCacheStats {
+  return { ...snmpV3SecretCacheCounters, entries: snmpV3SecretCache.size };
+}
+
+/** Clear cached secrets (and in-flight map); called by stop() and between lab runs. */
+export function resetSnmpV3SecretCache(): void {
+  snmpV3SecretCache.clear();
+  snmpV3SecretInFlight.clear();
+  snmpV3SecretCacheCounters.resolutions = 0;
+  snmpV3SecretCacheCounters.cacheHits = 0;
+  snmpV3SecretCacheCounters.coalesced = 0;
+  snmpV3SecretCacheCounters.expired = 0;
+  snmpV3SecretCacheCounters.evictions = 0;
+}
+
+/**
+ * Resolve the profile's vault secret through the TTL cache + single-flight.
+ * The ONLY path from the per-packet decoder to resolveVaultSecret.
+ */
+async function resolveSnmpV3ProfileSecret(
+  profile: SnmpV3ProfileReference,
+): Promise<string> {
+  const key = profile.credentialProfileId + "@" + profile.secretRef;
+  const cached = snmpV3SecretCache.get(key);
+  if (cached) {
+    if (cached.expiresAt > Date.now()) {
+      snmpV3SecretCacheCounters.cacheHits += 1;
+      return cached.secret;
+    }
+    snmpV3SecretCache.delete(key);
+    snmpV3SecretCacheCounters.expired += 1;
+  }
+  const inFlight = snmpV3SecretInFlight.get(key);
+  if (inFlight) {
+    snmpV3SecretCacheCounters.coalesced += 1;
+    return inFlight;
+  }
+  snmpV3SecretCacheCounters.resolutions += 1;
+  const resolution = resolveVaultSecret(profile.secretRef)
+    .then((secret) => {
+      while (snmpV3SecretCache.size >= SNMPV3_SECRET_CACHE_MAX_ENTRIES) {
+        const oldest = snmpV3SecretCache.keys().next().value;
+        if (oldest === undefined) break;
+        snmpV3SecretCache.delete(oldest);
+        snmpV3SecretCacheCounters.evictions += 1;
+      }
+      snmpV3SecretCache.set(key, {
+        secret,
+        expiresAt: Date.now() + snmpv3SecretCacheTtlMs(),
+      });
+      return secret;
+    })
+    .finally(() => {
+      snmpV3SecretInFlight.delete(key);
+    });
+  snmpV3SecretInFlight.set(key, resolution);
+  return resolution;
+}
+
 export async function decodeVerifiedSnmpV3Trap(
   packet: Buffer,
   remote: Pick<RemoteInfo, "address" | "port">,
@@ -185,7 +334,10 @@ export async function decodeVerifiedSnmpV3Trap(
   if (normalizeEngineIdHex(identity.engineId) !== profile.engineIdHex.toLowerCase()) {
     throw new Error("SNMPv3 profile engine ID mismatch");
   }
-  const secret = await resolveVaultSecret(profile.secretRef);
+  // F-037: consult the per-profile TTL cache BEFORE the vault — a packet
+  // storm for one persona must cost one vault round-trip per TTL, not one
+  // per datagram.
+  const secret = await resolveSnmpV3ProfileSecret(profile);
   const decoded = decodeSnmpV3Trap(
     new Uint8Array(packet),
     {
@@ -223,7 +375,16 @@ export async function decodeVerifiedSnmpV3Trap(
 }
 
 export function getProtocolCollectorMetrics(): ProtocolCollectorMetrics {
-  return { ...metrics };
+  return {
+    ...metrics,
+    // F-037: derived live — enabled alone is not liveness; a bind failure
+    // must surface as collector_up 0.
+    up:
+      metrics.enabled &&
+      metrics.sockets > 0 &&
+      metrics.boundSockets === metrics.sockets &&
+      metrics.bindFailures === 0,
+  };
 }
 
 export function startProtocolCollector(): { stop: () => void } | null {
@@ -235,7 +396,7 @@ export function startProtocolCollector(): { stop: () => void } | null {
     (protocol) => process.env[envKey(protocol, "_DISABLED")]?.trim().toLowerCase() !== "true",
   );
   const sockets: Socket[] = [];
-  metrics = { ...metrics, enabled: true, sockets: 0 };
+  metrics = { ...metrics, enabled: true, sockets: 0, boundSockets: 0, bindFailures: 0 };
 
   const relayDelayMs = (attempt: number) =>
     Math.min(5_000, RELAY_BACKOFF_BASE_MS * 2 ** attempt);
@@ -362,11 +523,27 @@ export function startProtocolCollector(): { stop: () => void } | null {
       }
       relay(event);
     });
+    // F-037: a pre-bind 'error' is a BIND failure (dgram reports EADDRINUSE
+    // and friends through the error event; the bind callback only runs on
+    // success) — it must surface in the up metric, not vanish into
+    // relayFailures while collector_up keeps reporting 1.
+    let bound = false;
+    const port = portFor(protocol);
     socket.on("error", (error) => {
+      if (!bound) {
+        metrics.bindFailures += 1;
+        void log(
+          "protocol collector " + protocol + " bind failed on " + host + ":" + port + ": " + error.message,
+        );
+        return;
+      }
       metrics.relayFailures += 1;
       void log("protocol collector " + protocol + " socket error: " + error.message);
     });
-    socket.bind(portFor(protocol), host);
+    socket.bind(port, host, () => {
+      bound = true;
+      metrics.boundSockets += 1;
+    });
     sockets.push(socket);
   }
   metrics.sockets = sockets.length;
@@ -376,6 +553,10 @@ export function startProtocolCollector(): { stop: () => void } | null {
       for (const socket of sockets) socket.close();
       metrics.sockets = 0;
       metrics.enabled = false;
+      metrics.boundSockets = 0;
+      metrics.bindFailures = 0;
+      // Resolved secret VALUES must not outlive the collector (F-037 rig note).
+      resetSnmpV3SecretCache();
     },
   };
 }

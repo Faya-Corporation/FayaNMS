@@ -70,6 +70,10 @@ export const NAVIGATION_ICONS = {
   "admin.drivers": fayanms("device-drivers"),
   "admin.integrations": fayanms("integrations"),
   "admin.system": fayanms("system-settings"),
+
+  // Self-service account surface — not a sidebar entry (see sidebar-config)
+  // but the SidebarViewKey contract stays exhaustive over every ViewKey.
+  "account.security": fayanms("credentials"),
 } satisfies Record<SidebarViewKey, NavIcon>;
 
 /**

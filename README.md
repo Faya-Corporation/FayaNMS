@@ -18,7 +18,7 @@
 
 A full-stack network management system (NMS) demo platform: device inventory, configuration management, change execution, operations (alerts/incidents/NOC), performance analytics with ML-assisted capacity forecasting, reporting, and administration — with first-class English/Arabic (RTL) localization and an audit trail behind every write.
 
-> **Demo-simulation semantics.** This is a self-contained demo environment: devices, metrics, flow data, HA topology, collector fleets and failover tests are deterministic simulations over a seeded dataset. Simulated surfaces are documented as such in-code and in-UI. The architecture (job queue, state machines, guarded writes, audit chain) is real.
+> **Demo-simulation semantics.** This is a self-contained demo environment: devices, metrics, flow data, HA topology, collector fleets and failover tests are deterministic simulations over a seeded dataset. Simulated surfaces are documented as such in-code and in-UI. The architecture (job queue, state machines, guarded writes, audit chain) is real. Demo SNMP communities and device credentials embedded in the simulator adapters, ZTP templates and certification harnesses (FayaRO-class values) are invented, banner-labeled persona content — a grep-guard test (`tests/audit/open-findings-batch-19.test.ts`, F-045) forbids community-looking strings outside those documented files.
 
 ## Tech stack
 

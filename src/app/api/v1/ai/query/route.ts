@@ -2,10 +2,12 @@ import { db } from "@/lib/db";
 import {
   fail,
   failWithDetail,
+  failWithMeta,
   firstIssueMessage,
   newCorrelationId,
   ok,
 } from "../../_lib/api";
+import { consumeAiDailyQuota } from "@/lib/api/ai-quota";
 import { resolveActingUser } from "../../_lib/actor";
 import {
   buildQueryAnswerMessages,
@@ -719,6 +721,27 @@ export async function POST(request: Request) {
   ]);
   const siteCodes = new Set(sites.map((site) => site.code));
   const vendorKeys = new Set(vendors.map((vendor) => vendor.key));
+
+  // F-030 (batch-11): durable per-user daily AI quota — consumed here,
+  // immediately before the FIRST LLM round-trip (the stage-1 plan call;
+  // the proxy's 10/min ai burst budget is IP-keyed and cannot see the
+  // user identity).
+  const quota = await consumeAiDailyQuota(actor.id);
+  if (!quota.ok) {
+    if (quota.code === "AI_DAILY_QUOTA_EXCEEDED") {
+      return failWithMeta(
+        "AI_DAILY_QUOTA_EXCEEDED",
+        `Daily AI quota exhausted (${quota.limit}/day, UTC). The counter resets at 00:00 UTC.`,
+        429,
+        { used: quota.used, limit: quota.limit, day: quota.day }
+      );
+    }
+    return fail(
+      "AI_QUOTA_STORE_UNAVAILABLE",
+      "The AI quota store is temporarily unavailable; the request is refused (fail-closed).",
+      503
+    );
+  }
 
   /* ── STAGE 1: plan (fail the request on AI errors — mirror 13-a) ────── */
   let rawPlan: string;
