@@ -225,6 +225,11 @@
         "system": {
           "title": "System Settings"
         }
+      },
+      "account": {
+        "security": {
+          "title": "Account Security"
+        }
       }
     }
   },
@@ -262,7 +267,8 @@
     "signOut": "Sign out",
     "signedOut": "Signed out",
     "signedOutDescription": "Your session has been cleared.",
-    "actingAs": "Acting as: {name}"
+    "actingAs": "Acting as: {name}",
+    "accountSecurity": "Account security"
   },
   "footer": {
     "systemOperational": "All systems operational",
@@ -2247,12 +2253,30 @@
       "description": "Whitelisted settings appear here once present in the Setting table."
     },
     "group": {
-      "system": { "title": "General", "description": "Platform identity" },
-      "backup": { "title": "Backups", "description": "Retention and encryption posture" },
-      "drift": { "title": "Drift", "description": "Drift detection cadence" },
-      "alert": { "title": "Alerts", "description": "Suppression behavior" },
-      "metrics": { "title": "Metrics", "description": "Rollup retention (legacy scalar)" },
-      "performance": { "title": "Performance", "description": "Availability SLA target" }
+      "system": {
+        "title": "General",
+        "description": "Platform identity"
+      },
+      "backup": {
+        "title": "Backups",
+        "description": "Retention and encryption posture"
+      },
+      "drift": {
+        "title": "Drift",
+        "description": "Drift detection cadence"
+      },
+      "alert": {
+        "title": "Alerts",
+        "description": "Suppression behavior"
+      },
+      "metrics": {
+        "title": "Metrics",
+        "description": "Rollup retention (legacy scalar)"
+      },
+      "performance": {
+        "title": "Performance",
+        "description": "Availability SLA target"
+      }
     },
     "updated": "updated {date}",
     "unsavedChanges": "{count, plural, one {1 unsaved change} other {# unsaved changes}}"
@@ -2417,9 +2441,8 @@
       "cancel": "Cancel",
       "confirm": "Revoke baseline"
     }
-  }
-,
-  "incidents":   {
+  },
+  "incidents": {
     "title": "Incidents",
     "description": "Incident lifecycle with SLA timers, timelines and post-incident reviews",
     "group": {
@@ -2477,7 +2500,7 @@
       "next": "Next"
     }
   },
-  "perfAvailability":   {
+  "perfAvailability": {
     "title": "Availability",
     "description": "Uptime and SLA attainment — {range}",
     "error": {
@@ -3218,86 +3241,86 @@
     }
   },
   "alertsView": {
-      "page": {
-        "title": "Alerts",
-        "description": "Threshold engine, dedup and suppression — auto-refreshed stream"
+    "page": {
+      "title": "Alerts",
+      "description": "Threshold engine, dedup and suppression — auto-refreshed stream"
+    },
+    "tabs": {
+      "aria": "Alerts sections",
+      "stream": "Alert stream",
+      "rules": "Rules"
+    },
+    "kpi": {
+      "firing": {
+        "description": "Open threshold breaches",
+        "label": "Firing"
       },
-      "tabs": {
-        "aria": "Alerts sections",
-        "stream": "Alert stream",
-        "rules": "Rules"
+      "status": {
+        "live": "live",
+        "quiet": "quiet"
       },
-      "kpi": {
-        "firing": {
-          "description": "Open threshold breaches",
-          "label": "Firing"
-        },
-        "status": {
-          "live": "live",
-          "quiet": "quiet"
-        },
-        "acknowledged": {
-          "description": "Seen by an operator",
-          "label": "Acknowledged"
-        },
-        "suppressed": {
-          "description": "Windows + suppressed children",
-          "label": "Suppressed"
-        },
-        "linked": {
-          "description": "Incidents linked to open alerts",
-          "label": "Linked incidents"
-        }
+      "acknowledged": {
+        "description": "Seen by an operator",
+        "label": "Acknowledged"
       },
-      "filters": {
-        "all": "All",
-        "severityAria": "Filter by severity",
-        "severityPlaceholder": "Severity",
-        "allSeverities": "All severities",
-        "severity": {
-          "CRITICAL": "Critical",
-          "HIGH": "High",
-          "MEDIUM": "Medium",
-          "LOW": "Low",
-          "INFO": "Info"
-        },
-        "ruleAria": "Filter by rule",
-        "rulePlaceholder": "Rule",
-        "allRules": "All rules",
-        "siteAria": "Filter by site",
-        "sitePlaceholder": "Site",
-        "allSites": "All sites",
-        "searchAria": "Search alerts",
-        "searchPlaceholder": "Search message or host…",
-        "sortAria": "Sort alerts",
-        "lastSeenFirst": "Last seen first",
-        "severityFirst": "Severity first",
-        "resetAria": "Reset filters",
-        "reset": "Reset"
+      "suppressed": {
+        "description": "Windows + suppressed children",
+        "label": "Suppressed"
       },
-      "stream": {
-        "autoRefresh": "Auto-refreshes while alerts fire",
-        "updated": "Auto-refreshes while alerts fire · updated {time}",
-        "title": "Alert Stream"
-      },
-      "error": {
-        "load": "Alerts could not be loaded"
-      },
-      "empty": {
-        "description": "Nothing matches the current filters — the network is quiet.",
-        "title": "No alerts to show"
-      },
-      "pagination": {
-        "summary": "Page {page} of {totalPages} · {count, plural, one {# alert} other {# alerts}}",
-        "previousAria": "Previous page",
-        "previous": "Prev",
-        "nextAria": "Next page",
-        "next": "Next"
-      },
-      "footer": {
-        "engine": "The evaluation engine runs in the worker every ~3 minutes: dedup by fingerprint, maintenance-window + root-alert suppression, auto-resolve and incident auto-creation."
+      "linked": {
+        "description": "Incidents linked to open alerts",
+        "label": "Linked incidents"
       }
     },
+    "filters": {
+      "all": "All",
+      "severityAria": "Filter by severity",
+      "severityPlaceholder": "Severity",
+      "allSeverities": "All severities",
+      "severity": {
+        "CRITICAL": "Critical",
+        "HIGH": "High",
+        "MEDIUM": "Medium",
+        "LOW": "Low",
+        "INFO": "Info"
+      },
+      "ruleAria": "Filter by rule",
+      "rulePlaceholder": "Rule",
+      "allRules": "All rules",
+      "siteAria": "Filter by site",
+      "sitePlaceholder": "Site",
+      "allSites": "All sites",
+      "searchAria": "Search alerts",
+      "searchPlaceholder": "Search message or host…",
+      "sortAria": "Sort alerts",
+      "lastSeenFirst": "Last seen first",
+      "severityFirst": "Severity first",
+      "resetAria": "Reset filters",
+      "reset": "Reset"
+    },
+    "stream": {
+      "autoRefresh": "Auto-refreshes while alerts fire",
+      "updated": "Auto-refreshes while alerts fire · updated {time}",
+      "title": "Alert Stream"
+    },
+    "error": {
+      "load": "Alerts could not be loaded"
+    },
+    "empty": {
+      "description": "Nothing matches the current filters — the network is quiet.",
+      "title": "No alerts to show"
+    },
+    "pagination": {
+      "summary": "Page {page} of {totalPages} · {count, plural, one {# alert} other {# alerts}}",
+      "previousAria": "Previous page",
+      "previous": "Prev",
+      "nextAria": "Next page",
+      "next": "Next"
+    },
+    "footer": {
+      "engine": "The evaluation engine runs in the worker every ~3 minutes: dedup by fingerprint, maintenance-window + root-alert suppression, auto-resolve and incident auto-creation."
+    }
+  },
   "maintenanceView": {
     "page": {
       "title": "Maintenance Windows",
@@ -4379,6 +4402,14 @@
     "notifications": {
       "markedReadTitle": "{count, plural, one {# notification marked read} other {# notifications marked read}}",
       "updateFailedTitle": "Could not update notifications"
+    },
+    "mfa": {
+      "activatedTitle": "Two-factor authentication active",
+      "activatedDescription": "Store the recovery codes — they are shown once.",
+      "disabledTitle": "Two-factor authentication disabled",
+      "disabledDescription": "Sign-in no longer challenges for a second factor.",
+      "copied": "Copied to the clipboard.",
+      "copyFailed": "The copy failed — select and copy manually."
     }
   },
   "detect": {
@@ -4522,6 +4553,8 @@
       "password": "Password",
       "showPassword": "Show password",
       "hidePassword": "Hide password",
+      "totpCode": "2FA code (optional)",
+      "totpHint": "6-digit code from your authenticator app or an unused recovery code — only needed for accounts with two-factor enabled.",
       "submit": "Sign in",
       "submitting": "Signing in…",
       "errorCredentials": "Invalid email or password.",
@@ -4530,6 +4563,83 @@
       "demoAsideLabel": "Demo credentials",
       "demoPasswordHint": "Every account uses the password <tech>{code}</tech> — click a row to fill the form.",
       "privacyNote": "Auditors are read-only: the platform blocks every write for that role, and all secret material stays masked behind vault references. Sessions are signed JWTs — nothing about this demo is stored client-side beyond an httpOnly cookie."
+    }
+  },
+  "accountSecurity": {
+    "page": {
+      "title": "Account Security",
+      "description": "Your two-factor authentication, recovery codes and enrollment state.",
+      "breadcrumbAdministration": "Administration"
+    },
+    "status": {
+      "cardTitle": "Two-factor authentication",
+      "cardDescription": "A TOTP second factor is required for privileged roles before this account can sign in.",
+      "badgeActive": "Active",
+      "badgePending": "Enrollment pending",
+      "badgeOff": "Not enrolled",
+      "badgeSingle": "Single factor",
+      "badgeError": "Status unavailable",
+      "checkingLabel": "Checking enrollment state…",
+      "activeDescription": "This account challenges for a TOTP code at every sign-in.",
+      "pendingDescription": "Enrollment has started but is not confirmed yet — finish the setup below or discard it.",
+      "offDescription": "No second factor is enrolled. Enrollment is recommended for privileged roles.",
+      "singleDescription": "This account signs in with a password only.",
+      "roleDescription": "Privileged roles (admin, operator) are expected to keep a second factor enrolled.",
+      "setupAction": "Set up 2FA",
+      "checkAgain": "Check again",
+      "errorTitle": "Could not load the enrollment state"
+    },
+    "setup": {
+      "cardTitle": "Set up your authenticator",
+      "cardDescription": "Add the secret to an authenticator app (TOTP), then confirm a current code to finish enrollment.",
+      "secretLabel": "Manual secret",
+      "otpauthLabel": "Authenticator URI",
+      "copySecretAria": "Copy the manual secret to the clipboard",
+      "copyOtpauthAria": "Copy the authenticator URI to the clipboard",
+      "codeLabel": "Current 6-digit code",
+      "codePlaceholder": "123456",
+      "codeHint": "Enter the code your authenticator app shows for this account.",
+      "confirmButton": "Confirm enrollment",
+      "confirming": "Confirming…",
+      "discard": "Discard enrollment",
+      "qrNote": "No QR image is rendered — paste the URI or the manual secret into your authenticator app.",
+      "rotateNote": "Enrolling again replaces the pending secret; an active enrollment must be disabled first."
+    },
+    "recovery": {
+      "cardTitle": "Recovery codes",
+      "cardDescription": "Single-use codes that sign you in when the authenticator is unavailable.",
+      "storeWarning": "Store these codes now — they are shown only once and cannot be retrieved again.",
+      "listAria": "Single-use recovery codes",
+      "copyAll": "Copy all codes",
+      "done": "I've stored my codes"
+    },
+    "disable": {
+      "cardTitle": "Disable two-factor authentication",
+      "cardDescription": "Turning 2FA off removes the sign-in challenge and invalidates the stored secret.",
+      "openButton": "Disable 2FA",
+      "dialogTitle": "Disable two-factor authentication?",
+      "dialogDescription": "Your password plus a current code is required. A new enrollment can be started afterwards.",
+      "passwordLabel": "Current password",
+      "passwordPlaceholder": "Your password",
+      "codeLabel": "Current code",
+      "codePlaceholder": "TOTP or recovery code",
+      "codeHint": "A recovery code works here and is consumed on use.",
+      "confirmButton": "Disable 2FA",
+      "disabling": "Disabling…",
+      "cancel": "Cancel"
+    },
+    "errors": {
+      "MFA_DISABLED": "Two-factor authentication is disabled by the operator (MFA_MODE=disabled).",
+      "MFA_ALREADY_ENABLED": "Two-factor authentication is already active for this account.",
+      "MFA_NOT_ENROLLED": "No pending enrollment was found — start the setup first.",
+      "MFA_CODE_REQUIRED": "Enter the current code from your authenticator app.",
+      "MFA_CODE_INVALID": "That code is not valid (or was already used). Check your authenticator and try again.",
+      "MFA_PASSWORD_INVALID": "The password you entered is not correct.",
+      "RBAC_FORBIDDEN": "Your role is not allowed to manage two-factor authentication.",
+      "UNAUTHENTICATED": "Your session has expired — sign in again.",
+      "INVALID_BODY": "The submitted form was not valid — check the fields and try again.",
+      "network": "The server could not be reached — check your connection and try again.",
+      "fallback": "The operation failed — try again."
     }
   }
 }
