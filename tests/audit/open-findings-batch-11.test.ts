@@ -262,4 +262,82 @@ describe("F-030 (batch 11): persisted per-user daily AI quota", () => {
     // Restore the real-day counter so other suites/users are unaffected.
     await db.aiUsageDay.deleteMany({ where: { userId: user.id, day: today } });
   });
+
+  test("LIVE HANDLER PIN (wave-6): an unavailable quota store fails CLOSED — 503 AI_QUOTA_STORE_UNAVAILABLE, no LLM started", async () => {
+    // Wave-6 audit (6-c): the 503 fail-closed branch had no behavioral pin —
+    // a refactor could silently fail-open uncaught. The store outage is
+    // simulated by breaking db.aiUsageDay.upsert for the duration of the
+    // call (restored in finally — no mock.module, the real db client).
+    const user = await ensureBatch11User();
+    const originalUpsert = db.aiUsageDay.upsert.bind(db.aiUsageDay);
+    const originalCreate = db.aiUsageDay.create.bind(db.aiUsageDay);
+    const storeOutage = new Error("simulated quota store outage");
+    (db.aiUsageDay as { upsert: unknown }).upsert = () => {
+      throw storeOutage;
+    };
+    (db.aiUsageDay as { create: unknown }).create = () => {
+      throw storeOutage;
+    };
+    try {
+      // Helper plane: consumeAiDailyQuota classifies the store failure as
+      // the typed fail-closed code (no throw escapes, no LLM semantics).
+      const outcome = await consumeAiDailyQuota(user.id);
+      expect(outcome.ok).toBe(false);
+      expect("code" in outcome ? outcome.code : undefined).toBe(
+        "AI_QUOTA_STORE_UNAVAILABLE"
+      );
+      expect("used" in outcome ? outcome.used : undefined).toBeUndefined();
+
+      // Route plane: the handler maps the typed code to 503 — the quota
+      // gate sits BEFORE the first aiChat call by design, so no LLM work
+      // starts (no API key needed — same as the 429 pin). The request
+      // targets the REAL batch11 device so upstream validation passes and
+      // the quota gate is genuinely reached.
+      const vendor = await db.vendor.upsert({
+        where: { key: "batch11" },
+        update: {},
+        create: { key: "batch11", name: "Batch11 Vendor", adapterKey: "batch11" },
+        select: { id: true },
+      });
+      const device = await db.device.upsert({
+        where: { hostname: "batch11-quota-device" },
+        update: { vendorId: vendor.id },
+        create: {
+          hostname: "batch11-quota-device",
+          mgmtIp: "10.255.11.1",
+          vendorId: vendor.id,
+        },
+        select: { id: true },
+      });
+      const { encode } = await import("next-auth/jwt");
+      const token = await encode({
+        token: { id: user.id, email: user.email, name: user.name ?? undefined, role: user.role },
+        secret: process.env.NEXTAUTH_SECRET ?? "",
+      });
+      const mod = await import("../../src/app/api/v1/ai/assist/route");
+      const res = await mod.POST(
+        new NextRequest("http://app.local/api/v1/ai/assist", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: `next-auth.session-token=${token}`,
+          },
+          body: JSON.stringify({
+            scope: "device",
+            id: device.id,
+            question: "ping",
+            locale: "en",
+          }),
+        })
+      );
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { error?: { code?: string } };
+      expect(body.error?.code).toBe("AI_QUOTA_STORE_UNAVAILABLE");
+    } finally {
+      (db.aiUsageDay as { upsert: unknown }).upsert = originalUpsert;
+      (db.aiUsageDay as { create: unknown }).create = originalCreate;
+      // The outage refused everything — no counter row may have leaked.
+      await db.aiUsageDay.deleteMany({ where: { userId: user.id } });
+    }
+  });
 });

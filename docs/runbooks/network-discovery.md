@@ -16,6 +16,27 @@ no telemetry port is opened by discovery. Operators must restrict ranges to
 owned lab/VPN address space and retain the scan correlation ID. Empty results
 are valid and are not replaced with simulated candidates.
 
+### Governed target classes and the lab hatch (wave-6 documentation)
+
+Every enumerated discovery target is classified against the governed address
+classes (loopback, link-local, multicast, reserved/broadcast, and other
+non-routable documentation ranges). A policy or ad-hoc scan containing even
+ONE governed-class target is refused as a whole — fail-closed, with the
+offending subnet and its class named in the refusal (`INVALID_POLICY`) — on
+BOTH enforcement planes: the app's mutation surfaces (scan POST, policy
+POST/PATCH) and the worker runner's own payload re-validation (the worker
+never trusts the app plane).
+
+The only escape is the explicit lab hatch `FAYANMS_PROBE_ALLOW_SPECIAL=true`
+(strict string match; unset, empty, `false`, `1`, or `TRUE` all stay
+denied). It is a PER-PROCESS flag: authoring a governed-class policy needs
+it on the APP environment, and executing one needs it on the WORKER
+environment too. It exists for isolated lab ranges (e.g. documentation
+prefixes in a bench topology) and must never be enabled where discovery can
+reach shared or production networks. See `.env.example` and
+`docs/deploy/env.{app,worker}.production.example` for the knob's own
+comments.
+
 Evidence state: implemented, unit tested, CI certified after the exact branch
 head passes; staging, physical-hardware, and production proof remain open.
 

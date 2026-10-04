@@ -1039,8 +1039,10 @@ model AiUsageDay {
   // day: UTC calendar date, "YYYY-MM-DD" (aiQuotaDay()) — string-keyed so
   // the counter needs no date arithmetic or timezone plumbing.
   day       String
-  // count: AI requests consumed by this user on this day (LLM round-trips
-  // the 4 /api/v1/ai routes would have started — consumed BEFORE the call).
+  // count: AI requests consumed by this user on this day — ONE slot per
+  // API request (consumed BEFORE the first LLM call; wave-6 note: a single
+  // /ai/query request may start TWO LLM round-trips internally, still one
+  // slot — the enforced unit is requests, not round-trips).
   count     Int      @default(0)
   updatedAt DateTime @updatedAt
 

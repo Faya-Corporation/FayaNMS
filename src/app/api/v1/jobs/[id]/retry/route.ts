@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { RETRYABLE_JOB_STATUSES } from "@/lib/jobs/lifecycle";
 import { fail, newJobCorrelationId, ok } from "../../../_lib/api";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,11 @@ export const dynamic = "force-dynamic";
  *   - the JOB_RETRIED audit event's before/after snapshot.
  *
  * - 404 JOB_NOT_FOUND — unknown id
+ * - 409 JOB_NOT_RETRYABLE — the source job is not a terminal failure
+ *   (only FAILED/DEAD clone; wave-6: the guard closes the SAFE-003 lease
+ *   bypass where POST /jobs/<running-id>/retry produced TWO live
+ *   executions of one change — the UI's retry button already only showed
+ *   for FAILED/DEAD, now the API enforces the same contract)
  * - 201               — { job, audit } for the newly queued clone.
  *
  * Standard _lib envelope; session enforced (middleware + requirePermission).
@@ -43,6 +49,19 @@ export async function POST(
       "JOB_NOT_FOUND",
       "The requested job execution does not exist",
       404
+    );
+  }
+
+  // Wave-6 (SAFE-003): only terminal failures are retryable. A clone of a
+  // QUEUED/RUNNING job would run beside its source — for CHANGE_EXECUTE
+  // that means two live executions of one change (the per-change lease
+  // row keeps pointing at the ORIGINAL job, so the clone's completion
+  // could not even release it). Mirrors the job center's retry button.
+  if (!RETRYABLE_JOB_STATUSES.has(source.status)) {
+    return fail(
+      "JOB_NOT_RETRYABLE",
+      `Only terminal FAILED or DEAD jobs can be retried — job ${source.correlationId} is ${source.status}`,
+      409
     );
   }
 

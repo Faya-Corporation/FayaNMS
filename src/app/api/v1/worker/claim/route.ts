@@ -165,11 +165,13 @@ export async function POST(request: Request) {
         if (change) {
           // F-044 — claim-time budget input: the plan's step count, so the
           // worker derives the driver budget as
-          //   min(stepsTotal, loop bound) × per-iteration cost + margin
-          // (src/lib/change/job-budget.ts). The FULL plan is counted (not
-          // the remaining steps) on purpose: a resumed attempt may still
-          // trigger appended rollback steps, and an over-generous budget
-          // can never race a live driver — an under-count could.
+          //   min(min(stepsTotal, loop bound) + rollback pad, loop bound)
+          //   × per-iteration cost + margin
+          // (src/lib/change/job-budget.ts; the pad covers the 3 appended
+          // rollback steps + the closing observe call). The FULL plan is
+          // counted (not the remaining steps) on purpose: a resumed attempt
+          // may still trigger appended rollback steps, and an over-generous
+          // budget can never race a live driver — an under-count could.
           const stepsTotal = await tx.changeStep.count({
             where: { changeId: job.targetId },
           });

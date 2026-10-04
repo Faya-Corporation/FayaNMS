@@ -38,7 +38,7 @@ export FAYANMS_IPFIX_PORT=4739
 export FAYANMS_SFLOW_PORT=6343
 ~~~
 
-Device association is advisory and ordered: exact hostname hint first, exact management IP second. UDP source identity is not trusted as proof of device identity. Unmatched events remain retained as unassociated ProtocolEvent audit history. Raw packets, communities, passphrases, and other secret material are never accepted by the ingestion contract.
+Device association is anchored on the UDP source IP (F-036): the source address is resolved against known device management/interface IPs first, and a supplied hostname hint is honored only when it agrees with that source resolution. For relayed or NATed sources whose hostname matches but whose source IP cannot be confirmed, the event is accepted but marked `attributionUnverified` (exposed in the ingest receipt); a hostname that CONTRADICTS the source resolution never wins the association. Unmatched events remain retained as unassociated ProtocolEvent audit history. Raw packets, communities, passphrases, and other secret material are never accepted by the ingestion contract.
 
 The ingestion boundary is fail-closed for SNMP traps: the generic worker BER-framing path marks securityLevel=unknown and is rejected. Accepted SNMP traps must carry a server-side verified authPriv result, an explicit credentialProfileId, an exact associated device, and a CredentialProfile of type SNMPV3 bound to that device. The profile contains only the vault secret reference; the passphrase is never sent in the event or stored in audit JSON. The disposable scripts/protocol-lab/snmpv3.ts harness now proves authPriv trap verification and tamper rejection, but it does not constitute device or staging evidence.
 

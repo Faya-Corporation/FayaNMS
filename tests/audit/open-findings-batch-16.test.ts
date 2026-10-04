@@ -62,6 +62,7 @@ import {
   CHANGE_INTER_STEP_SLEEP_MAX_MS,
   CHANGE_MAX_STEP_CALLS,
   CHANGE_PROGRESS_POST_TIMEOUT_MS,
+  CHANGE_ROLLBACK_STEP_PAD,
   CHANGE_REAPER_GRACE_MS,
   CHANGE_STEP_CALL_TIMEOUT_MS,
   JobTimeoutError,
@@ -222,12 +223,15 @@ describe("deriveChangeJobBudgetMs (F-044 claim-time math)", () => {
     expect(CHANGE_PROGRESS_POST_TIMEOUT_MS).toBe(8_000);
     expect(CHANGE_INTER_STEP_SLEEP_MAX_MS).toBe(600);
     expect(CHANGE_MAX_STEP_CALLS).toBe(40);
+    expect(CHANGE_ROLLBACK_STEP_PAD).toBe(4);
     expect(PER_ITERATION_MS).toBe(98_600);
 
-    // Exact arithmetic for a 1-step plan, the seeded 5-step plans, and the
-    // 40-call loop bound:
-    expect(deriveChangeJobBudgetMs(1)).toBe(98_600 + CHANGE_BUDGET_MARGIN_MS);
-    expect(deriveChangeJobBudgetMs(5)).toBe(5 * 98_600 + CHANGE_BUDGET_MARGIN_MS);
+    // Exact arithmetic for a 1-step plan (1 + 4 rollback/observe pad), the
+    // seeded 5-step plans (5 + 4), and the 40-call loop bound (the pad is
+    // clamped away — the loop can never exceed 40 step calls):
+    expect(deriveChangeJobBudgetMs(1)).toBe(5 * 98_600 + CHANGE_BUDGET_MARGIN_MS);
+    expect(deriveChangeJobBudgetMs(5)).toBe(9 * 98_600 + CHANGE_BUDGET_MARGIN_MS);
+    expect(deriveChangeJobBudgetMs(36)).toBe(40 * 98_600 + CHANGE_BUDGET_MARGIN_MS);
     expect(deriveChangeJobBudgetMs(40)).toBe(40 * 98_600 + CHANGE_BUDGET_MARGIN_MS);
     expect(CHANGE_BUDGET_MARGIN_MS).toBe(30_000);
   });
@@ -251,7 +255,13 @@ describe("deriveChangeJobBudgetMs (F-044 claim-time math)", () => {
     let previous = 0;
     for (let stepsTotal = 1; stepsTotal <= CHANGE_MAX_STEP_CALLS; stepsTotal += 1) {
       const budget = deriveChangeJobBudgetMs(stepsTotal);
-      expect(budget).toBeGreaterThan(previous);
+      // Strictly growing while the +4 rollback pad still fits under the
+      // 40-call bound (k ≤ 36 → min(k+4,40) = k+4), flat at the clamp after:
+      if (stepsTotal <= CHANGE_MAX_STEP_CALLS - CHANGE_ROLLBACK_STEP_PAD) {
+        expect(budget).toBeGreaterThan(previous);
+      } else {
+        expect(budget).toBe(previous);
+      }
       previous = budget;
     }
     // A 200-step plan cannot make the loop exceed its 40-call bound — the
@@ -630,9 +640,10 @@ describe("POST /api/v1/worker/complete — RESUMED (driver loss is resumable)", 
 describe("scheduler tick reaper (per-job derived thresholds)", () => {
   test("a 1-step orphan is reaped while a 40-step orphan of the same age is NOT (no 15-minute ceiling)", async () => {
     const { POST } = await import("../../src/app/api/v1/worker/tick/route");
-    // Both started 8.5 min ago: above the 1-step threshold (~7.1 min =
-    // budget 128.6 s + 5 min grace), far below the 40-step one (~71 min).
-    const staleStart = new Date(Date.now() - 8.5 * 60_000);
+    // Both started 15 min ago: above the 1-step threshold (~13.7 min = the
+    // padded 5-iteration budget 493 s + 5 min grace), far below the 40-step
+    // one (~71.2 min). Wave-6: the threshold rose with the rollback pad.
+    const staleStart = new Date(Date.now() - 15 * 60_000);
     const small = await makeChangeJob({
       stepCount: 1,
       startedAt: staleStart,
