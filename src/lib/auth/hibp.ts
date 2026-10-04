@@ -287,8 +287,12 @@ export async function checkPasswordBreach(
       detail: { occurrences },
     };
   } catch (error) {
+    // Constant format string (W3-D precedent, unsafe-formatstring): the env
+    // var NAME is a compile-time literal here — HIBP_MODE_ENV stays exported
+    // for the env reads above, but logs must never treat identifiers as
+    // format input. The caught error passes positionally.
     console.error(
-      `[hibp] ${HIBP_MODE_ENV}=enforce but the breach check failed — refusing (fail-closed)`,
+      "[hibp] FAYANMS_HIBP_MODE=enforce but the breach check failed — refusing (fail-closed)",
       error
     );
     return {
