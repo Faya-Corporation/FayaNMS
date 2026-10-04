@@ -190,11 +190,11 @@ describe("RT-004 — dictionaries carry the new keys in both locales", () => {
     // Identical leaf sets inside the common namespace:
     expect(new Set(leaves(en.common))).toEqual(new Set(leaves(ar.common)));
     // Totals: 2850 (R102) → 2856 (RT-004) → 3193 → 3206 → 3214 → 3309 → 3312
-    // (RT-037, +2 common.errors) → 3314 (F-034, +2 auth.signIn
+    // (RT-037, +2 common.errors) → 3385 (F-034, +2 auth.signIn
     // totpCode/totpHint per side; every pinning test updated in the same
     // change).
-    expect(leaves(en).length).toBe(3314);
-    expect(leaves(ar).length).toBe(3314);
+    expect(leaves(en).length).toBe(3385);
+    expect(leaves(ar).length).toBe(3385);
   });
 });
 
