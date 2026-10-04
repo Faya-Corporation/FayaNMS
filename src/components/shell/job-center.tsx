@@ -33,6 +33,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { CANCELLABLE_JOB_STATUSES, RETRYABLE_JOB_STATUSES } from "@/lib/jobs/lifecycle";
 import type { JobRow } from "@/lib/api-client";
 
 interface JobCenterContentProps {
@@ -73,8 +74,8 @@ const JOB_TYPES = [
   "ZTP_PROVISION",
 ] as const;
 
-const CANCELLABLE = new Set(["QUEUED", "RUNNING"]);
-const RETRYABLE = new Set(["FAILED", "DEAD"]);
+const CANCELLABLE = CANCELLABLE_JOB_STATUSES;
+const RETRYABLE = RETRYABLE_JOB_STATUSES;
 
 /** Localized type labels with an honest fallback for unknown types. */
 function jobTypeLabel(

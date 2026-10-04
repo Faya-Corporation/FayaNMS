@@ -468,11 +468,21 @@ describe("F-046 sample load cap", () => {
     expect(MAX_SAMPLES_PER_QUERY).toBe(20_000);
   });
 
-  test("source pin: the sample query is row-bounded, newest rows first", () => {
+  test("source pin: the sample load is PER-SERIES row-bounded (wave-6 correction), newest rows first", () => {
+    // Wave-6: the cap rode a FLEET-WIDE `take` — whenever 20 000 < fleet
+    // rows but the recent window fit, whole series were truncated out and
+    // previous-window averages were biased (false resolve / missed fire
+    // proven by the wave-6 audit probe). The load is now one
+    // window-function query keeping the newest cap rows of EVERY series.
     const source = readFileSync("src/lib/alerts/evaluate.ts", "utf8");
-    expect(source).toContain("orderBy: { ts: \"desc\" }");
-    expect(source).toContain("take: MAX_SAMPLES_PER_QUERY");
+    expect(source).toContain('row_number() OVER (');
+    expect(source).toContain('PARTITION BY s."deviceId", s."metric"');
+    expect(source).toContain('ORDER BY s."ts" DESC');
+    expect(source).toContain("WHERE ranked.rn <= ${MAX_SAMPLES_PER_QUERY}");
+    expect(source).toContain('ORDER BY ranked."ts" DESC');
     expect(source).toContain("samplesByDeviceMetric = indexSamples(samples)");
+    // The fleet-wide cap is GONE — the regression this pin now forbids:
+    expect(source).not.toContain("take: MAX_SAMPLES_PER_QUERY");
   });
 
   test("indexSamples restores the ascending per-series order from the desc fetch", () => {

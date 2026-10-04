@@ -253,8 +253,19 @@ interface SnmpV3SecretCacheEntry {
   expiresAt: number;
 }
 
+/**
+ * Bounded FIFO cache of resolved vault secrets, keyed
+ * "<credentialProfileId>@<secretRef>". Entries live snmpv3SecretCacheTtlMs
+ * (FAYANMS_SNMPV3_SECRET_CACHE_TTL_MS, clamped); resolved secret VALUES
+ * must not outlive the collector — resetSnmpV3SecretCache() (stop() and
+ * lab-run boundaries) bumps snmpV3SecretCacheGeneration so an in-flight
+ * resolution that settles AFTER the reset can no longer re-insert its
+ * value into the cleared map (wave-6: the old unconditional .then insert
+ * could resurrect a secret one in-flight window past stop()).
+ */
 const snmpV3SecretCache = new Map<string, SnmpV3SecretCacheEntry>();
 const snmpV3SecretInFlight = new Map<string, Promise<string>>();
+let snmpV3SecretCacheGeneration = 0;
 const snmpV3SecretCacheCounters = {
   resolutions: 0,
   cacheHits: 0,
@@ -269,6 +280,10 @@ export function getSnmpV3SecretCacheStats(): SnmpV3SecretCacheStats {
 
 /** Clear cached secrets (and in-flight map); called by stop() and between lab runs. */
 export function resetSnmpV3SecretCache(): void {
+  // Bump the generation FIRST: any vault resolution already in flight
+  // captured the previous generation and will skip its cache insert when
+  // it settles — a resolved secret VALUE cannot outlive the reset.
+  snmpV3SecretCacheGeneration += 1;
   snmpV3SecretCache.clear();
   snmpV3SecretInFlight.clear();
   snmpV3SecretCacheCounters.resolutions = 0;
@@ -301,18 +316,24 @@ async function resolveSnmpV3ProfileSecret(
     return inFlight;
   }
   snmpV3SecretCacheCounters.resolutions += 1;
+  const generationAtStart = snmpV3SecretCacheGeneration;
   const resolution = resolveVaultSecret(profile.secretRef)
     .then((secret) => {
-      while (snmpV3SecretCache.size >= SNMPV3_SECRET_CACHE_MAX_ENTRIES) {
-        const oldest = snmpV3SecretCache.keys().next().value;
-        if (oldest === undefined) break;
-        snmpV3SecretCache.delete(oldest);
-        snmpV3SecretCacheCounters.evictions += 1;
+      // Wave-6: a reset (stop()/lab boundary) that landed while this
+      // resolution was in flight must win — skip the insert so the secret
+      // value cannot outlive the collector by one in-flight window.
+      if (generationAtStart === snmpV3SecretCacheGeneration) {
+        while (snmpV3SecretCache.size >= SNMPV3_SECRET_CACHE_MAX_ENTRIES) {
+          const oldest = snmpV3SecretCache.keys().next().value;
+          if (oldest === undefined) break;
+          snmpV3SecretCache.delete(oldest);
+          snmpV3SecretCacheCounters.evictions += 1;
+        }
+        snmpV3SecretCache.set(key, {
+          secret,
+          expiresAt: Date.now() + snmpv3SecretCacheTtlMs(),
+        });
       }
-      snmpV3SecretCache.set(key, {
-        secret,
-        expiresAt: Date.now() + snmpv3SecretCacheTtlMs(),
-      });
       return secret;
     })
     .finally(() => {

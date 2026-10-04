@@ -9,11 +9,19 @@
  * job budget is DERIVED at claim time from the plan's own size —
  *
  *     budget = iterations × (stepTimeout + progressPost + maxSleep) + margin
- *     iterations = min(stepsTotal, CHANGE_MAX_STEP_CALLS)
+ *     iterations = min(min(stepsTotal, CHANGE_MAX_STEP_CALLS)
+ *                      + CHANGE_ROLLBACK_STEP_PAD, CHANGE_MAX_STEP_CALLS)
  *
- * with a fail-safe fallback to the full driver loop bound when the claim
- * enrichment could not supply stepsTotal (legacy payload / vanished change
- * row) — the budget may be generous, never smaller than the loop it bounds.
+ * CHANGE_ROLLBACK_STEP_PAD (wave-6): on APPLY/VALIDATE failure the engine
+ * appends 3 rollback steps and the closing observe call adds a 4th — the
+ * driver can legitimately make stepsTotal + 4 step calls, so the plan-sized
+ * budget pads by 4 iterations (still capped by the driver's hard loop
+ * bound) or every healthy rollback tail races the budget near its worst
+ * case and mislabels driver loss.
+ *
+ * A fail-safe fallback covers the claim enrichment could not supply
+ * stepsTotal (legacy payload / vanished change row): the budget may be
+ * generous, never smaller than the loop it bounds.
  *
  * Every factor below is the EXACT constant the worker driver actually
  * spends per iteration (mini-services/worker/runner.ts imports them from
@@ -46,6 +54,15 @@ export const CHANGE_PROGRESS_POST_TIMEOUT_MS = 8_000;
 export const CHANGE_INTER_STEP_SLEEP_MIN_MS = 300;
 export const CHANGE_INTER_STEP_SLEEP_MAX_MS = 600;
 
+/**
+ * Step calls a driver attempt can make BEYOND the plan's own stepsTotal:
+ * 3 appended rollback steps (on APPLY/VALIDATE failure) + the closing
+ * observe call. Wave-6: the derived budget pads by this so a healthy
+ * rollback tail can never exhaust the budget (worst-case deficit was
+ * ≈ 4 iterations − margin ≈ 6 minutes).
+ */
+export const CHANGE_ROLLBACK_STEP_PAD = 4;
+
 /** Driver loop bound — the max number of step calls one attempt may make. */
 export const CHANGE_MAX_STEP_CALLS = 40;
 
@@ -62,14 +79,15 @@ export const CHANGE_PER_ITERATION_MS =
 /**
  * Derive the change-job budget for one driver attempt from the plan's step
  * count. A positive integer stepsTotal bounds the loop by the plan's size
- * (clamped to the driver's hard CHANGE_MAX_STEP_CALLS bound); anything else
- * (absent/legacy enrichment, malformed value) falls back to the FULL loop
- * bound — fail-safe generosity, the budget only ever over-covers.
+ * plus the rollback pad (clamped to the driver's hard CHANGE_MAX_STEP_CALLS
+ * bound); anything else (absent/legacy enrichment, malformed value) falls
+ * back to the FULL loop bound — fail-safe generosity, the budget only ever
+ * over-covers.
  */
 export function deriveChangeJobBudgetMs(stepsTotal: unknown): number {
   const iterations =
     typeof stepsTotal === "number" && Number.isInteger(stepsTotal) && stepsTotal >= 1
-      ? Math.min(stepsTotal, CHANGE_MAX_STEP_CALLS)
+      ? Math.min(Math.min(stepsTotal, CHANGE_MAX_STEP_CALLS) + CHANGE_ROLLBACK_STEP_PAD, CHANGE_MAX_STEP_CALLS)
       : CHANGE_MAX_STEP_CALLS;
   return iterations * CHANGE_PER_ITERATION_MS + CHANGE_BUDGET_MARGIN_MS;
 }

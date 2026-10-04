@@ -120,6 +120,7 @@ import {
   CHANGE_INTER_STEP_SLEEP_MAX_MS,
   CHANGE_INTER_STEP_SLEEP_MIN_MS,
   CHANGE_MAX_STEP_CALLS,
+  CHANGE_PROGRESS_POST_TIMEOUT_MS,
   CHANGE_STEP_CALL_TIMEOUT_MS,
   JobTimeoutError,
   deriveChangeJobBudgetMs,
@@ -224,7 +225,14 @@ function raceTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 
 async function reportProgress(jobId: string, progress: number, message: string) {
   try {
-    await nextPost("/api/v1/worker/progress", { jobId, progress, message }, 8_000);
+    // Wave-6: the timeout is the budget module's OWN factor constant (was a
+    // hardcoded millisecond literal) — the derivation's progress-post factor
+    // and the loop's actual spend cannot drift apart silently.
+    await nextPost(
+      "/api/v1/worker/progress",
+      { jobId, progress, message },
+      CHANGE_PROGRESS_POST_TIMEOUT_MS
+    );
   } catch (e) {
     await log(`progress post failed for ${jobId} @${progress}%: ${(e as Error).message}`);
   }

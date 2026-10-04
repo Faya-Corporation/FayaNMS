@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+
 import { db } from "@/lib/db";
 import { newCorrelationId } from "@/app/api/v1/_lib/api";
 import { parsePolicyScope } from "@/app/api/v1/_lib/scope";
@@ -168,14 +170,23 @@ const MAX_INCIDENTS_PER_RUN = 10;
 const MAX_NOTIFICATIONS_PER_RUN = 40;
 
 /**
- * F-046: hard row cap on the evaluation's metricSample load. At the fleet's
- * 5-minute collection cadence 20 000 rows ≈ 69 days of continuous history
- * for a single (device, metric) series — far above any rule window — so the
- * cap only binds on runaway retention gaps, bounding memory/IO per pass.
- * When it binds, the NEWEST rows win (orderBy ts desc + take): the
- * in-progress breach window stays intact and only previous-window rows can
- * be dropped, which lands in pass 2's documented sparse-data skip (never a
- * false fire or false resolve).
+ * F-046: hard row cap on the evaluation's metricSample load — applied PER
+ * (device, metric) SERIES, not fleet-wide. At the fleet's 5-minute
+ * collection cadence 20 000 rows ≈ 69 days of continuous history for one
+ * series — far above any rule window — so the cap only binds on runaway
+ * retention gaps, bounding memory/IO per pass.
+ *
+ * Wave-6 correction: the cap originally rode a fleet-wide `take` on the
+ * single aggregate query. Whenever 20 000 < fleet rows but the recent
+ * window alone fit under the cap, the PREVIOUS window arrived partially
+ * truncated — `windowAvg` then averaged a biased subset, pass 2's
+ * empty-window sparse-data skip never fired, and a legal 1440-minute rule
+ * on a mid-sized fleet could false-RESOLVE or miss a fire. The load is
+ * now a window function that keeps the NEWEST MAX_SAMPLES_PER_QUERY rows
+ * of EVERY series in one round-trip: when the cap binds it drops only a
+ * series' OLDEST rows (never its in-progress breach window), and for any
+ * sane cadence it never binds at all — the per-series invariant the
+ * original docblock claimed now actually holds.
  */
 export const MAX_SAMPLES_PER_QUERY = 20_000;
 
@@ -653,23 +664,38 @@ export async function runAlertEvaluation(options: {
     0
   );
   let samplesByDeviceMetric = new Map<string, Array<{ ts: Date; value: number }>>();
-  if (neededMetrics.size > 0 && maxWindowMin > 0) {
+  if (neededMetrics.size > 0 && maxWindowMin > 0 && deviceById.size > 0) {
     // Resolve pass needs the previous window too → load 2× the max window.
     const since = new Date(now.getTime() - 2 * maxWindowMin * 60_000);
-    const samples = await db.metricSample.findMany({
-      where: {
-        deviceId: { in: [...deviceById.keys()] },
-        metric: { in: [...neededMetrics] },
-        ts: { gte: since },
-      },
-      select: { deviceId: true, metric: true, value: true, ts: true },
-      // F-046: row cap — newest rows win (desc + take); indexSamples
-      // restores the ascending per-series order in memory. A truncated
-      // load can only drop previous-window rows, which lands in pass 2's
-      // documented sparse-data skip (never a false fire or false resolve).
-      orderBy: { ts: "desc" },
-      take: MAX_SAMPLES_PER_QUERY,
-    });
+    // F-046 (wave-6 correction): PER-SERIES row cap via one window-function
+    // query — the newest MAX_SAMPLES_PER_QUERY rows of EVERY (device,
+    // metric) series, in ONE round-trip (the fleet-wide `take` this replaced
+    // truncated whole series out of the load and biased previous-window
+    // averages — see MAX_SAMPLES_PER_QUERY's docblock). Global ts DESC
+    // order is preserved so indexSamples restores the ascending per-series
+    // maps exactly as before.
+    const deviceIds = [...deviceById.keys()];
+    const metrics = [...neededMetrics];
+    const samples = await db.$queryRaw<
+      Array<{ deviceId: string; metric: string; value: number; ts: Date }>
+    >(
+      Prisma.sql`
+        SELECT ranked."deviceId", ranked."metric", ranked."value", ranked."ts"
+        FROM (
+          SELECT s."deviceId", s."metric", s."value", s."ts",
+                 row_number() OVER (
+                   PARTITION BY s."deviceId", s."metric"
+                   ORDER BY s."ts" DESC
+                 ) AS rn
+          FROM "MetricSample" s
+          WHERE s."deviceId" IN (${Prisma.join(deviceIds)})
+            AND s."metric" IN (${Prisma.join(metrics)})
+            AND s."ts" >= ${since}
+        ) ranked
+        WHERE ranked.rn <= ${MAX_SAMPLES_PER_QUERY}
+        ORDER BY ranked."ts" DESC
+      `
+    );
     samplesByDeviceMetric = indexSamples(samples);
   }
 

@@ -283,6 +283,14 @@ export async function POST(
               triggerUserId: actor.id,
               changeNumber: change.number,
               changeTitle: change.title,
+              // Wave-6 (F-044 follow-up): persist the plan's step count so
+              // the tick reaper's per-job threshold
+              // (changeReaperThresholdForPayload reads the STORED payload)
+              // engages exactly as documented instead of always taking the
+              // legacy full-loop fallback (~71 min for a 1-step plan).
+              // Stepless changes inject the standard 5-step plan below —
+              // count that injected size, not the empty pre-injection one.
+              stepsTotal: change._count.steps === 0 ? 5 : change._count.steps,
             }),
             correlationId,
           },
