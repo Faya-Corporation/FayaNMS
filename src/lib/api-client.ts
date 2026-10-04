@@ -2219,6 +2219,70 @@ export async function fetchAuthSession(): Promise<AuthSessionPayload> {
   return apiFetch<AuthSessionPayload>("/api/v1/auth/session");
 }
 
+/* ------------------------------------------------------------------ */
+/* Self-service MFA (F-034 follow-up) — /api/v1/me/mfa family          */
+/*                                                                    */
+/* The backend deliberately exposes NO GET status surface (enroll /    */
+/* confirm / disable only — the batch-24 governance). The account-     */
+/* security view therefore DERIVES its status by probing enroll:       */
+/*   200                          → a pending enrollment exists        */
+/*   409 MFA_ALREADY_ENABLED      → the second factor is active        */
+/*   400 MFA_DISABLED             → the platform knob is off           */
+/*   403 RBAC_FORBIDDEN           → role not eligible (viewer plane)   */
+/* Side effect honesty: probing enroll when nothing is enabled creates */
+/* a DISABLED pending row (or rotates an existing pending secret) — a  */
+/* pending row never challenges at sign-in until confirm succeeds.     */
+/* ------------------------------------------------------------------ */
+
+export interface MfaEnrollResult {
+  enrolled: boolean;
+  enabled: boolean;
+  /** Base32 provisioning secret (unpadded, RFC 4648). */
+  secret: string;
+  /** otpauth://totp/... URI for authenticator apps. */
+  otpauth: string;
+  /** Human hint of the confirm step (API contract text). */
+  confirm: string;
+}
+
+export interface MfaConfirmResult {
+  enabled: boolean;
+  /** TEN single-use plaintext codes — the ONLY reveal (hashes at rest). */
+  recoveryCodes: string[];
+}
+
+export interface MfaDisableResult {
+  enabled: boolean;
+}
+
+/** Begin (or rotate a pending) TOTP enrollment — POST /api/v1/me/mfa/enroll. */
+export async function enrollMfa(): Promise<MfaEnrollResult> {
+  // Empty JSON body: the route tolerates absent bodies but rejects non-JSON.
+  return apiFetch<MfaEnrollResult>("/api/v1/me/mfa/enroll", {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+/** Confirm enrollment with the first valid 6-digit code — POST /confirm. */
+export async function confirmMfa(code: string): Promise<MfaConfirmResult> {
+  return apiFetch<MfaConfirmResult>("/api/v1/me/mfa/confirm", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+/** Fail-tight disable (password AND current/recovery code) — DELETE /me/mfa. */
+export async function disableMfa(
+  password: string,
+  code: string
+): Promise<MfaDisableResult> {
+  return apiFetch<MfaDisableResult>("/api/v1/me/mfa", {
+    method: "DELETE",
+    body: JSON.stringify({ password, code }),
+  });
+}
+
 export async function fetchAdminUsers(
   params: { q?: string; page?: number; pageSize?: number } = {}
 ): Promise<AdminUsersResult> {

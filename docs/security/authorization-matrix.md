@@ -126,8 +126,11 @@ validity re-verified at execute time (`APPROVAL_FINGERPRINT_MISMATCH`,
 
 | Endpoint | Method | Permission |
 |---|---|---|
+| `/me/mfa/enroll` | POST | `admin`/`operator` ROLE gate (`requireRole("admin","operator")`) — self-service TOTP enrollment (F-034); pending until confirm; answers `MFA_DISABLED` under `FAYANMS_MFA_MODE=disabled` |
+| `/me/mfa/confirm` | POST | `admin`/`operator` ROLE gate — first valid code enables the factor and issues single-use recovery codes (plaintexts shown once) (F-034) |
+| `/me/mfa` | DELETE | `admin`/`operator` ROLE gate — fail-tight disable: password re-entry AND current TOTP code or unused recovery code (F-034) |
 | `/admin/users` | GET | `admin`/`auditor` ROLE gate (`requireRole("admin","auditor")`) — the full email directory; other roles use `/meta/users` (local-part picker only) (F-029) |
-| `/admin/users`, `/admin/users/[id]`, `/admin/users/[id]/reset-password` | POST/PATCH | `admin` ROLE gate (`requireRole("admin")`) |
+| `/admin/users`, `/admin/users/[id]`, `/admin/users/[id]/reset-password` | POST/PATCH | `admin` ROLE gate (`requireRole("admin")`) — password SETs enforce the F-034 role-aware policy (privileged roles ≥ 12 chars, offline common-password denylist for all roles); with `FAYANMS_HIBP_MODE=enforce` a k-anonymity breach check also gates the SET (5-char SHA-1 prefix only; breached → `PASSWORD_BREACHED`, check unavailable → fail-closed `PASSWORD_BREACH_CHECK_UNAVAILABLE`; never at login) |
 | `/admin/api-clients` (+`/[id]`, `/[id]/rotate`) | POST/PATCH/DELETE | `admin` ROLE gate |
 | `/admin/webhooks` (+`/[id]`) | POST/PATCH/DELETE | `admin` ROLE gate |
 | `/admin/notification-channels` (+`/[id]`) | POST/PATCH/DELETE | `admin` ROLE gate |
@@ -239,13 +242,83 @@ build.
 
 ## 5. Known limitations (honest disclosure)
 
-- Resource-level scoping (site/device-group) is not yet part of
-  `requirePermission` — audit §10 target model; permissions are currently
-  global per role.
 - Service JWTs remain symmetric-secret; per-service keys / asymmetric
   signing are Phase 21 (audit SVC-101 §11.3/§11.4).
 
-### 5.1 CSRF origin control on cookie-session mutations (RT-008 / F-010)
+### 5.1 Resource-level site scoping (F-031 — infrastructure landed, single-tenant default)
+
+The finding: permissions are global per role — `requirePermission` answers
+"does this ROLE hold this PERMISSION" and nothing constrained a session to
+a site or device group. Product tenancy is NOT landing now; what shipped is
+the SCOPING INFRASTRUCTURE with single-tenant-safe defaults, so the
+mechanism exists centrally, is enforced where wired, and today's behavior
+is byte-unchanged.
+
+**Claims.** The session JWT carries an OPTIONAL `sites: string[]` claim
+(site `code` values), minted ONLY at sign-in from the user's nullable
+`User.siteScopeJson` column (additive migration
+`20261003024531_add_user_site_scope`) by the credentials `authorize` path
+(`src/lib/auth/options.ts`). Enforcement is centralized in
+`src/lib/auth/scope.ts` (pure helpers: `sessionSiteScope`, `assertSiteScope`,
+`scopedDeviceWhere`, `userSiteScopeClaim`) plus the
+requirePermission-family extensions in `src/lib/auth/session.ts`
+(`sessionScopeFor`, `requireSiteScope`).
+
+**Wildcard default (the parity guarantee).** ABSENT claim = wildcard =
+every site. Every session minted before F-031 — and every user whose scope
+was never set (a null column mints no claim) — resolves wildcard, so
+pre-F-031 behavior is byte-unchanged. A `null` claim value is treated the
+same as absent.
+
+**Fail-closed rules (the only two narrow states).**
+
+- `sites: []` (empty array) → deny-all: no site matches.
+- MALFORMED claim (present but not an array of non-empty strings —
+  classified at enforcement by `sessionSiteScope`, at mint by
+  `userSiteScopeClaim` for a hand-edited `siteScopeJson` row) → deny-all
+  with a console.warn log line. A malformed scope can never widen access;
+  treating it as wildcard is forbidden.
+
+**Unscoped resources.** `assertSiteScope(session, null)` BYPASSES site
+scoping: a resource with no site dimension is global (the documented rule).
+Row-level parity note: a DEVICE whose `siteId` is unset (nullable column,
+`SetNull` on site delete) can never match the `site.code IN (…)` filter, so
+sites-limited sessions do not see it (wildcard sessions do). Devices
+normally always carry a site — this edge is safety-only.
+
+**Reference migration (wired today).** `GET /api/v1/devices` composes its
+where clause through `scopedDeviceWhere(sessionScopeFor(req), baseWhere)`
+and `GET /api/v1/devices/[id]` answers through the row-level predicate
+`sessionAllowsSite` — the exact semantics of the list filter, so a device
+hidden from the list cannot leak through the detail route. Detail reads use
+404-NOT-403: an out-of-scope device returns the SAME `DEVICE_NOT_FOUND`
+envelope a wildcard session gets for a missing device (a 403 would confirm
+existence).
+
+**Scope administration.** `PATCH /api/v1/admin/users/[id]` accepts
+`siteScope: string[] | null` (admin-only; ≤ 32 codes, each ≤ 32 chars,
+pattern-validated, trimmed and deduped; `null` = wildcard reset), audited
+as dedicated `USER_SCOPE_SET` / `USER_SCOPE_CLEARED` rows. EFFECT TIMING
+(honest): the JWT is minted at login, so a scope change lands on the
+user's NEXT sign-in — the session-refresh callback deliberately does not
+re-read the claim; there is no live token revocation.
+
+**Plane boundaries (honest).** Site-scope claims apply to HUMAN session
+JWTs only. API-client opaque-bearer principals and machine service JWTs
+remain unscoped (global) — their scope model is future work. `sites` is a
+SITE-code dimension only; device-group scoping does not exist yet.
+
+**Migration note (next signal).** The remaining `/api/v1` routes still
+trust their role gate alone. When multi-site customers actually arrive,
+migrate routes per domain with the same two primitives — list routes:
+`scopedDeviceWhere(scopeClaims, baseWhere)`; detail/singleton reads: the
+`sessionAllowsSite` row predicate with 404-not-403 semantics; mutation
+routes may prefer `requireSiteScope(req, siteCode)` (403
+`SITE_SCOPE_FORBIDDEN`). The devices routes are the reference. The sites
+catalog (`GET /api/v1/sites`) stays global until a consumer needs it
+filtered.
+
+### 5.2 CSRF origin control on cookie-session mutations (RT-008 / F-010)
 
 Every mutating request (POST/PUT/PATCH/DELETE) authenticated by the
 NextAuth cookie session carries a server-side Origin/Sec-Fetch-Site
