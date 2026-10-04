@@ -2,7 +2,8 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
-import { hashPassword } from "@/lib/auth/password";
+import { breachIssueToFail, checkPasswordBreach } from "@/lib/auth/hibp";
+import { hashPassword, validatePasswordPolicy } from "@/lib/auth/password";
 import { USER_ROLES } from "@/lib/auth/roles";
 import {
   requireRole,
@@ -32,6 +33,13 @@ export const dynamic = "force-dynamic";
  *        /meta/users (local-part picker only, no full emails).
  * POST — create a user (admin-only). Password arrives as plaintext over the
  *        request and is immediately scrypt-hashed; only the hash is stored.
+ *        F-034 phase 1: the role-aware password policy (privileged min
+ *        length + offline common-password denylist) is enforced here.
+ *        F-034 follow-up: with FAYANMS_HIBP_MODE=enforce a k-anonymity
+ *        breach check (src/lib/auth/hibp.ts) also gates the password —
+ *        breached passwords answer PASSWORD_BREACHED and an unavailable
+ *        check fails closed (PASSWORD_BREACH_CHECK_UNAVAILABLE); off (the
+ *        default) never touches the network.
  *        Audited USER_CREATED (correlationId USR-XXXXXX).
  *
  * All responses use the standard _lib envelope.
@@ -164,6 +172,25 @@ export async function POST(request: Request) {
       `A user with email "${data.email}" already exists`,
       409
     );
+  }
+
+  // F-034 phase 1: role-aware password policy at creation time — the
+  // created account's own role decides the bar (privileged roles answer
+  // PASSWORD_TOO_SHORT_FOR_ROLE; every role answers PASSWORD_DENYLISTED on
+  // a common password).
+  const policyIssue = validatePasswordPolicy(data.password, data.role);
+  if (policyIssue) {
+    return fail(policyIssue.code, policyIssue.message, 400);
+  }
+
+  // F-034 follow-up: the config-gated HIBP k-anonymity breach check — runs
+  // ONLY after the offline policy passed (no network for a password the
+  // offline layer already refuses) and only when the operator set
+  // FAYANMS_HIBP_MODE=enforce (off = no-op null). A breach or an
+  // unavailable check refuses the SET before any hashing.
+  const breachIssue = await checkPasswordBreach(data.password);
+  if (breachIssue) {
+    return breachIssueToFail(breachIssue);
   }
 
   const passwordHash = await hashPassword(data.password);

@@ -60,7 +60,10 @@ export type ViewKey =
   | "admin.collectors"
   | "admin.drivers"
   | "admin.integrations"
-  | "admin.system";
+  | "admin.system"
+  // Self-service account surface (opened from the header user menu —
+  // deliberately NOT a sidebar entry: it is per-user, not a fleet module)
+  | "account.security";
 
 interface NavigationState {
   activeView: ViewKey;

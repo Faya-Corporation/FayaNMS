@@ -111,6 +111,9 @@ const NAVIGATION_ITEMS: { view: ViewKey; icon: LucideIcon }[] = [
   { view: "admin.drivers", icon: Puzzle },
   { view: "admin.integrations", icon: Webhook },
   { view: "admin.system", icon: Settings },
+  // Self-service surface (header user menu is the primary entry; the
+  // palette keeps it keyboard-reachable too).
+  { view: "account.security", icon: ShieldCheck },
 ];
 
 /**
