@@ -46,6 +46,10 @@ export function SignInGate() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // F-034 phase 2: the optional second factor rides in the SAME sign-in
+  // POST (NextAuth v4 credentials model) — always-visible, optional input;
+  // accounts without an enabled enrollment simply leave it blank.
+  const [totp, setTotp] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -60,6 +64,7 @@ export function SignInGate() {
         redirect: false,
         email: email.trim(),
         password,
+        totp: totp.trim(),
       });
       if (result?.error) {
         // authorize() surfaces "Account disabled" for inactive accounts and
@@ -146,6 +151,21 @@ export function SignInGate() {
                   </div>
                 </div>
 
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="sign-in-totp">{t("totpCode")}</Label>
+                  <Input
+                    id="sign-in-totp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="123456"
+                    className="ltr-technical"
+                    value={totp}
+                    onChange={(event) => setTotp(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">{t("totpHint")}</p>
+                </div>
+
                 {error && (
                   <p
                     role="alert"
@@ -201,6 +221,7 @@ export function SignInGate() {
                       onClick={() => {
                         setEmail(account.email);
                         setPassword(DEMO_PASSWORD);
+                        setTotp("");
                         setError(null);
                       }}
                       className={cn(

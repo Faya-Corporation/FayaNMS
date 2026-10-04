@@ -22,6 +22,14 @@
  * style); the PAN-OS body is `show config running` set-style. Both are
  * normalized by the same comment/blank-strip contract as every other flavor.
  * Phase 22: the live manifest key is cisco-ios-live (vendor: cisco).
+ *
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │ ⚠ DEMO DATA — SIMULATED VENDOR CONFIG PERSONAS                          │
+ * │ The template bodies below embed INVENTED demo SNMP communities           │
+ * │ (FayaRO / FayaR0c) and a demo password hash. They are persona content   │
+ * │ for the SIMULATOR plane — not real device secrets — and are pinned by   │
+ * │ tests/audit/open-findings-batch-19.test.ts (F-045 grep-guard).          │
+ * └─────────────────────────────────────────────────────────────────────────┘
  */
 
 /* ───────────────────────────── contract ───────────────────────────── */

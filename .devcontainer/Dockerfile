@@ -33,3 +33,10 @@ RUN if ! id vscode >/dev/null 2>&1; then \
 
 ENV PATH="/home/vscode/.bun/bin:/root/.bun/bin:${PATH}"
 WORKDIR /workspaces/FayaNMS
+
+# Drop privileges as the image's final state — devcontainer.json already sets
+# remoteUser: vscode, so this aligns the IMAGE default with the runtime
+# contract (semgrep last-user-is-root hardening; apt/root setup above is
+# complete, and the vscode user holds passwordless sudo for the rare
+# root-needed step).
+USER vscode

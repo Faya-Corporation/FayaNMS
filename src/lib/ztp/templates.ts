@@ -213,6 +213,7 @@ function sanitizeVar(variable: ZtpVariable, raw: unknown): string {
 
 /** {{var}} with optional surrounding whitespace, e.g. "{{ hostname }}". */
 function placeholderFor(variable: ZtpVariable): RegExp {
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp — `variable` is an internal template key from the ZTP_VARIABLES constant tuple ("hostname"|"siteCode"|"mgmtIp"), rendered server-side over operator-defined templates — never raw user input, so no injection/ReDoS surface.
   return new RegExp(`\\{\\{\\s*${variable}\\s*\\}\\}`, "g");
 }
 

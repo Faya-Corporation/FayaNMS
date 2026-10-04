@@ -325,7 +325,11 @@ describe("R50-T071 — refusal audit events (route wiring)", () => {
 
   test("emissions are best-effort via the shared helper (never a 500, never a success)", () => {
     expect(ROUTE).toContain("async function auditProbeFailureBestEffort");
-    expect(ROUTE).toContain('console.error(`[auto-detect] ${entry.action} audit emission failed`');
+    // W3-D (2026-10-03) hardened the emission to a constant format string +
+    // positional args (semgrep unsafe-formatstring) — the pin tracks the new
+    // form; the CONTRACT is unchanged: best-effort console.error, never a
+    // throw, never a 500.
+    expect(ROUTE).toContain('console.error("[auto-detect] audit emission failed:", entry.action');
     // every call site awaits the helper
     const callSites = ROUTE.split("await auditProbeFailureBestEffort(").length - 1;
     expect(callSites).toBe(6); // auth, target, credential×3 (not-found, type-unsupported, R50-T021 allowlist), mismatch

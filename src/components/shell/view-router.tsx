@@ -2,6 +2,8 @@
 
 import { getViewMeta } from "@/lib/navigation/registry";
 import { useNavigationStore } from "@/stores/navigation";
+
+import { AccountSecurityView } from "@/components/views/account-security-view";
 import { AdminApiClientsView } from "@/components/views/admin-api-clients-view";
 import { AdminCollectorsView } from "@/components/views/admin-collectors-view";
 import { AdminCredentialsView } from "@/components/views/admin-credentials-view";
@@ -65,7 +67,9 @@ import { ZtpView } from "@/components/views/ztp-view";
  * (Phase 3-a), config.snapshots (Phase 3-b), config.baselines + config.drift
  * (Phase 3-c), network.interfaces + network.topology + reports.builder
  * (Phase 18 — the final three; the default branch is now unreachable for
- * every registered ViewKey and only guards unknown keys).
+ * every registered ViewKey and only guards unknown keys),
+ * account.security (F-034 follow-up — the self-service MFA settings UI,
+ * opened from the header user menu).
  */
 export function ViewRouter() {
   const activeView = useNavigationStore((state) => state.activeView);
@@ -93,6 +97,8 @@ export function ViewRouter() {
       return <AdminDriversView />;
     case "admin.system":
       return <AdminSystemView />;
+    case "account.security":
+      return <AccountSecurityView />;
     case "network.interfaces":
       return <InterfacesView />;
     case "network.topology":

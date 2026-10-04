@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/v1/worker/complete — worker-facing job completion + persistence.
  *
- * Body: { jobId, outcome: "SUCCEEDED"|"FAILED", result?, error? }
+ * Body: { jobId, outcome: "SUCCEEDED"|"FAILED"|"RESUMED", result?, error? }
  *
  * SUCCEEDED (CONFIG_BACKUP) — single transaction:
  *   1. next per-device snapshot version = max(version)+1
@@ -36,6 +36,15 @@ export const dynamic = "force-dynamic";
  *   scheduledAt = now + 30s * attempts (exponential-ish backoff);
  *   otherwise terminal FAILED (dead-letter) + AuditEvent CONFIG_BACKUP
  *   FAILURE so the failed-backup story is traceable in the audit trail.
+ *
+ * RESUMED (F-044, CHANGE_EXECUTE only) — in-flight DRIVER loss (the body
+ *   outran its claim-derived budget) is resumable, not failed: the plan's
+ *   state lives in the change-step engine (CAS-claimed steps, SAFE-004),
+ *   so the job requeues with a "resumed" error label, progress preserved
+ *   and the execution lease intact (same-execution retry, SAFE-003).
+ *   Attempts remain bounded by maxAttempts: repeated driver loss past the
+ *   cap dead-letters the job honestly — change rows untouched, recovery
+ *   via the standard jobs/[id]/retry re-enqueue.
  *
  * Completes for jobs that are not RUNNING are acknowledged with
  * { updated: false } instead of erroring — a late/duplicate post from a
@@ -102,7 +111,7 @@ const driftCheckResultSchema = z.object({
 
 const completeSchema = z.object({
   jobId: z.string().trim().min(1),
-  outcome: z.enum(["SUCCEEDED", "FAILED"]),
+  outcome: z.enum(["SUCCEEDED", "FAILED", "RESUMED"]),
   // F-012 (audit A2-03): the claim epoch (JobExecution.attempts at claim
   // time — the claim route increments it). When present, a terminal for a
   // NON-current attempt is acknowledged but IGNORED: a timed-out (and
@@ -164,6 +173,93 @@ export async function POST(request: Request) {
       jobId,
       updated: false,
       reason: `stale attempt ${attempt} (current ${job.attempts}) — terminal ignored`,
+    });
+  }
+
+  // ── RESUMED (F-044 — change driver loss is resumable, not failed) ─────
+  if (outcome === "RESUMED") {
+    if (job.type !== "CHANGE_EXECUTE") {
+      return fail(
+        "INVALID_OUTCOME",
+        "RESUMED is only valid for CHANGE_EXECUTE jobs (the only resumable driver)",
+        400
+      );
+    }
+    if (job.status !== "RUNNING") {
+      return ok({ jobId, updated: false, reason: `job status is ${job.status}` });
+    }
+
+    const message = error ?? "driver lost mid-flight";
+    const requeue = job.attempts < job.maxAttempts;
+    const payload = safeParseJson(job.payloadJson);
+
+    await db.$transaction(async (tx) => {
+      await tx.jobExecution.update({
+        where: { id: job.id },
+        data: requeue
+          ? {
+              status: "QUEUED",
+              // F-044 — the "resumed" label replaces the FAILED terminal:
+              // the error field carries the resume note (the Job Center
+              // shows the truth) and progress is PRESERVED — the
+              // replacement driver re-reports it from the engine's step
+              // rows on its first step call.
+              error: `resumed (attempt ${job.attempts}): ${message}`,
+              scheduledAt: new Date(now.getTime() + 30_000 * job.attempts),
+            }
+          : {
+              // Attempts exhausted on repeated driver loss: honest
+              // dead-letter. The change rows were never the driver's to
+              // fail — they stay untouched, so recovery is the standard
+              // jobs/[id]/retry re-enqueue (the engine's CAS step claims
+              // + orphan-step reaper own the rollback-or-fail decision).
+              status: "FAILED",
+              progress: 0,
+              error: `resumed ${job.attempts}× then dead-lettered: ${message} (change state untouched — recover via job retry)`,
+              finishedAt: now,
+            },
+      });
+
+      // SAFE-003 — a requeued resume is the SAME execution: the lease
+      // STAYS (mirrors the FAILED-requeue contract). Only the terminal
+      // dead-letter releases the change's execution lease.
+      if (!requeue) {
+        await tx.changeExecutionLease.deleteMany({ where: { jobId: job.id } });
+      }
+
+      // Audit only the terminal (requeues stay visible via attempts /
+      // scheduledAt + the resumed error label) — same rule as the FAILED
+      // path, with the resumed truth in the payload.
+      if (!requeue) {
+        await tx.auditEvent.create({
+          data: {
+            actorName: "system:backup-worker",
+            action: "CHANGE_EXECUTION_FAILED",
+            resourceType: "ChangeRequest",
+            resourceId: job.targetId,
+            resourceLabel:
+              (typeof payload.changeNumber === "string" ? payload.changeNumber : job.targetId) ??
+              "unknown change",
+            result: "FAILURE",
+            correlationId: job.correlationId,
+            afterJson: JSON.stringify({
+              error: `resumed ${job.attempts}× then dead-lettered: ${message}`,
+              attempts: job.attempts,
+              jobType: job.type,
+              resumed: true,
+            }),
+          },
+        });
+      }
+    });
+
+    return ok({
+      jobId,
+      updated: true,
+      status: requeue ? "QUEUED" : "FAILED",
+      resumed: requeue,
+      attempts: job.attempts,
+      maxAttempts: job.maxAttempts,
     });
   }
 

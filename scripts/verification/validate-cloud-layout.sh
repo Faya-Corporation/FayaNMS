@@ -27,7 +27,12 @@ for path in "${required[@]}"; do
   test -f "$path" || { echo "missing required cloud file: $path" >&2; exit 1; }
 done
 
-if git ls-files | rg -n '(^|/)(\.env|\.env\..*|.*\.pem|.*\.key)$' | rg -v '(^|/)\.env\.example$|^mini-services/worker/harness/tls/.*\.pem$'; then
+# NOTE (2026-10-03): this check previously piped into `rg`, which the CI
+# runner image does not always carry — a missing binary exited 127 inside the
+# if-condition and SILENTLY SKIPPED the secret-shaped-file gate (observed on
+# the 2026-10-03 gate run of PR #56). Plain grep -E has identical semantics
+# for these anchored regexes over git ls-files output and exists everywhere.
+if git ls-files | grep -E '(^|/)(\.env|\.env\..*|.*\.pem|.*\.key)$' | grep -vE '(^|/)\.env\.example$|^mini-services/worker/harness/tls/.*\.pem$'; then
   echo "tracked secret-shaped file detected" >&2
   exit 1
 fi

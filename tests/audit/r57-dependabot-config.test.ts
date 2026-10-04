@@ -40,7 +40,14 @@ import { describe, expect, test } from "bun:test";
  *   8. the README supply-chain note exists and states the OWNER-CI-001
  *      activation caveat (config reviewable now, PRs activate with
  *      runners);
- *   9. no duplicate (ecosystem, directory) pairs (RT-035 negative case).
+ *   9. no duplicate (ecosystem, directory) pairs (RT-035 negative case);
+ *  10. a `cooldown: default-days: 7` block on ALL THREE entries (W3-D,
+ *      2026-10-03: semgrep 1.179.0 p/default
+ *      dependabot-missing-cooldown) — the deliberate pin update: the
+ *      cooldown is a real hardening add (release-freshness rate limit on
+ *      top of the weekly cadence; 7 days is the rule's minimum sane soak),
+ *      so the structural audit now requires it on every entry and fails
+ *      if it is dropped again.
  *
  * Honest scope: GitHub-side behavior (ecosystem key acceptance, first
  * scheduled run, actual PRs) cannot be exercised in this sandbox — it
@@ -148,6 +155,21 @@ describe("HC-5: dependabot config hygiene", () => {
     // No `ignore:` key anywhere — nothing is muted, everything is updatable
     // through the allow list (the mute valve would defeat the gate).
     expect(config).not.toMatch(/^\s*ignore:/m);
+  });
+
+  test("cooldown with default-days on ALL entries (W3-D semgrep triage)", () => {
+    // W3-D (2026-10-03): semgrep 1.179.0 p/default flags
+    // dependabot-missing-cooldown; the fix adds a `cooldown: default-days: 7`
+    // block to every entry (7 = the rule's minimum sane soak — 5 is still
+    // flagged as too fresh) and THIS test now pins that hardening so the
+    // gate cannot silently regress (deliberate r57 pin update, recorded in
+    // the commit message).
+    const blocks = updateEntryBlocks(config);
+    expect(blocks.length).toBe(3);
+    for (const block of blocks) {
+      expect(block).toMatch(/cooldown:\s*\n\s+default-days:\s*7/);
+    }
+    expect(config.match(/default-days:\s*7/g)?.length).toBe(3);
   });
 
   test("README supply-chain note exists with the OWNER-CI-001 activation caveat", () => {
