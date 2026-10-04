@@ -5,6 +5,10 @@ import { db } from "@/lib/db";
 import { fail } from "@/app/api/v1/_lib/api";
 import { authenticateApiClient, authenticateApiClientRead } from "@/lib/auth/api-client-auth";
 import {
+  assertSiteScope,
+  SiteScopeDeniedError,
+} from "@/lib/auth/scope";
+import {
   APPROVAL_LEVEL_PERMISSIONS,
   APPROVE_GATE_PERMISSION,
   isWildcardHolder,
@@ -31,6 +35,14 @@ export interface SessionUser {
   email: string;
   name: string | null;
   role: string;
+  /**
+   * Raw `sites` JWT claim passthrough (F-031 resource-level scoping).
+   * Typed `unknown` DELIBERATELY: a claim can be anything, and the
+   * enforcement helpers in src/lib/auth/scope.ts classify it fail-closed
+   * (absent → wildcard; empty/malformed → deny-all). Never read this
+   * field directly in routes — go through sessionSiteScope()/assertSiteScope().
+   */
+  sites?: unknown;
 }
 
 /** Thrown by requireUser/requireRole — map with `authErrorToFail`. */
@@ -84,6 +96,9 @@ export async function getSessionUser(
     email: typeof email === "string" ? email : "",
     name: typeof token.name === "string" ? token.name : null,
     role: typeof token.role === "string" ? token.role : "viewer",
+    // F-031: raw claim passthrough — validated fail-closed downstream by
+    // sessionSiteScope() (absent → wildcard; empty/malformed → deny-all).
+    sites: token.sites,
   };
 }
 
@@ -221,6 +236,67 @@ async function requireReadPrincipal(req: Request): Promise<User> {
     "Sign in required — no valid session was provided.",
     401
   );
+}
+
+/* ───────── resource-level site scope (F-031) — requirePermission-family extension ───────── */
+
+/**
+ * Per-request cache of the session claims used for SCOPE resolution. Same
+ * WeakMap pattern (and lifetime) as readSessionCache above: keyed by the
+ * Request object, entries die with the request. This is deliberately a
+ * SEPARATE cache — the F-008 read-gate internals are untouched.
+ */
+const scopeClaimsCache = new WeakMap<object, Promise<SessionUser | null>>();
+
+/**
+ * Resolve (and memoize per-request) the session claims a route needs for
+ * resource-scope decisions. Pairs with requireSessionRead on scope-aware
+ * routes: the read gate runs first (401/403 handling), then this feeds the
+ * pure helpers in src/lib/auth/scope.ts.
+ *
+ * null claims mean the request authenticated on a NON-session plane (the
+ * API-client opaque-bearer read plane) or never authenticated at all. Both
+ * resolve WILDCARD downstream (sessionSiteScope(null) → wildcard): the
+ * bearer plane stays unscoped by design for F-031, and a truly anonymous
+ * request never reaches scope evaluation because the route's auth gate has
+ * already answered 401.
+ */
+export function sessionScopeFor(req: Request): Promise<SessionUser | null> {
+  const cached = scopeClaimsCache.get(req);
+  if (cached) return cached;
+  const pending = getSessionUser(req as never);
+  scopeClaimsCache.set(req, pending);
+  return pending;
+}
+
+/**
+ * RequirePermission-family resource gate (F-031): the authenticated
+ * session must hold the given site in its scope. Semantics (see
+ * assertSiteScope in src/lib/auth/scope.ts):
+ *
+ *   - siteCode null → unscoped resource — bypasses site scoping (allowed);
+ *   - wildcard session (no `sites` claim — the single-tenant default) → allowed;
+ *   - sites-limited session holding the code → allowed;
+ *   - otherwise → 403 SITE_SCOPE_FORBIDDEN.
+ *
+ * Routes that want 404-not-403 semantics on detail reads (anti
+ * existence-leak) should NOT use this gate — compose the row-level
+ * predicate (sessionAllowsSite) and answer the resource's ordinary
+ * not-found envelope instead, as GET /api/v1/devices/[id] does.
+ */
+export async function requireSiteScope(
+  req: Request,
+  siteCode: string | null
+): Promise<void> {
+  const claims = await sessionScopeFor(req);
+  try {
+    assertSiteScope(claims, siteCode);
+  } catch (error) {
+    if (error instanceof SiteScopeDeniedError) {
+      throw new AuthError(error.code, error.message, 403);
+    }
+    throw error;
+  }
 }
 
 /**

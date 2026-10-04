@@ -52,3 +52,18 @@ Either is additive (migration + write-path change only on the events read
 model) and should land with its own hot-path-index migration + regression
 pin in the RT-015 style. Until then, the bounded page size keeps the scan
 acceptable.
+
+## Constraint discovered (2026-10-04, follow-up wave 3)
+
+Option 2 has a CI-plane precondition that was not visible when this ADR was
+written: the Zonky embedded PostgreSQL build used by CI's migrate-only
+database replica ships NO contrib modules (verified directly — no
+`pg_trgm.so` and no `pg_trgm.control` in the extracted binaries), so a
+`CREATE EXTENSION pg_trgm` migration would fail CI reproducibility unless
+the CI plane first gains a contrib-capable Postgres. The compose-managed
+`postgres:16` production image already includes contrib, so only the CI
+plane is affected. Option 1 (normalized column + index) avoids the
+extension for the write path but still needs a trgm-or-better index to
+serve substring search, so it inherits the same constraint for its index.
+The follow-up therefore stays documented — now with the named CI-plane
+precondition — and the volume trigger above remains unmet.
