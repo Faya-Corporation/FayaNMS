@@ -40,7 +40,7 @@ jobs:
     steps:
       # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout — the arm64 job holds ONLY `contents: read` and NO secrets; it builds and scans images locally and never pushes. Checking out the workflow_run head is exposure-equivalent to this same workflow's own pull_request trigger (untrusted PR code is already built locally there). It would become unsafe ONLY if a secret or push capability were added to this job without first pinning the ref to a trusted commit.
       - name: Checkout exact candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (SHA-pinned 2026-10-04)
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
@@ -115,7 +115,7 @@ jobs:
     steps:
       # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout — the publish job's `if:` gate admits ONLY workflow_run events where the triggering run was event == 'push' to head_branch == 'main' AND concluded 'success'; head_sha is therefore a branch-protected main commit already validated by the CI gate, never a fork/PR head. It would become a pwn-request risk ONLY if the if-gate were widened (e.g. to pull_request events or other head_branches).
       - name: Checkout exact candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (SHA-pinned 2026-10-04)
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
