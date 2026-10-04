@@ -4,7 +4,9 @@ import {
   authErrorToFail,
   requirePermission,
   requireSessionRead,
+  sessionScopeFor,
 } from "@/lib/auth/session";
+import { sessionAllowsSite } from "@/lib/auth/scope";
 import { requiredLiveCredentialType } from "@/lib/devices/live-transport";
 import { z } from "zod";
 
@@ -23,6 +25,17 @@ export const dynamic = "force-dynamic";
  * the human session itself (requireSessionRead) — the proxy matcher stays
  * the coarse gate, not the only check; PATCH stays permission-gated
  * (device.write) with the session principal as the audit actor.
+ *
+ * F-031 (resource-level site scoping — the REFERENCE route migration): the
+ * GET answer is scope-filtered with sessionAllowsSite — the row-level
+ * predicate that mirrors scopedDeviceWhere's `site.code IN (…)` list
+ * semantics exactly, so a device hidden from the list cannot leak through
+ * the detail route. 404-NOT-403: a sites-limited session asking for an
+ * out-of-scope device receives the SAME DEVICE_NOT_FOUND envelope a
+ * wildcard session gets for a missing device — a 403 would confirm the
+ * device exists (existence leak). Wildcard sessions (no `sites` claim —
+ * the single-tenant default) are byte-unchanged; API-client bearer
+ * principals stay unscoped by design (authorization-matrix.md §5).
  */
 
 const OPEN_INCIDENT_STATUSES = [
@@ -124,8 +137,13 @@ export async function GET(
     return fail("INVALID_ID", "Invalid device id", 400);
   }
 
+  const scopeClaims = await sessionScopeFor(request);
   const device = await loadDevice(id);
-  if (!device) {
+  // F-031: the SAME not-found envelope for a missing device AND an
+  // out-of-scope device — no existence disclosure to sites-limited
+  // sessions (siteScopeAllows mirrors the list route's where filter, so
+  // site-less devices are hidden from sites-limited sessions here too).
+  if (!device || !sessionAllowsSite(scopeClaims, device.site?.code ?? null)) {
     return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
   }
 
