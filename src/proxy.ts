@@ -194,23 +194,17 @@ export async function proxy(req: NextRequest) {
   if (
     pathname === "/api/v1/meta" ||
     pathname.startsWith("/api/v1/auth/") ||
-    // Service-principal routes ride the SAME worker-prefix rule as step 1
-    // (plus the exact machine routes) so the two lists can never drift
-    // apart again — the R62-era enumerated comparison silently missed the
-    // newer worker job routes. Each handler below enforces its own service
-    // JWT (authenticateServiceRequest): an unauthenticated caller gets the
-    // handler's SERVICE_* 401, never a session-gate free pass.
+    // Service-principal routes ride the SAME rules as step 1 — DERIVED
+    // from MACHINE_EXACT_ROUTES (single source of truth; the post-audit
+    // fix for the wave-4 lesson: step 3a used to hand-copy the exact
+    // pathnames and could silently drift). Each handler below enforces its
+    // own service JWT (authenticateServiceRequest): an unauthenticated
+    // caller gets the handler's SERVICE_* 401, never a session-gate free
+    // pass. tests/audit/machine-surface-registration.test.ts scans the
+    // handler tree and asserts every service-authenticated route is
+    // covered by the machine-surface rules above.
     pathname.startsWith("/api/v1/worker/") ||
-    pathname === "/api/v1/alerts/evaluate" ||
-    pathname === "/api/v1/reports/execute" ||
-    pathname === "/api/v1/metrics/retention/prune" ||
-    pathname === "/api/v1/metrics/rollup/aggregate" ||
-    pathname === "/api/v1/protocol/queue/retention/prune" ||
-    pathname === "/api/v1/flows/retention/prune" ||
-    pathname === "/api/v1/ingest/protocol" ||
-    pathname === "/api/v1/ingest/protocol/snmpv3-profile" ||
-    pathname === "/api/v1/ingest/protocol/snmpv3-profile/poll" ||
-    pathname === "/api/v1/ingest/protocol/snmpv3-profile/accept"
+    MACHINE_EXACT_ROUTES.has(pathname)
   ) {
     return NextResponse.next();
   }

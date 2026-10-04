@@ -1087,6 +1087,11 @@ model UserMfaRecoveryCode {
   usedAt    DateTime?
 
   @@index([mfaId])
+  // Post-register audit wave 5 (defense-in-depth): a code row is unique
+  // PER ENROLLMENT — single-use already rides the conditional updateMany;
+  // the composite unique makes duplicate draws (and any future bulk
+  // insert) structurally impossible instead of merely improbable.
+  @@unique([mfaId, codeHash])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

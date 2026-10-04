@@ -357,7 +357,13 @@ test("second immediate route call is throttled", async () => {
 
 test("route is registered on the machine surface and the session-exempt list", () => {
   const proxy = readFileSync("src/proxy.ts", "utf8");
-  expect(proxy.split('"/api/v1/protocol/queue/retention/prune"').length - 1).toBe(2);
+  // Post-register audit wave 5: step 3a DERIVES from MACHINE_EXACT_ROUTES
+  // (single source of truth) — the pathname now appears EXACTLY ONCE (in
+  // the Set literal) and the pass-through registration is the derived
+  // `.has(pathname)` check. The old "exactly twice" pin asserted the
+  // hand-copy contract that the wave-5 fix removed.
+  expect(proxy.split('"/api/v1/protocol/queue/retention/prune"').length - 1).toBe(1);
+  expect(proxy).toContain("MACHINE_EXACT_ROUTES.has(pathname)");
 });
 
 test("tick enqueues at most one PROTOCOL_QUEUE_RETENTION per dedupe window", () => {

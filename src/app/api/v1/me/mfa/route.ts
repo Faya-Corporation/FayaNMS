@@ -1,7 +1,12 @@
 import { z } from "zod";
 
-import { disableMfa, mfaErrorToFail } from "@/lib/auth/mfa";
+import { disableMfa, MfaError, mfaErrorToFail } from "@/lib/auth/mfa";
 import { requireRole, authErrorToFail } from "@/lib/auth/session";
+import {
+  checkLoginAllowed,
+  recordLoginFailure,
+  resolveLoginIdentity,
+} from "@/lib/auth/login-guard";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +30,12 @@ export const dynamic = "force-dynamic";
  * prefix read-only). It sits behind the normal /api/v1 rate gate, and
  * requireRole still answers the 401 envelope; the session cookie's
  * SameSite=Lax policy guards the mutation itself.
+ *
+ * Verification budget (post-register audit wave 5): failed password
+ * re-entry and failed code checks are audited MFA_DISABLE_FAILED and feed
+ * the login guard's ACCOUNT budget — the same escalating lockout that
+ * covers sign-in — so an online guessing attack against the fail-tight
+ * verification cannot ride the shared per-IP pool unnoticed.
  */
 
 const disableSchema = z.object({
@@ -49,6 +60,19 @@ export async function DELETE(request: Request) {
     throw error;
   }
 
+  const identity = resolveLoginIdentity(
+    new Headers(request.headers),
+    actor.email
+  );
+  const verdict = await checkLoginAllowed(identity);
+  if (!verdict.allowed) {
+    return fail(
+      "RATE_LIMITED",
+      "Too many verification attempts — try again later.",
+      429
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -64,6 +88,13 @@ export async function DELETE(request: Request) {
     await disableMfa(actor, parsed.data.password, parsed.data.code);
     return ok({ enabled: false });
   } catch (error) {
+    // Guessing-class failures share the sign-in account budget.
+    if (
+      error instanceof MfaError &&
+      (error.code === "MFA_CODE_INVALID" || error.code === "MFA_PASSWORD_INVALID")
+    ) {
+      await recordLoginFailure(identity);
+    }
     const envelope = mfaErrorToFail(error);
     if (envelope) return envelope;
     throw error;

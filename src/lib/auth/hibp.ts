@@ -153,7 +153,9 @@ const RANGE_LINE_PATTERN = /^\s*([0-9A-Fa-f]{35}):\s*(\d+)\s*$/;
  * suffix appears in it (case-insensitive on the hex). Throws
  * HibpCheckUnavailableError on ANY non-conforming non-empty line — a
  * partially parseable response cannot be trusted to prove absence.
- * A whitespace-only body is a valid "no hashes in this range" answer.
+ * A whitespace-only body parses as an empty range HERE (the pure helper),
+ * but queryPwnedPasswordRange fails closed on it before calling this —
+ * an empty 200 is an anomaly, not proof of absence.
  */
 export function parseRangeBodyForSuffix(body: string, suffix: string): number {
   const wanted = suffix.toUpperCase();
@@ -220,6 +222,15 @@ export async function queryPwnedPasswordRange(
       );
     }
     const body = await response.text();
+    if (body.trim() === "") {
+      // Post-register audit wave 5: a 200 with NO conforming lines is an
+      // anomaly (real HIBP buckets hold hundreds of entries) — as
+      // unverifiable as a malformed line, so it fails closed instead of
+      // proving absence.
+      throw new HibpCheckUnavailableError(
+        "HIBP range API returned an empty 200 body — absence cannot be proven"
+      );
+    }
     const occurrences = parseRangeBodyForSuffix(body, suffix);
     return { breached: occurrences > 0, occurrences };
   } catch (error) {

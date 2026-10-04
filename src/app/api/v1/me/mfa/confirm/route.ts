@@ -2,9 +2,15 @@ import { z } from "zod";
 
 import {
   confirmMfaEnrollment,
+  MfaError,
   mfaErrorToFail,
 } from "@/lib/auth/mfa";
 import { requireRole, authErrorToFail } from "@/lib/auth/session";
+import {
+  checkLoginAllowed,
+  recordLoginFailure,
+  resolveLoginIdentity,
+} from "@/lib/auth/login-guard";
 import { fail, firstIssueMessage, ok } from "../../../_lib/api";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +25,16 @@ export const dynamic = "force-dynamic";
  * TEN single-use recovery codes are returned — plaintext EXACTLY ONCE;
  * only sha256 hashes are persisted.
  *
- * Rollback knob: FAYANMS_MFA_MODE=disabled leaves confirm unreachable for
- * new enrollments (enroll already answers MFA_DISABLED); a pending row
- * stays DISABLED and never challenges at sign-in.
+ * Rollback knob: FAYANMS_MFA_MODE=disabled gates confirm the same way it
+ * gates enroll (MFA_DISABLED) — a pending row can never flip enabled while
+ * the lever is set, so a pending row stays DISABLED and never challenges
+ * at sign-in.
+ *
+ * Verification budget (post-register audit wave 5): failed code checks are
+ * audited MFA_CONFIRM_FAILED and feed the login guard's ACCOUNT budget —
+ * the same escalating lockout that covers sign-in — so an online guessing
+ * attack against the enrollment code cannot ride the shared per-IP pool
+ * unnoticed.
  */
 
 const confirmSchema = z.object({
@@ -42,6 +55,19 @@ export async function POST(request: Request) {
     throw error;
   }
 
+  const identity = resolveLoginIdentity(
+    new Headers(request.headers),
+    actor.email
+  );
+  const verdict = await checkLoginAllowed(identity);
+  if (!verdict.allowed) {
+    return fail(
+      "RATE_LIMITED",
+      "Too many verification attempts — try again later.",
+      429
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -60,6 +86,13 @@ export async function POST(request: Request) {
     );
     return ok({ enabled: true, recoveryCodes });
   } catch (error) {
+    // Guessing-class failures share the sign-in account budget.
+    if (
+      error instanceof MfaError &&
+      (error.code === "MFA_CODE_INVALID" || error.code === "MFA_PASSWORD_INVALID")
+    ) {
+      await recordLoginFailure(identity);
+    }
     const envelope = mfaErrorToFail(error);
     if (envelope) return envelope;
     throw error;

@@ -228,7 +228,11 @@ test("aggregate route rejects anonymous callers", async () => {
 
 test("route and machine surface are registered in the proxy", () => {
   const proxy = readFileSync("src/proxy.ts", "utf8");
-  expect(proxy.split('"/api/v1/metrics/rollup/aggregate"').length - 1).toBe(2);
+  // Post-register audit wave 5: single-source registration — the pathname
+  // appears EXACTLY ONCE (inside MACHINE_EXACT_ROUTES); the pass-through
+  // list derives from the same Set (`MACHINE_EXACT_ROUTES.has(pathname)`).
+  expect(proxy.split('"/api/v1/metrics/rollup/aggregate"').length - 1).toBe(1);
+  expect(proxy).toContain("MACHINE_EXACT_ROUTES.has(pathname)");
   expect(proxy).toContain('"/api/v1/metrics/retention/prune"');
 });
 
