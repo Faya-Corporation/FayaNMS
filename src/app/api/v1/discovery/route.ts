@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../_lib/api";
 import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
-import { normalizeDiscoveryPolicyConfig } from "@/lib/discovery/policy";
+import { firstGovernedDiscoverySubnet, normalizeDiscoveryPolicyConfig } from "@/lib/discovery/policy";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +14,10 @@ export const dynamic = "force-dynamic";
  *
  * POST /api/v1/discovery — queue a discovery scan.
  *   Body: { subnets: string[] (1..4, /24-/32), name?: string }
+ *   F-038: every enumerated target must classify as an allowed address
+ *   class (mirroring the SSH/SNMP dial plane) — governed special classes
+ *   (this-network, loopback, link-local, multicast, reserved) refuse the
+ *   scan with INVALID_POLICY unless FAYANMS_PROBE_ALLOW_SPECIAL=true.
  *   Creates a QUEUED JobExecution (type DISCOVERY, target SYSTEM) which the
  *   worker mini-service picks up via /api/v1/worker/claim. Candidates are
  *   persistence-free: they land in the job's resultJson and are turned into
@@ -135,6 +139,17 @@ export async function POST(request: Request) {
     enabled: true,
   });
   if (!config) {
+    // F-038 — a governed special-address subnet gets a precise detail
+    // (the class + the documented lab hatch) instead of the generic policy
+    // message; the generic message keeps the other refusal reasons.
+    const governed = firstGovernedDiscoverySubnet(subnets);
+    if (governed) {
+      return fail(
+        "INVALID_POLICY",
+        "Discovery subnet " + governed.subnet + " targets a governed address class (" + governed.addressClass + ") — remove it or set FAYANMS_PROBE_ALLOW_SPECIAL=true for lab environments.",
+        400,
+      );
+    }
     return fail(
       "INVALID_POLICY",
       "Discovery requires only approved /24-/32 subnets, approved TCP management ports, and no more than 1,024 targets.",

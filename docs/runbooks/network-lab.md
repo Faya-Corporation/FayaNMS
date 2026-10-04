@@ -24,7 +24,7 @@ The lab CIDR, VPN peer, firewall rules, exporter addresses, hardware inventory, 
 
 ## Optional repository-side collector relay
 
-The worker contains an opt-in UDP receiver and authenticated relay. It is disabled unless FAYANMS_PROTOCOL_COLLECTOR_ENABLED=true, binds to 127.0.0.1 by default, uses non-privileged ports, bounds packets and relay concurrency, and sends normalized events to POST /api/v1/ingest/protocol with the worker service identity's telemetry scope.
+The worker contains an opt-in UDP receiver and authenticated relay. It is disabled unless FAYANMS_PROTOCOL_COLLECTOR_ENABLED=true, binds to 127.0.0.1 by default, uses non-privileged ports, bounds packets and relay concurrency, and sends normalized events to POST /api/v1/ingest/protocol with the worker service identity's telemetry scope. Relay retries re-send the same normalized event and carry no client idempotency key; NetFlow v5 batches are deduped server-side on the derived (collector, exporter peer, flowSequence, export timestamp) key within the queue-retention window, while other protocols keep at-least-once semantics (see the NetFlow v5 runbook, "Idempotency (F-048)").
 
 Set an explicit lab bind address and ports only on the operator host:
 
@@ -41,6 +41,8 @@ export FAYANMS_SFLOW_PORT=6343
 Device association is advisory and ordered: exact hostname hint first, exact management IP second. UDP source identity is not trusted as proof of device identity. Unmatched events remain retained as unassociated ProtocolEvent audit history. Raw packets, communities, passphrases, and other secret material are never accepted by the ingestion contract.
 
 The ingestion boundary is fail-closed for SNMP traps: the generic worker BER-framing path marks securityLevel=unknown and is rejected. Accepted SNMP traps must carry a server-side verified authPriv result, an explicit credentialProfileId, an exact associated device, and a CredentialProfile of type SNMPV3 bound to that device. The profile contains only the vault secret reference; the passphrase is never sent in the event or stored in audit JSON. The disposable scripts/protocol-lab/snmpv3.ts harness now proves authPriv trap verification and tamper rejection, but it does not constitute device or staging evidence.
+
+SNMPv3 vault resolution is cached per credential profile (F-037): the worker resolves a profile's `secretRef` once and reuses the resolved secret for that profile for a short TTL (default 30 seconds; `FAYANMS_SNMPV3_SECRET_CACHE_TTL_MS`, clamped 250ms–600s), so a packet storm for one persona costs one vault round-trip per TTL window instead of one per datagram. Concurrent packets for the same profile share a single in-flight resolution (single-flight). Rotation semantics: for at most one TTL window after a vault secret is rotated the worker may keep verifying with the previous secret — those traps fail USM authentication and are counted as rejected (fail-closed; a wrong secret can never produce a wrong-accept). The cache is keyed by credential profile id + secret reference, is bounded to 256 entries, is cleared when the collector stops, and resolved secret values are never logged. The worker's `fayanms_worker_protocol_collector_up` metric is 1 only when the collector is enabled and every configured UDP socket is bound with no bind failure; a bind failure (for example EADDRINUSE or EACCES) reports 0 and raises the `FayanmsWorkerProtocolCollectorDown` starter alert after 5 minutes.
 
 ### Durable handoff behavior
 

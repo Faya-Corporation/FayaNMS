@@ -15,6 +15,14 @@
  * CLI (config system interface → edit → set description → next → end).
  * `set description` MUTATES the persona config so a post-apply fetch
  * reflects the delta.
+ *
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │ ⚠ DEMO DATA — SIMULATED DEVICE PERSONA                                  │
+ * │ The config text below (including the demo SNMP community name           │
+ * │ "faya-readonly") is INVENTED persona content for the LIVE_SSH           │
+ * │ certification harness — not real device secrets. Pinned by              │
+ * │ tests/audit/open-findings-batch-19.test.ts (F-045 grep-guard).          │
+ * └─────────────────────────────────────────────────────────────────────────┘
  */
 
 import {

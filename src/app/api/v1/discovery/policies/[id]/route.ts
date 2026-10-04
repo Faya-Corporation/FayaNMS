@@ -4,6 +4,7 @@ import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import {
   DISCOVERY_ALLOWED_PORTS,
   DISCOVERY_DEFAULT_INTERVAL_MINUTES,
+  firstGovernedDiscoverySubnet,
   normalizeDiscoveryPolicyConfig,
   parseStoredDiscoveryPolicy,
 } from "@/lib/discovery/policy";
@@ -90,13 +91,25 @@ export async function PATCH(
   );
   if (!current) return fail("INVALID_POLICY", "The stored discovery policy is invalid and cannot be enabled", 409);
 
+  const mergedSubnets = parsed.data.subnets ?? current.subnets;
   const config = normalizeDiscoveryPolicyConfig({
-    subnets: parsed.data.subnets ?? current.subnets,
+    subnets: mergedSubnets,
     ports: parsed.data.ports ?? current.ports,
     intervalMinutes: parsed.data.intervalMinutes ?? current.intervalMinutes,
     enabled: parsed.data.enabled ?? current.enabled,
   });
   if (!config) {
+    // F-038 — governed special-address subnets get a precise detail
+    // (the class + the documented lab hatch) instead of the generic policy
+    // message; the generic message keeps the other refusal reasons.
+    const governed = firstGovernedDiscoverySubnet(mergedSubnets);
+    if (governed) {
+      return fail(
+        "INVALID_POLICY",
+        "Discovery subnet " + governed.subnet + " targets a governed address class (" + governed.addressClass + ") — remove it or set FAYANMS_PROBE_ALLOW_SPECIAL=true for lab environments.",
+        400,
+      );
+    }
     return fail(
       "INVALID_POLICY",
       "Discovery policy must contain only bounded /24-/32 subnets, approved TCP management ports, and no more than 1,024 targets.",

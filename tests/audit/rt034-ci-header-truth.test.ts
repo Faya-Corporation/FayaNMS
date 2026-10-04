@@ -44,6 +44,16 @@ import { describe, expect, test } from "bun:test";
  *     force-dynamic), so the client bundles ship origin-free. The
  *     semantic delta is the build-arg removal ONLY; no job, step, gate,
  *     or scan assertion was added/removed/weakened.
+ *   - 33ca4961… → 376b3736… (2026-10-03, CI-infra hotfix — semgrep
+ *     registry drift): the SAST step swapped the archived
+ *     returntocorp/semgrep-action@v1 wrapper (whose frozen
+ *     semgrep-agent:v1 image embeds semgrep 1.36.0 — it crashes on the
+ *     live p/default registry's `severity: MEDIUM` rules) for the
+ *     official semgrep/semgrep image DIGEST-pinned (1.179.0 at pin
+ *     time) run directly: `semgrep scan --config p/default --error
+ *     --metrics=off`. The gate policy is unchanged (--error keeps any
+ *     finding failing the build); the pre-planned A5-13/RT-035
+ *     migration, forced by the upstream drift.
  *
  * Scope note: docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md still carries a
  * 2026-09-15-era "NOT active" line that p3-hardening pins; refreshing that
@@ -64,7 +74,7 @@ const CI_LINES = CI.split("\n");
  * (runtime-only origin). Comment-only edits must never move this hash.
  */
 const PRE_RT034_STIPPED_YAML_SHA256 =
-  "33ca4961fbfd58a868574bd1d2e7219e91d7e1153a3e8c08c6fa058856dfc22d";
+  "376b3736bbb611709f5013d133f4d0083917258ebd5bdfe5c0113070cacdad33";
 
 const HEADER_BLOCK = CI_LINES.slice(0, 30).join("\n");
 

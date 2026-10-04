@@ -71,17 +71,25 @@ function readRootEnvValue(key: string): string | null {
         : join(import.meta.dir, "..", "..", ".env");
     const text = readFileSync(envPath, "utf8");
     for (const line of text.split("\n")) {
-      const match = new RegExp(`^${key}=(.+)$`).exec(line.trim());
-      if (match) {
-        let value = match[1].trim();
-        if (
-          (value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"))
-        ) {
-          value = value.slice(1, -1);
-        }
-        return value;
+      // Plain prefix/slice parse instead of `new RegExp(`^${key}=...`)` — the
+      // env-var NAME is an internal constant (never user input), and the
+      // literal-prefix form avoids the non-literal-regexp footgun entirely.
+      // Behavior is identical to the previous regex: anchored match at the
+      // start of the trimmed line, requiring a non-empty remainder. (Mirrors
+      // control-auth.ts readRootEnvValue.)
+      const prefix = `${key}=`;
+      const trimmedLine = line.trim();
+      if (!trimmedLine.startsWith(prefix)) continue;
+      const captured = trimmedLine.slice(prefix.length);
+      if (!captured) continue; // `.+` required at least one character
+      let value = captured.trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
       }
+      return value;
     }
   } catch {
     /* .env unreadable — fall through */
