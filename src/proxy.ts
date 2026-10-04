@@ -138,6 +138,15 @@ const MACHINE_EXACT_ROUTES: ReadonlySet<string> = new Set([
   "/api/v1/metrics/retention/prune",
   "/api/v1/metrics/rollup/aggregate",
   "/api/v1/protocol/queue/retention/prune",
+  // Machine-plane job + ingest routes registered BELOW the R62 wave
+  // (48b3cfe flow retention; the RT-012/RT-013 protocol ingest family).
+  // Every handler here enforces authenticateServiceRequest itself — the
+  // proxy merely confines the machine principal to its surface.
+  "/api/v1/flows/retention/prune",
+  "/api/v1/ingest/protocol",
+  "/api/v1/ingest/protocol/snmpv3-profile",
+  "/api/v1/ingest/protocol/snmpv3-profile/poll",
+  "/api/v1/ingest/protocol/snmpv3-profile/accept",
 ]);
 
 function isMachineSurface(pathname: string): boolean {
@@ -185,19 +194,23 @@ export async function proxy(req: NextRequest) {
   if (
     pathname === "/api/v1/meta" ||
     pathname.startsWith("/api/v1/auth/") ||
-    pathname === "/api/v1/worker/claim" ||
-    pathname === "/api/v1/worker/complete" ||
-    pathname === "/api/v1/worker/progress" ||
-    pathname === "/api/v1/worker/tick" ||
-    pathname === "/api/v1/worker/drift-evaluate" ||
-    pathname === "/api/v1/worker/change-step" ||
-    pathname === "/api/v1/worker/firmware-upgrade" ||
-    pathname === "/api/v1/worker/ztp-provision" ||
+    // Service-principal routes ride the SAME worker-prefix rule as step 1
+    // (plus the exact machine routes) so the two lists can never drift
+    // apart again — the R62-era enumerated comparison silently missed the
+    // newer worker job routes. Each handler below enforces its own service
+    // JWT (authenticateServiceRequest): an unauthenticated caller gets the
+    // handler's SERVICE_* 401, never a session-gate free pass.
+    pathname.startsWith("/api/v1/worker/") ||
     pathname === "/api/v1/alerts/evaluate" ||
     pathname === "/api/v1/reports/execute" ||
     pathname === "/api/v1/metrics/retention/prune" ||
     pathname === "/api/v1/metrics/rollup/aggregate" ||
-    pathname === "/api/v1/protocol/queue/retention/prune"
+    pathname === "/api/v1/protocol/queue/retention/prune" ||
+    pathname === "/api/v1/flows/retention/prune" ||
+    pathname === "/api/v1/ingest/protocol" ||
+    pathname === "/api/v1/ingest/protocol/snmpv3-profile" ||
+    pathname === "/api/v1/ingest/protocol/snmpv3-profile/poll" ||
+    pathname === "/api/v1/ingest/protocol/snmpv3-profile/accept"
   ) {
     return NextResponse.next();
   }
