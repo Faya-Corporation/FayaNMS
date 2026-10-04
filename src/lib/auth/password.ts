@@ -42,11 +42,14 @@ const SALT_LENGTH = 16;
  *      privileged roles (admin, operator) — the accounts that can push
  *      configurations to network devices.
  *   2. An OFFLINE common-password denylist (embedded, ~300 entries) applied to
- *      ALL roles. HONEST LIMITATION: this is a static stand-in for a breach
- *      corpus check — the production follow-up is a k-anonymity HIBP
- *      range-API check (send only a SHA-1 prefix, never the password), kept
- *      out of this change because it adds a network dependency to account
- *      provisioning.
+ *      ALL roles. The documented production follow-up is SHIPPED and
+ *      CONFIG-GATED: the k-anonymity HIBP range-API breach check lives in
+ *      src/lib/auth/hibp.ts (FAYANMS_HIBP_MODE — default off so offline
+ *      environments stay hermetic; enforce sends only a 5-char SHA-1 prefix,
+ *      refuses breached passwords with PASSWORD_BREACHED, and fails closed
+ *      with PASSWORD_BREACH_CHECK_UNAVAILABLE when the check itself cannot
+ *      complete). The denylist remains the always-on layer: with the mode
+ *      off it is the only breach protection beyond the role-aware length.
  * ──────────────────────────────────────────────────────────────────────── */
 
 export const MIN_PASSWORD_LENGTH = 8;
