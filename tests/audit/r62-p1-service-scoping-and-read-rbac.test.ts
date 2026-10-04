@@ -94,7 +94,7 @@ describe("R62 P1-1: service-JWT surface isolation at the proxy", () => {
     }
   });
 
-  test("the machine surface still passes (worker prefix + the three job routes)", async () => {
+  test("the machine surface still passes (worker prefix + the job/ingest routes)", async () => {
     for (const [path, method] of [
       ["/api/v1/worker/claim", "POST"],
       ["/api/v1/worker/status", "GET"],
@@ -102,6 +102,13 @@ describe("R62 P1-1: service-JWT surface isolation at the proxy", () => {
       ["/api/v1/alerts/evaluate", "POST"],
       ["/api/v1/reports/execute", "POST"],
       ["/api/v1/metrics/retention/prune", "POST"],
+      // Registered below the R62 wave — the flow-retention job route and
+      // the protocol ingest family the worker's collector posts to.
+      ["/api/v1/flows/retention/prune", "POST"],
+      ["/api/v1/ingest/protocol", "POST"],
+      ["/api/v1/ingest/protocol/snmpv3-profile", "POST"],
+      ["/api/v1/ingest/protocol/snmpv3-profile/poll", "POST"],
+      ["/api/v1/ingest/protocol/snmpv3-profile/accept", "POST"],
     ] as Array<[string, string]>) {
       const response = await proxy(
         proxyRequest(path, method, { authorization: `Bearer ${mintTestServiceToken()}` }),
@@ -187,5 +194,12 @@ describe("R62 P1-2: sensitive GET/read RBAC", () => {
     expect(proxySrc).toContain('"/api/v1/alerts/evaluate"');
     expect(proxySrc).toContain('"/api/v1/reports/execute"');
     expect(proxySrc).toContain('"/api/v1/metrics/retention/prune"');
+    // Post-R62 machine routes — flow retention + the protocol ingest family.
+    // Regression guard: every authenticateServiceRequest handler must be
+    // reachable by a verified service token through the proxy.
+    expect(proxySrc).toContain('"/api/v1/flows/retention/prune"');
+    expect(proxySrc).toContain('"/api/v1/ingest/protocol"');
+    expect(proxySrc).toContain('"/api/v1/ingest/protocol/snmpv3-profile/poll"');
+    expect(proxySrc).toContain('"/api/v1/ingest/protocol/snmpv3-profile/accept"');
   });
 });

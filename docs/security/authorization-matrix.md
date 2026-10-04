@@ -214,11 +214,24 @@ worker's outbound calls (override: `FAYANMS_SERVICE_ISSUERS`).
 
 | Endpoint | Required scope |
 |---|---|
-| `/worker/claim`, `/worker/complete`, `/worker/progress`, `/worker/tick`, `/worker/drift-evaluate`, `/worker/change-step`, `/worker/firmware-upgrade`, `/worker/ztp-provision` | `jobs` |
+| `/worker/claim`, `/worker/complete`, `/worker/progress`, `/worker/tick`, `/worker/drift-evaluate`, `/worker/change-step`, `/worker/firmware-upgrade`, `/worker/ztp-provision`, `/worker/discovery/reconcile`, `/worker/snmpv3-poll/complete`, `/worker/protocol-events/drain` | `jobs` |
 | `/alerts/evaluate` | `alerts` |
 | `/reports/execute` | `reports` |
 | `/metrics/retention/prune` | `metrics` (service path) OR human session with `metrics.prune` |
+| `/metrics/rollup/aggregate` | `metrics` (service path) OR human session with the admin permission (requireServiceOrPermission) |
+| `/protocol/queue/retention/prune` | `jobs` (service path) OR human session with `admin.system` (requireServiceOrPermission) |
+| `/flows/retention/prune` | `jobs` |
+| `/ingest/protocol`, `/ingest/protocol/snmpv3-profile`, `/ingest/protocol/snmpv3-profile/poll`, `/ingest/protocol/snmpv3-profile/accept` | `telemetry` |
 | `/worker/status` | human session (diagnostic; deliberately not service-exempt) |
+
+Proxy confinement (R62 P1, extended): a VERIFIED service JWT passes the proxy
+ONLY on the machine surface — the `/api/v1/worker/` prefix plus the exact
+non-worker routes above. The pass-through list (3a) and the verified-token
+surface (step 1) are kept in lockstep — the pass-through rides the same
+worker-prefix rule, so a newly added worker job route can never silently
+miss registration. Every route in this table enforces token+scope at the
+HANDLER layer (`authenticateServiceRequest` / `requireServiceOrPermission`);
+the proxy merely confines the principal.
 
 Worker HTTP surface (mini-services/worker, audit GATEWAY-101): `/simulate/*`
 requires a control-plane service JWT with the `simulate` scope (issuer
