@@ -63,6 +63,17 @@ import { describe, expect, test } from "bun:test";
  *     is the SHA text + trailing comment text on those four lines
  *     (trailing comments are part of the stripped-YAML snapshot by
  *     design — the stripper removes whole-line comments only).
+ *   - 666f8c70… → ddb33d56… (2026-10-04, dependabot
+ *     actions/upload-artifact 4.6.2 → 7.0.1, PR #20 — branch snapshot
+ *     includes the merged-in PR #15 checkout refresh): the three
+ *     `actions/upload-artifact@` pin SHAs moved to the real v7.0.1
+ *     commit (043fb46d…) with their trailing pin comments refreshed to
+ *     name it (deliberate-pin governance). Zero semantic delta: same
+ *     action, same inputs (name/path/if-no-files-found/retention-days
+ *     all unchanged), no job/step/gate/scan change. The hash move is
+ *     the SHA text + trailing comment text on those three lines
+ *     (trailing comments are part of the stripped-YAML snapshot by
+ *     design — the stripper removes whole-line comments only).
  *
  * Scope note: docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md still carries a
  * 2026-09-15-era "NOT active" line that p3-hardening pins; refreshing that
@@ -83,9 +94,12 @@ const CI_LINES = CI.split("\n");
  * (runtime-only origin). Comment-only edits must never move this hash.
  * Moved to 666f8c70… on 2026-10-04 (PR #15): dependabot checkout
  * v5.1.0 → v7.0.1 pin-SHA refresh — see the move log in the docstring.
+ * *Moved to ddb33d56… on 2026-10-04 (PR #20 merge of main): dependabot
+ * upload-artifact v4.6.2 → v7.0.1 pin-SHA refresh — see the move log
+ * in the docstring.
  */
 const PRE_RT034_STIPPED_YAML_SHA256 =
-  "666f8c70f861802639f7a3a3a887274839c4a01575281a6fd26c7e8acd204e0e";
+  "ddb33d567a937bf241a19df98800d51797c94c02b4366e06c72a85124c28b3c7";
 
 const HEADER_BLOCK = CI_LINES.slice(0, 30).join("\n");
 
