@@ -88,11 +88,11 @@ describe("R87 — namespace is balanced", () => {
     }
   });
 
-  test("A: dictionary totals are 2,850 = 2,850 at current HEAD (+117 R102)", () => {
+  test("A: dictionary totals are 3,314 = 3,314 at current HEAD (+117 R102, +2 F-034)", () => {
     const en = readJson("messages/en.json");
     const ar = readJson("messages/ar.json");
-    expect(leaves(en).length).toBe(3312);
-    expect(leaves(ar).length).toBe(3312);
+    expect(leaves(en).length).toBe(3385);
+    expect(leaves(ar).length).toBe(3385);
   });
 
   test("A: deep parity — identical leaf paths in BOTH directions", () => {

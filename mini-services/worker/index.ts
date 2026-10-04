@@ -183,6 +183,8 @@ export async function handle(req: Request): Promise<Response> {
         `fayanms_worker_jobs_total{state="running"} ${counters.running}`,
         `fayanms_worker_jobs_total{state="completed"} ${counters.completed}`,
         `fayanms_worker_jobs_total{state="failed"} ${counters.failed}`,
+        // F-044 — resumable change-driver requeues (never counted as failed).
+        `fayanms_worker_jobs_total{state="resumed"} ${counters.resumed}`,
         "# HELP fayanms_worker_scheduler_up Whether the scheduler has no consecutive failures.",
         "# TYPE fayanms_worker_scheduler_up gauge",
         `fayanms_worker_scheduler_up ${scheduler.consecutiveTickFailures === 0 ? 1 : 0}`,
@@ -196,7 +198,9 @@ export async function handle(req: Request): Promise<Response> {
         `fayanms_worker_protocol_packets_total{state="rejected"} ${protocol.packetsRejected}`,
         `fayanms_worker_protocol_packets_total{state="queue_dropped"} ${protocol.queueDrops}`,
         `fayanms_worker_protocol_relay_failures_total ${protocol.relayFailures}`,
-        `fayanms_worker_protocol_collector_up ${protocol.enabled ? 1 : 0}`,
+        // F-037: `up` is derived (enabled + every configured socket bound,
+        // no bind failures) — a bind failure now reports collector_up 0.
+        `fayanms_worker_protocol_collector_up ${protocol.up ? 1 : 0}`,
       ];
 
       return new Response(`${metricLines.join("\n")}\n`, {

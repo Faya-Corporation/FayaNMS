@@ -225,6 +225,24 @@ describe("authorization contract inventory", () => {
     expect(changes).toContain('"change.create"');
   });
 
+  test("admin/users GET gates the full email directory to admin/auditor (F-029)", () => {
+    const users = readFileSync(
+      join(API_ROOT, "admin", "users", "route.ts"),
+      "utf8"
+    );
+    // The F-029 role gate: the full email directory is admin/auditor only
+    // (requireUser — any active user — must not come back).
+    expect(users).toContain('requireRole(request, "admin", "auditor")');
+    expect(users).not.toContain("requireUser(request)");
+    // The non-privileged directory surface stays the meta/users
+    // local-part picker (no full emails beyond the local-part).
+    const metaUsers = readFileSync(
+      join(API_ROOT, "meta", "users", "route.ts"),
+      "utf8"
+    );
+    expect(metaUsers).toContain('split("@")');
+  });
+
   test("no route synthesizes the legacy fallback admin actor", () => {
     const offenders: string[] = [];
     for (const file of files) {
