@@ -10,6 +10,7 @@ import {
   authErrorToFail,
   requirePermission,
   requireSessionRead,
+  requireSiteScope,
   sessionScopeFor,
 } from "@/lib/auth/session";
 import { sessionAllowsSite, sessionSiteScope } from "@/lib/auth/scope";
@@ -43,6 +44,13 @@ export const dynamic = "force-dynamic";
  * POST /api/v1/cmdb/relations  { sourceId, targetId, relationType }
  *   Create a directed edge. Guards:
  *     404 CMDB_NOT_FOUND       — source or target CI does not exist
+ *     403 SITE_SCOPE_FORBIDDEN — EITHER endpoint's governing site (linked
+ *                                device's site, else the siteId tag;
+ *                                linkage-less CIs are global) is outside
+ *                                the session's site scope (F-031 wave-10,
+ *                                audit 13-c F-6 — the wave-7 mutation
+ *                                contract, 403-not-404 on the mutation
+ *                                plane)
  *     422 CMDB_SELF_RELATION   — source and target are the same CI
  *     409 CMDB_RELATION_EXISTS — the exact (source, target, type) edge
  *                                already exists (unique triple)
@@ -50,7 +58,10 @@ export const dynamic = "force-dynamic";
  *   endpoint's per-CI history picks the row up, even after removal).
  *
  * DELETE /api/v1/cmdb/relations?id=…
- *   Remove an edge. 404 CMDB_NOT_FOUND when unknown.
+ *   Remove an edge. 404 CMDB_NOT_FOUND when unknown; 403
+ *   SITE_SCOPE_FORBIDDEN when either endpoint's governing site is outside
+ *   the session scope (the DELETE previously echoed the CI pair of
+ *   out-of-scope edges — audit 13-c F-6).
  *   Audit: CMDB_RELATION_REMOVED (afterJson keeps the full edge for history).
  * ───────────────────────────────────────────────────────────────────────────── */
 
@@ -190,6 +201,20 @@ export async function POST(request: Request) {
       404
     );
   }
+
+  // F-031 wave-10 (audit 13-c F-6): BOTH endpoints must be in scope — an
+  // edge is a cross-object mutation, so one out-of-scope endpoint is enough
+  // to refuse it. Existence 404 first, then the scope 403 (the wave-7
+  // ordering).
+  try {
+    await requireSiteScope(request, await cmdbItemSiteCode(source));
+    await requireSiteScope(request, await cmdbItemSiteCode(target));
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   if (source.id === target.id) {
     return fail(
       "CMDB_SELF_RELATION",
@@ -295,12 +320,26 @@ export async function DELETE(request: Request) {
   const relation = await db.cmdbRelation.findUnique({
     where: { id },
     include: {
-      source: { select: CMDB_ITEM_SUMMARY_SELECT },
-      target: { select: CMDB_ITEM_SUMMARY_SELECT },
+      // deviceId/siteId ride along for the F-031 wave-10 endpoint scope
+      // gate (cmdbItemSiteCode) — the response/audit only reads ciId/name.
+      source: { select: { ...CMDB_ITEM_SUMMARY_SELECT, deviceId: true, siteId: true } },
+      target: { select: { ...CMDB_ITEM_SUMMARY_SELECT, deviceId: true, siteId: true } },
     },
   });
   if (!relation) {
     return fail("CMDB_NOT_FOUND", `No relation matches "${id}"`, 404);
+  }
+
+  // F-031 wave-10 (audit 13-c F-6): the DELETE mutation gate — both
+  // endpoints must be in scope (the removed edge previously echoed the
+  // out-of-scope CI pair through the audit row and the response).
+  try {
+    await requireSiteScope(request, await cmdbItemSiteCode(relation.source));
+    await requireSiteScope(request, await cmdbItemSiteCode(relation.target));
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
 
   const actorName = actor.name ?? "Unknown user";

@@ -6,7 +6,7 @@ import {
   newCorrelationId,
   ok,
 } from "../../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSiteScope } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +23,14 @@ export const dynamic = "force-dynamic";
  * FK, nullable) stays NULL for client acknowledgements — the
  * ALERT_ACKNOWLEDGED audit row carries the client attribution (actorId =
  * the ApiClient row id) as the accountability record.
+ *
+ * F-031 wave-10 (audit 13-a F-3, mutation gate): the alert's device site
+ * must be inside the session's scope before any state check or mutation —
+ * requireSiteScope answers 403 SITE_SCOPE_FORBIDDEN (the documented
+ * mutation contract; a null site follows the documented unscoped-resource
+ * rule). The API-client bearer plane is UNSCOPED by documented posture
+ * (authorization-matrix §5.1 "Plane boundaries"), so the P1-012 opt-in
+ * skips the session-scope gate deliberately.
  */
 const ackSchema = z.object({
 });
@@ -66,11 +74,22 @@ export async function POST(
       status: true,
       severity: true,
       message: true,
-      device: { select: { id: true, hostname: true } },
+      device: { select: { id: true, hostname: true, site: { select: { code: true } } } },
     },
   });
   if (!alert) {
     return fail("ALERT_NOT_FOUND", "Alert not found", 404);
+  }
+  // F-031 wave-10: the scope gate runs BEFORE the state check and the
+  // mutation (403-not-404 — mutations accept existence confirmation).
+  if (actor.role !== "api-client") {
+    try {
+      await requireSiteScope(request, alert.device.site?.code ?? null);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
   }
   if (alert.status !== "ACTIVE") {
     return fail(

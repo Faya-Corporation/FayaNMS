@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, newJobCorrelationId, ok } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSiteScope, sessionScopeFor } from "@/lib/auth/session";
+import { scopedDeviceWhere } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -9,10 +10,16 @@ export const dynamic = "force-dynamic";
  * POST /api/v1/drift/check — manual drift trigger (Task 3-c).
  *
  * Body: { deviceId?: string }
- *   - with deviceId: a single device. It must exist (404) and have an
+ *   - with deviceId: a single device. It must exist (404) and be inside the
+ *     session's site scope (403 SITE_SCOPE_FORBIDDEN — F-031 wave-10, audit
+ *     13-c F-8; the gate runs BEFORE the baseline check so NO_BASELINE 409
+ *     is never an out-of-scope baseline-existence oracle) and have an
  *     approved baseline (409 NO_BASELINE).
  *   - without: the whole baseline-covered fleet, skipping devices that
- *     already have a QUEUED/RUNNING DRIFT_CHECK in flight (capped at 50).
+ *     already have a QUEUED/RUNNING DRIFT_CHECK in flight (capped at 50) —
+ *     the candidate device pool is INTERSECTED with the session scope
+ *     (scopedDeviceWhere), so sites-limited sessions check only their own
+ *     devices; wildcard keeps the byte-unchanged where.
  *
  * Creates QUEUED DRIFT_CHECK JobExecutions with triggeredBy "MANUAL" and
  * returns { enqueued, correlationId, jobs }. One summary DRIFT_CHECK_QUEUED
@@ -58,10 +65,21 @@ export async function POST(request: Request) {
   if (deviceId) {
     const device = await db.device.findUnique({
       where: { id: deviceId },
-      select: { id: true, hostname: true },
+      select: { id: true, hostname: true, site: { select: { code: true } } },
     });
     if (!device) {
       return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
+    }
+
+    // F-031 wave-10 (audit 13-c F-8): scope gate BEFORE the baseline probe —
+    // NO_BASELINE must never answer for an out-of-scope device (existence
+    // oracle on cross-site baseline coverage).
+    try {
+      await requireSiteScope(request, device.site?.code ?? null);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
     }
 
     const baseline = await db.configBaseline.findFirst({
@@ -158,11 +176,19 @@ export async function POST(request: Request) {
     return ok({ enqueued: 0, correlationId, jobs: [] });
   }
 
+  // F-031 wave-10 (audit 13-c F-8): fleet mode intersects the candidate
+  // device pool with the session scope at the device fetch (wildcard keeps
+  // the byte-unchanged where) — sites-limited sessions enqueue only their
+  // own devices; the enqueued count follows.
+  const scopeClaims = await sessionScopeFor(request);
   const devices = await db.device.findMany({
-    where: { id: { in: candidates } },
+    where: scopedDeviceWhere(scopeClaims, { id: { in: candidates } }),
     select: { id: true, hostname: true },
     orderBy: { hostname: "asc" },
   });
+  if (devices.length === 0) {
+    return ok({ enqueued: 0, correlationId, jobs: [] });
+  }
 
   const jobs = await db.$transaction(
     async (tx) => {

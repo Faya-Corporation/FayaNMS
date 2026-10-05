@@ -116,12 +116,28 @@ const MUTATING_VERBS = [
 
 /**
  * F-008 read-plane gates — a GET handler is authenticated when its OWN
- * body performs one of the authoritative session/auth checks (the same
- * set as the mutation inventory plus the read-specific helpers:
- * requireSessionRead, and the direct-claim reads getSessionUser /
- * resolveActingUser that authenticate the caller without a DB row lock).
+ * body performs one of the authoritative session/auth checks. Wave 10
+ * (audit 13-b F-5) splits the old single marker list into two classes:
+ *
+ *   HARD GATES — the require/authenticate family. These either answer
+ *   401/403 themselves (requireSessionRead, requireUser, requireRole,
+ *   requirePermission, requireApprovalEntitlement,
+ *   authenticateServiceRequest, requireServiceOrPermission,
+ *   verifyControlToken) or wrap one of them (resolveAdminActor →
+ *   requireRole("admin")). Presence alone qualifies.
+ *
+ *   SOFT RESOLVERS — resolveActingUser / getSessionUser only RESOLVE the
+ *   caller; they swallow every failure and return null, and a handler may
+ *   legitimately use them for attribution or optional personalization
+ *   while the route proceeds. A soft resolver qualifies as a gate ONLY
+ *   when the same handler body explicitly refuses on its result (the
+ *   `if (!me) / if (!user) / if (!actor) / if (!claims) { return fail(...)
+ *   }` pattern). The old single-list behavior counted a bare
+ *   resolveActingUser( as a gate — the exact false positive that
+ *   certified the F-1 routes (changes/approvals GETs) green while a
+ *   forged opaque bearer could read them (audit 13-b P1 + F-3).
  */
-const READ_GATES = [
+const READ_GATES_HARD = [
   "requireSessionRead(",
   "requireUser(",
   "requireRole(",
@@ -130,8 +146,6 @@ const READ_GATES = [
   "authenticateServiceRequest(",
   "requireServiceOrPermission(",
   "verifyControlToken(",
-  "getSessionUser(",
-  "resolveActingUser(",
   // Admin-surface gate (Task 7-b): resolveAdminActor() wraps
   // requireRole(req, "admin") — full session + active-user DB check + admin
   // role. Recognized from F-008 phase 4a on so the read matrix reflects the
@@ -139,6 +153,24 @@ const READ_GATES = [
   // phases 1-3 only because this wrapper was not a recognized marker).
   "resolveAdminActor(",
 ];
+
+const READ_GATES_SOFT = ["resolveActingUser(", "getSessionUser("];
+
+/**
+ * The explicit-refusal shape a soft resolver must be followed by IN THE
+ * SAME handler body to count as a gate: a null-check on the resolver's
+ * result variable (me/user/actor/claims/principal — the names the in-repo
+ * refusal sites use) whose branch RETURNS a fail() envelope. A fail() on
+ * an unrelated variable (e.g. `!parsed.success`) does not qualify.
+ */
+const SOFT_REFUSAL_RE =
+  /if\s*\(\s*!(?:me|user|actor|claims|principal)\s*\)\s*\{\s*return\s+fail\(/;
+
+function bodyHasReadGate(body: string): boolean {
+  if (READ_GATES_HARD.some((marker) => body.includes(marker))) return true;
+  if (!READ_GATES_SOFT.some((marker) => body.includes(marker))) return false;
+  return SOFT_REFUSAL_RE.test(body);
+}
 
 /**
  * F-008 read-route allowlist — route files whose GET handler(s) perform NO
@@ -283,12 +315,32 @@ describe("F-008 read-route matrix (handler-level read-plane authn)", () => {
     for (const file of readFiles) {
       const rel = file.slice(API_ROOT.length + 1);
       const bodies = getHandlerBodies(readFileSync(file, "utf8"));
-      const gated = bodies.some((body) =>
-        READ_GATES.some((marker) => body.includes(marker))
-      );
+      const gated = bodies.some((body) => bodyHasReadGate(body));
       if (!gated && !READ_ALLOWLIST[rel]) violations.push(rel);
     }
     expect(violations).toEqual([]);
+  });
+
+  test("the F-1 routes are HARD-gated (audit 13-b: a soft resolver is not a read gate)", () => {
+    // Wave 10 regression pins for the marker split itself: changes GET and
+    // approvals GET were certified green by the old bare-soft-marker rule
+    // while carrying NO handler-level credential validation at all. Both
+    // must now carry requireSessionRead in their GET bodies — and the
+    // meta/users + auth/session bodies keep their explicit refusals (the
+    // only legitimate soft-resolver gate shape).
+    for (const rel of ["changes/route.ts", "approvals/route.ts"]) {
+      const bodies = getHandlerBodies(readFileSync(join(API_ROOT, rel), "utf8"));
+      expect(bodies.length).toBeGreaterThanOrEqual(1);
+      for (const body of bodies) {
+        expect(body).toContain("requireSessionRead(");
+      }
+    }
+    for (const rel of ["meta/users/route.ts", "auth/session/route.ts"]) {
+      const bodies = getHandlerBodies(readFileSync(join(API_ROOT, rel), "utf8"));
+      for (const body of bodies) {
+        expect(SOFT_REFUSAL_RE.test(body)).toBe(true);
+      }
+    }
   });
 
   test("the read allowlist only shrinks — phase-1 size cap", () => {

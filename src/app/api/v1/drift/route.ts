@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import type { Prisma } from "@prisma/client";
+import { authErrorToFail, requireSessionRead, sessionScopeFor } from "@/lib/auth/session";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
 import {
   csvParam,
   fail,
@@ -27,6 +29,15 @@ export const dynamic = "force-dynamic";
  * whether the "Run drift check" action can do anything.
  *
  * GET is side-effect free (no audit).
+ *
+ * F-031 wave-10 (audit 13-c F-4): drift rows carry hostnames, sites,
+ * snapshot sha256s and the diffSummary CONFIG CONTENT — the list where and
+ * the device-derivable meta aggregates (open/accepted/resolvedToday,
+ * devicesAffected, hasBaselines) compose the session scope through the
+ * device relation (wildcard keeps the byte-unchanged shapes). One aggregate
+ * residual stays GLOBAL by the documented dashboard posture: lastCheckedAt
+ * (JobExecution carries no site linkage; a bare timestamp — no resource
+ * identity).
  */
 
 const querySchema = paginationSchema.extend({
@@ -61,10 +72,21 @@ export async function GET(request: Request) {
   const { page, pageSize, deviceId } = parsed.data;
   const statuses = csvParam(parsed.data.status);
 
-  const where = {
+  // F-031 wave-10: one device-relation scope composition feeds the rows AND
+  // the device-derivable meta aggregates. Wildcard keeps the exact
+  // pre-wave-10 query shapes (the parity guarantee).
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const deviceScope: Prisma.DriftRecordWhereInput =
+    scope.mode === "wildcard"
+      ? {}
+      : { device: scopedDeviceWhere(scopeClaims, {}) };
+
+  const where: Prisma.DriftRecordWhereInput = {
     AND: [
       statuses ? { status: { in: statuses } } : {},
       deviceId ? { deviceId } : {},
+      deviceScope,
     ],
   };
 
@@ -97,12 +119,13 @@ export async function GET(request: Request) {
           },
         },
       }),
-      db.driftRecord.count({ where: { status: "OPEN" } }),
-      db.driftRecord.count({ where: { status: "ACCEPTED" } }),
+      db.driftRecord.count({ where: { status: "OPEN", ...deviceScope } }),
+      db.driftRecord.count({ where: { status: "ACCEPTED", ...deviceScope } }),
       db.driftRecord.count({
         where: {
           status: "RESOLVED",
           resolvedAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+          ...deviceScope,
         },
       }),
       db.jobExecution.findFirst({
@@ -113,9 +136,12 @@ export async function GET(request: Request) {
       db.driftRecord.groupBy({
         by: ["deviceId"],
         _count: { _all: true },
-        where: { status: "OPEN" },
+        where: { status: "OPEN", ...deviceScope },
       }),
       db.configBaseline.findMany({
+        // Scope-intersected for sites-limited sessions (hasBaselines = can
+        // the SESSION's devices run a drift check at all).
+        where: scope.mode === "wildcard" ? undefined : { device: scopedDeviceWhere(scopeClaims, {}) },
         select: { deviceId: true },
         distinct: ["deviceId"],
       }),

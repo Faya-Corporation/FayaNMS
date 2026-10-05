@@ -1,5 +1,15 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSiteScope,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionSiteScope } from "@/lib/auth/scope";
+import {
+  requireDeviceLegScope,
+  resolveChangeScopeTarget,
+} from "../../../_lib/change-scope";
 import { RETRYABLE_JOB_STATUSES } from "@/lib/jobs/lifecycle";
 import { fail, newJobCorrelationId, ok } from "../../../_lib/api";
 
@@ -21,6 +31,13 @@ export const dynamic = "force-dynamic";
  *   bypass where POST /jobs/<running-id>/retry produced TWO live
  *   executions of one change — the UI's retry button already only showed
  *   for FAILED/DEAD, now the API enforces the same contract)
+ * - 403 SITE_SCOPE_FORBIDDEN — wave 10 (F-031, audit 13-b F-4): the
+ *   source job's target must be inside the session's site scope before a
+ *   fresh execution is queued — DEVICE targets ride the device's site,
+ *   CHANGE targets the change's site dimension (ALL linked devices for a
+ *   site-less change); other target types are refused fail-closed for
+ *   sites-limited sessions (invisible on the list plane too). Wildcard
+ *   sessions are byte-unchanged.
  * - 201               — { job, audit } for the newly queued clone.
  *
  * Standard _lib envelope; session enforced (middleware + requirePermission).
@@ -50,6 +67,62 @@ export async function POST(
       "The requested job execution does not exist",
       404
     );
+  }
+
+  // F-4 (wave 10, audit 13-b): the source job's target must be inside the
+  // session's site scope before the clone is queued (a retry of an
+  // out-of-scope job would re-run it). The gate engages for sites-limited
+  // sessions only; a wildcard session is byte-unchanged.
+  const scope = sessionSiteScope(await sessionScopeFor(request));
+  if (scope.mode === "sites") {
+    let siteCode: string | null = null;
+    if (source.targetType === "DEVICE" && source.targetId) {
+      const device = await db.device.findUnique({
+        where: { id: source.targetId },
+        select: { site: { select: { code: true } } },
+      });
+      // Unknown target ≡ unknown job for a sites-limited session (the
+      // route's ordinary 404 shape — no target-existence oracle).
+      if (!device) {
+        return fail(
+          "JOB_NOT_FOUND",
+          "The requested job execution does not exist",
+          404
+        );
+      }
+      siteCode = device.site?.code ?? null;
+    } else if (source.targetType === "CHANGE" && source.targetId) {
+      const target = await resolveChangeScopeTarget(source.targetId);
+      if (target.kind === "missing") {
+        return fail(
+          "JOB_NOT_FOUND",
+          "The requested job execution does not exist",
+          404
+        );
+      }
+      if (target.kind === "site") siteCode = target.code;
+      else if (target.kind === "devices") {
+        const deviceLegFail = await requireDeviceLegScope(request, target.deviceIds);
+        if (deviceLegFail) return deviceLegFail;
+      }
+      // target.kind === "unscoped" → no site dimension — the documented
+      // assertSiteScope(null) bypass applies.
+    } else {
+      // SITE/POLICY/SYSTEM-targeted rows are invisible to sites-limited
+      // sessions on the list plane — fail-closed parity here.
+      return fail(
+        "SITE_SCOPE_FORBIDDEN",
+        "This session's site scope does not cover jobs without an in-scope device target.",
+        403
+      );
+    }
+    try {
+      await requireSiteScope(request, siteCode);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
   }
 
   // Wave-6 (SAFE-003): only terminal failures are retryable. A clone of a

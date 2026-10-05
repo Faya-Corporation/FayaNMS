@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import { z } from "zod";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import { authErrorToFail, requireSessionRead, sessionScopeFor } from "@/lib/auth/session";
+import { scopedIncidentSiteWhere } from "../../_lib/incident-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,20 @@ export const dynamic = "force-dynamic";
  * linked to the change are always included. Each hit is annotated with
  * matchedOn (created | resolved), deltaMinutes and deviceOverlap (the
  * incident and the change share at least one device) so the UI can rank it.
+ *
+ * F-031 wave-10 (audit 13-a F-2, read-plane migration): the candidate
+ * query composes the session scope via the incident's own `site` relation
+ * (scopedIncidentSiteWhere — the AI-plane predicate), so a sites-limited
+ * session never sees cross-scope incidents (or their device hostnames) in
+ * the correlation window; incidents already linked to the change are only
+ * surfaced when they are ALSO in scope (the linked-annotation set itself
+ * leaks nothing — it only marks in-scope candidate rows). Wildcard
+ * sessions keep the byte-unchanged where clause.
+ *
+ * F-8 (audit 13-a, P4): the candidate query is bounded with take 500,
+ * consistent with the sibling bounded reads (the alerts severity-sort cap
+ * and the AI change-draft prompt cap) — an unbounded window query must not
+ * become the plane's unbounded scan.
  */
 const querySchema = z.object({
   changeId: z.string().trim().min(1).max(64),
@@ -45,6 +60,9 @@ export async function GET(request: Request) {
   if (!parsed.success) {
     return fail("INVALID_QUERY", firstIssueMessage(parsed.error), 400);
   }
+
+  // ── F-031 wave-10: the session scope for the candidate query ─────────
+  const scopeClaims = await sessionScopeFor(request);
 
   const change = await db.changeRequest.findUnique({
     where: { id: parsed.data.changeId },
@@ -77,8 +95,14 @@ export async function GET(request: Request) {
   const candidates = await db.incident.findMany({
     where: {
       OR: [{ createdAt: { gte: from, lte: to } }, { resolvedAt: { gte: from, lte: to } }],
+      // F-031 wave-10: the session scope rides the incident's own site
+      // relation — wildcard resolves to {} (byte-identical base where).
+      ...scopedIncidentSiteWhere(scopeClaims),
     },
     orderBy: { createdAt: "desc" },
+    // F-8 (wave-10): bounded read — the window query never scans without
+    // a cap (matches the sibling alerts severity-sort bound).
+    take: 500,
     select: {
       id: true,
       number: true,

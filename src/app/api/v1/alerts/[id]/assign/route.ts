@@ -5,7 +5,7 @@ import {
   newCorrelationId,
   ok,
 } from "../../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSiteScope } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +16,12 @@ export const dynamic = "force-dynamic";
  * assignee must exist and be active). Works from any open status; audits
  * ALERT_ASSIGNED. Requires the "alert.assign" permission (Phase 19-C,
  * audit AUTHZ-001 sweep — was authentication-only via resolveActingUser).
+ *
+ * F-031 wave-10 (audit 13-a F-3, mutation gate): the alert's device site
+ * must be inside the session's scope before any state check or mutation —
+ * requireSiteScope answers 403 SITE_SCOPE_FORBIDDEN (the documented
+ * mutation contract; a null site follows the documented unscoped-resource
+ * rule).
  */
 const assignSchema = z.object({
   assignedToId: z.string().trim().min(1).max(64),
@@ -57,11 +63,20 @@ export async function POST(
       severity: true,
       message: true,
       assignedToId: true,
-      device: { select: { id: true, hostname: true } },
+      device: { select: { id: true, hostname: true, site: { select: { code: true } } } },
     },
   });
   if (!alert) {
     return fail("ALERT_NOT_FOUND", "Alert not found", 404);
+  }
+  // F-031 wave-10: the scope gate runs BEFORE the state check and the
+  // mutation (403-not-404 — mutations accept existence confirmation).
+  try {
+    await requireSiteScope(request, alert.device.site?.code ?? null);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
   if (alert.status === "RESOLVED") {
     return fail(

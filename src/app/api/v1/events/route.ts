@@ -7,7 +7,8 @@ import {
   pageMeta,
   paginationSchema,
 } from "../_lib/api";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import { authErrorToFail, requireSessionRead, sessionScopeFor } from "@/lib/auth/session";
+import { siteScopeAllows, sessionSiteScope } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +49,12 @@ export const dynamic = "force-dynamic";
  * F-008 phase 2 (read-plane defense-in-depth): the handler verifies the
  * human session itself (requireSessionRead) — the proxy matcher stays the
  * coarse gate, not the only check, for the events read domain.
+ *
+ * F-031 wave-10 (audit 13-c F-1 — MINIMUM MITIGATION, see the strip block
+ * in the handler): AuditEvent rows carry no site dimension (the deep fix is
+ * the documented owner decision), so sites-limited sessions receive the
+ * stream with the free-text identity fields of UNPROVABLE rows stripped
+ * fail-closed. Wildcard sessions keep byte-identical rows.
  */
 
 const querySchema = paginationSchema.extend({
@@ -108,6 +115,12 @@ export async function GET(request: Request) {
     to,
     q,
   } = parsed.data;
+
+  // F-031 wave-10: resolve the session scope once (wildcard = absent claim,
+  // the single-tenant default — byte-identical output for every row).
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const isWildcard = scope.mode === "wildcard";
 
   /** All filters — used for the page itself. (Contextually typed so the
    *  `mode: "insensitive"` literals stay narrow for Prisma's Exact<>.) */
@@ -247,6 +260,84 @@ export async function GET(request: Request) {
     afterJson: parseJson(row.afterJson),
     createdAt: row.createdAt.toISOString(),
   }));
+
+  /* ── F-031 wave-10 (audit 13-c F-1) — MINIMUM MITIGATION ONLY ──────────
+   * AuditEvent rows carry NO site dimension (the deep fix — a site column —
+   * is the documented owner decision, authorization-matrix §5.1). For
+   * sites-limited sessions the free-text identity fields of rows whose
+   * resource cannot be PROVEN in-scope are stripped FAIL-CLOSED:
+   *   resourceLabel (device hostnames, user emails, CI labels), ip,
+   *   userAgent and the before/after JSON payloads.
+   * A row keeps its identity fields only when:
+   *   (a) it is the session actor's own action (actorId === session user),
+   *   (b) its resource resolves in-scope through device/site linkage —
+   *       resourceType "Device" whose site code is in scope, or
+   *       resourceType "Site" whose code is in scope.
+   * Everything else strips — stale/unresolvable references fail closed.
+   * Meta facets stay counts + action/type names (no resource identity).
+   * Cost: one batched query per candidate resource type — no N+1.
+   * Wildcard sessions never enter this branch (byte-identical rows).
+   * ──────────────────────────────────────────────────────────────────── */
+  if (!isWildcard) {
+    const deviceIds = [
+      ...new Set(
+        rows
+          .filter((r) => r.resourceType === "Device" && r.resourceId)
+          .map((r) => r.resourceId as string)
+      ),
+    ];
+    const siteIds = [
+      ...new Set(
+        rows
+          .filter((r) => r.resourceType === "Site" && r.resourceId)
+          .map((r) => r.resourceId as string)
+      ),
+    ];
+    const [devices, sites] = await Promise.all([
+      deviceIds.length
+        ? db.device.findMany({
+            where: { id: { in: deviceIds } },
+            select: { id: true, site: { select: { code: true } } },
+          })
+        : Promise.resolve([] as Array<{ id: string; site: { code: string } | null }>),
+      siteIds.length
+        ? db.site.findMany({
+            where: { id: { in: siteIds } },
+            select: { id: true, code: true },
+          })
+        : Promise.resolve([] as Array<{ id: string; code: string }>),
+    ]);
+    const inScopeDeviceIds = new Set(
+      devices
+        .filter((d) => siteScopeAllows(scope, d.site?.code ?? null))
+        .map((d) => d.id)
+    );
+    const inScopeSiteIds = new Set(
+      sites.filter((s) => siteScopeAllows(scope, s.code)).map((s) => s.id)
+    );
+    const sessionActorId = scopeClaims?.id ?? null;
+    for (let i = 0; i < data.length; i += 1) {
+      const row = data[i]!;
+      if (sessionActorId !== null && row.actorId === sessionActorId) continue;
+      const provenInScope =
+        (row.resourceType === "Device" &&
+          row.resourceId !== null &&
+          inScopeDeviceIds.has(row.resourceId)) ||
+        (row.resourceType === "Site" &&
+          row.resourceId !== null &&
+          inScopeSiteIds.has(row.resourceId));
+      if (!provenInScope) {
+        data[i] = {
+          ...row,
+          resourceLabel: null,
+          ip: null,
+          userAgent: null,
+          beforeJson: null,
+          afterJson: null,
+        };
+      }
+    }
+  }
 
   return ok(data, {
     ...pageMeta(page, pageSize, total),

@@ -17,7 +17,15 @@ import {
   scoreChangeServerSide,
 } from "../_lib/change";
 import { resolveActingUser } from "../_lib/actor";
-import { requirePermission, authErrorToFail } from "@/lib/auth/session";
+import { changeScopeListWhere, requireDevicesInScope } from "../_lib/change-scope";
+import {
+  requirePermission,
+  requireSessionRead,
+  requireSiteScope,
+  sessionScopeFor,
+  authErrorToFail,
+} from "@/lib/auth/session";
+import type { User } from "@prisma/client";
 import { approvalLevelsFor, BUSINESS_HOURS_POLICY_VERSION, BUSINESS_HOURS_TIMEZONE } from "@/lib/change/risk";
 import { quorumRequiredFor } from "@/lib/change/approval-policy";
 import { z } from "zod";
@@ -32,6 +40,17 @@ export const dynamic = "force-dynamic";
  * Row fields from Phase 1 are preserved; `pendingApprovals` was added in
  * Task 4-a and meta now carries a light `summary` for the KPI mini-row.
  * Ordered newest first.
+ *
+ * Wave 10 (F-031, audit 13-b): the handler verifies the session itself
+ * (requireSessionRead — the proxy's API-client branch admits any opaque
+ * bearer shape; garbage tokens answer 401 here, valid API-client tokens
+ * fall through to authenticateApiClientRead over the wired change.read
+ * domain) and composes the session's site scope into the change legs
+ * (site relation OR device-linked in-scope changes; the KPI summary counts
+ * ride the same leg). Wildcard sessions keep the pre-wave-10 where shape
+ * byte-identical. Requester emails follow the F-029/R69 discipline: only
+ * admin/auditor principals see the full address — everyone else sees the
+ * email local-part.
  */
 
 const querySchema = paginationSchema.extend({
@@ -46,6 +65,26 @@ const querySchema = paginationSchema.extend({
 });
 
 export async function GET(request: Request) {
+  // F-1 (wave 10, audit 13-b P1): handler-level credential validation is
+  // the FIRST step — before any DB access. The proxy's API-client branch
+  // (step 3b) admits any opaque-shaped bearer on the documented trust that
+  // "fail-closed lives in the handlers"; this handler now honors it.
+  let principal: User;
+  try {
+    principal = await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
+  // F-029/R69 email discipline: the full requester address is admin/auditor
+  // only (mirrors the admin/users directory gate).
+  const fullEmail = principal.role === "admin" || principal.role === "auditor";
+  // F-031: the session's site scope for the change legs (wildcard sessions
+  // — absent claims — keep byte-identical behavior).
+  const scopeClaims = await sessionScopeFor(request);
+  const scopeLeg = changeScopeListWhere(scopeClaims);
+
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     page: url.searchParams.get("page") ?? undefined,
@@ -78,7 +117,7 @@ export async function GET(request: Request) {
     requesterFilter = me.id;
   }
 
-  const where = {
+  const where: Prisma.ChangeRequestWhereInput = {
     AND: [
       statuses ? { status: { in: statuses } } : {},
       types ? { type: { in: types } } : {},
@@ -105,6 +144,9 @@ export async function GET(request: Request) {
             ],
           }
         : {},
+      // F-031 (wave 10): site leg OR device-linked in-scope change (the
+      // shared change-plane predicate; {} for wildcard sessions).
+      scopeLeg,
     ],
   };
 
@@ -135,9 +177,18 @@ export async function GET(request: Request) {
         },
       },
     }),
-    db.changeRequest.count({ where: { status: "AWAITING_APPROVAL" } }),
+    // The KPI mini-row rides the same scope leg as the list (an aggregate
+    // that ignored the scope would still disclose cross-site activity).
     db.changeRequest.count({
-      where: { status: { in: ["PRE_CHECK", "EXECUTING", "VALIDATING"] } },
+      where: { AND: [{ status: "AWAITING_APPROVAL" }, scopeLeg] },
+    }),
+    db.changeRequest.count({
+      where: {
+        AND: [
+          { status: { in: ["PRE_CHECK", "EXECUTING", "VALIDATING"] } },
+          scopeLeg,
+        ],
+      },
     }),
   ]);
 
@@ -158,17 +209,35 @@ export async function GET(request: Request) {
   const [closedSuccess, closedTotal] = await Promise.all([
     db.changeRequest.count({
       where: {
-        status: { in: successStatuses },
-        updatedAt: { gte: thirtyDaysAgo },
+        AND: [
+          { status: { in: successStatuses } },
+          { updatedAt: { gte: thirtyDaysAgo } },
+          scopeLeg,
+        ],
       },
     }),
     db.changeRequest.count({
-      where: { status: { in: terminalStatuses }, updatedAt: { gte: thirtyDaysAgo } },
+      where: {
+        AND: [
+          { status: { in: terminalStatuses } },
+          { updatedAt: { gte: thirtyDaysAgo } },
+          scopeLeg,
+        ],
+      },
     }),
   ]);
 
   const shaped = rows.map(({ approvals, ...row }) => ({
     ...row,
+    // F-029/R69: non-admin/auditor readers get the email LOCAL-PART, never
+    // the full address (same rule as the meta/users picker and cmdb owner
+    // labels). Admin/auditor rows stay byte-identical.
+    requester: {
+      ...row.requester,
+      email: fullEmail
+        ? row.requester.email
+        : (row.requester.email.split("@")[0] ?? row.requester.email),
+    },
     pendingApprovals: approvals.length,
   }));
 
@@ -227,7 +296,28 @@ export async function POST(request: Request) {
     return fail("SCHEDULE_INVALID", "scheduledEnd must be after scheduledStart", 400);
   }
 
+  // Phase 19-C (audit AUTHZ-101D) + wave-10 ordering alignment: the
+  // permission gate runs BEFORE any resource lookup so unauthorized callers
+  // learn nothing about device existence (the exact discipline the PATCH/
+  // execute routes already document).
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
+  try {
+    actor = await requirePermission(request, "change.create");
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   const { devices, missing } = await fetchRiskDevices(data.deviceIds);
+  // F-2 (wave 10, audit 13-b): the requested device ids are intersected
+  // with the session's site scope. For a sites-limited session the fused
+  // unknown ∪ out-of-scope bucket answers the ordinary DEVICE_NOT_FOUND
+  // shape WITHOUT echoing ids (no existence enumeration of out-of-scope
+  // ids — the cmdb POST device-reference rule). Wildcard sessions keep the
+  // pre-wave-10 echo (their missing bucket is genuinely unknown).
+  const scopeFail = await requireDevicesInScope(request, data.deviceIds);
+  if (scopeFail) return scopeFail;
   if (missing.length > 0) {
     return fail(
       "DEVICE_NOT_FOUND",
@@ -237,8 +327,25 @@ export async function POST(request: Request) {
   }
 
   if (data.siteId) {
-    const site = await db.site.findUnique({ where: { id: data.siteId }, select: { id: true } });
+    const site = await db.site.findUnique({
+      where: { id: data.siteId },
+      select: { id: true, code: true },
+    });
     if (!site) return fail("SITE_NOT_FOUND", "The selected site does not exist", 400);
+    // F-2: the change's own site must be inside the session's scope before
+    // any state change (403 SITE_SCOPE_FORBIDDEN — the documented mutation
+    // contract; a wildcard session is byte-unchanged).
+    const siteScopeFail = await (async () => {
+      try {
+        await requireSiteScope(request, site.code);
+      } catch (error) {
+        const authFail = authErrorToFail(error);
+        if (!authFail) throw error;
+        return authFail;
+      }
+      return null;
+    })();
+    if (siteScopeFail) return siteScopeFail;
   }
 
   // Deduplicate device ids + steps while preserving order.
@@ -260,18 +367,6 @@ export async function POST(request: Request) {
   const submit = data.submit === true;
   const status = submit ? "AWAITING_APPROVAL" : "DRAFT";
   const correlationId = newCorrelationId("CHG");
-
-  // Phase 19-C (audit AUTHZ-101D): change authoring is permission-gated —
-  // the seeded matrix grants change.create to engineer (admin via wildcard);
-  // operator/manager/viewer/auditor are denied server-side (403).
-  let actor: Awaited<ReturnType<typeof requirePermission>>;
-  try {
-    actor = await requirePermission(request, "change.create");
-  } catch (error) {
-    const authFail = authErrorToFail(error);
-    if (!authFail) throw error;
-    return authFail;
-  }
 
   // RT-014 — the number is allocated INSIDE the transaction via the tx
   // client, and a @@unique([number]) collision (two concurrent creations

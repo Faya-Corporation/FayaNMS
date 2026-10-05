@@ -7,7 +7,8 @@ import {
   pageMeta,
   paginationSchema,
 } from "../_lib/api";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import { authErrorToFail, requireSessionRead, sessionScopeFor } from "@/lib/auth/session";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,19 @@ export const dynamic = "force-dynamic";
  * F-008 phase 2 (read-plane defense-in-depth): the handler verifies the
  * human session itself (requireSessionRead) — the proxy matcher stays the
  * coarse gate, not the only check, for the alerts read domain.
+ *
+ * F-031 wave-10 (audit 13-a F-1, read-plane migration): the session's site
+ * scope composes into baseWhere through the Alert→device→site relation
+ * (scopedDeviceWhere over the device leg), so a sites-limited session sees
+ * only its sites' alerts — on the page query AND both groupBy counts AND
+ * the linkedOpenIncidents query (all four consume baseWhere). The caller's
+ * ?siteCode= filter rides the SAME relation and therefore INTERSECTS with
+ * the scope (never widens it): an out-of-scope siteCode answers 200 with
+ * zero rows. Wildcard sessions (no `sites` claim — the single-tenant
+ * default) keep the byte-unchanged base where; deny-all scopes answer the
+ * empty shape. Alerts whose device has no site are hidden from
+ * sites-limited sessions (row-level fail-closed SQL parity — the relation
+ * filter cannot match a null site code).
  */
 
 const SEVERITY_RANK: Record<string, number> = {
@@ -98,6 +112,11 @@ export async function GET(request: Request) {
   const severities = csvParam(parsed.data.severity);
   const includeChildren = parsed.data.includeChildren === "true";
 
+  // ── F-031 wave-10: resolve the session scope once for every leg ──────
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const isWildcard = scope.mode === "wildcard";
+
   /** Shared filter conditions (grouping handled separately). */
   const baseWhere = {
     AND: [
@@ -114,6 +133,12 @@ export async function GET(request: Request) {
             ],
           }
         : {},
+      // F-031 wave-10: the session's site scope rides the SAME device
+      // relation as the ?siteCode= filter above — the two compose as an
+      // intersection (a caller-chosen out-of-scope siteCode matches
+      // nothing, never the unscoped set). Wildcard keeps the base where
+      // byte-identical (no device leg at all — the parity guarantee).
+      ...(isWildcard ? [] : [{ device: scopedDeviceWhere(scopeClaims, {}) }]),
     ],
   };
 

@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import { csvParam, fail, firstIssueMessage, ok } from "../../_lib/api";
+import { changeScopeListWhere } from "../../_lib/change-scope";
 import { z } from "zod";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import { authErrorToFail, requireSessionRead, sessionScopeFor } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,11 @@ export const dynamic = "force-dynamic";
  * outcomes (SUCCESSFUL / CLOSED / FAILED / ROLLBACK / ROLLBACK_FAILED /
  * POST_REVIEW) never conflict. DRAFTs and AWAITING_APPROVAL with a
  * proposed window DO count — planning should know about them.
+ *
+ * Wave 10 (F-031, audit 13-b F-3): the overlap search composes the
+ * session's site scope (site leg OR device-linked in-scope change — the
+ * shared change-plane predicate), so planning cannot see cross-site
+ * windows; wildcard sessions keep the pre-wave-10 where shape.
  */
 
 const querySchema = z.object({
@@ -53,6 +59,8 @@ export async function GET(request: Request) {
   }
 
   const statuses = csvParam(parsed.data.status);
+  // F-031 (wave 10): the session's site scope for the change legs.
+  const scopeLeg = changeScopeListWhere(await sessionScopeFor(request));
   const deadStatuses = [
     "CANCELLED",
     "REJECTED",
@@ -67,13 +75,19 @@ export async function GET(request: Request) {
 
   const rows = await db.changeRequest.findMany({
     where: {
-      // Overlap: existing window starts before our end AND ends after our start.
-      scheduledStart: { lt: end, not: null },
-      scheduledEnd: { gt: start, not: null },
-      status: statuses
-        ? { in: statuses, notIn: deadStatuses }
-        : { notIn: deadStatuses },
-      ...(excludeId ? { id: { not: excludeId } } : {}),
+      AND: [
+        // Overlap: existing window starts before our end AND ends after our start.
+        { scheduledStart: { lt: end, not: null } },
+        { scheduledEnd: { gt: start, not: null } },
+        {
+          status: statuses
+            ? { in: statuses, notIn: deadStatuses }
+            : { notIn: deadStatuses },
+        },
+        excludeId ? { id: { not: excludeId } } : {},
+        // F-031 (wave 10): site leg OR device-linked in-scope change.
+        scopeLeg,
+      ],
     },
     orderBy: { scheduledStart: "asc" },
     select: {
