@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionAllowsSite } from "@/lib/auth/scope";
 import { fail, firstIssueMessage, ok } from "../_lib/api";
 import { z } from "zod";
 import {
@@ -38,6 +43,18 @@ export const dynamic = "force-dynamic";
  * (8–20) ≈ ≤ 23k pure-arithmetic rows, no persistence. Read-only GET →
  * no audit event (app convention). `dynamic = "force-dynamic"` matches
  * the other GET routes; the client fetches with cache: "no-store".
+ *
+ * F-031 (wave-12, audit 18-a P2-1): the ?deviceId= lookup is site-scope
+ * FUSED — the session scope is resolved (sessionScopeFor) and gated with
+ * the row-level sessionAllowsSite predicate (the exact semantics of the
+ * list routes' scopedDeviceWhere `site.code IN (…)` filter, so site-less
+ * devices are hidden from sites-limited sessions too). A sites-limited
+ * session asking for an OUT-OF-SCOPE device receives the SAME
+ * DEVICE_NOT_FOUND envelope an unknown id produces — previously the route
+ * echoed hostname/mgmtIp/site of ANY device with an existence oracle
+ * (unknown id → 404 vs out-of-scope → 200). Wildcard sessions (no `sites`
+ * claim — the single-tenant default) are byte-unchanged; API-client
+ * bearers resolve null claims → wildcard by design (matrix §5).
  * ───────────────────────────────────────────────────────────────────────────── */
 
 const querySchema = z.object({
@@ -67,6 +84,10 @@ export async function GET(request: Request) {
   }
   const { deviceId, window } = parsed.data;
 
+  // F-031 (wave-12): the session's site scope for the fused-404 gate below
+  // (wildcard sessions — absent claims — keep byte-identical behavior).
+  const scopeClaims = await sessionScopeFor(request);
+
   const device = await db.device.findUnique({
     where: { id: deviceId },
     select: {
@@ -77,7 +98,10 @@ export async function GET(request: Request) {
       site: { select: { name: true, code: true } },
     },
   });
-  if (!device) {
+  // Fused-404: out-of-scope (and site-less) devices answer the SAME
+  // DEVICE_NOT_FOUND envelope as a missing row — no existence oracle for
+  // sites-limited sessions (the devices/[id] detail-route recipe).
+  if (!device || !sessionAllowsSite(scopeClaims, device.site?.code ?? null)) {
     return fail(
       "DEVICE_NOT_FOUND",
       `No device with id "${deviceId}" exists.`,

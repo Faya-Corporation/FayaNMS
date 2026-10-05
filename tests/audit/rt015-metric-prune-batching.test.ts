@@ -142,6 +142,10 @@ afterAll(async () => {
 });
 
 describe("RT-015 batched metric prune + hot-path indexes", () => {
+  // Explicit budgets: this test moves 50,010 rows in and out through chunked
+  // batches — bun's 5s default is runner-marginal (cold CI Postgres container
+  // on a 2-core runner exceeded it deterministically; see worklog Task 21).
+  // 60s gives 6x headroom over the local ~1s without masking real hangs.
   test("prune deletes in chunks, respects the per-run cap, and converges on the next run", async () => {
     expect(METRIC_RETENTION_CHUNK_SIZE).toBe(1_000);
     expect(METRIC_RETENTION_MAX_DELETES_PER_RUN).toBe(50_000);
@@ -159,8 +163,10 @@ describe("RT-015 batched metric prune + hot-path indexes", () => {
     const second = await pruneMetricSamplesChunked(CUTOFF);
     expect(second).toBe(10);
     expect(await countSamples(CUTOFF)).toBe(0);
-  });
+  }, 60_000);
 
+  // Bumped from the 5s default: it inherits the queue behind the 50k-row
+  // test's cleanup, which itself can exceed 5s on a slow runner.
   test("fresh samples survive the cutoff (negative case)", async () => {
     await seedSamples(5, new Date(Date.now() - 86_400_000));
     const deleted = await pruneMetricSamplesChunked(CUTOFF);
@@ -169,7 +175,7 @@ describe("RT-015 batched metric prune + hot-path indexes", () => {
       where: { deviceId, ts: { gte: CUTOFF } },
     });
     expect(fresh).toBe(5);
-  });
+  }, 15_000);
 
   test("rollup prunes per granularity with correct counts", async () => {
     const periods = (count: number, base: Date) =>

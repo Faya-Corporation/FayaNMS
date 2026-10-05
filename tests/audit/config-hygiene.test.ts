@@ -64,6 +64,12 @@ function prodEnv(secrets: {
     // the ONLY deltas — the proxy-hop guard matrix lives in
     // tests/audit/wave11-edge.test.ts.
     FAYANMS_PUBLIC_PROXY: "true",
+    // Wave-12 F-1/F-2 (differential pin update): the metrics-bearer posture
+    // guard is part of the production refusal set, so the fixture carries a
+    // strong (non-placeholder) token — its own matrix lives in
+    // tests/audit/wave12-posture.test.ts.
+    FAYANMS_METRICS_TOKEN:
+      "8c0d2e4f6a8b0c1d3e5f7a9b1f8b2c4d6e9a0f3b5c7e1d9f2a4b6c8d0e2f4a6b",
     ...secrets,
   };
 }
