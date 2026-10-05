@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok, pageMeta, paginationSchema } from "../../../_lib/api";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import { authErrorToFail, requireSessionRead, sessionScopeFor } from "@/lib/auth/session";
+import { sessionAllowsSite } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,11 @@ export const dynamic = "force-dynamic";
  * F-008 phase 3 (read-plane defense-in-depth): the handler verifies the
  * human session itself (requireSessionRead) — the proxy matcher stays the
  * coarse gate, not the only check, for this read route.
+ *
+ * F-031 (site scoping — device-domain migration): the answer is gated by
+ * sessionAllowsSite with 404-NOT-403 parity — an out-of-scope device gets
+ * the SAME DEVICE_NOT_FOUND envelope (no existence leak), mirroring the
+ * reference detail route (authorization-matrix.md §5.1).
  */
 
 const querySchema = paginationSchema.extend({});
@@ -44,11 +50,17 @@ export async function GET(
   }
   const { page, pageSize } = parsed.data;
 
+  const scopeClaims = await sessionScopeFor(request);
   const device = await db.device.findUnique({
     where: { id },
-    select: { id: true, hostname: true },
+    select: { id: true, hostname: true, site: { select: { code: true } } },
   });
-  if (!device) {
+  // F-031: the SAME not-found envelope for a missing device AND an
+  // out-of-scope device — a device hidden from the list cannot leak
+  // through this sub-resource route (sessionAllowsSite mirrors the list
+  // route's where filter; site-less devices stay hidden from
+  // sites-limited sessions — fail-closed parity with SQL).
+  if (!device || !sessionAllowsSite(scopeClaims, device.site?.code ?? null)) {
     return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
   }
 
