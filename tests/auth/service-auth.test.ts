@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 
+import { resetServiceReplayCache } from "../../src/lib/auth/service-jwt";
 import {
   authenticateServiceRequest,
   mintServiceToken,
@@ -15,18 +16,40 @@ import {
 
 const TEST_SECRET = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2";
 
+/* Full service-plane sandbox (wave-11 hygiene): the original helper only
+ * managed the two variables it cared about, so an ambient asymmetric
+ * keypair (the worktree .env keypair is a mismatched pair — batch-16) made
+ * mintServiceToken prefer EdDSA while the verifier saw a different trust
+ * plane, false-failing every fixture outside CI. Pin ALL service variables
+ * (the FAYANMS_SERVICE_ENV_FILE empty value is the R64 knob that keeps a
+ * worker-side .env fallback from re-supplying material) and reset the
+ * wave-11 jti replay bindings per sandbox entry. Pin semantics unchanged.
+ */
+const SERVICE_ENV_KEYS = [
+  "FAYANMS_SERVICE_SECRET",
+  "FAYANMS_SERVICE_SECRETS",
+  "FAYANMS_SERVICE_ISSUERS",
+  "FAYANMS_SERVICE_PUBLIC_KEYS",
+  "FAYANMS_SERVICE_PRIVATE_KEY",
+  "FAYANMS_SERVICE_ENV_FILE",
+] as const;
+
 function withEnv<T>(fn: () => T): T {
-  const previous = process.env.FAYANMS_SERVICE_SECRET;
-  const previousIssuers = process.env.FAYANMS_SERVICE_ISSUERS;
+  const saved = new Map<string, string | undefined>();
+  for (const key of SERVICE_ENV_KEYS) saved.set(key, process.env[key]);
+  for (const key of SERVICE_ENV_KEYS) delete process.env[key];
+  process.env.FAYANMS_SERVICE_ENV_FILE = "";
   process.env.FAYANMS_SERVICE_SECRET = TEST_SECRET;
   delete process.env.FAYANMS_SERVICE_ISSUERS;
+  resetServiceReplayCache();
   try {
     return fn();
   } finally {
-    if (previous === undefined) delete process.env.FAYANMS_SERVICE_SECRET;
-    else process.env.FAYANMS_SERVICE_SECRET = previous;
-    if (previousIssuers === undefined) delete process.env.FAYANMS_SERVICE_ISSUERS;
-    else process.env.FAYANMS_SERVICE_ISSUERS = previousIssuers;
+    for (const [key, value] of saved.entries()) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    resetServiceReplayCache();
   }
 }
 
@@ -152,8 +175,14 @@ describe("service JWT verification", () => {
   });
 
   test("unconfigured server fails closed", () => {
-    const previous = process.env.FAYANMS_SERVICE_SECRET;
-    delete process.env.FAYANMS_SERVICE_SECRET;
+    // Truly unconfigured = NO service variable anywhere (wave-11 hygiene:
+    // the original helper deleted only the secret, so an ambient .env
+    // keypair made the verifier asymmetric-capable and the token answered
+    // SERVICE_ALG_REJECTED instead of the pinned SERVICE_UNCONFIGURED —
+    // in CI, with no .env, the pinned code is the real one).
+    const saved = new Map<string, string | undefined>();
+    for (const key of SERVICE_ENV_KEYS) saved.set(key, process.env[key]);
+    for (const key of SERVICE_ENV_KEYS) delete process.env[key];
     try {
       const secret = TEST_SECRET;
       const head = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
@@ -175,8 +204,10 @@ describe("service JWT verification", () => {
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.code).toBe("SERVICE_UNCONFIGURED");
     } finally {
-      if (previous === undefined) delete process.env.FAYANMS_SERVICE_SECRET;
-      else process.env.FAYANMS_SERVICE_SECRET = previous;
+      for (const [key, value] of saved.entries()) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
     }
   });
 });

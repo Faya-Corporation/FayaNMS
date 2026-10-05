@@ -29,11 +29,16 @@ export const dynamic = "force-dynamic";
  * deduped (order-preserving). Audited with dedicated rows —
  * USER_SCOPE_SET / USER_SCOPE_CLEARED — alongside USER_UPDATED when other
  * identity fields changed (kept out of USER_UPDATED's before/after so each
- * row states one fact). EFFECT TIMING (honest): the JWT is minted at
- * login, so a scope change lands on the user's NEXT sign-in — no live
- * token revocation (authorization-matrix.md §5). Self-service scope
- * changes are allowed (unlike deactivation/demotion): the admin plane is
- * not device-scoped, so a self-scope cannot lock the platform out.
+ * row states one fact). EFFECT TIMING (wave-11, audit 15-b F-3): the
+ * `sites` claim itself is still minted only at login (the JWT is minted
+ * at login), but a scope change now ALSO bumps User.credentialEpoch in the
+ * SAME transaction, so every live token minted before it fails the
+ * requireUser / requireSessionRead epoch comparison and answers 401 —
+ * the documented "scope changes require re-login" is a HARD guarantee, and
+ * the enforced re-login mints the NEW scope (authorization-matrix.md §5).
+ * Self-service scope changes are allowed (unlike deactivation/demotion):
+ * the admin plane is not device-scoped, so a self-scope cannot lock the
+ * platform out.
  *
  * Self-guard: an admin cannot deactivate or demote THEMSELVES — that would
  * leave the platform without a writable session (and lock out the last
@@ -184,7 +189,7 @@ export async function PATCH(
         // epoch in the SAME transaction, so every session token minted
         // before it fails requireUser's epoch-vs-DB comparison and answers
         // 401 — the stolen-cookie window closes at the SET, not at the 12 h
-        // maxAge. Name/role/isActive/scope-only changes leave the epoch (and
+        // maxAge. Name/role/isActive-only changes leave the epoch (and
         // therefore live sessions) untouched.
         ...(passwordHash !== undefined
           ? { passwordHash, credentialEpoch: { increment: 1 } }
@@ -192,7 +197,15 @@ export async function PATCH(
         // F-031: rides the same transactional update; its audit trail is
         // the dedicated scope row below (deliberately NOT folded into the
         // USER_UPDATED before/after — each audit row states one fact).
-        ...(siteScopeJson !== undefined ? { siteScopeJson } : {}),
+        // Wave-11 (audit 15-b F-3): a scope change ALSO bumps the epoch in
+        // this same transaction — the previously documented "lands on the
+        // next sign-in" is now ENFORCED (the stale-WIDER sites claim dies
+        // with the old token; the enforced re-login mints the new one).
+        // A combined password+scope PATCH still increments exactly once
+        // (same object key — one evicting credential event per request).
+        ...(siteScopeJson !== undefined
+          ? { siteScopeJson, credentialEpoch: { increment: 1 } }
+          : {}),
       },
     });
     if (hasIdentityFields) {
@@ -256,8 +269,9 @@ export async function PATCH(
         name: user.name,
         role: user.role,
         isActive: user.isActive,
-        // F-031: the stored scope, parsed for the admin UI (next sign-in
-        // effect — see the docblock).
+        // F-031: the stored scope, parsed for the admin UI. Wave-11: the
+        // epoch bump above evicts the live token, so the claim is minted
+        // at the ENFORCED next sign-in (see the docblock).
         siteScope: userSiteScopeClaim(user.siteScopeJson) ?? null,
         createdAt: user.createdAt.toISOString(),
       },

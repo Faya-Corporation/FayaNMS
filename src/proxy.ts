@@ -34,15 +34,23 @@ import {
  *      X-Forwarded-For policy (src/lib/api/rate-gate.ts) — the leftmost
  *      entries are attacker-controlled and are never trusted. Exceeded
  *      budgets answer the standard 429 envelope with Retry-After.
- *   3. API-CLIENT PLANE (P1-012 — external ULTRA audit): an OPAQUE bearer
- *      token (base64url, no dots — the ApiClient token shape) is admitted
- *      for MUTATIONS ONLY, always after the rate gate (external traffic is
- *      never exempt), and is fully validated at the handler layer by
- *      requirePermission → authenticateApiClient (sha256 lookup, active
- *      check, scope mapping). READS stay session-gated: no read route
- *      carries a handler-level gate yet, so admitting a token there would
- *      turn the proxy into the only check — refused with a precise 401
- *      until read routes grow gates (see api-client-auth.ts).
+ *   3. API-CLIENT PLANE (P1-012 — external ULTRA audit; F-008 follow-up):
+ *      an OPAQUE bearer token (base64url, no dots — the ApiClient token
+ *      shape) is admitted to BOTH planes — mutations and reads — always
+ *      after the rate gate (external traffic is never exempt). The proxy
+ *      performs NO credential validation beyond the shape test: the
+ *      handler layer owns the real check,
+ *        mutations → requirePermission → authenticateApiClient (sha256
+ *        lookup, active check, scope mapping; opt-in per route for human
+ *        accountability),
+ *        reads     → requireSessionRead → authenticateApiClientRead over
+ *        the wired read-domain table (API_CLIENT_READ_DOMAINS).
+ *      Fail-closed lives in the handlers: an unknown/inactive/scoped-out
+ *      token is 401/403 there. A request that ALSO carries a next-auth
+ *      session cookie falls back to the session plane in its handler
+ *      (cookie-first precedence everywhere), so a cookie-carrying MUTATION
+ *      must pass the step-5 CSRF origin check BEFORE this plane's early
+ *      return admits it (the wave-11 gate at 3a/3b).
  *   4. SESSION PLANE (Task 7-a): no valid session → 401 envelope
  *      { code: "UNAUTHENTICATED" }.
  *   5. CSRF ORIGIN CHECK (RT-008 / F-010 — defense-in-depth behind the
@@ -55,10 +63,19 @@ import {
  *      (the NextAuth origin-check pattern). A request carrying NEITHER
  *      header is allowed: it is a non-browser client that cannot carry the
  *      cookie cross-site in practice, and SameSite=Lax still guards the
- *      cookie itself. Machine plane (step 1) and API-client bearer plane
- *      (step 3b) returned long before this check, and the public bootstrap
- *      surfaces (step 3a) are untouched — /api/v1/auth/* mutations are
- *      NextAuth's own CSRF-protected endpoints.
+ *      cookie itself.
+ *      WAVE-11 (F-1, audit 15-a P3): the SAME origin check now also runs
+ *      at the step-3a and step-3b early returns whenever a mutating
+ *      request CARRIES a session cookie — the three dual-gate
+ *      MACHINE_EXACT POST routes fall back to the admin session in their
+ *      handlers (requireServiceOrPermission → requirePermission), so a
+ *      same-site sibling-subdomain form POST (Lax cookie, no preflight,
+ *      no custom headers) used to ride step 3a straight past this check
+ *      into a destructive admin mutation; step 3b had the same hole for a
+ *      cookie + decoy opaque bearer. Requests WITHOUT a session cookie
+ *      (machine and API-client callers) and GETs keep the documented fast
+ *      path; a VERIFIED service token never reaches these gates (step 1
+ *      returned it — pass on the machine surface, hard 401 elsewhere).
  *      Authenticated `auditor` performing any non-GET/HEAD → 403
  *      { code: "RBAC_FORBIDDEN" } (step 6).
  *
@@ -160,6 +177,83 @@ function isMachineSurface(pathname: string): boolean {
  */
 const OPAQUE_BEARER_PATTERN = /^[A-Za-z0-9_-]{24,128}$/;
 
+/**
+ * Mutating methods for the CSRF origin check (RT-008/F-010) — the SAME set
+ * at step 5 and at the wave-11 cookie gates in steps 3a/3b. GET/HEAD/OPTIONS
+ * never mutate state and keep the fast path everywhere.
+ */
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * The next-auth v4 session cookie names (plain + __Secure- variants). The
+ * wave-11 gate keys on cookie PRESENCE, not validity: the early-return
+ * planes deliberately skip the JWT decode, so the cookie alone marks a
+ * request whose handler call may fall back to the session plane.
+ */
+const SESSION_COOKIE_NAMES = [
+  "next-auth.session-token",
+  "__Secure-next-auth.session-token",
+] as const;
+
+function carriesNextAuthSessionCookie(req: NextRequest): boolean {
+  return SESSION_COOKIE_NAMES.some((name) => req.cookies.get(name) !== undefined);
+}
+
+/**
+ * The RT-008/F-010 origin decision, shared VERBATIM by step 5 and the
+ * wave-11 cookie gates — identical rule, error body and status at every
+ * call site (no second implementation to drift):
+ *   - sec-fetch-site same-origin|none   → pass;
+ *   - cross-site AND same-site          → rejected (sibling-subdomain risk);
+ *   - no sec-fetch-site, Origin present → Origin host must equal Host;
+ *   - neither header                    → allowed (non-browser client).
+ */
+function csrfOriginRejected(req: NextRequest): boolean {
+  const site = req.headers.get("sec-fetch-site");
+  const origin = req.headers.get("origin");
+  const host = req.headers.get("host");
+  let originHost: string | null = null;
+  if (origin !== null) {
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      originHost = null; // malformed Origin → treated as cross-site below
+    }
+  }
+  return (
+    (site !== null && site !== "same-origin" && site !== "none") ||
+    (site === null && origin !== null && host !== null && originHost !== host)
+  );
+}
+
+/**
+ * Wave-11 F-1 (audit 15-a P3): the step-5 CSRF origin check, applied at
+ * the EARLY-RETURN planes (3a machine/public, 3b opaque bearer).
+ *
+ * Fires ONLY when ALL of these hold:
+ *   (a) the method is mutating (reads keep the fast path);
+ *   (b) the request carries a next-auth session cookie (machine and
+ *       API-client callers send none and are untouched);
+ *   (c) any Authorization bearer present is NOT a fully-verified service
+ *       token. This is guaranteed STRUCTURALLY, with no second
+ *       verification: a verified token already returned at step 1 (pass on
+ *       the machine surface, hard 401 elsewhere), so ANY bearer surviving
+ *       to 3a/3b has FAILED verification and the handler will fall back to
+ *       the session plane — exactly the cookie-authenticated mutation the
+ *       origin check exists for.
+ *
+ * Returns the step-5 rejection response (identical body + status), or null
+ * to admit the request to the early return it guards.
+ */
+function cookieSessionCsrfRejection(req: NextRequest): NextResponse | null {
+  if (!MUTATING_METHODS.has(req.method)) return null;
+  if (!carriesNextAuthSessionCookie(req)) return null;
+  if (csrfOriginRejected(req)) {
+    return NextResponse.json(CSRF_REJECTED_BODY, { status: 403 });
+  }
+  return null;
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -167,6 +261,11 @@ export async function proxy(req: NextRequest) {
   // budget ONLY on the machine surface (R61 P1: surface isolation — a
   // service principal on a human path is unauthenticated, full stop).
   const bearer = bearerTokenOf(req.headers.get("authorization"));
+  // Wave-11 invariant the 3a/3b CSRF gates rely on: past this block NO
+  // request carries a VERIFIED service token — a verified token returned
+  // right here (pass on the machine surface, hard 401 elsewhere), so any
+  // bearer that survives to the later steps has FAILED verification and
+  // never counts as a machine credential.
   if (bearer && verifyServiceToken(bearer).ok) {
     if (isMachineSurface(pathname)) {
       return NextResponse.next();
@@ -206,6 +305,12 @@ export async function proxy(req: NextRequest) {
     pathname.startsWith("/api/v1/worker/") ||
     MACHINE_EXACT_ROUTES.has(pathname)
   ) {
+    // Wave-11 F-1: the three dual-gate MACHINE_EXACT POST routes fall back
+    // to the admin session at the handler — a cookie-carrying MUTATION
+    // must pass the step-5 CSRF origin check BEFORE this early return
+    // admits it. No-cookie callers and GETs keep the fast path.
+    const csrfRejection = cookieSessionCsrfRejection(req);
+    if (csrfRejection !== null) return csrfRejection;
     return NextResponse.next();
   }
 
@@ -223,6 +328,12 @@ export async function proxy(req: NextRequest) {
   // cannot verify an opaque token), which is why both planes branch here.
   const bearerCandidate = bearerTokenOf(req.headers.get("authorization"));
   if (bearerCandidate && OPAQUE_BEARER_PATTERN.test(bearerCandidate)) {
+    // Wave-11 F-1 (Vector B): a cookie + opaque bearer falls back to the
+    // cookie session in the handler (next-auth cannot verify an opaque
+    // token, requireSessionRead/requirePermission land on the session) —
+    // run the same CSRF origin check before admitting it.
+    const csrfRejection = cookieSessionCsrfRejection(req);
+    if (csrfRejection !== null) return csrfRejection;
     return NextResponse.next();
   }
 
@@ -245,34 +356,18 @@ export async function proxy(req: NextRequest) {
   }
 
   // 5. CSRF origin check (RT-008 / F-010) — ONLY for cookie-session
-  // mutations. The API-client bearer plane returned at step 3b and the
-  // machine plane at step 1, so anything reaching here with a mutating
-  // method is cookie-authenticated traffic; the public bootstrap surfaces
-  // returned at step 3a (their mutations are NextAuth's own
-  // CSRF-protected endpoints). Fail-open applies ONLY to a request with
-  // neither Sec-Fetch-Site nor Origin — a non-browser client that cannot
-  // carry the cookie cross-site in practice (SameSite=Lax still guards the
-  // cookie itself). `same-site` is deliberately rejected: sibling-subdomain
-  // compromise makes it not safe enough.
-  const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-  if (token && MUTATING_METHODS.has(req.method)) {
-    const site = req.headers.get("sec-fetch-site");
-    const origin = req.headers.get("origin");
-    const host = req.headers.get("host");
-    let originHost: string | null = null;
-    if (origin !== null) {
-      try {
-        originHost = new URL(origin).host;
-      } catch {
-        originHost = null; // malformed Origin → treated as cross-site below
-      }
-    }
-    const crossSite =
-      (site !== null && site !== "same-origin" && site !== "none") ||
-      (site === null && origin !== null && host !== null && originHost !== host);
-    if (crossSite) {
-      return NextResponse.json(CSRF_REJECTED_BODY, { status: 403 });
-    }
+  // mutations. The API-client bearer plane returned at step 3b (after the
+  // wave-11 cookie gate) and the machine plane at step 1, so anything
+  // reaching here with a mutating method is cookie-authenticated traffic;
+  // the public bootstrap surfaces returned at step 3a under the same
+  // cookie gate. Fail-open applies ONLY to a request with neither
+  // Sec-Fetch-Site nor Origin — a non-browser client that cannot carry the
+  // cookie cross-site in practice (SameSite=Lax still guards the cookie
+  // itself). `same-site` is deliberately rejected: sibling-subdomain
+  // compromise makes it not safe enough. The decision logic is the shared
+  // helper — identical to the 3a/3b wave-11 gates by construction.
+  if (token && MUTATING_METHODS.has(req.method) && csrfOriginRejected(req)) {
+    return NextResponse.json(CSRF_REJECTED_BODY, { status: 403 });
   }
 
   if (token.role === "auditor" && req.method !== "GET" && req.method !== "HEAD") {

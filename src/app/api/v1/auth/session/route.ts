@@ -18,6 +18,16 @@ export const dynamic = "force-dynamic";
  * enrollment reports false, and FAYANMS_MFA_MODE=disabled bypasses the
  * factor at sign-in without changing this data-plane answer.
  *
+ * Wave-11 (audit 15-b F-2): this route enforces the SAME wave-9 credential
+ * epoch eviction contract as requireUser / requireSessionRead — the token's
+ * `credentialEpoch` claim (stamped at sign-in only; the JWT callback never
+ * refreshes it) must EQUAL User.credentialEpoch. An evicted token (password
+ * set/reset or scope change bumped the epoch after this token was minted)
+ * receives the SAME signed-out envelope an anonymous request gets — it no
+ * longer bootstraps identity, permissions or MFA state. Convention (exact
+ * session.ts mirror): the claim normalizes absent/malformed to 0, so an
+ * epoch-0 row against a claim-less (pre-epoch) token stays valid.
+ *
  * 401 envelope when signed out — the caller (permissions store hydration)
  * treats that as "show the sign-in gate".
  */
@@ -54,6 +64,8 @@ export async function GET(request: Request) {
       role: true,
       isActive: true,
       createdAt: true,
+      // Wave-11 (audit 15-b F-2): the eviction comparator's DB side.
+      credentialEpoch: true,
     },
   });
 
@@ -61,6 +73,19 @@ export async function GET(request: Request) {
     return fail(
       "ACCOUNT_DISABLED",
       "This account is no longer active — sign in again or contact an administrator.",
+      401
+    );
+  }
+
+  // Wave-11 (audit 15-b F-2): epoch eviction, mirroring requireUser's
+  // assertCredentialEpochFresh comparison exactly ((claims epoch ?? 0) !==
+  // row epoch → signed out). getSessionUser already normalizes an
+  // absent/malformed claim to 0, so a pre-epoch token against an untouched
+  // (epoch-0) row stays valid — the wave-9 backward-compat convention.
+  if ((claims.credentialEpoch ?? 0) !== user.credentialEpoch) {
+    return fail(
+      "UNAUTHENTICATED",
+      "Sign in required — no active session.",
       401
     );
   }

@@ -8,6 +8,7 @@ import {
 } from "../../src/lib/auth/service-auth";
 import {
   bearerTokenOf,
+  resetServiceReplayCache,
   verifyServiceToken,
 } from "../../src/lib/auth/service-jwt";
 import {
@@ -55,6 +56,11 @@ const SERVICE_ENV_KEYS = [
   "FAYANMS_SERVICE_ISSUERS",
   "FAYANMS_SERVICE_PUBLIC_KEYS",
   "FAYANMS_SERVICE_PRIVATE_KEY",
+  // Wave-11 hygiene: the worker's readRootEnvValue falls back to the
+  // repo-root .env file when process.env lacks a key — without pinning the
+  // R64 knob empty, the worktree .env's (mismatched) keypair leaks into the
+  // worker-side fixtures below and false-fails them outside CI.
+  "FAYANMS_SERVICE_ENV_FILE",
 ] as const;
 
 /** Full env sandbox — every service-plane variable is explicitly managed. */
@@ -65,9 +71,11 @@ async function withServiceEnv<T>(
   const saved = new Map<string, string | undefined>();
   for (const key of SERVICE_ENV_KEYS) saved.set(key, process.env[key]);
   for (const key of SERVICE_ENV_KEYS) delete process.env[key];
+  process.env.FAYANMS_SERVICE_ENV_FILE = ""; // R64: no .env-file fallback in tests
   for (const [key, value] of Object.entries(env)) {
     if (value !== undefined) process.env[key] = value;
   }
+  resetServiceReplayCache(); // wave-11 jti bindings start empty per sandbox
   try {
     return await fn();
   } finally {
@@ -75,6 +83,7 @@ async function withServiceEnv<T>(
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+    resetServiceReplayCache();
   }
 }
 

@@ -11,6 +11,9 @@
  * Token contract (Phase 19 / audit SEC-002; P1-007 ULTRA audit):
  *   header  { alg: "HS256" | "EdDSA", typ: "JWT" }
  *   payload { iss, sub, aud: "fayanms:internal", iat, exp, jti, scopes }
+ *           (jti is bound to the (iat, exp) mint cycle at verification —
+ *           see "Replay window" below; the worker's control-auth.ts
+ *           verifier enforces the SAME guard symmetrically)
  *
  * P1-007 (ULTRA audit: "HS256 shared-secret only; holder of the secret can
  * mint any token"): the machine plane now supports ASYMMETRIC service
@@ -60,7 +63,36 @@
  *   5. not expired / not issued in the future (± 30 s clock skew);
  *   6. iss/sub present and issuer allowlisted (a shared symmetric secret
  *      alone would let any holder mint tokens with arbitrary identities —
- *      with asymmetric keys the issuer allowlist is defense in depth).
+ *      with asymmetric keys the issuer allowlist is defense in depth);
+ *   7. replay guard (wave-11, audit 15-c F-1 — see "Replay window" below):
+ *      a token whose iat fell out of the mint-cycle freshness window is
+ *      SERVICE_TOKEN_STALE, and a jti re-minted into a DIFFERENT mint
+ *      cycle is SERVICE_REPLAY_DETECTED.
+ *
+ * Replay window (audit 15-c F-1 — the jti was minted but never verified):
+ * the machine plane is a CACHED-TOKEN design — every minter in the repo
+ * (service-auth.ts mintServiceToken, worker service-token.ts,
+ * worker/control-client.ts) mints ONE token per ~300 s cycle with a fresh
+ * random jti and reuses it for many requests until 60 s before expiry —
+ * so a seen-once jti deny-cache would break the loop on the second
+ * request. The correct semantics is a FRESHNESS WINDOW, not single-use:
+ *
+ *   a. iat freshness (stateless): a token whose iat is older than
+ *      SERVICE_TOKEN_MAX_AGE_S (the 300 s mint TTL + 30 s skew) is
+ *      refused with SERVICE_TOKEN_STALE no matter what its exp claims —
+ *      the verifier stops honoring over-long mint-side TTLs, which caps
+ *      any capture-and-replay to the same bounded window the exp check
+ *      already gives standard tokens;
+ *   b. jti ↔ mint-cycle binding (in-memory): a jti must never appear in
+ *      two different mint cycles, so a re-verification of the SAME token
+ *      (same jti + iat + exp — proxy pre-check, handler re-check, cached
+ *      reuse) passes while a jti reappearing with a different iat/exp is
+ *      refused with SERVICE_REPLAY_DETECTED. Bindings lapse when their
+ *      token can no longer be presented (exp + skew — dropped on sight
+ *      and swept on insert) and the map is hard-capped
+ *      (SERVICE_REPLAY_CACHE_MAX) — in-memory, per process; a
+ *      multi-replica deployment gets the invariant per replica and the
+ *      stateless freshness window everywhere.
  *
  * Key material encoding (operator contract, see scripts/generate-service-
  * keys.ts):
@@ -86,6 +118,102 @@ import {
 
 export const SERVICE_AUDIENCE = "fayanms:internal";
 const CLOCK_SKEW_S = 30;
+
+/**
+ * Verifier-side mint-cycle freshness window (audit 15-c F-1): every minter
+ * in the repo uses the 300 s TTL; the verifier refuses tokens whose iat is
+ * older than TTL + skew regardless of the claimed exp (SERVICE_TOKEN_STALE).
+ */
+export const SERVICE_TOKEN_MAX_AGE_S = 300 + CLOCK_SKEW_S;
+
+/** Hard cap for the in-process jti binding cache (audit 15-c F-1). */
+export const SERVICE_REPLAY_CACHE_MAX = 5000;
+
+/** One jti binding: the mint cycle (iat) and expiry of the token that carried it. */
+interface ServiceReplayEntry {
+  iat: number | null;
+  exp: number;
+}
+
+const serviceReplayCache = new Map<string, ServiceReplayEntry>();
+
+/** Reset the in-memory jti bindings (key rotation / tests). */
+export function resetServiceReplayCache(): void {
+  serviceReplayCache.clear();
+}
+
+/**
+ * Drop bindings whose token can no longer be presented (exp + skew) and
+ * enforce the hard cap by dropping the OLDEST-inserted bindings (Map
+ * preserves insertion order). Runs on insert so the cache stays bounded.
+ */
+function evictServiceReplayCache(nowS: number): void {
+  if (serviceReplayCache.size === 0) return;
+  for (const [key, entry] of serviceReplayCache) {
+    if (entry.exp + CLOCK_SKEW_S < nowS) serviceReplayCache.delete(key);
+  }
+  while (serviceReplayCache.size >= SERVICE_REPLAY_CACHE_MAX) {
+    const oldest = serviceReplayCache.keys().next();
+    if (oldest.done) break;
+    serviceReplayCache.delete(oldest.value);
+  }
+}
+
+export type ServiceReplayResult =
+  | { ok: true }
+  | {
+      ok: false;
+      code: "SERVICE_TOKEN_STALE" | "SERVICE_REPLAY_DETECTED";
+      message: string;
+    };
+
+/**
+ * The replay guard proper (audit 15-c F-1). `nowS` is injected so the
+ * window/binding arithmetic is testable without time travel; the jti/iat
+ * pair arrives from a payload that has already passed signature, audience,
+ * expiry and issuer checks. A token WITHOUT a jti (never minted by this
+ * repo, but the guard must not invent requirements) skips the binding and
+ * only faces the freshness window when it carries an iat.
+ */
+export function checkServiceReplay(
+  jti: string | null,
+  iat: number | null,
+  exp: number,
+  nowS: number
+): ServiceReplayResult {
+  if (iat !== null && nowS - iat > SERVICE_TOKEN_MAX_AGE_S) {
+    return {
+      ok: false,
+      code: "SERVICE_TOKEN_STALE",
+      message: `Service token iat is older than the ${SERVICE_TOKEN_MAX_AGE_S}s mint-cycle window — replay refused.`,
+    };
+  }
+  if (jti !== null) {
+    const seen = serviceReplayCache.get(jti);
+    // A LAPSED binding (its token's exp + skew has passed) no longer pins
+    // the jti: the old token cannot be presented anyway, so a re-mint of
+    // that jti into a later cycle is legitimate. Expired entries are
+    // dropped on sight (get path) and swept on insert — the cache stays
+    // bounded without ever over-rejecting a live mint cycle.
+    const lapsed = seen !== undefined && seen.exp + CLOCK_SKEW_S < nowS;
+    if (seen !== undefined && !lapsed) {
+      if (seen.iat !== iat || seen.exp !== exp) {
+        return {
+          ok: false,
+          code: "SERVICE_REPLAY_DETECTED",
+          message: "Service token jti was re-minted into a different mint cycle — replay refused.",
+        };
+      }
+      // Same jti + iat + exp = the same token re-verified (the proxy
+      // pre-check, the handler re-check, cached-token reuse) — accepted.
+    } else {
+      if (seen !== undefined) serviceReplayCache.delete(jti); // lapsed binding
+      evictServiceReplayCache(nowS);
+      serviceReplayCache.set(jti, { iat, exp });
+    }
+  }
+  return { ok: true };
+}
 
 /**
  * Issuer allowlist (Phase 19-C / audit SVC-101 §11.3). Override with
@@ -347,9 +475,10 @@ function verifyServiceJwt(
 
 /**
  * Verify a bearer service token end-to-end (signature + audience + expiry
- * + issuer allowlist). Returns the principal on success — the single
- * verification path used by BOTH the proxy gate (machine-plane exemption,
- * no scope) and the route handlers (authenticateServiceRequest + scope).
+ * + issuer allowlist + replay guard). Returns the principal on success —
+ * the single verification path used by BOTH the proxy gate (machine-plane
+ * exemption, no scope) and the route handlers (authenticateServiceRequest
+ * + scope).
  */
 export function verifyServiceToken(token: string): ServiceAuthResult {
   let secrets: string[] = [];
@@ -387,6 +516,19 @@ export function verifyServiceToken(token: string): ServiceAuthResult {
       message: `Service token issuer "${iss}" is not in the allowlist.`,
     };
   }
+  // Wave-11 replay guard (audit 15-c F-1) — runs only after FULL
+  // verification (signature + audience + expiry + issuer), so a rejected
+  // token never poisons the jti bindings, and a double verification of the
+  // same token (proxy pre-check → handler re-check) passes by binding.
+  // exp was already validated numeric by verifyServiceJwt (required); iat
+  // stays optional per the wire contract (minters always set it).
+  const replay = checkServiceReplay(
+    typeof payload.jti === "string" && payload.jti.length > 0 ? payload.jti : null,
+    typeof payload.iat === "number" ? payload.iat : null,
+    typeof payload.exp === "number" ? payload.exp : Math.floor(Date.now() / 1000),
+    Math.floor(Date.now() / 1000)
+  );
+  if (!replay.ok) return replay;
   const scopes = Array.isArray(payload.scopes)
     ? payload.scopes.filter((s): s is string => typeof s === "string")
     : [];

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import path from "node:path";
 import { NextRequest } from "next/server";
 
@@ -61,7 +61,7 @@ function mintTestServiceToken(overrides?: { expired?: boolean }): string {
       aud: "fayanms:internal",
       iat: nowS,
       exp: overrides?.expired ? nowS - 3600 : nowS + 300,
-      jti: "r62-test-jti",
+      jti: randomUUID(), // wave-11 replay guard: jti binds to a mint cycle — unique per mint
       scopes: ["jobs"],
     }),
   ).toString("base64url");

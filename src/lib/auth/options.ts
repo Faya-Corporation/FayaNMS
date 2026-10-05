@@ -27,9 +27,12 @@ import type { UserRole } from "@/lib/auth/roles";
  * F-031 resource-level scoping: the OPTIONAL `sites` claim (site codes) is
  * minted ONLY at sign-in, from the user's User.siteScopeJson column (null
  * column → no claim → wildcard = the single-tenant default). The session
- * refresh branch deliberately does NOT touch it — a scope change takes
- * effect on the user's NEXT sign-in (no live token revocation; documented
- * in docs/security/authorization-matrix.md §5).
+ * refresh branch deliberately does NOT touch it — the refreshed claim is
+ * minted at the user's NEXT sign-in. Wave-11 (audit 15-b F-3): a scope
+ * change now ALSO bumps User.credentialEpoch in the same transaction, so
+ * every live token minted before it is evicted (requireUser's epoch-vs-DB
+ * comparison) and the re-login — which mints the NEW scope — is enforced,
+ * not conventional (documented in docs/security/authorization-matrix.md §5).
  *
  * AUTH-001-A: the credentials verification path is guarded by the dedicated
  * login abuse-control module (src/lib/auth/login-guard.ts) — throttling,
@@ -53,16 +56,42 @@ class CredentialsSigninError extends Error {
   }
 }
 
+/**
+ * Wave-11 (audit 15-b F-1): a REAL, well-formed scrypt hash of a random
+ * throwaway password, used ONLY as a timing equalizer. The stored format
+ * is `scrypt$N$salt$hash` (src/lib/auth/password.ts) — a MALFORMED string
+ * would short-circuit in verifyPassword() WITHOUT running the scrypt KDF,
+ * so the constant must stay a genuine `scrypt$16384$<32 hex>$<128 hex>`
+ * derivation: it burns exactly the same work (N=2^14, 64-byte key) as the
+ * verification against a real user row, flattening the timing difference
+ * between "unknown email / login-disabled" and "wrong password" (the
+ * enumeration oracle the repo's own AUTH-001-A acceptance line forbids).
+ * The derivation result is deliberately discarded — this path always
+ * answers the generic null failure.
+ */
+export const DUMMY_CREDENTIAL_HASH =
+  "scrypt$16384$7808450a9140561fc6197d56c973064d$8d24714c695698990a02f7a50a72279f9712b1c0c60bb9238654e04602dcb6f248db045d149729d505877f8bf0a1580d34eb8f3488eb6bb4c29adc0a474c26f8";
+
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
     // P3-SESSION (independent audit 2026-09-15): an administrative/NOC plane
-    // does not carry 30-day sessions. 12 h absolute lifetime bounds the
-    // stolen-cookie half-life to a NOC-shift scale while remaining
-    // operationally sane; role changes and account deactivation already
-    // propagate per-request (the session revalidates the live user), so the
-    // lifetime bounds ANONYMOUS persistence of a VALID credential state —
-    // exactly what should be shortest here.
+    // does not carry 30-day sessions. 12 h bounds the stolen-cookie half-life
+    // to a NOC-shift scale while remaining operationally sane; role changes
+    // and account deactivation already propagate per-request (the session
+    // revalidates the live user), so the lifetime bounds ANONYMOUS
+    // persistence of a VALID credential state — exactly what should be
+    // shortest here.
+    //
+    // Wave-11 honesty correction (audit 15-b F-4): next-auth v4 re-encodes
+    // the token with a FRESH expiry on every /api/auth/session fetch (its
+    // core session route re-issues the cookie), so this maxAge is a SLIDING
+    // inactivity window renewed per full page load — NOT an absolute
+    // lifetime. Revocation-NOW is the credentialEpoch bump (password
+    // set/reset or scope change → requireUser / requireSessionRead evict
+    // every token minted before the bump); an ABSOLUTE cap is deliberately
+    // NOT implemented (owner decision — noted here as such, revisit if the
+    // NOC threat model changes).
     maxAge: 12 * 60 * 60, // 12 h — bounded admin-plane sessions (was 30 d)
   },
   pages: {
@@ -102,16 +131,33 @@ export const authOptions: NextAuthOptions = {
         if (!loginVerdict.allowed) return null;
 
         const user = await db.user.findUnique({ where: { email } });
-        // Uniform failure: unknown account, null hash (login disabled) and
-        // wrong password all answer the generic credentials error.
-        if (!user || !user.passwordHash) {
-          await recordLoginFailure(loginIdentity);
-          return null;
-        }
-        if (!user.isActive) throw new CredentialsSigninError("Account disabled");
-
-        const valid = await verifyPassword(password, user.passwordHash);
-        if (!valid) {
+        // Wave-11 (audit 15-b F-1) — enumeration/timing discipline. The
+        // scrypt verification runs FIRST whenever a user with a passwordHash
+        // exists, and the isActive check only AFTER the credential verified:
+        // a wrong guess against a disabled account answers the generic null
+        // (previously the "Account disabled" throw leaked the account's
+        // existence BEFORE any credential check). The distinct "Account
+        // disabled" message is preserved for the legitimate case — a VALID
+        // credential for a disabled account — which the sign-in gate renders
+        // verbatim.
+        if (user?.passwordHash) {
+          const valid = await verifyPassword(password, user.passwordHash);
+          if (!valid) {
+            await recordLoginFailure(loginIdentity);
+            return null;
+          }
+          if (!user.isActive) {
+            throw new CredentialsSigninError("Account disabled");
+          }
+        } else {
+          // Unknown account or null hash (login disabled): burn an
+          // equivalent scrypt derivation against the fixed dummy hash so
+          // this failure path is as slow as a real verification, then keep
+          // the uniform generic failure — the SAME public answer as a wrong
+          // password, with the SAME login-guard accounting as before
+          // (unknown accounts still record a failure; the verification
+          // verdict itself is deliberately discarded).
+          await verifyPassword(password, DUMMY_CREDENTIAL_HASH);
           await recordLoginFailure(loginIdentity);
           return null;
         }

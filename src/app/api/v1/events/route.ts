@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import {
   fail,
   firstIssueMessage,
@@ -54,7 +54,16 @@ export const dynamic = "force-dynamic";
  * in the handler): AuditEvent rows carry no site dimension (the deep fix is
  * the documented owner decision), so sites-limited sessions receive the
  * stream with the free-text identity fields of UNPROVABLE rows stripped
- * fail-closed. Wildcard sessions keep byte-identical rows.
+ * fail-closed. Wildcard HUMAN sessions keep byte-identical rows.
+ *
+ * F-2 wave-11 (audit 15-c P3-3): a BEARER principal (an API-client token —
+ * no human session) resolves null scope claims → wildcard, which used to
+ * skip the strip branch entirely and hand the UNSTRIPPED global audit
+ * stream (ips/userAgents/labels/payloads) to a non-expiring alerts.read
+ * token. Bearer principals are now ALWAYS in the strip class regardless of
+ * the resolved scope mode — the bearer plane is unscoped by design, so it
+ * can never prove a row in-scope. Wildcard HUMAN sessions keep the
+ * documented unstripped posture.
  */
 
 const querySchema = paginationSchema.extend({
@@ -78,8 +87,9 @@ function parseJson(value: string | null): unknown {
 }
 
 export async function GET(request: Request) {
+  let principal: User;
   try {
-    await requireSessionRead(request);
+    principal = await requireSessionRead(request);
   } catch (error) {
     const envelope = authErrorToFail(error);
     if (envelope) return envelope;
@@ -118,9 +128,16 @@ export async function GET(request: Request) {
 
   // F-031 wave-10: resolve the session scope once (wildcard = absent claim,
   // the single-tenant default — byte-identical output for every row).
+  // F-2 wave-11: requireSessionRead succeeded but the claims lookup is
+  // null ⇒ the request authenticated on the NON-session plane (the
+  // API-client opaque-bearer read plane — a human session always resolves
+  // its claims, and an anonymous request never got past the read gate).
+  // That principal is unscoped by design (no sites claim exists for it),
+  // so its id — the ApiClient row id — keys the bearer strip class below.
   const scopeClaims = await sessionScopeFor(request);
   const scope = sessionSiteScope(scopeClaims);
   const isWildcard = scope.mode === "wildcard";
+  const bearerPrincipalId = scopeClaims === null ? principal.id : null;
 
   /** All filters — used for the page itself. (Contextually typed so the
    *  `mode: "insensitive"` literals stay narrow for Prisma's Exact<>.) */
@@ -276,9 +293,33 @@ export async function GET(request: Request) {
    * Everything else strips — stale/unresolvable references fail closed.
    * Meta facets stay counts + action/type names (no resource identity).
    * Cost: one batched query per candidate resource type — no N+1.
-   * Wildcard sessions never enter this branch (byte-identical rows).
+   * Wildcard HUMAN sessions never enter this branch (byte-identical rows).
+   *
+   * F-2 wave-11 (audit 15-c P3-3) — BEARER STRIP CLASS: a request that
+   * authenticated on the API-client bearer plane (bearerPrincipalId set —
+   * scope mode irrelevant) is ALWAYS stripped: the bearer plane resolves
+   * wildcard WITHOUT a sites claim, so no resource can ever be proven
+   * in-scope for it, and a leaked non-expiring alerts.read token must not
+   * buy the unstripped global stream. Same own-actor carve-out keyed by
+   * the principal id for symmetry; note it is structurally vacuous today
+   * (auditAttribution writes actorId = null for client principals —
+   * AuditEvent.actorId is a User FK) but stays correct if attribution
+   * ever carries the client id.
    * ──────────────────────────────────────────────────────────────────── */
-  if (!isWildcard) {
+  if (bearerPrincipalId !== null) {
+    for (let i = 0; i < data.length; i += 1) {
+      const row = data[i]!;
+      if (row.actorId !== null && row.actorId === bearerPrincipalId) continue;
+      data[i] = {
+        ...row,
+        resourceLabel: null,
+        ip: null,
+        userAgent: null,
+        beforeJson: null,
+        afterJson: null,
+      };
+    }
+  } else if (!isWildcard) {
     const deviceIds = [
       ...new Set(
         rows

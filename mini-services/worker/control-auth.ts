@@ -32,6 +32,24 @@
  *
  * /health stays open (liveness probe; counters only, no device surface).
  *
+ * Replay window (wave-11, audit 15-c F-1 — mirrors src/lib/auth/service-
+ * jwt.ts "Replay window"): the machine plane is a CACHED-TOKEN design on
+ * BOTH legs — the control plane mints ONE ~300 s token (control-client.ts)
+ * and reuses it for many worker-bound calls, and the worker's own runner
+ * reuses its token for the app-bound calls — so a seen-once jti deny-cache
+ * would break the loop on the second request. The guard is a FRESHNESS
+ * WINDOW, not single-use:
+ *   a. iat freshness (stateless): a token whose iat is older than
+ *      CONTROL_TOKEN_MAX_AGE_S (the 300 s mint TTL + 30 s skew) is
+ *      refused with WORKER_TOKEN_STALE no matter what its exp claims;
+ *   b. jti ↔ mint-cycle binding (in-memory): re-verification of the SAME
+ *      token (same jti + iat + exp) passes; a jti reappearing with a
+ *      different iat/exp is refused with WORKER_REPLAY_DETECTED. Bindings
+ *      lapse when their token can no longer be presented (exp + skew —
+ *      dropped on sight and swept on insert) and the map is hard-capped
+ *      (CONTROL_REPLAY_CACHE_MAX) — in-memory, per process; the freshness
+ *      window stays stateless everywhere.
+ *
  * Zero external dependencies: same wire format as the Next.js verifier
  * (src/lib/auth/service-jwt.ts) and the worker's own signer
  * (service-token.ts).
@@ -49,6 +67,104 @@ import { join } from "node:path";
 
 const AUDIENCE = "fayanms:internal";
 const CLOCK_SKEW_S = 30;
+
+/**
+ * Verifier-side mint-cycle freshness window (audit 15-c F-1): both minters
+ * that target this worker (control-client.ts TTL 300, service-token.ts
+ * TTL 300) mint 300 s tokens; the verifier refuses tokens whose iat is
+ * older than TTL + skew regardless of the claimed exp (WORKER_TOKEN_STALE).
+ */
+const CONTROL_TOKEN_MAX_AGE_S = 300 + CLOCK_SKEW_S;
+
+/** Hard cap for the in-process jti binding cache (audit 15-c F-1). */
+const CONTROL_REPLAY_CACHE_MAX = 5000;
+
+/** One jti binding: the mint cycle (iat) and expiry of the token that carried it. */
+interface ControlReplayEntry {
+  iat: number | null;
+  exp: number;
+}
+
+const controlReplayCache = new Map<string, ControlReplayEntry>();
+
+/** Reset the in-memory jti bindings (key rotation / tests). */
+export function resetControlReplayCache(): void {
+  controlReplayCache.clear();
+}
+
+/**
+ * Drop bindings whose token can no longer be presented (exp + skew) and
+ * enforce the hard cap by dropping the OLDEST-inserted bindings (Map
+ * preserves insertion order). Runs on insert so the cache stays bounded.
+ */
+function evictControlReplayCache(nowS: number): void {
+  if (controlReplayCache.size === 0) return;
+  for (const [key, entry] of controlReplayCache) {
+    if (entry.exp + CLOCK_SKEW_S < nowS) controlReplayCache.delete(key);
+  }
+  while (controlReplayCache.size >= CONTROL_REPLAY_CACHE_MAX) {
+    const oldest = controlReplayCache.keys().next();
+    if (oldest.done) break;
+    controlReplayCache.delete(oldest.value);
+  }
+}
+
+export type ControlReplayResult =
+  | { ok: true }
+  | {
+      ok: false;
+      code: "WORKER_TOKEN_STALE" | "WORKER_REPLAY_DETECTED";
+      message: string;
+    };
+
+/**
+ * The replay guard proper (audit 15-c F-1, the app verifier's
+ * checkServiceReplay mirrored). `nowS` is injected so the window/binding
+ * arithmetic is testable without time travel; the jti/iat pair arrives
+ * from a payload that has already passed signature, audience, expiry and
+ * issuer checks. A token WITHOUT a jti (never minted by this repo, but
+ * the guard must not invent requirements) skips the binding and only
+ * faces the freshness window when it carries an iat.
+ */
+export function checkControlReplay(
+  jti: string | null,
+  iat: number | null,
+  exp: number,
+  nowS: number
+): ControlReplayResult {
+  if (iat !== null && nowS - iat > CONTROL_TOKEN_MAX_AGE_S) {
+    return {
+      ok: false,
+      code: "WORKER_TOKEN_STALE",
+      message: `Token iat is older than the ${CONTROL_TOKEN_MAX_AGE_S}s mint-cycle window — replay refused.`,
+    };
+  }
+  if (jti !== null) {
+    const seen = controlReplayCache.get(jti);
+    // A LAPSED binding (its token's exp + skew has passed) no longer pins
+    // the jti — the old token cannot be presented anyway (mirror of the
+    // app verifier's checkServiceReplay). Expired entries are dropped on
+    // sight (get path) and swept on insert — the cache stays bounded
+    // without ever over-rejecting a live mint cycle.
+    const lapsed = seen !== undefined && seen.exp + CLOCK_SKEW_S < nowS;
+    if (seen !== undefined && !lapsed) {
+      if (seen.iat !== iat || seen.exp !== exp) {
+        return {
+          ok: false,
+          code: "WORKER_REPLAY_DETECTED",
+          message: "Token jti was re-minted into a different mint cycle — replay refused.",
+        };
+      }
+      // Same jti + iat + exp = the same token re-verified (cached-token
+      // reuse, retried POSTs) — accepted.
+    } else {
+      if (seen !== undefined) controlReplayCache.delete(jti); // lapsed binding
+      evictControlReplayCache(nowS);
+      controlReplayCache.set(jti, { iat, exp });
+    }
+  }
+  return { ok: true };
+}
 
 /**
  * Issuer allowlist: the Next.js control plane ("fayanms:control") drives
@@ -327,6 +443,18 @@ export function verifyControlToken(
   if (iat !== null && iat - CLOCK_SKEW_S > nowS) {
     return { ok: false, code: "WORKER_TOKEN_MALFORMED", message: "Token iat is in the future." };
   }
+  // Wave-11 replay guard (audit 15-c F-1) — after signature/audience/expiry
+  // verification, BEFORE the scope decision: scope is AUTHORIZATION (a
+  // scope miss answers the 403 class) while a replayed identity is an
+  // authentication failure (the 401 class). The same guard shape as the
+  // app verifier (src/lib/auth/service-jwt.ts checkServiceReplay).
+  const replay = checkControlReplay(
+    typeof payload.jti === "string" && payload.jti.length > 0 ? payload.jti : null,
+    iat,
+    exp,
+    nowS
+  );
+  if (!replay.ok) return { ok: false, code: replay.code, message: replay.message };
   const scopes = Array.isArray(payload.scopes)
     ? payload.scopes.filter((s): s is string => typeof s === "string")
     : [];
