@@ -1,5 +1,14 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import {
+  scopedDeviceWhere,
+  sessionAllowsSite,
+  sessionSiteScope,
+} from "@/lib/auth/scope";
 import { ok } from "../_lib/api";
 import { INCIDENT_OPEN_STATUSES } from "@/lib/incidents/lifecycle";
 import {
@@ -43,6 +52,19 @@ export const dynamic = "force-dynamic";
  * Read-only GET → no audit event (app convention). Identical data always
  * yields identical scores — two back-to-back GETs are byte-stable apart
  * from generatedAt (deterministic-composition contract).
+ *
+ * F-031 wave-10 (audit 13-c F-7): pair members are DEVICE rows — the live
+ * status findMany composes scopedDeviceWhere, and a pair whose STATIC site
+ * code is outside the session scope is DROPPED from the response entirely.
+ * Posture note (the dashboard-consistency decision): the dashboard
+ * recentActivity strip applies to free-text audit labels with no resource
+ * linkage to scope by; HA pair members are structured device rows that
+ * every other plane (devices list/detail, firmware, interfaces) HIDES from
+ * sites-limited sessions — so the pair vanishes rather than being
+ * label-stripped (mirror of the device-domain posture, documented here).
+ * The DR-readiness device scan is scope-intersected too: an out-of-scope
+ * site's readiness degrades to zero-signal aggregates (percentages only —
+ * no device identity leaks; the static DR topology rows stay).
  * ───────────────────────────────────────────────────────────────────────────── */
 
 const BACKUP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -114,9 +136,16 @@ export async function GET(request: Request) {
     if (envelope) return envelope;
     throw error;
   }
+  // F-031 wave-10: resolve the session scope once for both legs.
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const isWildcard = scope.mode === "wildcard";
+
   /* 1 — pair members, live from the DB (status is never guessed). */
   const memberDevices = await db.device.findMany({
-    where: { hostname: { in: [...HA_PAIR_HOSTNAMES] } },
+    where: isWildcard
+      ? { hostname: { in: [...HA_PAIR_HOSTNAMES] } }
+      : scopedDeviceWhere(scopeClaims, { hostname: { in: [...HA_PAIR_HOSTNAMES] } }),
     select: {
       id: true,
       hostname: true,
@@ -147,7 +176,13 @@ export async function GET(request: Request) {
     else auditByPair.set(row.resourceId, [row]);
   }
 
-  const pairs = HA_PAIRS.map((pair) => {
+  // F-031 wave-10: a pair is visible when its static site code is in the
+  // session scope (sessionAllowsSite — the null code would be the unscoped
+  // resource bypass; HA_PAIRS always carry a siteCode). Out-of-scope pairs
+  // are DROPPED (see the header posture note).
+  const pairs = HA_PAIRS.filter(
+    (pair) => isWildcard || sessionAllowsSite(scopeClaims, pair.siteCode)
+  ).map((pair) => {
     const members = pair.members.map((hostname) => {
       const device = byHostname.get(hostname);
       return {
@@ -183,7 +218,12 @@ export async function GET(request: Request) {
   ];
 
   const siteDevices = await db.device.findMany({
-    where: { siteId: { in: drSiteIds } },
+    // F-031 wave-10: the readiness inputs are scope-intersected —
+    // out-of-scope sites see zero-signal aggregates, never out-of-scope
+    // device rows.
+    where: isWildcard
+      ? { siteId: { in: drSiteIds } }
+      : scopedDeviceWhere(scopeClaims, { siteId: { in: drSiteIds } }),
     select: { id: true, siteId: true, status: true, backupCompliance: true },
   });
   const deviceIdsBySite = new Map<string, string[]>();
@@ -242,15 +282,20 @@ export async function GET(request: Request) {
             : 0;
 
       // Open SEV1 incidents touching the site (direct OR device-linked).
-      const openCritical = siteId
-        ? await db.incident.count({
-            where: {
-              severity: "SEV1",
-              status: { in: [...INCIDENT_OPEN_STATUSES] },
-              OR: [{ siteId }, { devices: { some: { device: { siteId } } } }],
-            },
-          })
-        : 0;
+      // F-031 wave-10: counted only when the session scope holds the site —
+      // an out-of-scope site's incident load is never summed into a
+      // readiness score (skip, not zero-out an in-flight query).
+      const siteInScope = isWildcard || sessionAllowsSite(scopeClaims, dr.primary);
+      const openCritical =
+        siteId && siteInScope
+          ? await db.incident.count({
+              where: {
+                severity: "SEV1",
+                status: { in: [...INCIDENT_OPEN_STATUSES] },
+                OR: [{ siteId }, { devices: { some: { device: { siteId } } } }],
+              },
+            })
+          : 0;
 
       return {
         primary: dr.primary,

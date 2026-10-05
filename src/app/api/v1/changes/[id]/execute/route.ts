@@ -1,12 +1,20 @@
 import { db } from "@/lib/db";
 import { fail, failWithDetail, firstIssueMessage, newJobCorrelationId, ok } from "../../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSiteScope,
+} from "@/lib/auth/session";
 import {
   ExecutionInFlightError,
   executionLeaseExpiry,
   isUniqueConflict,
 } from "@/lib/change/execution-guard";
 import { loadApprovalGate } from "@/lib/change/approval-gate";
+import {
+  requireDeviceLegScope,
+  resolveChangeScopeTarget,
+} from "../../../_lib/change-scope";
 import { APPROVAL_FINGERPRINT_UNBINDABLE } from "@/lib/change/fingerprint";
 import { z } from "zod";
 
@@ -47,6 +55,11 @@ export const dynamic = "force-dynamic";
  *     execution requires the "change.execute" permission (engineer; admin
  *     via wildcard). Once real adapters land this is the direct
  *     production network-control gate.
+ *   403 SITE_SCOPE_FORBIDDEN — wave 10 (F-031, audit 13-b F-2): the
+ *     change's site dimension must be inside the session's scope BEFORE
+ *     any CHANGE_EXECUTE job is queued to the worker (site relation, or
+ *     EVERY linked device for a site-less change); a wildcard session is
+ *     byte-unchanged.
  *
  * Creates a QUEUED JobExecution (type CHANGE_EXECUTE, targetType CHANGE,
  * targetId = change.id, payloadJson { failAt, triggerUserId })
@@ -115,6 +128,29 @@ export async function POST(
   if (!change) {
     return fail("CHANGE_NOT_FOUND", "The requested change does not exist", 404);
   }
+
+  // F-2 (wave 10, audit 13-b): scope-check BEFORE the state checks and
+  // before anything is queued to the worker — an out-of-scope execution
+  // would drive APPLY steps on devices the session cannot even read.
+  // Site-less changes ride their linked devices (ALL in scope); no site
+  // and no devices is the documented unscoped-resource bypass.
+  const scopeTarget = await resolveChangeScopeTarget(change.id);
+  if (scopeTarget.kind === "missing") {
+    return fail("CHANGE_NOT_FOUND", "The requested change does not exist", 404);
+  }
+  if (scopeTarget.kind === "site") {
+    try {
+      await requireSiteScope(request, scopeTarget.code);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
+  } else if (scopeTarget.kind === "devices") {
+    const deviceLegFail = await requireDeviceLegScope(request, scopeTarget.deviceIds);
+    if (deviceLegFail) return deviceLegFail;
+  }
+
   if (!["APPROVED", "SCHEDULED"].includes(change.status)) {
     return fail(
       "INVALID_STATE",

@@ -5,7 +5,7 @@ import {
   newCorrelationId,
   ok,
 } from "../../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSiteScope } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +14,12 @@ export const dynamic = "force-dynamic";
  * POST /api/v1/alerts/[id]/unsuppress — SUPPRESSED → ACTIVE (Task 5-a).
  * Clears suppressReason (parentAlertId is kept for grouping context).
  * Audits ALERT_UNSUPPRESSED.
+ *
+ * F-031 wave-10 (audit 13-a F-3, mutation gate): the alert's device site
+ * must be inside the session's scope before any state check or mutation —
+ * requireSiteScope answers 403 SITE_SCOPE_FORBIDDEN (the documented
+ * mutation contract; a null site follows the documented unscoped-resource
+ * rule).
  */
 const unsuppressSchema = z.object({
 });
@@ -55,11 +61,20 @@ export async function POST(
       severity: true,
       message: true,
       suppressReason: true,
-      device: { select: { id: true, hostname: true } },
+      device: { select: { id: true, hostname: true, site: { select: { code: true } } } },
     },
   });
   if (!alert) {
     return fail("ALERT_NOT_FOUND", "Alert not found", 404);
+  }
+  // F-031 wave-10: the scope gate runs BEFORE the state check and the
+  // mutation (403-not-404 — mutations accept existence confirmation).
+  try {
+    await requireSiteScope(request, alert.device.site?.code ?? null);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
   if (alert.status !== "SUPPRESSED") {
     return fail(

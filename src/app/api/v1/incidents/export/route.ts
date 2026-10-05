@@ -2,7 +2,12 @@ import { db } from "@/lib/db";
 import { fail, newCorrelationId } from "../../_lib/api";
 import { computeSlaState, formatSlaCountdown } from "@/lib/incidents/lifecycle";
 import { FAYANMS_BRAND } from "@/lib/brand/identity";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionAllowsSite } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +20,18 @@ export const dynamic = "force-dynamic";
  * outcome (breached flag + actual resolve duration vs target), timeline
  * table (kind + actor + time), affected devices, linked change + alerts,
  * RCA/PIR (root cause / corrective / preventive) and sign-off lines.
+ *
+ * F-031 wave-10 (audit 13-a F-2, read-plane migration): the row-level
+ * predicate `sessionAllowsSite(claims, incident.site?.code ?? null)` fuses
+ * into the not-found branch — an out-of-scope incident answers the SAME
+ * INCIDENT_NOT_FOUND envelope a wildcard session gets for a missing row
+ * (404-not-403), before any HTML is rendered.
+ *
+ * F-5 (audit 13-a, P3): the INCIDENT_PIR_EXPORTED audit row now carries the
+ * REAL session principal (actorId + actorName) exactly like the
+ * reports/runs/[id]/download precedent — the synthetic
+ * "system:report-engine" actor is gone (an unattributable export cannot be
+ * told apart from an engine run in the audit trail).
  */
 
 function esc(value: string | null | undefined): string {
@@ -45,9 +62,11 @@ function duration(from: Date, to: Date): string {
 export async function GET(request: Request) {
   // F-008 phase 4a (read-plane defense-in-depth): the GET handler verifies
   // the human session itself (requireSessionRead) — the proxy matcher stays
-  // the coarse gate, not the only check.
+  // the coarse gate, not the only check. The resolved principal also feeds
+  // the export audit attribution (F-5).
+  let actor: Awaited<ReturnType<typeof requireSessionRead>>;
   try {
-    await requireSessionRead(request);
+    actor = await requireSessionRead(request);
   } catch (error) {
     const envelope = authErrorToFail(error);
     if (envelope) return envelope;
@@ -58,6 +77,10 @@ export async function GET(request: Request) {
   if (!id || id.length > 64) {
     return fail("INVALID_QUERY", "Query parameter id is required", 400);
   }
+
+  // F-031 wave-10: the session's site scope for the row predicate
+  // (wildcard sessions — absent claims — keep byte-identical behavior).
+  const scopeClaims = await sessionScopeFor(request);
 
   const incident = await db.incident.findUnique({
     where: { id },
@@ -96,7 +119,10 @@ export async function GET(request: Request) {
     },
   });
 
-  if (!incident) {
+  // Fused-404: out-of-scope site → the same not-found envelope as a missing
+  // row (no existence oracle for sites-limited sessions) — BEFORE any HTML
+  // is rendered.
+  if (!incident || !sessionAllowsSite(scopeClaims, incident.site?.code ?? null)) {
     return fail("INCIDENT_NOT_FOUND", "Incident not found", 404);
   }
 
@@ -279,16 +305,21 @@ export async function GET(request: Request) {
 </html>`;
 
   // Audit the export like other sensitive exports (3-a CONFIG_DOWNLOAD).
+  // F-5 (wave-10): the row carries the REAL session principal — actorId /
+  // actorName from the authenticated user (the reports-download precedent),
+  // not the synthetic "system:report-engine" actor.
+  const correlationId = newCorrelationId("EXP");
   try {
     await db.auditEvent.create({
       data: {
-        actorName: "system:report-engine",
+        actorId: actor.id,
+        actorName: actor.name ?? actor.email,
         action: "INCIDENT_PIR_EXPORTED",
         resourceType: "Incident",
         resourceId: incident.id,
         resourceLabel: `${incident.number} — PIR report`,
         result: "SUCCESS",
-        correlationId: newCorrelationId("EXP"),
+        correlationId,
         afterJson: JSON.stringify({ number: incident.number, status: incident.status }),
       },
     });

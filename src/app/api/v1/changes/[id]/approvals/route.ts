@@ -5,8 +5,13 @@ import {
   authErrorToFail,
   actorIsWildcard,
   requireApprovalEntitlement,
+  requireSiteScope,
 } from "@/lib/auth/session";
 import { loadApprovalGate } from "@/lib/change/approval-gate";
+import {
+  requireDeviceLegScope,
+  resolveChangeScopeTarget,
+} from "../../../_lib/change-scope";
 import {
   APPROVALS_UNBINDABLE,
   approvalExpiryFor,
@@ -55,6 +60,10 @@ export const dynamic = "force-dynamic";
  *         change (across ALL their decisions, any expiry) unless they hold
  *         the admin wildcard — one principal cannot satisfy multiple
  *         independent levels;
+ *   403 SITE_SCOPE_FORBIDDEN — wave 10 (F-031, audit 13-b F-2): the
+ *     change's site dimension (site relation, or EVERY linked device for a
+ *     site-less change) must be inside the session's scope before any
+ *     decision is recorded; a wildcard session is byte-unchanged.
  *   409 DECISION_STILL_VALID — the approver already holds a live (unexpired)
  *     decision on this level; re-casting is only for the post-expiry
  *     re-approval loop (quorum inflation guard).
@@ -135,6 +144,29 @@ export async function POST(
   });
   if (!change) {
     return fail("CHANGE_NOT_FOUND", "The requested change does not exist", 404);
+  }
+
+  // F-2 (wave 10, audit 13-b): the change's site dimension must be inside
+  // the session's scope before any decision is recorded — the gate sits
+  // before the SoD/state checks so out-of-scope callers learn nothing
+  // about the change's approval state. Site-less changes ride their
+  // linked devices (ALL in scope); no site and no devices is the
+  // documented unscoped-resource bypass.
+  const scopeTarget = await resolveChangeScopeTarget(change.id);
+  if (scopeTarget.kind === "missing") {
+    return fail("CHANGE_NOT_FOUND", "The requested change does not exist", 404);
+  }
+  if (scopeTarget.kind === "site") {
+    try {
+      await requireSiteScope(request, scopeTarget.code);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
+  } else if (scopeTarget.kind === "devices") {
+    const deviceLegFail = await requireDeviceLegScope(request, scopeTarget.deviceIds);
+    if (deviceLegFail) return deviceLegFail;
   }
 
   // Separation of duties (server-authoritative — the UI disables the

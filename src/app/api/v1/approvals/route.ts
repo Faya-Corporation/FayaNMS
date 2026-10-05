@@ -1,6 +1,10 @@
+import { Prisma } from "@prisma/client";
+
 import { db } from "@/lib/db";
 import { csvParam, fail, firstIssueMessage, ok } from "../_lib/api";
 import { resolveActingUser, SOD_GATED_RISK_LEVELS } from "../_lib/actor";
+import { changeScopeListWhere } from "../_lib/change-scope";
+import { requireSessionRead, sessionScopeFor, authErrorToFail } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +25,18 @@ export const dynamic = "force-dynamic";
  * Ordering: undecided (decidedAt null) first, then by the change's
  * scheduledStart (nulls last), then level. meta carries the KPI counts
  * for the approvals view: { pending, mine, approvedToday, rejectedToday }.
+ *
+ * Wave 10 (F-031, audit 13-b): the handler verifies the session itself
+ * (requireSessionRead — the proxy's API-client branch admits any opaque
+ * bearer shape; garbage tokens answer 401 here, valid API-client tokens
+ * fall through to authenticateApiClientRead over the wired change.read
+ * domain) and composes the session's site scope through the change
+ * relation into the queue, the KPI counts and the "mine" computation
+ * (site leg OR device-linked in-scope change — the shared change-plane
+ * predicate; wildcard sessions keep the pre-wave-10 behavior byte-
+ * identical). Approver/requester labels follow the F-029/R69 discipline:
+ * admin/auditor keep the full email fallback, everyone else the
+ * local-part.
  */
 
 const querySchema = z.object({
@@ -29,6 +45,24 @@ const querySchema = z.object({
 });
 
 export async function GET(request: Request) {
+  // F-1 (wave 10, audit 13-b P1): handler-level credential validation is
+  // the FIRST step — before any DB access. The proxy's API-client branch
+  // (step 3b) admits any opaque-shaped bearer on the documented trust that
+  // "fail-closed lives in the handlers"; this handler now honors it.
+  let principal: Awaited<ReturnType<typeof requireSessionRead>>;
+  try {
+    principal = await requireSessionRead(request);
+  } catch (error) {
+    const envelope = authErrorToFail(error);
+    if (envelope) return envelope;
+    throw error;
+  }
+  // F-029/R69 email discipline: the full address is admin/auditor only.
+  const fullEmail = principal.role === "admin" || principal.role === "auditor";
+  // F-031: the session's site scope for the change leg (wildcard sessions
+  // — absent claims — keep byte-identical behavior).
+  const scopeLeg = changeScopeListWhere(await sessionScopeFor(request));
+
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     status: url.searchParams.get("status") ?? undefined,
@@ -41,15 +75,21 @@ export async function GET(request: Request) {
   const statuses = csvParam(parsed.data.status) ?? ["PENDING"];
   const q = parsed.data.q;
 
-  const where = {
+  // F-031 (wave 10): the queue scopes through its change relation — the
+  // same site-leg OR device-leg composition the changes list uses. The q
+  // filter ANDs into the same change where.
+  const where: Prisma.ChangeApprovalWhereInput = {
     status: { in: statuses },
-    ...(q
-      ? {
-          change: {
-            OR: [{ number: { contains: q } }, { title: { contains: q } }],
-          },
-        }
-      : {}),
+    change: {
+      AND: [
+        q
+          ? {
+              OR: [{ number: { contains: q } }, { title: { contains: q } }],
+            }
+          : {},
+        scopeLeg,
+      ],
+    },
   };
 
   const [rows, actor] = await Promise.all([
@@ -75,7 +115,12 @@ export async function GET(request: Request) {
     level: row.level,
     status: row.status,
     comment: row.comment,
-    approverName: row.approver?.name ?? row.approver?.email ?? null,
+    // F-029/R69: name or email LOCAL-PART — the full address stays
+    // admin/auditor (changeUserLabel semantics).
+    approverName: row.approver
+      ? (row.approver.name ??
+        (fullEmail ? row.approver.email : row.approver.email.split("@")[0] ?? null))
+      : null,
     decidedAt: row.decidedAt,
     change: {
       id: row.change.id,
@@ -86,7 +131,12 @@ export async function GET(request: Request) {
       riskScore: row.change.riskScore,
       riskLevel: row.change.riskLevel,
       requesterId: row.change.requesterId,
-      requesterName: row.change.requester?.name ?? row.change.requester?.email ?? null,
+      requesterName: row.change.requester
+        ? (row.change.requester.name ??
+          (fullEmail
+            ? row.change.requester.email
+            : row.change.requester.email.split("@")[0] ?? null))
+        : null,
       createdAt: row.change.createdAt,
       scheduledStart: row.change.scheduledStart,
       /** Every approval level of the change with its current status. */
@@ -112,12 +162,24 @@ export async function GET(request: Request) {
   startOfToday.setHours(0, 0, 0, 0);
 
   const [pendingTotal, approvedToday, rejectedToday] = await Promise.all([
-    db.changeApproval.count({ where: { status: "PENDING" } }),
+    // The KPI counts ride the same change scope leg as the queue (an
+    // aggregate that ignored the scope would disclose cross-site activity).
     db.changeApproval.count({
-      where: { status: "APPROVED", decidedAt: { gte: startOfToday } },
+      where: { status: "PENDING", change: scopeLeg },
     }),
     db.changeApproval.count({
-      where: { status: "REJECTED", decidedAt: { gte: startOfToday } },
+      where: {
+        status: "APPROVED",
+        decidedAt: { gte: startOfToday },
+        change: scopeLeg,
+      },
+    }),
+    db.changeApproval.count({
+      where: {
+        status: "REJECTED",
+        decidedAt: { gte: startOfToday },
+        change: scopeLeg,
+      },
     }),
   ]);
 
@@ -126,7 +188,7 @@ export async function GET(request: Request) {
   let mine: number | null = null;
   if (actor) {
     const pendingRows = await db.changeApproval.findMany({
-      where: { status: "PENDING" },
+      where: { status: "PENDING", change: scopeLeg },
       select: { change: { select: { requesterId: true, riskLevel: true } } },
     });
     mine = pendingRows.filter(

@@ -166,6 +166,12 @@ export async function POST(request: Request) {
   }
 
   // Validate site codes against the inventory (or "*" for fleet-wide).
+  // NOTE (audit 13-c F-10 — owner decision, deliberately NOT changed here):
+  // a sites-limited config.backup holder may still TARGET any site (or
+  // "*") in scope.siteCodes. Backup-policy scheduling is a global fleet
+  // operation executed by the worker and carries no read-exfiltration path
+  // (all device reads are session-scoped); intersecting the policy scope
+  // with the author's session scope is an owner decision (worklog 14-c).
   if (data.scope?.siteCodes && data.scope.siteCodes.length > 0) {
     const codes = data.scope.siteCodes;
     if (!codes.includes("*")) {
@@ -200,34 +206,41 @@ export async function POST(request: Request) {
   const correlationId = newCorrelationId("POL");
 
   try {
-    const policy = await db.backupPolicy.create({
-      data: {
-        name: data.name,
-        cronExpr: data.cronExpr,
-        scopeJson: serializeScope(data.scope ?? {}),
-        retentionDays: data.retentionDays,
-        isActive: data.isActive,
-      },
-    });
+    // F-11 (audit 13-c): the create and its BACKUP_POLICY_CREATED audit row
+    // land in ONE transaction (the baselines/cmdb pattern) — a failed audit
+    // write can no longer leave an unaudited policy behind.
+    const [policy, audit] = await db.$transaction(async (tx) => {
+      const created = await tx.backupPolicy.create({
+        data: {
+          name: data.name,
+          cronExpr: data.cronExpr,
+          scopeJson: serializeScope(data.scope ?? {}),
+          retentionDays: data.retentionDays,
+          isActive: data.isActive,
+        },
+      });
 
-    const audit = await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? "Unknown user",
-        action: "BACKUP_POLICY_CREATED",
-        resourceType: "BackupPolicy",
-        resourceId: policy.id,
-        resourceLabel: policy.name,
-        result: "SUCCESS",
-        correlationId,
-        afterJson: JSON.stringify({
-          name: policy.name,
-          cronExpr: policy.cronExpr,
-          scope: data.scope ?? {},
-          retentionDays: policy.retentionDays,
-          isActive: policy.isActive,
-        }),
-      },
+      const auditRow = await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? "Unknown user",
+          action: "BACKUP_POLICY_CREATED",
+          resourceType: "BackupPolicy",
+          resourceId: created.id,
+          resourceLabel: created.name,
+          result: "SUCCESS",
+          correlationId,
+          afterJson: JSON.stringify({
+            name: created.name,
+            cronExpr: created.cronExpr,
+            scope: data.scope ?? {},
+            retentionDays: created.retentionDays,
+            isActive: created.isActive,
+          }),
+        },
+      });
+
+      return [created, auditRow] as const;
     });
 
     return ok({ policy, audit }, { correlationId }, 201);

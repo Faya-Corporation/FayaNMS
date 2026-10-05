@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSiteScope } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +13,12 @@ export const dynamic = "force-dynamic";
  *   RESOLVE → status RESOLVED  (device was brought back into compliance)
  * Both set resolvedAt = now. Only OPEN records can transition — anything
  * else is a 409 INVALID_TRANSITION (keep-the-state-machine-honest rule).
+ *
+ * F-031 wave-10 (audit 13-c F-8): triage is a mutation — the record's device
+ * site must be inside the session scope (403 SITE_SCOPE_FORBIDDEN, the
+ * wave-7 contract; 404 first since mutations accept existence
+ * confirmation). The gate runs BEFORE the transition check so an
+ * out-of-scope record's status is never revealed through the 409.
  *
  * Audited DRIFT_ACCEPTED / DRIFT_RESOLVED with before/after JSON and a
  * DFT-prefixed correlation id.
@@ -67,11 +73,21 @@ export async function PATCH(
       detectedAt: true,
       resolvedAt: true,
       diffSummary: true,
-      device: { select: { hostname: true } },
+      device: { select: { hostname: true, site: { select: { code: true } } } },
     },
   });
   if (!record) {
     return fail("DRIFT_RECORD_NOT_FOUND", "The drift record does not exist", 404);
+  }
+
+  // F-031 wave-10 (audit 13-c F-8): the triage mutation gate — before the
+  // transition 409 so the status of an out-of-scope record never leaks.
+  try {
+    await requireSiteScope(request, record.device.site?.code ?? null);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
 
   if (record.status !== "OPEN") {

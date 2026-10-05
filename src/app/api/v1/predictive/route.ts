@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import type { Prisma } from "@prisma/client";
+import { authErrorToFail, requireSessionRead, sessionScopeFor } from "@/lib/auth/session";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
 import { fail, firstIssueMessage, ok } from "../_lib/api";
 import { z } from "zod";
 
@@ -78,6 +80,14 @@ export const dynamic = "force-dynamic";
  * Read-only GET → no audit event (app convention). Caching follows the
  * other GET routes: `dynamic = "force-dynamic"` (the client fetches with
  * cache: "no-store").
+ *
+ * F-031 wave-10 (audit 13-c F-3): the caller's `?siteId=` INTERSECTS the
+ * session scope instead of overriding it (the performance/* posture) — a
+ * sites-limited session asking for an out-of-scope site gets 200 with zero
+ * rows (the list empty state), never the unscoped set; with no param the
+ * device pool is scope-intersected too. Wildcard sessions keep the
+ * byte-unchanged where shapes. Every downstream factor query derives from
+ * the analyzed device ids, so one composition point bounds them all.
  * ───────────────────────────────────────────────────────────────────────────── */
 
 const DAY_MS = 86_400_000;
@@ -226,12 +236,27 @@ export async function GET(request: Request) {
   }
   const { siteId } = parsed.data;
 
+  // F-031 wave-10: resolve the scope once; the device-pool where clause is
+  // the single composition point (rollups/alerts/jobs/drift/interfaces all
+  // filter by the analyzed ids).
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const deviceWhere: Prisma.DeviceWhereInput | undefined =
+    scope.mode === "wildcard"
+      ? siteId
+        ? { siteId } // byte-identical wildcard filter
+        : undefined
+      : // Sites mode: compose the scope UNDER the caller's siteId — an
+        // out-of-scope (or unknown) site matches nothing because a device's
+        // site cannot carry both the caller's id and a scoped code.
+        scopedDeviceWhere(scopeClaims, siteId ? { siteId } : {});
+
   const now = new Date();
   const since24h = new Date(now.getTime() - 24 * HOUR_MS);
   const since7d = new Date(now.getTime() - 7 * DAY_MS);
 
   const devices = await db.device.findMany({
-    where: siteId ? { siteId } : undefined,
+    where: deviceWhere,
     select: {
       id: true,
       hostname: true,

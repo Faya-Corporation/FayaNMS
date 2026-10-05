@@ -16,7 +16,16 @@ import {
   loadRolePermissions,
   requirePermission,
   requireSessionRead,
+  requireSiteScope,
+  sessionScopeFor,
 } from "@/lib/auth/session";
+import {
+  changeUserLabel,
+  changeVisibleInScope,
+  requireDeviceLegScope,
+  requireDevicesInScope,
+  resolveChangeScopeTarget,
+} from "../../_lib/change-scope";
 import { isWildcardHolder } from "@/lib/auth/permissions";
 import type { User } from "@prisma/client";
 import { z } from "zod";
@@ -44,6 +53,15 @@ export const dynamic = "force-dynamic";
  *      (Task 4-b — closes out a successful execution; no POST_REVIEW flow).
  *
  * Field edit + action may be combined in one call (edit applied first).
+ *
+ * Wave 10 (F-031, audit 13-b): the GET answers a fused 404 for out-of-scope
+ * changes (site leg OR linked-device leg outside the session's scope → the
+ * SAME CHANGE_NOT_FOUND envelope a wildcard session gets for a missing row);
+ * the PATCH gate requires the change's site dimension INSIDE the session's
+ * scope (403 SITE_SCOPE_FORBIDDEN) before any edit/SUBMIT/CANCEL/CLOSE, and
+ * replacement device sets / site retargets are scope-intersected too.
+ * Requester/approver emails follow the F-029/R69 discipline (admin/auditor
+ * see the full address; everyone else the local-part).
  */
 
 const ID_MAX = 64;
@@ -106,13 +124,16 @@ export async function GET(
   // F-008 phase 4a (read-plane defense-in-depth): the GET handler verifies
   // the human session itself (requireSessionRead) — the proxy matcher stays
   // the coarse gate, not the only check.
+  let principal: User;
   try {
-    await requireSessionRead(request);
+    principal = await requireSessionRead(request);
   } catch (error) {
     const envelope = authErrorToFail(error);
     if (envelope) return envelope;
     throw error;
   }
+  // F-029/R69: the full email address is admin/auditor only.
+  const fullEmail = principal.role === "admin" || principal.role === "auditor";
   const { id } = await params;
   if (!id || id.length > ID_MAX) {
     return fail("INVALID_ID", "Invalid change id", 400);
@@ -128,6 +149,20 @@ export async function GET(
     },
   });
   if (!change) {
+    return fail("CHANGE_NOT_FOUND", "The requested change does not exist", 404);
+  }
+
+  // F-031 (wave 10): fused-404 — an out-of-scope change (site leg or
+  // linked-device leg) answers the SAME CHANGE_NOT_FOUND envelope a
+  // wildcard session gets for a missing row (no existence oracle for
+  // sites-limited sessions; the row-level predicate mirrors the list
+  // route's where composition).
+  if (
+    !(await changeVisibleInScope(await sessionScopeFor(request), {
+      id: change.id,
+      siteCode: change.site?.code ?? null,
+    }))
+  ) {
     return fail("CHANGE_NOT_FOUND", "The requested change does not exist", 404);
   }
 
@@ -211,7 +246,14 @@ export async function GET(
     status: change.status,
     riskScore: change.riskScore,
     riskLevel: change.riskLevel,
-    requester: change.requester,
+    requester: change.requester
+      ? {
+          ...change.requester,
+          email: fullEmail
+            ? change.requester.email
+            : (change.requester.email.split("@")[0] ?? change.requester.email),
+        }
+      : change.requester,
     owner: change.owner,
     technicalOwner: change.technicalOwner,
     site: change.site,
@@ -252,7 +294,9 @@ export async function GET(
       level: approval.level,
       status: approval.status,
       quorumRequired: approval.quorumRequired,
-      approverName: approval.approver?.name ?? approval.approver?.email ?? null,
+      // F-029/R69: name or email LOCAL-PART — never the full address for
+      // non-admin/auditor readers.
+      approverName: changeUserLabel(approval.approver, fullEmail),
       decidedAt: approval.decidedAt,
       comment: approval.comment,
       decisions: approval.decisions.map((decision) => ({
@@ -340,6 +384,31 @@ export async function PATCH(
     return fail("CHANGE_NOT_FOUND", "The requested change does not exist", 404);
   }
 
+  // F-2 (wave 10, audit 13-b): the change's site dimension must be inside
+  // the session's scope before ANY state change (edit/SUBMIT/CANCEL/CLOSE)
+  // — 403 SITE_SCOPE_FORBIDDEN on the mutation plane (the documented
+  // contract; mutations do not use the 404-not-403 shape). Site-less
+  // changes ride their linked devices (ALL of them must be in scope); a
+  // change with no site and no devices is the documented unscoped-resource
+  // bypass. The gate sits BEFORE the ownership check so out-of-scope
+  // callers learn nothing about requester/ownership state either.
+  const scopeTarget = await resolveChangeScopeTarget(existing.id);
+  if (scopeTarget.kind === "missing") {
+    return fail("CHANGE_NOT_FOUND", "The requested change does not exist", 404);
+  }
+  if (scopeTarget.kind === "site") {
+    try {
+      await requireSiteScope(request, scopeTarget.code);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
+  } else if (scopeTarget.kind === "devices") {
+    const deviceLegFail = await requireDeviceLegScope(request, scopeTarget.deviceIds);
+    if (deviceLegFail) return deviceLegFail;
+  }
+
   // Draft authoring is requester-only (admin wildcard excepted).
   if (
     data.action !== "CANCEL" &&
@@ -420,6 +489,12 @@ export async function PATCH(
     let devices: Awaited<ReturnType<typeof fetchRiskDevices>>["devices"] = [];
     if (deviceIds) {
       const fetched = await fetchRiskDevices(deviceIds);
+      // F-2: the replacement device set is scope-intersected first — for a
+      // sites-limited session the fused unknown ∪ out-of-scope bucket is
+      // refused WITHOUT echoing ids (no existence enumeration); wildcard
+      // sessions keep the echo below (byte-parity).
+      const deviceScopeFail = await requireDevicesInScope(request, deviceIds);
+      if (deviceScopeFail) return deviceScopeFail;
       if (fetched.missing.length > 0) {
         return fail(
           "DEVICE_NOT_FOUND",
@@ -433,9 +508,18 @@ export async function PATCH(
     if (data.siteId) {
       const site = await db.site.findUnique({
         where: { id: data.siteId },
-        select: { id: true },
+        select: { id: true, code: true },
       });
       if (!site) return fail("SITE_NOT_FOUND", "The selected site does not exist", 400);
+      // F-2: a retarget to an out-of-scope site is refused (403) before the
+      // transaction — the change must never move outside the caller's scope.
+      try {
+        await requireSiteScope(request, site.code);
+      } catch (error) {
+        const authFail = authErrorToFail(error);
+        if (!authFail) throw error;
+        return authFail;
+      }
     }
 
     // Recompute risk from the NEW state (values fall back to the existing row).

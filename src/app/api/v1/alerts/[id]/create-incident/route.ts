@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSiteScope } from "@/lib/auth/session";
 import {
   createIncidentForAlert,
   IncidentNumberConflictError,
@@ -18,6 +18,12 @@ export const dynamic = "force-dynamic";
  * severity map CRITICAL→SEV1 … INFO→SEV4, SLA due by severity, device
  * link, SYSTEM event, INCIDENT_CREATED + ALERT_ESCALATED audits with the
  * acting user as the actor.
+ *
+ * F-031 wave-10 (audit 13-a F-3, mutation gate): the alert's device site
+ * must be inside the session's scope before any state check or mint —
+ * requireSiteScope answers 403 SITE_SCOPE_FORBIDDEN (the documented
+ * mutation contract; a null site follows the documented unscoped-resource
+ * rule), so an escalated incident can never target an out-of-scope site.
  */
 const escalateSchema = z.object({
   title: z.string().trim().min(4).max(160).optional(),
@@ -60,11 +66,27 @@ export async function POST(
       message: true,
       status: true,
       incidentId: true,
-      device: { select: { id: true, hostname: true, siteId: true } },
+      device: {
+        select: {
+          id: true,
+          hostname: true,
+          siteId: true,
+          site: { select: { code: true } },
+        },
+      },
     },
   });
   if (!alert) {
     return fail("ALERT_NOT_FOUND", "Alert not found", 404);
+  }
+  // F-031 wave-10: the scope gate runs BEFORE the state checks and the
+  // mint (403-not-404 — mutations accept existence confirmation).
+  try {
+    await requireSiteScope(request, alert.device.site?.code ?? null);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
   if (alert.incidentId) {
     return fail(

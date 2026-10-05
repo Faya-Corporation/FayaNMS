@@ -8,7 +8,8 @@ import {
   paginationSchema,
 } from "../_lib/api";
 import { computeSlaState, INCIDENT_OPEN_STATUSES } from "@/lib/incidents/lifecycle";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import { authErrorToFail, requireSessionRead, sessionScopeFor } from "@/lib/auth/session";
+import { scopedIncidentSiteWhere } from "../_lib/incident-scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,19 @@ export const dynamic = "force-dynamic";
  * meta: pagination + counts by status + counts by severity (each over the
  * other filters) + openCount + slaBreachedCount. Rows carry device/alert
  * counts, the linked change number and the owner for the list surface.
+ *
+ * F-031 wave-10 (audit 13-a F-2, read-plane migration): the session scope
+ * composes into scopeWhere via the incident's own `site` relation (the
+ * AI-plane predicate — scopedIncidentSiteWhere), so the list AND all four
+ * meta aggregates (byStatus/bySeverity groupBys, openCount,
+ * slaBreachedCount) answer only the session's sites. The caller's
+ * ?siteCode= filter rides the SAME relation and therefore INTERSECTS with
+ * the scope (never widens it). An incident with NO site is hidden from
+ * sites-limited sessions (row-level fail-closed SQL parity — the relation
+ * filter cannot match a null code), exactly matching the detail route's
+ * `sessionAllowsSite` fused-404 predicate: a row hidden from the list
+ * cannot leak through GET /api/v1/incidents/[id]. Wildcard sessions (no
+ * `sites` claim) keep the byte-unchanged base where clause.
  */
 
 const querySchema = paginationSchema.extend({
@@ -79,6 +93,9 @@ export async function GET(request: Request) {
   const severities = csvParam(parsed.data.severity);
   const wantsBreached = parsed.data.breached === "1" || parsed.data.breached === "true";
 
+  // ── F-031 wave-10: resolve the session scope once for every leg ──────
+  const scopeClaims = await sessionScopeFor(request);
+
   /** Every filter except the two facet fields used for the meta counts. */
   const scopeWhere = {
     AND: [
@@ -96,6 +113,9 @@ export async function GET(request: Request) {
         : {},
       parsed.data.source ? { source: parsed.data.source } : {},
       parsed.data.ownerId ? { ownerId: parsed.data.ownerId } : {},
+      // F-031 wave-10: the session scope rides the incident's own site
+      // relation — wildcard resolves to {} (byte-identical base where).
+      scopedIncidentSiteWhere(scopeClaims),
     ],
   };
 

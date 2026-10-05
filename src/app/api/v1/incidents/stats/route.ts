@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import { ok } from "../../_lib/api";
 import { INCIDENT_OPEN_STATUSES } from "@/lib/incidents/lifecycle";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import { authErrorToFail, requireSessionRead, sessionScopeFor } from "@/lib/auth/session";
+import { scopedIncidentSiteWhere } from "../../_lib/incident-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,15 @@ export const dynamic = "force-dynamic";
  *
  * Computation is done over raw rows in JS — the tables are small in the demo
  * and every field is covered by the createdAt/status/slaDueAt indexes.
+ *
+ * F-031 wave-10 (audit 13-a F-2, read-plane migration): every
+ * incident-derived aggregation leg composes the session scope via the
+ * incident's own `site` relation (scopedIncidentSiteWhere — the AI-plane
+ * predicate), so openBySeverity/openCount, the MTTA/MTTR + SLA window,
+ * the trend, topSites AND breachedCount answer only the session's sites
+ * (cross-site aggregation — topSites was the audit's sharpest unreported
+ * specific — can no longer name out-of-scope sites). Wildcard sessions
+ * (no `sites` claim) keep the byte-unchanged where clauses.
  */
 
 const MTTA_MTTR_DAYS = 30;
@@ -43,15 +53,22 @@ export async function GET(request: Request) {
   const trendStart = new Date(now.getTime() - (TREND_DAYS - 1) * 86_400_000);
   trendStart.setUTCHours(0, 0, 0, 0);
 
+  // ── F-031 wave-10: resolve the session scope once for every leg ──────
+  const scopeClaims = await sessionScopeFor(request);
+
   const [openRows, resolvedWindow, trendRows, topSiteGroups] = await Promise.all([
     db.incident.findMany({
-      where: { status: { in: [...INCIDENT_OPEN_STATUSES] } },
+      where: {
+        status: { in: [...INCIDENT_OPEN_STATUSES] },
+        ...scopedIncidentSiteWhere(scopeClaims),
+      },
       select: { severity: true },
     }),
     db.incident.findMany({
       where: {
         resolvedAt: { not: null },
         createdAt: { gte: windowStart },
+        ...scopedIncidentSiteWhere(scopeClaims),
       },
       select: {
         createdAt: true,
@@ -61,12 +78,18 @@ export async function GET(request: Request) {
       },
     }),
     db.incident.findMany({
-      where: { createdAt: { gte: trendStart } },
+      where: {
+        createdAt: { gte: trendStart },
+        ...scopedIncidentSiteWhere(scopeClaims),
+      },
       select: { createdAt: true },
     }),
     db.incident.groupBy({
       by: ["siteId"],
-      where: { status: { in: [...INCIDENT_OPEN_STATUSES] } },
+      where: {
+        status: { in: [...INCIDENT_OPEN_STATUSES] },
+        ...scopedIncidentSiteWhere(scopeClaims),
+      },
       _count: { _all: true },
     }),
   ]);
@@ -140,6 +163,8 @@ export async function GET(request: Request) {
     where: {
       status: { in: [...INCIDENT_OPEN_STATUSES] },
       slaDueAt: { lt: now },
+      // F-031 wave-10: the breach counter rides the same site scope.
+      ...scopedIncidentSiteWhere(scopeClaims),
     },
   });
 

@@ -7,7 +7,13 @@ import {
 } from "../../_lib/api";
 import { parsePolicyScope, scopeDeviceWhere } from "../../_lib/scope";
 import { isValidCronExpr } from "@/lib/cron";
-import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -70,12 +76,21 @@ async function findPolicyOr404(id: string) {
   return db.backupPolicy.findUnique({ where: { id } });
 }
 
-async function policyResponse(id: string) {
+async function policyResponse(request: Request, id: string) {
   const policy = await db.backupPolicy.findUnique({ where: { id } });
   if (!policy) return null;
   const scope = parsePolicyScope(policy.scopeJson);
   const [scopedDeviceCount, lastEnqueued] = await Promise.all([
-    db.device.count({ where: scopeDeviceWhere(scope) }),
+    // F-031 wave-10 (audit 13-c F-9): twin-divergence regression fix — the
+    // detail count now intersects the policy's device scope with the
+    // SESSION's site scope EXACTLY like the list route (route.ts, wave-9):
+    // scopedDeviceWhere(await sessionScopeFor(request), scopeDeviceWhere).
+    // Wildcard sessions compose the identical base where (parity); a
+    // sites-limited session sees how many of ITS devices the policy would
+    // schedule, not the fleet-wide count.
+    db.device.count({
+      where: scopedDeviceWhere(await sessionScopeFor(request), scopeDeviceWhere(scope)),
+    }),
     db.jobExecution.findFirst({
       where: {
         type: "CONFIG_BACKUP",
@@ -116,7 +131,7 @@ export async function GET(
     throw error;
   }
   const { id } = await params;
-  const policy = await policyResponse(id);
+  const policy = await policyResponse(request, id);
   if (!policy) {
     return fail("POLICY_NOT_FOUND", "The requested backup policy does not exist", 404);
   }
@@ -200,41 +215,49 @@ export async function PATCH(
     isActive: policy.isActive,
   };
 
-  const updated = await db.backupPolicy.update({
-    where: { id: policy.id },
-    data: {
-      ...(data.name !== undefined ? { name: data.name } : {}),
-      ...(data.cronExpr !== undefined ? { cronExpr: data.cronExpr } : {}),
-      ...(data.scope !== undefined ? { scopeJson: serializeScope(data.scope) } : {}),
-      ...(data.retentionDays !== undefined
-        ? { retentionDays: data.retentionDays }
-        : {}),
-      ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
-    },
-  });
-
-  const after = {
-    name: updated.name,
-    cronExpr: updated.cronExpr,
-    scope: parsePolicyScope(updated.scopeJson),
-    retentionDays: updated.retentionDays,
-    isActive: updated.isActive,
-  };
-
   const correlationId = newCorrelationId("POL");
-  const audit = await db.auditEvent.create({
-    data: {
-      actorId: actor.id,
-      actorName: actor.name ?? "Unknown user",
-      action: "BACKUP_POLICY_UPDATED",
-      resourceType: "BackupPolicy",
-      resourceId: updated.id,
-      resourceLabel: updated.name,
-      result: "SUCCESS",
-      correlationId,
-      beforeJson: JSON.stringify(before),
-      afterJson: JSON.stringify(after),
-    },
+
+  // F-11 (audit 13-c): the update and its BACKUP_POLICY_UPDATED audit row
+  // land in ONE transaction (the baselines/cmdb pattern) — a failed audit
+  // write can no longer leave an unaudited policy change behind.
+  const [updated, audit] = await db.$transaction(async (tx) => {
+    const next = await tx.backupPolicy.update({
+      where: { id: policy.id },
+      data: {
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.cronExpr !== undefined ? { cronExpr: data.cronExpr } : {}),
+        ...(data.scope !== undefined ? { scopeJson: serializeScope(data.scope) } : {}),
+        ...(data.retentionDays !== undefined
+          ? { retentionDays: data.retentionDays }
+          : {}),
+        ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+      },
+    });
+
+    const after = {
+      name: next.name,
+      cronExpr: next.cronExpr,
+      scope: parsePolicyScope(next.scopeJson),
+      retentionDays: next.retentionDays,
+      isActive: next.isActive,
+    };
+
+    const auditRow = await tx.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
+        action: "BACKUP_POLICY_UPDATED",
+        resourceType: "BackupPolicy",
+        resourceId: next.id,
+        resourceLabel: next.name,
+        result: "SUCCESS",
+        correlationId,
+        beforeJson: JSON.stringify(before),
+        afterJson: JSON.stringify(after),
+      },
+    });
+
+    return [next, auditRow] as const;
   });
 
   return ok({ policy: updated, audit }, { correlationId });
@@ -263,27 +286,33 @@ export async function DELETE(
     return fail("POLICY_NOT_FOUND", "The requested backup policy does not exist", 404);
   }
 
-  await db.backupPolicy.delete({ where: { id: policy.id } });
-
   const correlationId = newCorrelationId("POL");
-  const audit = await db.auditEvent.create({
-    data: {
-      actorId: actor.id,
-      actorName: actor.name ?? "Unknown user",
-      action: "BACKUP_POLICY_DELETED",
-      resourceType: "BackupPolicy",
-      resourceId: policy.id,
-      resourceLabel: policy.name,
-      result: "SUCCESS",
-      correlationId,
-      beforeJson: JSON.stringify({
-        name: policy.name,
-        cronExpr: policy.cronExpr,
-        scope: parsePolicyScope(policy.scopeJson),
-        retentionDays: policy.retentionDays,
-        isActive: policy.isActive,
-      }),
-    },
+
+  // F-11 (audit 13-c): the delete and its BACKUP_POLICY_DELETED audit row
+  // land in ONE transaction (the baselines/cmdb pattern) — a failed audit
+  // write can no longer leave an unaudited policy deletion behind.
+  const audit = await db.$transaction(async (tx) => {
+    await tx.backupPolicy.delete({ where: { id: policy.id } });
+
+    return tx.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
+        action: "BACKUP_POLICY_DELETED",
+        resourceType: "BackupPolicy",
+        resourceId: policy.id,
+        resourceLabel: policy.name,
+        result: "SUCCESS",
+        correlationId,
+        beforeJson: JSON.stringify({
+          name: policy.name,
+          cronExpr: policy.cronExpr,
+          scope: parsePolicyScope(policy.scopeJson),
+          retentionDays: policy.retentionDays,
+          isActive: policy.isActive,
+        }),
+      },
+    });
   });
 
   return ok({ deleted: true, audit }, { correlationId });

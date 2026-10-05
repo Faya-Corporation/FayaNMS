@@ -84,7 +84,11 @@ const querySchema = z.object({
   vlan: z.coerce.number().int().min(1).max(4094).optional(),
   sort: z.enum(["device", "name", "speed", "utilization"]).default("device"),
   order: z.enum(["asc", "desc"]).default("asc"),
-  page: z.coerce.number().int().min(1).default(1),
+  // F-12 (audit 13-c): page is capped at 1000 — the SAME deep-pagination
+  // bound the shared paginationSchema enforces on every sibling paginated
+  // route. The route keeps its own schema (pageSize 10..200 is this view's
+  // documented contract), only the page ceiling is aligned.
+  page: z.coerce.number().int().min(1).max(1000).default(1),
   pageSize: z.coerce.number().int().min(10).max(200).default(50),
 });
 

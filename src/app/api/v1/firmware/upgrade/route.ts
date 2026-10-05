@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSiteScope } from "@/lib/auth/session";
 import { isValidTargetVersion } from "@/lib/firmware/lifecycle";
 import { z } from "zod";
 
@@ -12,6 +12,10 @@ export const dynamic = "force-dynamic";
  *
  * Guards, in order:
  *   404 DEVICE_NOT_FOUND        — unknown device
+ *   403 SITE_SCOPE_FORBIDDEN    — the device's site is outside the session's
+ *                                 site scope (F-031 wave-10, audit 13-c F-5;
+ *                                 mutations accept existence confirmation,
+ *                                 so 403-not-404 — the wave-7 contract)
  *   409 DEVICE_UNMANAGED        — UNMANAGED devices are never touched
  *                                 (same eligibility rule as backup_now)
  *   409 DEVICE_OFFLINE          — nothing can be staged on an unreachable box
@@ -71,10 +75,23 @@ export async function POST(request: Request) {
       firmware: true,
       status: true,
       vendor: { select: { key: true, name: true } },
+      site: { select: { code: true } },
     },
   });
   if (!device) {
     return fail("DEVICE_NOT_FOUND", "The device does not exist", 404);
+  }
+
+  // F-031 wave-10 (audit 13-c F-5): the mutation gate runs BEFORE any
+  // eligibility 409 — a sites-limited session must not learn the state
+  // (unmanaged/offline/version) of an out-of-scope device. In-scope ids
+  // keep the exact pre-existing 404/409 ladder.
+  try {
+    await requireSiteScope(request, device.site?.code ?? null);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
   if (device.status === "UNMANAGED") {
     return fail(

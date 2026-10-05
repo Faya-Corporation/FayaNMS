@@ -5,6 +5,7 @@ import {
   authErrorToFail,
   requirePermission,
   requireSessionRead,
+  requireSiteScope,
   sessionScopeFor,
 } from "@/lib/auth/session";
 import { sessionAllowsSite, sessionSiteScope } from "@/lib/auth/scope";
@@ -50,6 +51,12 @@ export const dynamic = "force-dynamic";
  *     422 DEVICE_LINK_IMMUTABLE    — a deviceId key was supplied; the device
  *                                    link is established at creation time and
  *                                    is intentionally not editable
+ *     403 SITE_SCOPE_FORBIDDEN     — the CI's governing site (linked device's
+ *                                    site, else the siteId tag; linkage-less
+ *                                    CIs are global) is outside the session's
+ *                                    site scope (F-031 wave-10, audit 13-c
+ *                                    F-6 — the wave-7 mutation contract,
+ *                                    403-not-404 on the mutation plane)
  *   Audit: CMDB_CI_UPDATED with before/after carrying ONLY the changed fields.
  * ───────────────────────────────────────────────────────────────────────────── */
 
@@ -376,6 +383,20 @@ export async function PATCH(
   const item = await resolveCmdbItem(id);
   if (!item) {
     return fail("CMDB_NOT_FOUND", `No configuration item matches "${id}"`, 404);
+  }
+
+  // F-031 wave-10 (audit 13-c F-6): the PATCH mutation gate — the CI's
+  // governing site must be inside the session scope. Reuses the file's own
+  // cmdbItemSiteCode helper (the same linkage the wave-9 read plane gates
+  // with): linked device's site, else the siteId tag, else null = global
+  // resource (the documented assertSiteScope(null) bypass). 404 first —
+  // mutations accept existence confirmation, so 403-not-404 here.
+  try {
+    await requireSiteScope(request, await cmdbItemSiteCode(item));
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
 
   if (data.ownerId) {

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSiteScope } from "@/lib/auth/session";
 import {
   INCIDENT_TRANSITIONS,
   isTransitionAllowed,
@@ -44,6 +44,15 @@ export const dynamic = "force-dynamic";
  * sweep): every action requires "incident.write" EXCEPT "close", which
  * requires "incident.close". 409 INVALID_STATE on illegal transitions;
  * 404 INCIDENT_NOT_FOUND.
+ *
+ * F-031 wave-10 (audit 13-a F-4, mutation gate): the transaction's row
+ * fetch selects the incident's site code and EVERY action gates through
+ * `requireSiteScope` BEFORE the transition runs — a sites-limited session
+ * answers 403 SITE_SCOPE_FORBIDDEN (the documented mutation contract;
+ * a site-less incident follows the documented unscoped-resource rule).
+ * The AuthError propagates out of the (still read-only) transaction and is
+ * mapped by the outer handler, so nothing is written and no new envelope
+ * shape is introduced.
  */
 
 const ID_MAX = 64;
@@ -194,9 +203,17 @@ export async function POST(
             rootCause: true,
             correctiveAction: true,
             preventiveAction: true,
+            // F-031 wave-10: the site code feeds the requireSiteScope gate.
+            site: { select: { code: true } },
           },
         });
         if (!incidentRow) return { notFound: true as const };
+
+        // F-031 wave-10: the scope gate runs for EVERY action BEFORE any
+        // transition/PIR/link branch (403-not-404 — mutations accept
+        // existence confirmation; the tx is still read-only here, so an
+        // abort writes nothing).
+        await requireSiteScope(request, incidentRow.site?.code ?? null);
 
         const actorId = actor.id;
         const actorName = actor.name ?? "Unknown user";
@@ -463,6 +480,11 @@ export async function POST(
     }
     return ok(result);
   } catch (error) {
+    // F-031 wave-10: a requireSiteScope denial thrown inside the tx is an
+    // AuthError — answer its envelope (403 SITE_SCOPE_FORBIDDEN), never the
+    // generic ACTION_FAILED 500.
+    const authFail = authErrorToFail(error);
+    if (authFail) return authFail;
     console.error("[incidents/action] failed", action, error);
     return fail("ACTION_FAILED", "The incident action could not be applied", 500);
   }

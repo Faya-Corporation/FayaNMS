@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import { authErrorToFail, requireSessionRead, sessionScopeFor } from "@/lib/auth/session";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
 import { ok } from "../_lib/api";
 import {
   getLifecycle,
@@ -29,6 +30,12 @@ export const dynamic = "force-dynamic";
  * by lifecycle status + total. Read-only GET → no audit event (app
  * convention); the envelope meta carries the stamped requestId (HC-3/R55:
  * the deprecated per-call context trailing arg was removed everywhere).
+ *
+ * F-031 wave-10 (audit 13-c F-2): the inventory is one row per DEVICE, so
+ * the device findMany composes scopedDeviceWhere — sites-limited sessions
+ * see only their own devices' firmware (hostname/model/firmware are
+ * cross-scope identifiers); the lifecycle counts derive from the rows and
+ * follow. Wildcard sessions keep the byte-unchanged query (no where key).
  * ───────────────────────────────────────────────────────────────────────────── */
 
 /** Lifecycle severity rank — lower sorts first (worst on top). */
@@ -90,7 +97,13 @@ export async function GET(request: Request) {
     if (envelope) return envelope;
     throw error;
   }
+  // F-031 wave-10: resolve the session scope once for the inventory query.
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
   const devices = await db.device.findMany({
+    ...(scope.mode === "wildcard"
+      ? {}
+      : { where: scopedDeviceWhere(scopeClaims, {}) }),
     select: {
       id: true,
       hostname: true,
