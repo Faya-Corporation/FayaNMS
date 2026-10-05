@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere } from "@/lib/auth/scope";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import {
   fetchRollups,
@@ -39,6 +44,13 @@ export const dynamic = "force-dynamic";
  * bySite / byDevice are sorted WORST-FIRST (ascending uptimePct).
  * group filters the returned arrays (both keys stay present, empty array
  * when filtered out, so the response shape never changes).
+ *
+ * F-031 wave-9 (read-plane migration): the device population composes
+ * scopedDeviceWhere, so bySite, byDevice and overallPct cover the
+ * session's devices only (rollup rows for out-of-scope devices are already
+ * skipped by the monitoredById guard). Wildcard sessions keep the
+ * byte-unchanged where (parity guarantee); deny-all sessions get the
+ * route's no-data convention (empty arrays, overallPct 100).
  */
 
 const querySchema = z.object({
@@ -77,6 +89,7 @@ export async function GET(request: Request) {
 
   const [devices, slaSetting] = await Promise.all([
     db.device.findMany({
+      where: scopedDeviceWhere(await sessionScopeFor(request), {}),
       select: {
         id: true,
         hostname: true,

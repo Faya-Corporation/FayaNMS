@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
   fail,
@@ -7,7 +8,14 @@ import {
   pageMeta,
   paginationSchema,
 } from "../_lib/api";
-import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSessionRead,
+  requireSiteScope,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionSiteScope } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +37,22 @@ export const dynamic = "force-dynamic";
  * POST /api/v1/maintenance — create a window (audited
  *      MAINTENANCE_WINDOW_CREATED). A same-scope overlapping window is a
  *      NON-blocking warning in the response (`overlap`), never an error.
+ *
+ * F-031 wave-9 (read-plane migration): a window is visible to a
+ * sites-limited session when its DEVICE's site is in scope, or (device-less
+ * windows) when its SITE is in scope; a fleet-wide window (no device, no
+ * site) is a GLOBAL resource and stays visible — it suppresses the
+ * session's own devices too, and leaks nothing. The same predicate rides
+ * baseWhere, so the page AND the KPI counters (activeNow/upcoming24h/
+ * past7d) are scope-relative. Wildcard keeps the byte-unchanged where
+ * (parity); deny-all sees only the fleet-wide windows (global edge).
+ *
+ * F-031 wave-9 (mutation gates — the wave-7 contract): POST/PATCH resolve
+ * every referenced device/site and require its site in scope (403
+ * SITE_SCOPE_FORBIDDEN after the existence 400s — the POST /devices
+ * ordering); PATCH/DELETE additionally gate the EXISTING window's site
+ * linkage. Null site (site-less device / fleet-wide window) bypasses per
+ * the documented unscoped-resource rule.
  */
 
 /** Time-derived status. isActive is intentionally orthogonal. */
@@ -131,6 +155,21 @@ export async function GET(request: Request) {
   const in24h = new Date(now.getTime() + 24 * 3600 * 1000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
 
+  // F-031 wave-9: the session scope rides baseWhere so the list AND the
+  // KPI counters are scope-relative (see the header visibility rule).
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const scopeFilter: Prisma.MaintenanceWindowWhereInput =
+    scope.mode === "wildcard"
+      ? {}
+      : {
+          OR: [
+            { device: { site: { code: { in: scope.codes } } } },
+            { AND: [{ deviceId: null }, { site: { code: { in: scope.codes } } }] },
+            { AND: [{ deviceId: null }, { siteId: null }] },
+          ],
+        };
+
   /** Every filter that applies to both the page and the KPI counters. */
   const baseWhere = {
     AND: [
@@ -144,6 +183,7 @@ export async function GET(request: Request) {
             ],
           }
         : {},
+      scopeFilter,
     ],
   };
 
@@ -236,14 +276,36 @@ export async function POST(request: Request) {
     return authFail;
   }
 
-  // Referenced records must exist (window rows are joined in the UI).
+  // Referenced records must exist (window rows are joined in the UI), and
+  // F-031 wave-9: their sites must be inside the session's scope — the
+  // existence 400s answer first, then the scope 403 (POST /devices order).
   if (data.siteId) {
-    const site = await db.site.findUnique({ where: { id: data.siteId }, select: { id: true } });
+    const site = await db.site.findUnique({
+      where: { id: data.siteId },
+      select: { id: true, code: true },
+    });
     if (!site) return fail("SITE_INVALID", "The selected site does not exist", 400);
+    try {
+      await requireSiteScope(request, site.code);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
   }
   if (data.deviceId) {
-    const device = await db.device.findUnique({ where: { id: data.deviceId }, select: { id: true } });
+    const device = await db.device.findUnique({
+      where: { id: data.deviceId },
+      select: { id: true, site: { select: { code: true } } },
+    });
     if (!device) return fail("DEVICE_INVALID", "The selected device does not exist", 400);
+    try {
+      await requireSiteScope(request, device.site?.code ?? null);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
   }
   if (data.changeId) {
     const change = await db.changeRequest.findUnique({ where: { id: data.changeId }, select: { id: true } });

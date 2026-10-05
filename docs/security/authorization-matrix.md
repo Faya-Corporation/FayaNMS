@@ -364,6 +364,88 @@ migrated device-domain surface is exactly the list below — nothing more
   (the parser length cap, requireSiteScope strictness, create surfaces,
   hostname probe).
 
+**Read-plane migration (wave 9, wired today).** The wave-9 audit (Task 9-c)
+found every derivative read plane OUTSIDE the device domain still trusting
+the role gate alone — fleet-level lists that quietly defeated the wave-7
+fused-404 gates. All of the following now compose the same central
+primitives: scope-filtered lists (`scopedDeviceWhere` / scope-relative where
+clauses), keyed singles through the row predicate with 404-not-403
+semantics, and mutations through `requireSiteScope` (403
+`SITE_SCOPE_FORBIDDEN`):
+
+- Global snapshots `GET /api/v1/snapshots` (fleet-wide ConfigSnapshot
+  history): the where clause composes the scope through the device
+  relation, so the previously scope-blind list — including the
+  `?deviceId=<out-of-scope>` bypass that reached past the per-device
+  sibling's fused-404 gate — answers the SAME 200 + empty-list envelope an
+  unknown id gets (no existence leak; byte-consistent empty shape). The
+  `deviceId` filter is also length-bounded (max 64) now.
+- Search `GET /api/v1/search`: every leg is scope-composed — the device leg
+  rides `scopedDeviceWhere` (hostname/displayName/mgmtIp hits no longer leak
+  cross-scope) and the incident/change legs merge the SAME codes into their
+  `site` relation (a site-less row is hidden, row-level fail-closed parity).
+- Topology `GET /api/v1/topology`: the device scan, the per-device discovery
+  evidence (open ports, OS fingerprints) and the site/neighbor legs are
+  bounded to the session's sites/devices.
+- Performance (all five routes) `GET /api/v1/performance/{devices,overview,
+  availability,capacity,interfaces}`: every device pool composes
+  `scopedDeviceWhere`, so the caller-chosen `?siteCode=` INTERSECTS the
+  session scope instead of overriding it — a sites-limited session asking
+  for an out-of-scope site gets 200 with zero rows (the list empty state),
+  never the unscoped set. The divergent-twins split is closed: the fleet
+  `/api/v1/interfaces` list and the performance plane now share one
+  contract.
+- CMDB (all four routes) `cmdb/items` (list+create), `cmdb/items/[id]`,
+  `cmdb/relations`, `cmdb/impact`: a CI is visible when its LINKAGE is in
+  scope — the linked device's site code governs for device-linked CIs, the
+  CI's own `siteId` tag for device-less ones, and a CI with NO linkage is a
+  GLOBAL resource (the documented unscoped-resource rule). The same
+  predicate scopes the device join, the site catalog, the KPI counts, the
+  relation counts and the CMDB_* audit history (rows whose `CI-NNNNNN`
+  references are out-of-scope or unresolvable drop fail-closed); the detail
+  read fuses the row predicate into the SAME `CMDB_NOT_FOUND` envelope a
+  wildcard session gets for a missing CI (byte-consistent 404-not-403). The
+  owner fallback label is the email LOCAL-PART (R69/F-029 discipline) — a
+  name-less owner no longer ships the full address.
+- Dashboard `GET /api/v1/dashboard`: every device-derived leg composes the
+  scope — KPI aggregates (status/compliance/lastBackup via
+  `scopedDeviceWhere`; alert/drift counts via the device relation;
+  incident/change counts and lists via the `site` relation), the
+  utilization trend and capacity risks (bounded to the session's device
+  ids). Honest residuals below.
+- Baselines `GET/POST /api/v1/baselines` (+ `[id]` DELETE): the GET joins
+  and the "devices without a baseline" strip are scope-bounded; the POST
+  resolves the target device and then requires its site in scope — a
+  sites-limited session approving a baseline on an out-of-scope device gets
+  403 `SITE_SCOPE_FORBIDDEN` (existence 404 first; mutations accept
+  existence confirmation, so 403-not-404 here).
+- Maintenance `GET/POST /api/v1/maintenance` + `PATCH/DELETE
+  /api/v1/maintenance/[id]`: a window is visible when its device's site —
+  or, device-less, its site — is in scope; a fleet-wide window (no device,
+  no site) is a GLOBAL resource and stays visible (it suppresses the
+  session's own devices too, and leaks nothing). The KPI counters ride the
+  same base where (scope-relative). Mutations gate every referenced
+  device/site AND the existing window's linkage, ordered existence-400
+  first, then the scope 403 (the POST /devices ordering).
+
+Byte-consistency across the plane: on every migrated route the WILDCARD
+path keeps the exact pre-wave-9 query shape (the parity guarantee), and a
+deny-all scope (`sites: []`) answers empty lists / zeroed KPIs / the
+linkage-less-only CMDB view rather than errors.
+
+Pins: `tests/audit/site-scope-read-planes.test.ts` (the snapshots envelope
+parity, search, performance siteCode∩scope, cmdb linkage + owner label,
+baselines/maintenance 403-vs-wildcard pairs, artifactToCsv neutralization,
+pagination cap) alongside the wave-2/7 suites above.
+
+**Wave-9 read-plane hardening (same wave, pinned).** Three P3s landed with
+the migration: the shared pagination schema caps `page` at 1000 (deep-
+pagination abuse bound — the same shared `INVALID_QUERY` 400 envelope every
+paginated route already produces); `artifactToCsv` neutralizes spreadsheet
+formula prefixes (`=`, `+`, `-`, `@`, tab) with the OWASP leading-`'` guard
+while plain numbers and clean cells stay byte-unchanged; and the snapshots
+`deviceId` query filter is length-bounded.
+
 **Documented scope rules and edges (honest).**
 
 - Create edge: `POST /api/v1/devices` with an OMITTED `siteId` creates a
@@ -388,16 +470,54 @@ migrated device-domain surface is exactly the list below — nothing more
   an out-of-scope id is reported exactly like a missing id (`notFound`
   bucket), so the response leaks nothing about out-of-scope existence.
 
-**Remaining (next signal).** The device domain is the migrated one; the
-other `/api/v1` routes still trust their role gate alone. When
-multi-site customers actually arrive, migrate the remaining domains with
-the same two primitives — list routes:
+**Remaining (honest, next signal).** The device domain AND the read/derivative
+planes above are migrated. Still on the role gate alone — or deliberately
+residual — is everything NOT listed above. When the next domain migrates,
+use the same two primitives — list routes:
 `scopedDeviceWhere(scopeClaims, baseWhere)`; detail/singleton reads: the
 `sessionAllowsSite` row predicate with 404-not-403 semantics; mutation
 routes may prefer `requireSiteScope(req, siteCode)` (403
-`SITE_SCOPE_FORBIDDEN`). The devices routes are the reference. The sites
-catalog (`GET /api/v1/sites`) stays global until a consumer needs it
-filtered.
+`SITE_SCOPE_FORBIDDEN`). The devices routes and the wave-9 read planes are
+the references. Specifically (so the boundary stays explicit):
+
+- AI plane (`/api/v1/ai/*`) and the `GET /api/v1/ztp/claims` list: MIGRATED
+  in wave 9 (same-wave fix batch landed). `ai/query` scopes every executor
+  (inventory/incidents/changes/jobs/predictive/summary) via
+  `scopedDeviceWhere` + site-relation legs, with the NL plan's site filter
+  INTERSECTED with the session scope; `ai/assist`/`ai/rca-draft` fuse
+  `sessionAllowsSite` into the context builders (`src/lib/ai/context.ts`,
+  optional scopeClaims param, backward-compatible) so an out-of-scope
+  device/incident answers the existing not-found envelope;
+  `ai/change-draft` scopes AND caps (200) the prompt inventory and drops
+  out-of-scope hostnames from `matchedDevices` exactly like unknown ones.
+  `GET /api/v1/ztp/claims` scopes claims, device enrichment, the site
+  catalog and the ZTP audit history to the session's sites (a claim's
+  effective site = target site, else provisioned device's site;
+  unresolvable → hidden; site-less claims hidden — SQL-relation parity).
+  The session-read posture on the ZTP list is kept deliberately: no
+  `ztp.read` permission exists in the role catalog (minting one is an
+  owner decision), the route docstring documents the rationale.
+- Dashboard residuals (the landed posture, stated exactly):
+  `kpis.activeJobs` stays GLOBAL — JobExecution rows carry no site linkage
+  and the bare count exposes no resource identity. `recentActivity` (the
+  global AuditEvent stream): rows carry NO site linkage and `resourceLabel`
+  is free text that frequently names out-of-scope resources (device
+  hostnames from the alert/snapshot/drift/job/ZTP writers, user emails, CI
+  labels) — sites-limited sessions therefore receive the stream with
+  `resourceLabel` STRIPPED (actor/action/result/time survive; no
+  cross-scope identity), while wildcard sessions keep the verbatim labels.
+  The deep fix — a site dimension on audit rows — is a deferred owner
+  decision (it needs a resourceLabel audit first).
+- CMDB items with NO device/site linkage remain GLOBAL — visible to every
+  session, including deny-all ones (they have no tenancy signal to scope
+  by; the documented unscoped-resource edge).
+- Reports: the GENERATOR is not scoped this wave — a generated report's
+  CONTENTS remain fleet-wide for any principal that can read the artifact
+  (GET-gating posture and content scoping are deferred owner decisions).
+  The wave-9 change to the reports plane is the CSV formula-injection
+  neutralization in `artifactToCsv` only.
+- The sites catalog (`GET /api/v1/sites`) stays global until a consumer
+  needs it filtered.
 
 **Scope administration.** `PATCH /api/v1/admin/users/[id]` accepts
 `siteScope: string[] | null` (admin-only; ≤ 32 codes, each ≤ 32 chars,
@@ -412,9 +532,11 @@ JWTs only. API-client opaque-bearer principals and machine service JWTs
 remain unscoped (global) — their scope model is future work. `sites` is a
 SITE-code dimension only; device-group scoping does not exist yet.
 
-**Migration note (next signal).** See the "Remaining" paragraph above:
-the device domain is the migrated reference; the remaining domains
-migrate on demand with the same two primitives.
+**Migration note (next signal).** See the "Remaining" paragraph above: the
+device domain, the wave-9 read/derivative planes, the AI plane and the
+`ztp/claims` list GET are the migrated references; everything else (reports
+content scoping, the sites catalog) migrates on demand with the same two
+primitives.
 
 ### 5.2 CSRF origin control on cookie-session mutations (RT-008 / F-010)
 

@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
 import {
@@ -5,7 +6,13 @@ import {
   requirePermission,
   requireSessionRead,
   requireSiteScope,
+  sessionScopeFor,
 } from "@/lib/auth/session";
+import {
+  scopedDeviceWhere,
+  sessionSiteScope,
+  siteScopeAllows,
+} from "@/lib/auth/scope";
 import { ZTP_TEMPLATES, getZtpTemplate } from "@/lib/ztp/templates";
 import { projectMgmtIp } from "@/lib/ztp/provision";
 import { z } from "zod";
@@ -21,6 +28,40 @@ export const dynamic = "force-dynamic";
  *   job), the in-code template catalog (src/lib/ztp/templates.ts), vendor and
  *   site option lists, counts by status and the recent ZTP audit trail
  *   (provisioning history). Read-only → no audit event (app convention).
+ *
+ *   Wave-9 (audit 9-b P2 F-2) — the read is now SITE-SCOPED (F-031):
+ *     Permission posture: POST gates on "ztp.provision", but NO "ztp.read"
+ *     permission exists in the seeded role matrix / authorization matrix —
+ *     minting one here would silently drop every non-admin role off this
+ *     read (a role-matrix + seed contract change, out of scope for a route
+ *     fix). The F-008 session-read gate is therefore KEPT, and the leak is
+ *     closed by scoping every payload the read returns:
+ *       - Wildcard sessions (no `sites` claim — the single-tenant default):
+ *         BYTE-IDENTICAL response to the pre-wave-9 route.
+ *       - Sites-limited sessions: a claim is visible iff its EFFECTIVE site
+ *         code is in scope — the claim's target site (siteId) when set,
+ *         else its provisioned device's site (a claim provisions INTO that
+ *         device's site). When neither resolves (no target site and the
+ *         device row is absent, site-less, or itself out of scope) the
+ *         claim composes exactly like a site-less device under
+ *         scopedDeviceWhere's SQL parity (`site: { code: { in: … } }`
+ *         cannot match NULL) → hidden, fail-closed; a deny-all scope sees
+ *         an empty read. Out-of-scope device identity (hostname/mgmtIp)
+ *         never enriches any row — the enrichment query is scope-composed.
+ *       - The site catalog and the status counts are computed over the
+ *         scoped set; the ZTP audit history is scoped by the claim its rows
+ *         belong to (all three ZTP writers stamp resourceType "ZtpClaim"
+ *         + resourceId = claim id), so a scoped session receives the 12
+ *         most recent rows of ITS claims; wildcard keeps the original
+ *         unfiltered take-12.
+ *       - ZtpClaim carries only SCALAR siteId/deviceId (no Prisma relation
+ *         — the phase-14 contract), so the row filter resolves in
+ *         application code with the SAME central classifier
+ *         (siteScopeAllows) instead of a hand-rolled predicate; the device
+ *         enrichment query composes scopedDeviceWhere directly.
+ *       - API-client bearer reads resolve null claims → WILDCARD (the
+ *         documented sessionScopeFor posture for that plane); anonymous
+ *         requests never reach scope evaluation (401 above).
  *
  * POST /api/v1/ztp/claims
  *   Create a claim and enqueue exactly one ZTP_PROVISION JobExecution (same
@@ -86,24 +127,46 @@ export async function GET(request: Request) {
     if (envelope) return envelope;
     throw error;
   }
-  const [claims, siteRows, vendorRows, ztpAudits] = await Promise.all([
+  // Wave-9 scope resolution (see the GET docstring): null claims (the
+  // API-client bearer plane) resolve WILDCARD by design; every anonymous
+  // request has already been answered 401 by requireSessionRead above.
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const scoped = scope.mode === "sites";
+
+  const [claimRows, siteRows, vendorRows] = await Promise.all([
     db.ztpClaim.findMany({ orderBy: { createdAt: "desc" } }),
     db.site.findMany({ orderBy: { code: "asc" }, select: { id: true, code: true, name: true } }),
     db.vendor.findMany({ orderBy: { key: "asc" }, select: { key: true, name: true } }),
-    db.auditEvent.findMany({
-      where: { action: { in: ["ZTP_CLAIM_CREATED", "ZTP_PROVISIONED", "ZTP_PROVISION_FAILED"] } },
-      orderBy: { createdAt: "desc" },
-      take: 12,
-      select: {
-        action: true,
-        result: true,
-        actorName: true,
-        resourceLabel: true,
-        correlationId: true,
-        createdAt: true,
-      },
-    }),
   ]);
+  const siteById = new Map(siteRows.map((s) => [s.id, s]));
+
+  // Device enrichment — scope-composed so out-of-scope device identity
+  // (hostname/mgmtIp/site) can never reach a sites-limited session. The
+  // site code in the select feeds the effective-site rule below. Wildcard
+  // sessions get the base where unchanged (the parity guarantee).
+  const deviceIds = claimRows.map((c) => c.deviceId).filter((id): id is string => Boolean(id));
+  const devices = deviceIds.length
+    ? await db.device.findMany({
+        where: scopedDeviceWhere(scopeClaims, { id: { in: deviceIds } }),
+        select: { id: true, hostname: true, mgmtIp: true, site: { select: { code: true } } },
+      })
+    : [];
+  const deviceById = new Map(devices.map((d) => [d.id, d]));
+
+  // Row-level claim filter (wildcard → claimRows untouched). Effective site
+  // = the claim's target site, else its provisioned device's site; neither
+  // resolvable → hidden for sites-limited sessions (SQL-relation parity).
+  const claims = scoped
+    ? claimRows.filter((claim) => {
+        const device = claim.deviceId ? deviceById.get(claim.deviceId) ?? null : null;
+        const siteCode =
+          (claim.siteId ? siteById.get(claim.siteId)?.code : undefined) ??
+          device?.site?.code ??
+          null;
+        return siteScopeAllows(scope, siteCode);
+      })
+    : claimRows;
 
   // Resolve the latest ZTP_PROVISION job per claim via the enqueue-time
   // targetId link (no JSON querying — the id is indexed through the lookup).
@@ -130,16 +193,6 @@ export async function GET(request: Request) {
     }
   }
 
-  // Resolve sites + devices for the enriched rows.
-  const siteById = new Map(siteRows.map((s) => [s.id, s]));
-  const deviceIds = claims.map((c) => c.deviceId).filter((id): id is string => Boolean(id));
-  const devices = deviceIds.length
-    ? await db.device.findMany({
-        where: { id: { in: deviceIds } },
-        select: { id: true, hostname: true, mgmtIp: true },
-      })
-    : [];
-  const deviceById = new Map(devices.map((d) => [d.id, d]));
   const vendorNameByKey = new Map(vendorRows.map((v) => [v.key, v.name]));
 
   const rows = claims.map((claim) => {
@@ -202,6 +255,37 @@ export async function GET(request: Request) {
     failed: rows.filter((r) => r.status === "failed").length,
   };
 
+  // Site catalog: sites-limited sessions see only their own sites (order
+  // preserved — the filter composes over the code-asc list).
+  const catalogSites = scoped
+    ? siteRows.filter((s) => siteScopeAllows(scope, s.code))
+    : siteRows;
+
+  // ZTP audit history (provisioning trail): wildcard keeps the original
+  // fleet-wide take-12; sites-limited sessions get the 12 most recent rows
+  // whose ZtpClaim resource is one of THEIR claims (all three ZTP writers
+  // — POST below and the worker's ZTP_PROVISIONED / ZTP_PROVISION_FAILED —
+  // stamp resourceType "ZtpClaim" + resourceId = claim id).
+  const ztpAuditWhere = {
+    action: { in: ["ZTP_CLAIM_CREATED", "ZTP_PROVISIONED", "ZTP_PROVISION_FAILED"] },
+    ...(scoped ? { resourceType: "ZtpClaim", resourceId: { in: claimIds } } : {}),
+  };
+  const ztpAudits = scoped && claimIds.length === 0
+    ? []
+    : await db.auditEvent.findMany({
+        where: ztpAuditWhere,
+        orderBy: { createdAt: "desc" },
+        take: 12,
+        select: {
+          action: true,
+          result: true,
+          actorName: true,
+          resourceLabel: true,
+          correlationId: true,
+          createdAt: true,
+        },
+      });
+
   return ok(
     {
       claims: rows.map((row) => ({ ...row, projectedMgmtIp: projected[row.id] ?? null })),
@@ -217,7 +301,7 @@ export async function GET(request: Request) {
         name: v.name,
         hasTemplate: ZTP_TEMPLATES.some((t) => t.vendorKey === v.key),
       })),
-      sites: siteRows,
+      sites: catalogSites,
       counts,
       history: ztpAudits.map((a) => ({
         action: a.action,
@@ -302,18 +386,17 @@ export async function POST(request: Request) {
   }
 
   // ── Duplicate guards ──
+  // The envelope is shared with the P2002 catch below so a concurrent
+  // duplicate (which raced past this guard) answers the exact same error.
+  const ztpClaimExistsMessage = `An active claim for serial ${serial} already exists (status ${
+    ACTIVE_CLAIM_STATUSES.join("|")
+  }) — failed or provisioned serials may re-claim`;
   const activeClaim = await db.ztpClaim.findFirst({
     where: { serial, status: { in: [...ACTIVE_CLAIM_STATUSES] } },
     select: { id: true, status: true },
   });
   if (activeClaim) {
-    return fail(
-      "ZTP_CLAIM_EXISTS",
-      `An active claim for serial ${serial} already exists (status ${
-        ACTIVE_CLAIM_STATUSES.join("|")
-      }) — failed or provisioned serials may re-claim`,
-      409
-    );
+    return fail("ZTP_CLAIM_EXISTS", ztpClaimExistsMessage, 409);
   }
   const hostnameTaken = await db.device.findUnique({
     where: { hostname },
@@ -331,70 +414,90 @@ export async function POST(request: Request) {
   const correlationId = newJobCorrelationId();
   const projectedMgmtIp = await projectMgmtIp(parsed.data.siteId ?? null);
 
-  const [claim, job] = await db.$transaction(
-    async (tx) => {
-      const created = await tx.ztpClaim.create({
-        data: {
-          serial,
-          hostname,
-          vendorKey,
-          model,
-          templateId,
-          siteId: parsed.data.siteId ?? null,
-          requestedBy: parsed.data.requestedBy ?? null,
-          status: "pending",
-        },
-      });
-
-      const createdJob = await tx.jobExecution.create({
-        data: {
-          type: "ZTP_PROVISION",
-          targetType: "ZTP_CLAIM",
-          targetId: created.id,
-          status: "QUEUED",
-          progress: 0,
-          priority: 5,
-          maxAttempts: 3,
-          payloadJson: JSON.stringify({
-            claimId: created.id,
-            serial,
-            hostname,
-            vendorKey,
-            model,
-            templateId,
-          }),
-          correlationId,
-        },
-      });
-
-      await tx.auditEvent.create({
-        data: {
-          actorId: actor.id,
-          actorName,
-          action: "ZTP_CLAIM_CREATED",
-          resourceType: "ZtpClaim",
-          resourceId: created.id,
-          resourceLabel: `${hostname} (${serial})`,
-          result: "SUCCESS",
-          correlationId,
-          afterJson: JSON.stringify({
-            claimId: created.id,
+  const createClaimAndJob = () =>
+    db.$transaction(
+      async (tx) => {
+        const created = await tx.ztpClaim.create({
+          data: {
             serial,
             hostname,
             vendorKey,
             model,
             templateId,
             siteId: parsed.data.siteId ?? null,
-            projectedMgmtIp,
-            jobId: createdJob.id,
-          }),
-        },
-      });
+            requestedBy: parsed.data.requestedBy ?? null,
+            status: "pending",
+          },
+        });
 
-      return [created, createdJob] as const;
-    },
-    { maxWait: 5_000, timeout: 20_000 }
-  );
+        const createdJob = await tx.jobExecution.create({
+          data: {
+            type: "ZTP_PROVISION",
+            targetType: "ZTP_CLAIM",
+            targetId: created.id,
+            status: "QUEUED",
+            progress: 0,
+            priority: 5,
+            maxAttempts: 3,
+            payloadJson: JSON.stringify({
+              claimId: created.id,
+              serial,
+              hostname,
+              vendorKey,
+              model,
+              templateId,
+            }),
+            correlationId,
+          },
+        });
+
+        await tx.auditEvent.create({
+          data: {
+            actorId: actor.id,
+            actorName,
+            action: "ZTP_CLAIM_CREATED",
+            resourceType: "ZtpClaim",
+            resourceId: created.id,
+            resourceLabel: `${hostname} (${serial})`,
+            result: "SUCCESS",
+            correlationId,
+            afterJson: JSON.stringify({
+              claimId: created.id,
+              serial,
+              hostname,
+              vendorKey,
+              model,
+              templateId,
+              siteId: parsed.data.siteId ?? null,
+              projectedMgmtIp,
+              jobId: createdJob.id,
+            }),
+          },
+        });
+
+        return [created, createdJob] as const;
+      },
+      { maxWait: 5_000, timeout: 20_000 }
+    );
+
+  // Wave-9 (audit 9-b P3): a concurrent claim for the same serial raced
+  // past the active-claim guard — ZtpClaim.serial @unique surfaces Prisma
+  // P2002 inside the transaction. Answer the SAME 409 envelope the guard
+  // produces instead of a raw 500; the aborted transaction committed
+  // nothing (claim, job and audit roll back together).
+  let claimAndJob: Awaited<ReturnType<typeof createClaimAndJob>>;
+  try {
+    claimAndJob = await createClaimAndJob();
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return fail("ZTP_CLAIM_EXISTS", ztpClaimExistsMessage, 409);
+    }
+    throw error;
+  }
+  const [claim, job] = claimAndJob;
 
   return ok(
     {

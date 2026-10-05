@@ -55,6 +55,14 @@ model User {
   // visibility; parsed fail-closed and minted into the session JWT `sites`
   // claim at sign-in (docs/security/authorization-matrix.md §5).
   siteScopeJson String?
+  // Wave-9 credential epoch (audit 9-a F-3): incremented inside the SAME
+  // transaction whenever an admin SETS the password (users/[id] PATCH +
+  // reset-password). The epoch is minted into the session JWT at sign-in
+  // ONLY and re-checked per-request in requireUser — a token stamped with a
+  // stale epoch answers 401, so a password reset evicts every live session
+  // of that account immediately instead of letting a stolen cookie ride out
+  // the 12 h maxAge. Default 0 keeps every pre-existing token valid.
+  credentialEpoch Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

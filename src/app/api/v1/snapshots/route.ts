@@ -1,5 +1,11 @@
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
 import {
   csvParam,
   fail,
@@ -19,13 +25,25 @@ export const dynamic = "force-dynamic";
  * q (hostname / mgmtIp contains). pageSize is hard-capped at 25 —
  * rows are metadata only (rawText lives on the per-device endpoint
  * and the audited download route).
+ *
+ * F-031 wave-9 (read-plane migration): snapshots are device-derived rows,
+ * so the where clause composes the session scope through the device
+ * relation (scopedDeviceWhere) — a sites-limited session no longer reads
+ * another site's history via ?deviceId=<out-of-scope-cuid> (which defeated
+ * the wave-7 fused-404 gates on the per-device sibling). List semantics:
+ * an out-of-scope/unknown deviceId yields the SAME 200 + empty-list shape
+ * as any other empty filter result (no existence leak, no 404). Wildcard
+ * sessions (no `sites` claim — the single-tenant default) keep the
+ * byte-unchanged where shape; deny-all sessions see an empty list.
  */
 
 const querySchema = paginationSchema.extend({
   status: z.string().optional(), // csv multi: CURRENT|HISTORICAL|BASELINE
   source: z.string().optional(), // csv multi: SCHEDULED|MANUAL|PRE_CHANGE|POST_CHANGE|EVENT
   q: z.string().trim().min(1).max(120).optional(),
-  deviceId: z.string().trim().min(1).optional(),
+  // P3 F-9 (wave-9): bound the deviceId filter — it feeds a where clause
+  // and must not be an unbounded string.
+  deviceId: z.string().trim().min(1).max(64).optional(),
 });
 
 const PAGE_SIZE_CAP = 25;
@@ -60,7 +78,14 @@ export async function GET(request: Request) {
   const sources = csvParam(parsed.data.source);
   const q = parsed.data.q;
 
-  const where = {
+  // F-031 wave-9: the scope rides the device relation. Sites-limited
+  // sessions get `device: scopedDeviceWhere(...)` merged into the AND
+  // (out-of-scope snapshots vanish, including the ?deviceId= bypass);
+  // wildcard keeps the exact pre-F-031 where shape (parity guarantee);
+  // deny-all (`codes: []`) naturally matches nothing.
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const where: Prisma.ConfigSnapshotWhereInput = {
     AND: [
       statuses && statuses.length > 0 ? { status: { in: statuses } } : {},
       sources && sources.length > 0 ? { source: { in: sources } } : {},
@@ -75,6 +100,9 @@ export async function GET(request: Request) {
             },
           }
         : {},
+      ...(scope.mode === "sites"
+        ? [{ device: scopedDeviceWhere(scopeClaims, {}) }]
+        : []),
     ],
   };
 

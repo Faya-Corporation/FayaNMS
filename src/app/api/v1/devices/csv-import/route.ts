@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
 import {
@@ -28,7 +29,28 @@ export const dynamic = "force-dynamic";
  * site code, duplicate hostname/mgmtIp in the DB or within the batch, or a
  * site outside the session's site scope — SITE_SCOPE_FORBIDDEN) while
  * valid rows still get created. Returns { created, devices, skipped }.
+ *
+ * Wave-9 (audit 9-b P3) — P2002 → per-row skip, never a raw 500:
+ * Device.hostname is @unique, so a concurrent create that raced past this
+ * request's pre-load surfaces as Prisma P2002 inside the import
+ * transaction. The route answers with its OWN row semantics: the aborted
+ * transaction committed nothing (Prisma ITX rollback — PostgreSQL aborts
+ * the tx on a failed statement, so catch-and-continue inside it is not
+ * possible), the batch replays ROW-BY-ROW in individual transactions, and
+ * the raced row lands in `skipped` like any other duplicate — reason
+ * "DUPLICATE_HOSTNAME: …", shape { ip, reason }. The success path (no
+ * race) stays byte-identical: one transaction, same rows, same envelope.
  */
+
+/** True only for Prisma's unique-constraint violation error class (P2002). */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+  );
+}
+
+/** The $extends-wrapped transaction client the exported db hands to ITX callbacks. */
+type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
 const IPV4_PATTERN =
   /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
@@ -218,53 +240,85 @@ export async function POST(request: Request) {
   const created: { id: string; hostname: string; ip: string }[] = [];
   const correlationId = newJobCorrelationId();
 
-  if (pending.length > 0) {
-    await db.$transaction(async (tx) => {
-      for (const entry of pending) {
-        const device = await tx.device.create({
-          data: {
-            hostname: entry.hostname,
-            displayName: entry.hostname,
-            mgmtIp: entry.mgmtIp,
-            vendorId: entry.vendorId,
-            model: entry.model,
-            siteId: entry.siteId,
-            status: "UNKNOWN",
-            criticality: entry.criticality,
-            healthScore: 0,
-            backupCompliance: "UNKNOWN",
-            tagsJson: entry.tags.length > 0 ? JSON.stringify(entry.tags) : null,
-          },
-          select: { id: true, hostname: true, mgmtIp: true },
-        });
-        created.push({
-          id: device.id,
-          hostname: device.hostname,
-          ip: device.mgmtIp,
-        });
-
-        await tx.auditEvent.create({
-          data: {
-            actorId: actor.id,
-            actorName: actor.name ?? "Unknown user",
-            action: "DEVICE_CREATED",
-            resourceType: "Device",
-            resourceId: device.id,
-            resourceLabel: device.hostname,
-            result: "SUCCESS",
-            correlationId,
-            afterJson: JSON.stringify({
-              hostname: device.hostname,
-              mgmtIp: device.mgmtIp,
-              siteId: entry.siteId,
-              criticality: entry.criticality,
-              status: "UNKNOWN",
-              source: "CSV_IMPORT",
-            }),
-          },
-        });
-      }
+  // Create one pending row + its DEVICE_CREATED audit inside `tx` (shared
+  // verbatim by the single-transaction fast path and the race replay).
+  const importOne = async (
+    tx: TxClient,
+    entry: (typeof pending)[number]
+  ) => {
+    const device = await tx.device.create({
+      data: {
+        hostname: entry.hostname,
+        displayName: entry.hostname,
+        mgmtIp: entry.mgmtIp,
+        vendorId: entry.vendorId,
+        model: entry.model,
+        siteId: entry.siteId,
+        status: "UNKNOWN",
+        criticality: entry.criticality,
+        healthScore: 0,
+        backupCompliance: "UNKNOWN",
+        tagsJson: entry.tags.length > 0 ? JSON.stringify(entry.tags) : null,
+      },
+      select: { id: true, hostname: true, mgmtIp: true },
     });
+    created.push({
+      id: device.id,
+      hostname: device.hostname,
+      ip: device.mgmtIp,
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
+        action: "DEVICE_CREATED",
+        resourceType: "Device",
+        resourceId: device.id,
+        resourceLabel: device.hostname,
+        result: "SUCCESS",
+        correlationId,
+        afterJson: JSON.stringify({
+          hostname: device.hostname,
+          mgmtIp: device.mgmtIp,
+          siteId: entry.siteId,
+          criticality: entry.criticality,
+          status: "UNKNOWN",
+          source: "CSV_IMPORT",
+        }),
+      },
+    });
+  };
+
+  if (pending.length > 0) {
+    try {
+      await db.$transaction(async (tx) => {
+        for (const entry of pending) {
+          await importOne(tx, entry);
+        }
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      // Concurrent-duplicate race (Device.hostname @unique): the aborted
+      // transaction committed NOTHING — replay row-by-row in individual
+      // transactions so only the raced row skips (below) and the clean
+      // rows still import. The response's created[] is rebuilt from what
+      // actually persisted.
+      created.length = 0;
+      for (const entry of pending) {
+        try {
+          await db.$transaction(async (tx) => {
+            await importOne(tx, entry);
+          });
+        } catch (rowError) {
+          if (!isUniqueViolation(rowError)) throw rowError;
+          skipped.push({
+            ip: entry.mgmtIp,
+            reason: `DUPLICATE_HOSTNAME: a device with hostname "${entry.hostname}" already exists (concurrent create)`,
+          });
+        }
+      }
+    }
   }
 
   return ok({ created: created.length, devices: created, skipped }, { correlationId });

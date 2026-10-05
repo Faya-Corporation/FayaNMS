@@ -9,6 +9,8 @@ import {
 } from "../../_lib/api";
 import { consumeAiDailyQuota } from "@/lib/api/ai-quota";
 import { resolveActingUser } from "../../_lib/actor";
+import { sessionScopeFor } from "@/lib/auth/session";
+import { sessionAllowsSite } from "@/lib/auth/scope";
 import { buildIncidentContext } from "@/lib/ai/context";
 import { buildRcaDraftMessages, type AiLocale } from "@/lib/ai/prompts";
 import {
@@ -40,6 +42,12 @@ export const dynamic = "force-dynamic";
  * writes to the Incident record; the user still saves through the existing
  * save-pir flow. Audit row AI_RCA_DRAFT_GENERATED stays lean: field lengths
  * and confidence only, never the draft text.
+ *
+ * F-031 (wave 9, audit 9-b F-1): the session's site scope is resolved with
+ * sessionScopeFor and fused into BOTH incident loads — the pre-flight
+ * existence probe and the context builder's not-found branch — so an
+ * out-of-scope incident answers the SAME 404 envelope as a nonexistent one
+ * (no existence leak through the AI plane).
  */
 
 const bodySchema = z.object({
@@ -120,15 +128,21 @@ export async function POST(request: Request) {
     return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
   }
 
+  // F-031 (wave 9): the session's site scope for both incident loads
+  // (wildcard sessions — absent claims — keep byte-identical behavior).
+  const scopeClaims = await sessionScopeFor(request);
+
   const incident = await db.incident.findUnique({
     where: { id: incidentId },
-    select: { id: true, number: true, title: true },
+    select: { id: true, number: true, title: true, site: { select: { code: true } } },
   });
-  if (!incident) {
+  // Fused-404: out-of-scope site → the same not-found envelope as a missing
+  // row (no existence oracle for sites-limited sessions).
+  if (!incident || !sessionAllowsSite(scopeClaims, incident.site?.code ?? null)) {
     return fail("INCIDENT_NOT_FOUND", "Incident not found", 404);
   }
 
-  const context = await buildIncidentContext(incidentId);
+  const context = await buildIncidentContext(incidentId, scopeClaims);
   if (!context) {
     return fail("INCIDENT_NOT_FOUND", "Incident not found", 404);
   }

@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { fail, ok } from "../../_lib/api";
 import {
@@ -8,7 +9,12 @@ import {
 } from "@/lib/cmdb/impact";
 import { resolveCmdbItem } from "@/lib/cmdb/server";
 import { z } from "zod";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionAllowsSite, sessionSiteScope } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +38,16 @@ export const dynamic = "force-dynamic";
  *   count), max depth 4, ordering (hop asc, then ciId asc) is fully
  *   deterministic so polling/refreshes never reshuffle rows. 404 when the
  *   item is unknown. Read-only → no audit event (app convention).
+ *
+ *   F-031 wave-9 (read-plane migration): the analyzed graph is scoped —
+ *   the BFS materializes only the CIs a sites-limited session can see (the
+ *   cmdb/items visibility predicate) and only edges whose BOTH endpoints
+ *   are visible, so impact paths never traverse out-of-scope CIs. An
+ *   out-of-scope start item answers the SAME `CMDB_NOT_FOUND` 404 envelope
+ *   a wildcard session gets for a missing item (404-not-403). Wildcard
+ *   sessions keep the byte-unchanged unfiltered materialization; a
+ *   deny-all session still walks the linkage-less CIs (documented global
+ *   resource edge).
  * ───────────────────────────────────────────────────────────────────────────── */
 
 const impactedNodeSchema = z.object({
@@ -88,10 +104,37 @@ export async function GET(request: Request) {
     return fail("CMDB_NOT_FOUND", `No configuration item matches "${itemId}"`, 404);
   }
 
-  // Materialize the whole graph once (bounded: items + edges are small at
-  // fleet scale) and hand it to the pure BFS helper twice.
+  // F-031 wave-9: out-of-scope start item → the SAME 404 as a missing one.
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const isWildcard = scope.mode === "wildcard";
+  if (
+    !isWildcard &&
+    !sessionAllowsSite(scopeClaims, await cmdbItemSiteCode(item))
+  ) {
+    return fail("CMDB_NOT_FOUND", `No configuration item matches "${itemId}"`, 404);
+  }
+  // Sites-limited sessions materialize the VISIBLE subgraph only; the
+  // wildcard path never consumes ciScopeWhere (every use is guarded).
+  const scopedCodes = scope.mode === "sites" ? scope.codes : [];
+  const ciScopeWhere: Prisma.CmdbItemWhereInput = {
+    OR: [
+      { device: { site: { code: { in: scopedCodes } } } },
+      { AND: [{ deviceId: null }, { siteId: { in: scopedCodes } }] },
+      { AND: [{ deviceId: null }, { siteId: null }] },
+    ],
+  };
+
+  // Materialize the graph once (bounded: items + edges are small at
+  // fleet scale) and hand it to the pure BFS helper twice. F-031 wave-9:
+  // sites-limited sessions materialize the VISIBLE subgraph only.
   const [items, edges] = await Promise.all([
     db.cmdbItem.findMany({
+      ...(isWildcard
+        ? {}
+        : {
+            where: ciScopeWhere,
+          }),
       select: {
         id: true,
         ciId: true,
@@ -102,6 +145,13 @@ export async function GET(request: Request) {
       },
     }),
     db.cmdbRelation.findMany({
+      ...(isWildcard
+        ? {}
+        : {
+            where: {
+              AND: [{ source: ciScopeWhere }, { target: ciScopeWhere }],
+            },
+          }),
       select: { sourceId: true, targetId: true, relationType: true },
     }),
   ]);
@@ -135,4 +185,30 @@ export async function GET(request: Request) {
   const validated = responseSchema.parse(payload);
 
   return ok(validated, undefined, 200);
+}
+
+/* ───────────────────────── F-031 wave-9 helper ───────────────────────── */
+
+/**
+ * Resolve the CI's governing site code (the cmdb/items list predicate's
+ * linkage): the LINKED DEVICE's site when device-linked (a site-less
+ * linked device yields null, which HIDES the CI from sites-limited
+ * sessions); otherwise the CI's own siteId tag; null when the CI has no
+ * site linkage (global resource — the assertSiteScope(null) bypass).
+ *
+ * KEPT IN SYNC with the twin helpers in cmdb/items/route.ts,
+ * cmdb/items/[id]/route.ts and cmdb/relations/route.ts.
+ */
+async function cmdbItemSiteCode(item: {
+  deviceId: string | null;
+  siteId: string | null;
+}): Promise<string | null> {
+  if (item.deviceId) {
+    const device = await db.device.findUnique({
+      where: { id: item.deviceId },
+      select: { site: { select: { code: true } } },
+    });
+    return device?.site?.code ?? null;
+  }
+  return item.siteId;
 }

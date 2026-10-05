@@ -145,34 +145,39 @@ export async function POST(request: Request) {
     const tokenPrefix = token.slice(0, 8);
 
     const correlationId = newCorrelationId("AXC");
-    const row = await db.apiClient.create({
-      data: {
-        name: parsed.data.name,
-        tokenHash,
-        tokenPrefix,
-        scopesJson: JSON.stringify(scopes),
-        isActive: parsed.data.isActive ?? true,
-        createdBy: actor.id,
-      },
-    });
-
-    await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? actor.email,
-        action: "API_CLIENT_CREATED",
-        resourceType: "ApiClient",
-        resourceId: row.id,
-        resourceLabel: row.name,
-        result: "SUCCESS",
-        correlationId,
-        afterJson: JSON.stringify({
-          name: row.name,
-          scopes,
+    // Wave-9 (audit 9-a F-2): the create and its API_CLIENT_CREATED audit
+    // row commit together — a row without its audit entry (or the reverse)
+    // can no longer be observed.
+    const row = await db.$transaction(async (tx) => {
+      const created = await tx.apiClient.create({
+        data: {
+          name: parsed.data.name,
+          tokenHash,
           tokenPrefix,
-          isActive: row.isActive,
-        }),
-      },
+          scopesJson: JSON.stringify(scopes),
+          isActive: parsed.data.isActive ?? true,
+          createdBy: actor.id,
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          action: "API_CLIENT_CREATED",
+          resourceType: "ApiClient",
+          resourceId: created.id,
+          resourceLabel: created.name,
+          result: "SUCCESS",
+          correlationId,
+          afterJson: JSON.stringify({
+            name: created.name,
+            scopes,
+            tokenPrefix,
+            isActive: created.isActive,
+          }),
+        },
+      });
+      return created;
     });
 
     return ok(

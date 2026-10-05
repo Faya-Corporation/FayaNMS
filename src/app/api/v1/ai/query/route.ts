@@ -20,6 +20,12 @@ import {
   aiChat,
 } from "@/lib/ai/zai-client";
 import { INCIDENT_OPEN_STATUSES } from "@/lib/incidents/lifecycle";
+import { sessionScopeFor } from "@/lib/auth/session";
+import {
+  scopedDeviceWhere,
+  sessionSiteScope,
+  type SessionScopeClaims,
+} from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +61,18 @@ export const dynamic = "force-dynamic";
  * Audit: NL_QUERY_ANSWERED with an AI-XXXXXXX correlationId; the afterJson
  * stays lean (intent, filters, result counts, sources, fallback, latencyMs) —
  * never the prompt or the answer text. FAILURE rows land on stage-1 AI errors.
+ *
+ * F-031 (wave 9, audit 9-b F-1): EVERY executor composes the session's site
+ * scope (sessionScopeFor → the primitives in src/lib/auth/scope.ts) into its
+ * device-derived legs — devices via scopedDeviceWhere, incidents/changes via
+ * their site relation (`site.code IN (…)` — the dashboard's certified shape),
+ * jobs device-keyed through targetType/targetId (JobExecution has no device
+ * FK). The plan's natural-language site filter is intersected by the same
+ * AND composition — an out-of-scope plan site yields EMPTY (or in-scope)
+ * results, never cross-scope rows. Wildcard sessions (absent claims) resolve
+ * to the base where clauses unchanged — byte-identical pre-wave-9 behavior.
+ * The executors are exported for behavioral scoping pins (tests/audit/
+ * ai-scope-hardening.test.ts) — the route handler itself is LLM-gated.
  */
 
 const bodySchema = z.object({
@@ -296,12 +314,39 @@ const ALERT_SEVERITY_WEIGHT: Record<string, number> = {
   INFO: 0,
 };
 
-/* ───────────────────────── deterministic executors ─────────────────────── */
+/**
+ * F-031 scope-resolution helpers shared by the executors. Wildcard (absent
+ * claims) → the base where clause unchanged — the byte-parity guarantee.
+ */
+function scopedIncidentSiteWhere(
+  scopeClaims: SessionScopeClaims | null | undefined
+):
+  | Record<string, never>
+  | { site: { code: { in: string[] } } } {
+  const scope = sessionSiteScope(scopeClaims);
+  return scope.mode === "sites"
+    ? { site: { code: { in: scope.codes } } }
+    : {};
+}
 
-async function executeInventory(
-  filters: AppliedFilters
+/** The session's in-scope device ids (sites-mode only; null = wildcard). */
+async function scopedDeviceIds(
+  scopeClaims: SessionScopeClaims | null | undefined
+): Promise<string[] | null> {
+  const scope = sessionSiteScope(scopeClaims);
+  if (scope.mode === "wildcard") return null;
+  const rows = await db.device.findMany({
+    where: scopedDeviceWhere(scopeClaims, {}),
+    select: { id: true },
+  });
+  return rows.map((row) => row.id);
+}
+
+export async function executeInventory(
+  filters: AppliedFilters,
+  scopeClaims?: SessionScopeClaims | null
 ): Promise<{ results: QueryResults; sources: string[] }> {
-  const where = {
+  const where = scopedDeviceWhere(scopeClaims, {
     AND: [
       filters.site ? { site: { code: filters.site } } : {},
       filters.vendor ? { vendor: { key: filters.vendor } } : {},
@@ -315,7 +360,7 @@ async function executeInventory(
         : {},
       filters.status ? { status: filters.status } : {},
     ],
-  };
+  });
   const rows = await db.device.findMany({
     where,
     orderBy: { hostname: "asc" },
@@ -351,14 +396,19 @@ async function executeInventory(
   };
 }
 
-async function executeIncidents(
-  filters: AppliedFilters
+export async function executeIncidents(
+  filters: AppliedFilters,
+  scopeClaims?: SessionScopeClaims | null
 ): Promise<{ results: QueryResults; sources: string[] }> {
   const where = {
     AND: [
       { status: { in: [...INCIDENT_OPEN_STATUSES] } },
       filters.severity ? { severity: filters.severity } : {},
       filters.site ? { site: { code: filters.site } } : {},
+      // F-031: the session's site scope (mirrors the dashboard's incident
+      // legs; the plan's site filter above intersects via the AND — an
+      // out-of-scope plan site can never widen past the session scope).
+      scopedIncidentSiteWhere(scopeClaims),
     ],
   };
   const rows = await db.incident.findMany({
@@ -396,13 +446,17 @@ async function executeIncidents(
   };
 }
 
-async function executeChanges(
-  filters: AppliedFilters
+export async function executeChanges(
+  filters: AppliedFilters,
+  scopeClaims?: SessionScopeClaims | null
 ): Promise<{ results: QueryResults; sources: string[] }> {
   const where = {
     AND: [
       filters.status ? { status: filters.status } : {},
       filters.site ? { site: { code: filters.site } } : {},
+      // F-031: session scope on the change's site relation (same shape as
+      // the incidents leg; intersects the plan's site filter via the AND).
+      scopedIncidentSiteWhere(scopeClaims),
     ],
   };
   const rows = await db.changeRequest.findMany({
@@ -439,11 +493,29 @@ async function executeChanges(
   };
 }
 
-async function executeJobs(
-  filters: AppliedFilters
+export async function executeJobs(
+  filters: AppliedFilters,
+  scopeClaims?: SessionScopeClaims | null
 ): Promise<{ results: QueryResults; sources: string[] }> {
+  // F-031: JobExecution carries no device/site FK — jobs are DEVICE-keyed
+  // through targetType/targetId. Sites-limited sessions see only jobs whose
+  // target device is inside their scope (deny-all → in: [] → no rows);
+  // SITE/POLICY/SYSTEM-targeted rows are hidden for such sessions (fail-
+  // closed: the device-keyed mapping is the only scope-bearing one).
+  const scopeDeviceIds = await scopedDeviceIds(scopeClaims);
   const rows = await db.jobExecution.findMany({
-    where: filters.status ? { status: filters.status } : undefined,
+    where:
+      scopeDeviceIds === null
+        ? filters.status
+          ? { status: filters.status }
+          : undefined
+        : {
+            AND: [
+              filters.status ? { status: filters.status } : {},
+              { targetType: "DEVICE" },
+              { targetId: { in: scopeDeviceIds } },
+            ],
+          },
     orderBy: { createdAt: "desc" },
     take: Math.min(filters.limit ?? 10, MAX_ROWS),
     select: {
@@ -478,16 +550,25 @@ async function executeJobs(
  * proxy: active-alert severity weights per device, worst first). The rows are
  * labeled approximate in the LLM prompt and the UI copy stays honest.
  */
-async function executePredictive(
-  filters: AppliedFilters
+export async function executePredictive(
+  filters: AppliedFilters,
+  scopeClaims?: SessionScopeClaims | null
 ): Promise<{ results: QueryResults; sources: string[] }> {
+  const scopeDeviceIds = await scopedDeviceIds(scopeClaims);
   const alerts = await db.alert.findMany({
-    where: { status: "ACTIVE" },
+    where: {
+      status: "ACTIVE",
+      // F-031: keep the 500-row alert window in-scope too, so out-of-scope
+      // alert volume cannot crowd in-scope signals out of the ranking.
+      ...(scopeDeviceIds === null
+        ? {}
+        : { device: scopedDeviceWhere(scopeClaims, {}) }),
+    },
     select: { deviceId: true, severity: true },
     take: 500,
   });
   const devices = await db.device.findMany({
-    where: {
+    where: scopedDeviceWhere(scopeClaims, {
       AND: [
         { status: { not: "UNMANAGED" } },
         filters.site ? { site: { code: filters.site } } : {},
@@ -496,7 +577,7 @@ async function executePredictive(
           ? { hostname: { contains: filters.hostnameLike } }
           : {},
       ],
-    },
+    }),
     orderBy: { hostname: "asc" },
     select: {
       id: true,
@@ -550,32 +631,58 @@ async function executePredictive(
 }
 
 /** Compact cross-domain snapshot (read-only, bounded). */
-async function executeSummary(): Promise<{
+export async function executeSummary(
+  scopeClaims?: SessionScopeClaims | null
+): Promise<{
   results: QueryResults;
   sources: string[];
 }> {
   const since24h = new Date(Date.now() - 24 * 3_600_000);
+  const scope = sessionSiteScope(scopeClaims);
+  const sitesMode = scope.mode === "sites";
+  // Device-keyed job counts need the in-scope device ids up front (see
+  // executeJobs — JobExecution has no device FK).
+  const scopeDeviceIds = await scopedDeviceIds(scopeClaims);
   const [deviceGroups, incidentGroups, recentChanges, backupTotal, backupOk] =
     await Promise.all([
-      db.device.groupBy({ by: ["status"], _count: { _all: true } }),
+      db.device.groupBy({
+        by: ["status"],
+        _count: { _all: true },
+        ...(sitesMode ? { where: scopedDeviceWhere(scopeClaims, {}) } : {}),
+      }),
       db.incident.groupBy({
         by: ["severity"],
         _count: { _all: true },
-        where: { status: { in: [...INCIDENT_OPEN_STATUSES] } },
+        where: {
+          AND: [
+            { status: { in: [...INCIDENT_OPEN_STATUSES] } },
+            ...(sitesMode ? [scopedIncidentSiteWhere(scopeClaims)] : []),
+          ],
+        },
       }),
       db.changeRequest.findMany({
+        ...(sitesMode ? { where: scopedIncidentSiteWhere(scopeClaims) } : {}),
         orderBy: { createdAt: "desc" },
         take: SUMMARY_RECENT_CHANGES,
         select: { number: true, title: true, status: true },
       }),
       db.jobExecution.count({
-        where: { type: "CONFIG_BACKUP", createdAt: { gte: since24h } },
+        where: {
+          type: "CONFIG_BACKUP",
+          createdAt: { gte: since24h },
+          ...(scopeDeviceIds === null
+            ? {}
+            : { targetType: "DEVICE", targetId: { in: scopeDeviceIds } }),
+        },
       }),
       db.jobExecution.count({
         where: {
           type: "CONFIG_BACKUP",
           createdAt: { gte: since24h },
           status: "SUCCEEDED",
+          ...(scopeDeviceIds === null
+            ? {}
+            : { targetType: "DEVICE", targetId: { in: scopeDeviceIds } }),
         },
       }),
     ]);
@@ -707,6 +814,11 @@ export async function POST(request: Request) {
   if (!actor) {
     return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
   }
+
+  // F-031 (wave 9): the session's site scope feeds EVERY executor leg.
+  // Wildcard sessions (no `sites` claim — the single-tenant default) resolve
+  // to the base where clauses unchanged, byte-identical to pre-wave-9.
+  const scopeClaims = await sessionScopeFor(request);
 
   /* ── Grounding vocabulary (labels only) ─────────────────────────────── */
   const [sites, vendors] = await Promise.all([
@@ -853,11 +965,11 @@ export async function POST(request: Request) {
           plan.status,
           DEVICE_STATUS_VALUES
         );
-        ({ results, sources } = await executeInventory(appliedFilters));
+        ({ results, sources } = await executeInventory(appliedFilters, scopeClaims));
         break;
       }
       case "incidents": {
-        ({ results, sources } = await executeIncidents(appliedFilters));
+        ({ results, sources } = await executeIncidents(appliedFilters, scopeClaims));
         break;
       }
       case "changes": {
@@ -865,16 +977,16 @@ export async function POST(request: Request) {
           plan.status,
           CHANGE_STATUS_VALUES
         );
-        ({ results, sources } = await executeChanges(appliedFilters));
+        ({ results, sources } = await executeChanges(appliedFilters, scopeClaims));
         break;
       }
       case "jobs": {
         appliedFilters.status = normalizeStatus(plan.status, JOB_STATUS_VALUES);
-        ({ results, sources } = await executeJobs(appliedFilters));
+        ({ results, sources } = await executeJobs(appliedFilters, scopeClaims));
         break;
       }
       case "predictive": {
-        ({ results, sources } = await executePredictive(appliedFilters));
+        ({ results, sources } = await executePredictive(appliedFilters, scopeClaims));
         break;
       }
       default: {
@@ -884,7 +996,7 @@ export async function POST(request: Request) {
         appliedFilters.status = null;
         appliedFilters.hostnameLike = null;
         appliedFilters.limit = null;
-        ({ results, sources } = await executeSummary());
+        ({ results, sources } = await executeSummary(scopeClaims));
       }
     }
   } catch (error) {

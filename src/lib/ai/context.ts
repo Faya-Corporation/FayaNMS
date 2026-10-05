@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { sessionAllowsSite, type SessionScopeClaims } from "@/lib/auth/scope";
 
 /**
  * Compact operational-context builders for the AI endpoints (Phase 12-a).
@@ -13,6 +14,14 @@ import { db } from "@/lib/db";
  * oper/admin status + last-flap timestamps, per-interface throughput
  * counters (bps) and the PACKET_LOSS metric series — the signals a NOC
  * engineer actually uses to spot erroring links.
+ *
+ * F-031 (wave 9, audit 9-b F-1): both builders accept the request's session
+ * scope claims and fuse the row-level site predicate (sessionAllowsSite —
+ * the EXACT predicate of the GET /api/v1/devices/[id] fused-404) into the
+ * not-found branch, so an out-of-scope device/incident is indistinguishable
+ * from a nonexistent one (no existence leak through the AI plane). The
+ * claims parameter is OPTIONAL and defaults to undefined = wildcard, so
+ * every pre-existing call keeps byte-identical behavior.
  */
 
 /** Statuses counted as "open" for incidents feeding the AI context. */
@@ -69,7 +78,10 @@ function uptimeText(seconds: bigint | null): string {
 /* Device scope                                                        */
 /* ------------------------------------------------------------------ */
 
-export async function buildDeviceContext(deviceId: string): Promise<AiContext | null> {
+export async function buildDeviceContext(
+  deviceId: string,
+  scopeClaims?: SessionScopeClaims | null
+): Promise<AiContext | null> {
   const device = await db.device.findUnique({
     where: { id: deviceId },
     include: {
@@ -77,7 +89,14 @@ export async function buildDeviceContext(deviceId: string): Promise<AiContext | 
       site: { select: { name: true, code: true } },
     },
   });
-  if (!device) return null;
+  // Fused-404 (F-031 wave 9): !device OR out-of-scope site → the same null
+  // the route already maps to its existing not-found envelope. Row-level
+  // null-site parity: a device with no site is hidden from sites-limited
+  // sessions exactly like scopedDeviceWhere hides it from lists (fail-closed
+  // SQL parity — see siteScopeAllows in src/lib/auth/scope.ts).
+  if (!device || !sessionAllowsSite(scopeClaims, device.site?.code ?? null)) {
+    return null;
+  }
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
@@ -235,7 +254,10 @@ export async function buildDeviceContext(deviceId: string): Promise<AiContext | 
 /* Incident scope                                                      */
 /* ------------------------------------------------------------------ */
 
-export async function buildIncidentContext(incidentId: string): Promise<AiContext | null> {
+export async function buildIncidentContext(
+  incidentId: string,
+  scopeClaims?: SessionScopeClaims | null
+): Promise<AiContext | null> {
   const incident = await db.incident.findUnique({
     where: { id: incidentId },
     include: {
@@ -279,7 +301,16 @@ export async function buildIncidentContext(incidentId: string): Promise<AiContex
       },
     },
   });
-  if (!incident) return null;
+  // Fused-404 (F-031 wave 9): an incident whose site is outside the
+  // session's scope answers the same not-found null as a missing row —
+  // mirroring the dashboard's `site.code IN (…)` incident legs (a null-site
+  // incident is row-level hidden from sites-limited sessions there too).
+  if (
+    !incident ||
+    !sessionAllowsSite(scopeClaims, incident.site?.code ?? null)
+  ) {
+    return null;
+  }
 
   const lines: string[] = [];
   const totalEvents = incident.events.length;

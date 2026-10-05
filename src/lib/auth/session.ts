@@ -37,6 +37,13 @@ export interface SessionUser {
   name: string | null;
   role: string;
   /**
+   * Wave-9 credential epoch (audit 9-a F-3): the JWT claim minted at
+   * sign-in from User.credentialEpoch. Absent/malformed claim → undefined
+   * → epoch-0 semantics, so every pre-epoch token stays valid against an
+   * untouched account (backward compatible; the common path is a no-op).
+   */
+  credentialEpoch?: number;
+  /**
    * Raw `sites` JWT claim passthrough (F-031 resource-level scoping).
    * Typed `unknown` DELIBERATELY: a claim can be anything, and the
    * enforcement helpers in src/lib/auth/scope.ts classify it fail-closed
@@ -72,6 +79,17 @@ export function authErrorToFail(error: unknown): ReturnType<typeof fail> | null 
  * Returns null when the request carries no usable session (no token, or the
  * claims were stripped by a mid-session deactivation).
  */
+/**
+ * Normalize the token's credentialEpoch claim: absent/malformed → 0 (the
+ * pre-epoch backward-compat value), a finite number → itself. The DB side
+ * is always a well-typed Int, so a malformed claim can only ever look
+ * "stale" — never "fresher" than the row.
+ */
+function tokenCredentialEpoch(token: Awaited<ReturnType<typeof getToken>>): number {
+  const value = (token as Record<string, unknown> | null)?.credentialEpoch;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 export async function getSessionUser(
   req: Request & { cookies?: unknown }
 ): Promise<SessionUser | null> {
@@ -97,6 +115,8 @@ export async function getSessionUser(
     email: typeof email === "string" ? email : "",
     name: typeof token.name === "string" ? token.name : null,
     role: typeof token.role === "string" ? token.role : "viewer",
+    // Wave-9 credential epoch (audit 9-a F-3) — see tokenCredentialEpoch.
+    credentialEpoch: tokenCredentialEpoch(token),
     // F-031: raw claim passthrough — validated fail-closed downstream by
     // sessionSiteScope() (absent → wildcard; empty/malformed → deny-all).
     sites: token[SITE_SCOPE_CLAIM_KEY],
@@ -104,9 +124,45 @@ export async function getSessionUser(
 }
 
 /**
+ * The per-request session re-verification EVERY guarded plane shares:
+ * the token's claims are compared against the fresh User row so a
+ * mid-session deactivation or credential change answers 401 immediately.
+ *
+ * Wave-9 credential epoch (audit 9-a F-3): after the active check, the
+ * token's epoch claim must EQUAL the row's epoch. A password SET
+ * (users/[id] PATCH / reset-password) bumps the epoch inside the mutation
+ * transaction, so every token minted before it fails this comparison —
+ * the same UNAUTHENTICATED envelope an absent/garbage session produces
+ * (no new error code; the session is simply no longer valid). Backward
+ * compatibility: epoch-0 row + absent claim → 0 === 0 → valid (every
+ * pre-epoch token keeps working against an untouched account).
+ *
+ * Caller-safety (audited): API-client bearers never reach here —
+ * requirePermission resolves the client principal BEFORE requireUser, and
+ * the read plane falls through to authenticateApiClientRead only when no
+ * session resolved. Service JWTs (worker plane) verify through
+ * service-jwt.ts and never carry a next-auth session cookie. requireUser's
+ * remaining callers are all human admin/NOC flows, where a 401 after a
+ * credential change is exactly the intended semantic (sign in again).
+ */
+function assertCredentialEpochFresh(
+  claims: SessionUser,
+  user: User
+): void {
+  if ((claims.credentialEpoch ?? 0) !== user.credentialEpoch) {
+    throw new AuthError(
+      "UNAUTHENTICATED",
+      "This session is no longer valid — the account's credentials were changed. Sign in again.",
+      401
+    );
+  }
+}
+
+/**
  * Require an authenticated, still-active user. Returns the fresh database
  * record (useful for audit actor attribution) or throws:
- *   - 401 UNAUTHENTICATED — no/invalid session
+ *   - 401 UNAUTHENTICATED — no/invalid session (includes a stale
+ *     credential epoch: the password changed after this token was minted)
  *   - 401 ACCOUNT_DISABLED — session exists but the account is now inactive
  */
 export async function requireUser(req: Request): Promise<User> {
@@ -126,6 +182,7 @@ export async function requireUser(req: Request): Promise<User> {
       401
     );
   }
+  assertCredentialEpochFresh(claims, user);
   return user;
 }
 
@@ -209,6 +266,11 @@ async function requireReadPrincipal(req: Request): Promise<User> {
         401
       );
     }
+    // Wave-9 credential epoch: the READ plane answers the same eviction
+    // as the mutation plane — a password reset kills the session for GETs
+    // too, not just for writes (requireSessionRead shares requireUser's
+    // DB re-verification contract).
+    assertCredentialEpochFresh(claims, user);
     return user;
   }
 

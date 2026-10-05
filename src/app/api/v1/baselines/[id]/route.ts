@@ -1,6 +1,10 @@
 import { db } from "@/lib/db";
 import { fail, newCorrelationId, ok } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSiteScope,
+} from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +19,13 @@ export const dynamic = "force-dynamic";
  * Audited BASELINE_REVOKED with the full before-state. Baselines are
  * standalone rows — snapshots, drift records and jobs are untouched
  * (DriftRecords reference the snapshots, not the baseline row).
+ *
+ * F-031 wave-9 (mutation gate — the wave-7 contract): after the baseline
+ * resolves (404 for unknown), the OWNING device's site must be inside the
+ * session's scope — a sites-limited session revoking another site's
+ * baseline answers 403 SITE_SCOPE_FORBIDDEN (mutations accept existence
+ * confirmation; a baseline's device is cascade-linked and always
+ * resolves).
  */
 
 const ID_MAX = 64;
@@ -48,12 +59,22 @@ export async function DELETE(
       snapshotId: true,
       approvedAt: true,
       note: true,
-      device: { select: { hostname: true } },
+      device: { select: { hostname: true, site: { select: { code: true } } } },
       snapshot: { select: { version: true, status: true } },
     },
   });
   if (!baseline) {
     return fail("BASELINE_NOT_FOUND", "The baseline does not exist", 404);
+  }
+
+  // F-031 wave-9 (mutation gate): the owning device's site must be in
+  // scope (null site = unscoped resource — the documented bypass).
+  try {
+    await requireSiteScope(_request, baseline.device?.site?.code ?? null);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
 
   const correlationId = newCorrelationId("BL");

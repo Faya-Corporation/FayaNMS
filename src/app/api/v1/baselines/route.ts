@@ -1,6 +1,13 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../_lib/api";
-import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSessionRead,
+  requireSiteScope,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +33,21 @@ export const dynamic = "force-dynamic";
  *   4. a BASELINE_APPROVED audit event is written with the correlation id.
  * Approving the snapshot that is already the device's latest baseline is a
  * no-op conflict → 409 ALREADY_BASELINE.
+ *
+ * F-031 wave-9 (read-plane migration): the GET joins are device-derived —
+ * the baseline rows compose the scope through the device relation and the
+ * "devices without a baseline" strip is computed over the session's
+ * managed devices, so another site's hostnames/ids never render (a
+ * sites-limited session with zero in-scope baselines gets the empty-strip
+ * branch, still scope-bounded). Wildcard sessions keep the byte-unchanged
+ * queries (parity guarantee); deny-all sessions get an empty list with a
+ * zeroed strip.
+ *
+ * F-031 wave-9 (mutation gate — the wave-7 contract): POST resolves the
+ * target device and then requires its site in scope — a sites-limited
+ * session approving a baseline on an out-of-scope device answers 403
+ * SITE_SCOPE_FORBIDDEN (existence confirmation is accepted on the mutation
+ * plane; the global device existence check stays 404 first).
  */
 
 const postSchema = z.object({
@@ -48,7 +70,13 @@ export async function GET(request: Request) {
     throw error;
   }
   // Small table — fetch all and resolve "latest per device" in memory.
+  // F-031 wave-9: the scope rides the device relation (wildcard keeps the
+  // exact pre-F-031 query shape; deny-all matches nothing).
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const isWildcard = scope.mode === "wildcard";
   const baselineRows = await db.configBaseline.findMany({
+    ...(isWildcard ? {} : { where: { device: scopedDeviceWhere(scopeClaims, {}) } }),
     orderBy: { approvedAt: "desc" },
     select: {
       id: true,
@@ -77,7 +105,9 @@ export async function GET(request: Request) {
   const deviceIds = Array.from(latestByDevice.keys());
   if (deviceIds.length === 0) {
     const managed = await db.device.findMany({
-      where: { status: { not: "UNMANAGED" } },
+      where: isWildcard
+        ? { status: { not: "UNMANAGED" } }
+        : scopedDeviceWhere(scopeClaims, { status: { not: "UNMANAGED" } }),
       orderBy: { hostname: "asc" },
       select: { id: true, hostname: true },
     });
@@ -155,7 +185,9 @@ export async function GET(request: Request) {
     .sort((a, b) => b.approvedAt.getTime() - a.approvedAt.getTime());
 
   const managedDevices = await db.device.findMany({
-    where: { status: { not: "UNMANAGED" } },
+    where: isWildcard
+      ? { status: { not: "UNMANAGED" } }
+      : scopedDeviceWhere(scopeClaims, { status: { not: "UNMANAGED" } }),
     orderBy: { hostname: "asc" },
     select: { id: true, hostname: true },
   });
@@ -204,10 +236,23 @@ export async function POST(request: Request) {
 
   const device = await db.device.findUnique({
     where: { id: deviceId },
-    select: { id: true, hostname: true },
+    select: { id: true, hostname: true, site: { select: { code: true } } },
   });
   if (!device) {
     return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
+  }
+
+  // F-031 wave-9 (mutation gate — the wave-7 contract, mirrors the devices
+  // PATCH): a sites-limited session may only approve baselines on devices
+  // inside its scope. Unlike the read plane this is 403-not-404 (mutations
+  // accept existence confirmation); a device with no site is an unscoped
+  // resource and bypasses site scoping (authorization-matrix §5.1).
+  try {
+    await requireSiteScope(request, device.site?.code ?? null);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
 
   // The snapshot MUST belong to the device named in the body.

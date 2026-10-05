@@ -103,35 +103,39 @@ export async function POST(request: Request) {
     // The id is pre-generated so the AAD context exists before the insert.
     const endpointId = randomUUID();
     const secret = randomBytes(32).toString("hex");
-    const row = await db.webhookEndpoint.create({
-      data: {
-        id: endpointId,
-        name: parsed.data.name,
-        url: parsed.data.url,
-        secret: encryptAtRest(secret, webhookSecretAad(endpointId)),
-        eventsJson: JSON.stringify(parsed.data.events),
-        isActive: parsed.data.isActive ?? true,
-      },
-    });
-
+    // Wave-9 (audit 9-a F-2): the create and its WEBHOOK_CREATED audit row
+    // commit together.
     const correlationId = newCorrelationId("WH");
-    await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? actor.email,
-        action: "WEBHOOK_CREATED",
-        resourceType: "WebhookEndpoint",
-        resourceId: row.id,
-        resourceLabel: row.name,
-        result: "SUCCESS",
-        correlationId,
-        afterJson: JSON.stringify({
-          name: row.name,
-          url: row.url,
-          events: parsed.data.events,
-          isActive: row.isActive,
-        }),
-      },
+    const row = await db.$transaction(async (tx) => {
+      const created = await tx.webhookEndpoint.create({
+        data: {
+          id: endpointId,
+          name: parsed.data.name,
+          url: parsed.data.url,
+          secret: encryptAtRest(secret, webhookSecretAad(endpointId)),
+          eventsJson: JSON.stringify(parsed.data.events),
+          isActive: parsed.data.isActive ?? true,
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          action: "WEBHOOK_CREATED",
+          resourceType: "WebhookEndpoint",
+          resourceId: created.id,
+          resourceLabel: created.name,
+          result: "SUCCESS",
+          correlationId,
+          afterJson: JSON.stringify({
+            name: created.name,
+            url: created.url,
+            events: parsed.data.events,
+            isActive: created.isActive,
+          }),
+        },
+      });
+      return created;
     });
 
     return ok(
