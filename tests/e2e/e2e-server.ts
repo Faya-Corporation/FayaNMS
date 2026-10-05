@@ -67,6 +67,16 @@ const appEnv: Record<string, string> = {
   FAYANMS_SERVICE_SECRET: RUN_SECRET,
   FAYANMS_CONFIG_ENC_KEY: RUN_SECRET,
   FAYANMS_CONFIG_ENC_KEY_ID: "k1",
+  // Wave-12 (A1-04): production REQUIRES a strong FAYANMS_METRICS_TOKEN —
+  // enforceStartupSecurityPolicy() refuses the boot when it is unset or a
+  // repository-public placeholder (instrumentation.register() throws, the
+  // server keeps listening, and /api/v1/meta never answers: the FIRST honest
+  // CI execution of these journeys — run 37382298983 — died exactly there,
+  // exhausting the 120 s readiness poll in BOTH the e2e and browser jobs).
+  // The harness predates that posture; RUN_SECRET is fresh 64-hex per run —
+  // strong, never a known-bad value, and no journey consumes /api/metrics
+  // (presence-only requirement, same shape as the P1-019 secret refusals).
+  FAYANMS_METRICS_TOKEN: RUN_SECRET,
   // The ambient dev .env carries FAYANMS_DEMO_MODE=true; the production
   // server must boot WITHOUT it (explicit empty override — the policy
   // refuses the literal "true").
@@ -76,7 +86,15 @@ const appEnv: Record<string, string> = {
   FAYANMS_LOGIN_WINDOW_SECONDS: "30",
   FAYANMS_LOGIN_MAX_ATTEMPTS_PER_SOURCE: "5",
   FAYANMS_LOGIN_MAX_ATTEMPTS_PER_ACCOUNT: "30",
-  FAYANMS_TRUST_PROXY_HOPS: "1",
+  // Direct-publish topology (wave-11 F-5 contract): journeys connect to the
+  // app at 127.0.0.1 with no appending reverse proxy in the loop, so hops
+  // MUST be 0 — with hops>0 and no FAYANMS_PUBLIC_PROXY declaration the
+  // startup policy refuses the boot (X-Forwarded-For would be
+  // attacker-chosen), and declaring a fictitious proxy would teach the app
+  // to trust header input no proxy actually appends. Source keying for the
+  // login guard is unchanged: with no XFF present both settings resolve to
+  // the socket peer (127.0.0.1).
+  FAYANMS_TRUST_PROXY_HOPS: "0",
 };
 
 const childProcesses: ReturnType<typeof Bun.spawn>[] = [];
