@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../_lib/api";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import { authErrorToFail, requireSessionRead, sessionScopeFor } from "@/lib/auth/session";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
@@ -40,6 +41,13 @@ export const dynamic = "force-dynamic";
  * F-008 phase 3 (read-plane defense-in-depth): the handler verifies the
  * human session itself (requireSessionRead) — the proxy matcher stays the
  * coarse gate, not the only check, for this read route.
+ *
+ * F-031 (site scoping — device-domain migration): in sites mode the device
+ * relation filter is composed through scopedDeviceWhere — the devices list
+ * route's predicate (`site.code IN (…)`) — so interfaces of out-of-scope
+ * devices vanish from the rows AND the summary counts (one composition
+ * point; deny-all scopes match nothing). Wildcard sessions (no `sites`
+ * claim — the single-tenant default) are byte-unchanged.
  * ───────────────────────────────────────────────────────────────────────────── */
 
 const FLAP_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -184,6 +192,8 @@ export async function GET(request: Request) {
     throw error;
   }
 
+  const scopeClaims = await sessionScopeFor(request);
+
   const sp = new URL(request.url).searchParams;
   const parsed = querySchema.safeParse({
     q: sp.get("q") ?? undefined,
@@ -218,6 +228,18 @@ export async function GET(request: Request) {
   if (site) deviceWhere.site = { code: site };
   if (hostnameLike) deviceWhere.hostname = { contains: hostnameLike };
 
+  // F-031: the scope rides the device relation filter (one composition
+  // point feeding the rows, the total count AND the summary block — they
+  // all share this `where`). Wildcard stays byte-unchanged: no device key
+  // unless the request itself carried device facets.
+  const scope = sessionSiteScope(scopeClaims);
+  const deviceFilter: Prisma.DeviceInterfaceWhereInput =
+    scope.mode === "wildcard"
+      ? Object.keys(deviceWhere).length > 0
+        ? { device: deviceWhere }
+        : {}
+      : { device: scopedDeviceWhere(scopeClaims, deviceWhere) };
+
   const where: Prisma.DeviceInterfaceWhereInput = {
     ...(q
       ? {
@@ -228,7 +250,7 @@ export async function GET(request: Request) {
           ],
         }
       : {}),
-    ...(Object.keys(deviceWhere).length > 0 ? { device: deviceWhere } : {}),
+    ...deviceFilter,
     ...(operStatus ? { operStatus } : {}),
     ...(adminStatus ? { adminStatus } : {}),
     ...(vlan !== undefined ? { vlan } : {}),
