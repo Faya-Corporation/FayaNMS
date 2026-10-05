@@ -4,6 +4,7 @@
 
 - No PAT, OCI API key, SSH private key, database password, SNMP community, device password, webhook secret, encryption key, or production backup belongs in Git.
 - The rule above targets REAL credentials. The demo personas embed invented, banner-labeled placeholder values (e.g. the FayaRO / FayaR0c / faya-readonly SNMP communities and the fake password hashes in the simulator adapters, ZTP templates and LIVE_SSH certification harnesses — each file carries a `⚠ DEMO DATA` banner). They are not real secrets; a grep-guard test (`tests/audit/open-findings-batch-19.test.ts`, F-045) fails if a community-looking string appears in runtime code outside those documented files.
+- Committed test-material inventory (non-production key material, listed so it is never mistaken for a leak): `mini-services/worker/harness/tls/` (`sfos-webapi-key.pem` + `sfos-webapi-cert.pem`) — a TEST-ONLY self-signed loopback TLS keypair (CN=localhost, SAN DNS:localhost / IP:127.0.0.1) used exclusively by the in-repo SFOS WebAPI protocol harness to prove the transport's fail-closed TLS posture; it signs nothing production-related and must never be deployed (see `mini-services/worker/harness/tls/README.md`, which also carries the regeneration command).
 - The OCI host .env is mode 600 and is not copied into logs, support bundles, images, or issue comments.
 - Device credentials remain worker-side and are referenced by secretRef.
 - GHCR pull credentials are package-read only.

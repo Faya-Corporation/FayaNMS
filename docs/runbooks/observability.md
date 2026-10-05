@@ -30,7 +30,7 @@ Prometheus and Grafana are not published to the public host interface. Access th
 
 ## Required future instrumentation
 
-App and worker must expose authenticated or network-restricted metrics for request latency/error, DB pool, queue age/depth, job outcomes, worker heartbeat, device transport, backup, change execution, and collector health. Configure OTLP trace export only after endpoint and redaction tests pass.
+App and worker must expose authenticated or network-restricted metrics for request latency/error, DB pool, queue age/depth, job outcomes, worker completion/progress posts (job liveness — there is no heartbeat endpoint; the scheduler-tick reaper derives its threshold from each job's own budget, so a silent worker shows up as reaped-orphan rows and the JOB_ORPHAN_REAPED audit, not as a missed heartbeat), device transport, backup, change execution, and collector health. Configure OTLP trace export only after endpoint and redaction tests pass.
 
 ## Alerts
 

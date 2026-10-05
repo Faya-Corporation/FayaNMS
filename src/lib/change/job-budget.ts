@@ -42,6 +42,11 @@
  * Pure and dependency-free: both the worker (runner.ts) and the app
  * (tick route) import it, and the pinning suite exercises the arithmetic
  * directly (tests/audit/open-findings-batch-16.test.ts).
+ *
+ * Wave-8 (F-4): this module now also derives the worker's per-type OUTER
+ * race budgets for the evaluate-in-Next drivers (deriveWorkerJobBudgetMs)
+ * — the runner's raceTimeout used to undercut those drivers' own inner
+ * HTTP budgets; see the wave-8 section below.
  */
 
 /** Per-step-call HTTP budget for POST /api/v1/worker/change-step (was an inline 90_000 literal). */
@@ -132,6 +137,80 @@ export function changeReaperThresholdForPayload(payloadJson: string | null | und
     }
   }
   return deriveChangeReaperThresholdMs(stepsTotal);
+}
+
+/**
+ * ── Wave-8 (F-4): per-type OUTER race budgets for the evaluate-in-Next drivers ──
+ *
+ * The runner's per-job raceTimeout used to be a FLAT 30 s for every
+ * non-change type while six of those drivers spend a 60 s inner HTTP
+ * budget on their evaluate-in-Next call (alerts/evaluate, metrics/rollup,
+ * reports/execute, the three retention prunes). On budget fire the worker
+ * reported FAILED → the app requeued → a second concurrent attempt
+ * re-fired the same server-side work while attempt #1 was still executing.
+ *
+ * The fix mirrors the F-044 derivation style: the budget is DERIVED from
+ * the factors the driver actually spends, and every factor is the EXACT
+ * constant the runner imports (the math and the loop cannot drift apart):
+ *
+ *     budget = innerHttpTimeout            (the evaluate-in-Next call)
+ *            + 2 × progressPostBudget      (bracketing progress posts)
+ *            + margin                      (startup + completion + slack)
+ *
+ * CHANGE_EXECUTE keeps its own claim-time derivation
+ * (deriveChangeJobBudgetMs) untouched — that arithmetic is plan-sized and
+ * pinned by tests/audit/open-findings-batch-16.test.ts.
+ */
+
+/**
+ * The inner HTTP budget every evaluate-in-Next driver spends on its single
+ * long call (was a 60_000 literal at each call site in runner.ts — now the
+ * runner imports this constant so the outer budget can never undercut it).
+ */
+export const WORKER_INNER_HTTP_TIMEOUT_MS = 60_000;
+
+/**
+ * Fixed overhead outside the inner call: the bracketing reportProgress
+ * posts (each bounded by CHANGE_PROGRESS_POST_TIMEOUT_MS — the SAME
+ * constant the runner's reportProgress helper spends) and the completion
+ * post + scheduling slack (same margin constant as the change budget).
+ */
+export const WORKER_JOB_BUDGET_MARGIN_MS = CHANGE_BUDGET_MARGIN_MS;
+/** Number of progress posts a evaluate-in-Next driver makes around the call. */
+export const WORKER_JOB_PROGRESS_POSTS = 2;
+
+/**
+ * The job types whose outer race budget is DERIVED (they carry the 60 s
+ * inner HTTP budget). Every other type keeps the runner's flat budget.
+ */
+export const WORKER_DERIVED_BUDGET_TYPES = [
+  "ALERT_EVALUATION",
+  "METRIC_RETENTION",
+  "FLOW_RETENTION",
+  "ROLLUP_AGGREGATION",
+  "PROTOCOL_QUEUE_RETENTION",
+  "REPORT_RUN",
+] as const;
+
+export type WorkerDerivedBudgetType = (typeof WORKER_DERIVED_BUDGET_TYPES)[number];
+
+/**
+ * Derive the runner's outer race budget for a job type: the inner HTTP
+ * budget + the bracketing progress posts + margin — always STRICTLY
+ * GREATER than the inner timeout (a healthy slow call must finish inside
+ * its own race, never fire the premature FAILED/requeue/re-fire cycle).
+ * Returns 0 for types outside WORKER_DERIVED_BUDGET_TYPES (the caller
+ * falls back to its flat budget — SNMP_POLL/CONFIG_BACKUP keep theirs).
+ */
+export function deriveWorkerJobBudgetMs(type: string): number {
+  if (!(WORKER_DERIVED_BUDGET_TYPES as readonly string[]).includes(type)) {
+    return 0;
+  }
+  return (
+    WORKER_INNER_HTTP_TIMEOUT_MS +
+    WORKER_JOB_PROGRESS_POSTS * CHANGE_PROGRESS_POST_TIMEOUT_MS +
+    WORKER_JOB_BUDGET_MARGIN_MS
+  );
 }
 
 /**

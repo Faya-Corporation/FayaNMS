@@ -37,14 +37,31 @@ export const dynamic = "force-dynamic";
  *   otherwise terminal FAILED (dead-letter) + AuditEvent CONFIG_BACKUP
  *   FAILURE so the failed-backup story is traceable in the audit trail.
  *
- * RESUMED (F-044, CHANGE_EXECUTE only) — in-flight DRIVER loss (the body
- *   outran its claim-derived budget) is resumable, not failed: the plan's
- *   state lives in the change-step engine (CAS-claimed steps, SAFE-004),
- *   so the job requeues with a "resumed" error label, progress preserved
- *   and the execution lease intact (same-execution retry, SAFE-003).
- *   Attempts remain bounded by maxAttempts: repeated driver loss past the
- *   cap dead-letters the job honestly — change rows untouched, recovery
- *   via the standard jobs/[id]/retry re-enqueue.
+ * RESUMED (F-044, wave-8: every job type) — an in-flight body that stopped
+ *   being authoritative is resumable, not failed. Originally CHANGE_EXECUTE
+ *   driver loss only (the plan's state lives in the change-step engine,
+ *   CAS-claimed steps, SAFE-004); wave-8 F-3 generalized it to EVERY type
+ *   for the worker's graceful shutdown: a drain-expired job posts RESUMED
+ *   ("worker shutting down") and is requeued — QUEUED + scheduledAt
+ *   backoff, progress preserved, lease kept (same-execution retry,
+ *   SAFE-003) — instead of being abandoned to the reaper's terminal FAILED.
+ *   Attempts remain bounded by maxAttempts: repeated resume past the cap
+ *   dead-letters the job honestly — change rows untouched, recovery via
+ *   the standard jobs/[id]/retry re-enqueue.
+ *
+ * Wave-8 F-2 — every terminal write is a CAS on the RUNNING state:
+ *   `updateMany({ where: { id, status: "RUNNING" } })` and `count === 0`
+ *   answers { updated: false }. The pre-reads (status/type/payload) stay —
+ *   they drive snapshot creation and the audit JSON — but NO terminal state
+ *   is ever written without the status guard, so a concurrent
+ *   SUCCEEDED+FAILED pair (e.g. a race timeout firing while the success
+ *   post is in flight, same claim epoch) can no longer flip-flop the
+ *   terminal state / requeue-after-success. Audit rows and lease releases
+ *   are gated on `count === 1` (they describe a transition that actually
+ *   happened). In the CONFIG_BACKUP transaction the job's CAS runs AFTER
+ *   the snapshot creation (the resultJson embeds the snapshot meta) — a
+ *   lost race rolls the whole transaction back, so the losing completion
+ *   cannot leave a duplicate snapshot behind either.
  *
  * Completes for jobs that are not RUNNING are acknowledged with
  * { updated: false } instead of erroring — a late/duplicate post from a
@@ -137,6 +154,40 @@ function safeParseJson(text: string | null | undefined): Record<string, unknown>
   }
 }
 
+/** The late-complete acknowledgement every lost CAS answers with (F-2). */
+function racedTerminalAck(jobId: string) {
+  return ok({
+    jobId,
+    updated: false,
+    reason: "job left RUNNING before the terminal write (concurrent completion)",
+  });
+}
+
+/**
+ * F-2 — shared terminal CAS for the SUCCEEDED branches whose persistence is
+ * elsewhere (evaluate-in-Next engines / verbatim resultJson stores): the
+ * terminal is written ONLY while the row is still RUNNING. Returns false
+ * when a concurrent completion won the transition — the caller answers the
+ * { updated: false } late-complete acknowledgement instead of writing.
+ */
+async function terminalSucceededCas(
+  jobId: string,
+  resultJson: string,
+  finishedAt: Date
+): Promise<boolean> {
+  const cas = await db.jobExecution.updateMany({
+    where: { id: jobId, status: "RUNNING" },
+    data: {
+      status: "SUCCEEDED",
+      progress: 100,
+      finishedAt,
+      error: null,
+      resultJson,
+    },
+  });
+  return cas.count === 1;
+}
+
 export async function POST(request: Request) {
   // P19 SEC-002 — machine principal only (service JWT; see service-auth.ts).
   const service = authenticateServiceRequest(request, "jobs");
@@ -176,7 +227,11 @@ export async function POST(request: Request) {
     });
   }
 
-  // ── RESUMED (F-044 — change driver loss is resumable, not failed) ─────
+  // ── RESUMED (F-044 — driver loss is resumable, not failed; wave-8 F-3
+  //    keeps the documented scope: CHANGE_EXECUTE-only. The graceful-drain
+  //    path reports FAILED ("worker shutting down") for every other type —
+  //    the FAILED requeue gives the same retry-when-budget-allows outcome
+  //    without widening the RESUMED contract) ─────────────────────────────
   if (outcome === "RESUMED") {
     if (job.type !== "CHANGE_EXECUTE") {
       return fail(
@@ -193,65 +248,78 @@ export async function POST(request: Request) {
     const requeue = job.attempts < job.maxAttempts;
     const payload = safeParseJson(job.payloadJson);
 
-    await db.$transaction(async (tx) => {
-      await tx.jobExecution.update({
-        where: { id: job.id },
-        data: requeue
-          ? {
-              status: "QUEUED",
-              // F-044 — the "resumed" label replaces the FAILED terminal:
-              // the error field carries the resume note (the Job Center
-              // shows the truth) and progress is PRESERVED — the
-              // replacement driver re-reports it from the engine's step
-              // rows on its first step call.
-              error: `resumed (attempt ${job.attempts}): ${message}`,
-              scheduledAt: new Date(now.getTime() + 30_000 * job.attempts),
-            }
-          : {
-              // Attempts exhausted on repeated driver loss: honest
-              // dead-letter. The change rows were never the driver's to
-              // fail — they stay untouched, so recovery is the standard
-              // jobs/[id]/retry re-enqueue (the engine's CAS step claims
-              // + orphan-step reaper own the rollback-or-fail decision).
-              status: "FAILED",
-              progress: 0,
-              error: `resumed ${job.attempts}× then dead-lettered: ${message} (change state untouched — recover via job retry)`,
-              finishedAt: now,
-            },
-      });
+    // F-2 — CAS: the requeue/dead-letter is written ONLY while the row is
+    // still RUNNING; a concurrent terminal wins and this post degrades to
+    // the late-complete acknowledgement. Audit row + lease release only on
+    // a transition that actually happened (count === 1).
+    const cas = await db.jobExecution.updateMany({
+      where: { id: job.id, status: "RUNNING" },
+      data: requeue
+        ? {
+            status: "QUEUED",
+            // F-044 — the "resumed" label replaces the FAILED terminal:
+            // the error field carries the resume note (the Job Center
+            // shows the truth) and progress is PRESERVED — the
+            // replacement driver re-reports it from the engine's step
+            // rows on its first step call (CHANGE_EXECUTE) or re-runs the
+            // probe from scratch (every other type).
+            error: `resumed (attempt ${job.attempts}): ${message}`,
+            scheduledAt: new Date(now.getTime() + 30_000 * job.attempts),
+          }
+        : {
+            // Attempts exhausted on repeated driver loss: honest
+            // dead-letter. The change rows were never the driver's to
+            // fail — they stay untouched, so recovery is the standard
+            // jobs/[id]/retry re-enqueue (the engine's CAS step claims
+            // + orphan-step reaper own the rollback-or-fail decision).
+            status: "FAILED",
+            progress: 0,
+            error: `resumed ${job.attempts}× then dead-lettered: ${message} (change state untouched — recover via job retry)`,
+            finishedAt: now,
+          },
+    });
 
-      // SAFE-003 — a requeued resume is the SAME execution: the lease
-      // STAYS (mirrors the FAILED-requeue contract). Only the terminal
-      // dead-letter releases the change's execution lease.
-      if (!requeue) {
-        await tx.changeExecutionLease.deleteMany({ where: { jobId: job.id } });
-      }
+    if (cas.count === 0) {
+      return ok({
+        jobId,
+        updated: false,
+        reason: "job left RUNNING before the RESUMED write (concurrent completion)",
+      });
+    }
+
+    // SAFE-003 — a requeued resume is the SAME execution: the lease
+    // STAYS (mirrors the FAILED-requeue contract). Only the terminal
+    // dead-letter releases the change's execution lease.
+    if (!requeue) {
+      await db.changeExecutionLease.deleteMany({ where: { jobId: job.id } });
 
       // Audit only the terminal (requeues stay visible via attempts /
       // scheduledAt + the resumed error label) — same rule as the FAILED
-      // path, with the resumed truth in the payload.
-      if (!requeue) {
-        await tx.auditEvent.create({
-          data: {
-            actorName: "system:backup-worker",
-            action: "CHANGE_EXECUTION_FAILED",
-            resourceType: "ChangeRequest",
-            resourceId: job.targetId,
-            resourceLabel:
-              (typeof payload.changeNumber === "string" ? payload.changeNumber : job.targetId) ??
-              "unknown change",
-            result: "FAILURE",
-            correlationId: job.correlationId,
-            afterJson: JSON.stringify({
-              error: `resumed ${job.attempts}× then dead-lettered: ${message}`,
-              attempts: job.attempts,
-              jobType: job.type,
-              resumed: true,
-            }),
-          },
-        });
-      }
-    });
+      // path, with the resumed truth in the payload. RESUMED remains
+      // CHANGE_EXECUTE-only (the guard above), so the audit row is the
+      // change-execution shape.
+      const action = "CHANGE_EXECUTION_FAILED";
+      const resourceType = "ChangeRequest";
+      await db.auditEvent.create({
+        data: {
+          actorName: "system:backup-worker",
+          action,
+          resourceType,
+          resourceId: job.targetId,
+          resourceLabel:
+            (typeof payload.changeNumber === "string" ? payload.changeNumber : job.targetId) ??
+            "unknown change",
+          result: "FAILURE",
+          correlationId: job.correlationId,
+          afterJson: JSON.stringify({
+            error: `resumed ${job.attempts}× then dead-lettered: ${message}`,
+            attempts: job.attempts,
+            jobType: job.type,
+            resumed: true,
+          }),
+        },
+      });
+    }
 
     return ok({
       jobId,
@@ -280,8 +348,9 @@ export async function POST(request: Request) {
         );
       }
       const discovery = parsedDiscovery.data;
-      await db.jobExecution.update({
-        where: { id: job.id },
+      // F-2 — terminal CAS (status RUNNING guard; count 0 → late-complete ack).
+      const cas = await db.jobExecution.updateMany({
+        where: { id: job.id, status: "RUNNING" },
         data: {
           status: "SUCCEEDED",
           progress: 100,
@@ -294,6 +363,13 @@ export async function POST(request: Request) {
           }),
         },
       });
+      if (cas.count === 0) {
+        return ok({
+          jobId,
+          updated: false,
+          reason: "job left RUNNING before the terminal write (concurrent completion)",
+        });
+      }
       return ok({
         jobId,
         updated: true,
@@ -314,8 +390,9 @@ export async function POST(request: Request) {
         );
       }
       const drift = parsedDrift.data;
-      await db.jobExecution.update({
-        where: { id: job.id },
+      // F-2 — terminal CAS (status RUNNING guard; count 0 → late-complete ack).
+      const cas = await db.jobExecution.updateMany({
+        where: { id: job.id, status: "RUNNING" },
         data: {
           status: "SUCCEEDED",
           progress: 100,
@@ -324,6 +401,13 @@ export async function POST(request: Request) {
           resultJson: JSON.stringify(drift),
         },
       });
+      if (cas.count === 0) {
+        return ok({
+          jobId,
+          updated: false,
+          reason: "job left RUNNING before the terminal write (concurrent completion)",
+        });
+      }
       return ok({
         jobId,
         updated: true,
@@ -354,9 +438,13 @@ export async function POST(request: Request) {
         );
       }
       const execution = parsedExecution.data;
-      await db.$transaction([
-        db.jobExecution.update({
-          where: { id: job.id },
+      // F-2 — terminal CAS inside the transaction: the SAFE-003 lease
+      // release (and the whole "reached terminal" side) only follows a
+      // transition the guard actually performed.
+      let changeCasCount = 0;
+      await db.$transaction(async (tx) => {
+        const cas = await tx.jobExecution.updateMany({
+          where: { id: job.id, status: "RUNNING" },
           data: {
             status: "SUCCEEDED",
             progress: 100,
@@ -364,11 +452,22 @@ export async function POST(request: Request) {
             error: null,
             resultJson: JSON.stringify(execution),
           },
-        }),
+        });
+        changeCasCount = cas.count;
         // SAFE-003 — the execution reached its terminal state: release the
-        // change's single-flight lease.
-        db.changeExecutionLease.deleteMany({ where: { jobId: job.id } }),
-      ]);
+        // change's single-flight lease. A lost CAS (count 0) leaves the
+        // lease exactly as the winner decided it.
+        if (cas.count === 1) {
+          await tx.changeExecutionLease.deleteMany({ where: { jobId: job.id } });
+        }
+      });
+      if (changeCasCount === 0) {
+        return ok({
+          jobId,
+          updated: false,
+          reason: "job left RUNNING before the terminal write (concurrent completion)",
+        });
+      }
       return ok({
         jobId,
         updated: true,
@@ -405,16 +504,9 @@ export async function POST(request: Request) {
           400
         );
       }
-      await db.jobExecution.update({
-        where: { id: job.id },
-        data: {
-          status: "SUCCEEDED",
-          progress: 100,
-          finishedAt: now,
-          error: null,
-          resultJson: JSON.stringify(parsedSummary.data),
-        },
-      });
+      if (!(await terminalSucceededCas(job.id, JSON.stringify(parsedSummary.data), now))) {
+        return racedTerminalAck(jobId);
+      }
       return ok({
         jobId,
         updated: true,
@@ -445,16 +537,9 @@ export async function POST(request: Request) {
           400
         );
       }
-      await db.jobExecution.update({
-        where: { id: job.id },
-        data: {
-          status: "SUCCEEDED",
-          progress: 100,
-          finishedAt: now,
-          error: null,
-          resultJson: JSON.stringify(parsedRetention.data),
-        },
-      });
+      if (!(await terminalSucceededCas(job.id, JSON.stringify(parsedRetention.data), now))) {
+        return racedTerminalAck(jobId);
+      }
       return ok({
         jobId,
         updated: true,
@@ -482,16 +567,9 @@ export async function POST(request: Request) {
           400,
         );
       }
-      await db.jobExecution.update({
-        where: { id: job.id },
-        data: {
-          status: "SUCCEEDED",
-          progress: 100,
-          finishedAt: now,
-          error: null,
-          resultJson: JSON.stringify(parsedFlowRetention.data),
-        },
-      });
+      if (!(await terminalSucceededCas(job.id, JSON.stringify(parsedFlowRetention.data), now))) {
+        return racedTerminalAck(jobId);
+      }
       return ok({
         jobId,
         updated: true,
@@ -522,16 +600,9 @@ export async function POST(request: Request) {
           400
         );
       }
-      await db.jobExecution.update({
-        where: { id: job.id },
-        data: {
-          status: "SUCCEEDED",
-          progress: 100,
-          finishedAt: now,
-          error: null,
-          resultJson: JSON.stringify(parsedRollup.data),
-        },
-      });
+      if (!(await terminalSucceededCas(job.id, JSON.stringify(parsedRollup.data), now))) {
+        return racedTerminalAck(jobId);
+      }
       return ok({
         jobId,
         updated: true,
@@ -564,16 +635,9 @@ export async function POST(request: Request) {
           400
         );
       }
-      await db.jobExecution.update({
-        where: { id: job.id },
-        data: {
-          status: "SUCCEEDED",
-          progress: 100,
-          finishedAt: now,
-          error: null,
-          resultJson: JSON.stringify(parsedQueueRetention.data),
-        },
-      });
+      if (!(await terminalSucceededCas(job.id, JSON.stringify(parsedQueueRetention.data), now))) {
+        return racedTerminalAck(jobId);
+      }
       return ok({
         jobId,
         updated: true,
@@ -603,16 +667,9 @@ export async function POST(request: Request) {
           400
         );
       }
-      await db.jobExecution.update({
-        where: { id: job.id },
-        data: {
-          status: "SUCCEEDED",
-          progress: 100,
-          finishedAt: now,
-          error: null,
-          resultJson: JSON.stringify(parsedUpgrade.data),
-        },
-      });
+      if (!(await terminalSucceededCas(job.id, JSON.stringify(parsedUpgrade.data), now))) {
+        return racedTerminalAck(jobId);
+      }
       return ok({
         jobId,
         updated: true,
@@ -643,16 +700,9 @@ export async function POST(request: Request) {
           400
         );
       }
-      await db.jobExecution.update({
-        where: { id: job.id },
-        data: {
-          status: "SUCCEEDED",
-          progress: 100,
-          finishedAt: now,
-          error: null,
-          resultJson: JSON.stringify(parsedZtp.data),
-        },
-      });
+      if (!(await terminalSucceededCas(job.id, JSON.stringify(parsedZtp.data), now))) {
+        return racedTerminalAck(jobId);
+      }
       return ok({
         jobId,
         updated: true,
@@ -681,11 +731,15 @@ export async function POST(request: Request) {
     if (!deviceId) {
       // Device went missing between claim and completion — dead-letter the
       // job with a clear error instead of leaving it stuck in RUNNING.
-      const dead = await db.jobExecution.update({
-        where: { id: job.id },
+      // F-2 — the dead-letter is a CAS too (a concurrent completion wins).
+      const dead = await db.jobExecution.updateMany({
+        where: { id: job.id, status: "RUNNING" },
         data: { status: "FAILED", finishedAt: now, error: "Target device missing at completion" },
       });
-      return ok({ jobId, updated: true, status: dead.status, requeued: false });
+      if (dead.count === 0) {
+        return racedTerminalAck(jobId);
+      }
+      return ok({ jobId, updated: true, status: "FAILED", requeued: false });
     }
 
     const source =
@@ -693,54 +747,84 @@ export async function POST(request: Request) {
         ? payload.source
         : "SCHEDULED";
 
-    const persisted = await db.$transaction(async (tx) => {
-      const snapshot = await createSnapshot(tx as unknown as TxClient, {
-        deviceId,
-        rawText: backupResult.rawText,
-        source,
-        normalizedText: backupResult.normalizedText ?? null,
-        jobId: job.id,
-        correlationId: job.correlationId,
-        configFlavor: backupResult.configFlavor ?? null,
-      }, now);
-      if (!snapshot.ok) {
-        return { deviceMissing: true as const };
+    // F-2 — the CONFIG_BACKUP transaction keeps createSnapshot() first (the
+    // job's resultJson embeds the snapshot meta) and runs the job's terminal
+    // CAS SECOND: a lost race throws the marker below and rolls the WHOLE
+    // transaction back — the losing completion cannot leave a duplicate
+    // snapshot (or a flip-flopped terminal) behind.
+    class CompletionRaceLostError extends Error {
+      constructor() {
+        super("terminal CAS lost — concurrent completion won");
+        this.name = "CompletionRaceLostError";
       }
+    }
 
-      await tx.jobExecution.update({
-        where: { id: job.id },
-        data: {
-          status: "SUCCEEDED",
-          progress: 100,
-          finishedAt: now,
-          error: null,
-          resultJson: JSON.stringify({
-            snapshotId: snapshot.id,
-            version: snapshot.version,
-            sha256: snapshot.sha256,
-            sizeBytes: snapshot.sizeBytes,
-            configFlavor: backupResult.configFlavor ?? null,
-            source,
-          }),
-        },
+    const persisted = await db
+      .$transaction(async (tx) => {
+        const snapshot = await createSnapshot(tx as unknown as TxClient, {
+          deviceId,
+          rawText: backupResult.rawText,
+          source,
+          normalizedText: backupResult.normalizedText ?? null,
+          jobId: job.id,
+          correlationId: job.correlationId,
+          configFlavor: backupResult.configFlavor ?? null,
+        }, now);
+        if (!snapshot.ok) {
+          return { racedTerminal: false as const, deviceMissing: true as const };
+        }
+
+        const cas = await tx.jobExecution.updateMany({
+          where: { id: job.id, status: "RUNNING" },
+          data: {
+            status: "SUCCEEDED",
+            progress: 100,
+            finishedAt: now,
+            error: null,
+            resultJson: JSON.stringify({
+              snapshotId: snapshot.id,
+              version: snapshot.version,
+              sha256: snapshot.sha256,
+              sizeBytes: snapshot.sizeBytes,
+              configFlavor: backupResult.configFlavor ?? null,
+              source,
+            }),
+          },
+        });
+        if (cas.count === 0) {
+          throw new CompletionRaceLostError();
+        }
+
+        return {
+          racedTerminal: false as const,
+          deviceMissing: false as const,
+          snapshotId: snapshot.id,
+          version: snapshot.version,
+          sha256: snapshot.sha256,
+          sizeBytes: snapshot.sizeBytes,
+          hostname: snapshot.hostname,
+        };
+      }, { maxWait: 5_000, timeout: 20_000 })
+      .catch((e: unknown) => {
+        if (e instanceof CompletionRaceLostError) {
+          return { racedTerminal: true as const, deviceMissing: false as const };
+        }
+        throw e;
       });
 
-      return {
-        deviceMissing: false as const,
-        snapshotId: snapshot.id,
-        version: snapshot.version,
-        sha256: snapshot.sha256,
-        sizeBytes: snapshot.sizeBytes,
-        hostname: snapshot.hostname,
-      };
-    }, { maxWait: 5_000, timeout: 20_000 });
+    if (persisted.racedTerminal) {
+      return racedTerminalAck(jobId);
+    }
 
     if (persisted.deviceMissing) {
-      const dead = await db.jobExecution.update({
-        where: { id: job.id },
+      const dead = await db.jobExecution.updateMany({
+        where: { id: job.id, status: "RUNNING" },
         data: { status: "FAILED", finishedAt: now, error: "Target device missing at completion" },
       });
-      return ok({ jobId, updated: true, status: dead.status, requeued: false });
+      if (dead.count === 0) {
+        return racedTerminalAck(jobId);
+      }
+      return ok({ jobId, updated: true, status: "FAILED", requeued: false });
     }
 
     return ok({
@@ -768,69 +852,79 @@ export async function POST(request: Request) {
       ? payload.deviceId
       : job.targetId;
 
-  await db.$transaction(async (tx) => {
-    await tx.jobExecution.update({
-      where: { id: job.id },
-      data: requeue
-        ? {
-            status: "QUEUED",
-            progress: 0,
-            error: message,
-            scheduledAt: new Date(now.getTime() + 30_000 * job.attempts),
-          }
-        : {
-            status: "FAILED",
-            progress: 0,
-            error: message,
-            finishedAt: now,
-          },
-    });
-
-    // SAFE-003 — terminal FAILED releases the change's execution lease;
-    // a requeued retry is the SAME execution, so its lease STAYS (one
-    // queued/running execution per change, retries included).
-    if (!requeue) {
-      await tx.changeExecutionLease.deleteMany({ where: { jobId: job.id } });
-    }
-
-    // Audit only terminal failures (retries are visible via attempts/scheduledAt).
-    if (!requeue) {
-      let hostname: string | null = null;
-      if (deviceId) {
-        const dev = await tx.device.findUnique({
-          where: { id: deviceId },
-          select: { hostname: true },
-        });
-        hostname = dev?.hostname ?? null;
-      }
-      // Type-aware audit action: CONFIG_BACKUP failures keep the legacy
-      // action; other types get a generic JOB_FAILED (the change engine
-      // writes its own CHANGE_* audits, so those are excluded here).
-      const action =
-        job.type === "CONFIG_BACKUP"
-          ? "CONFIG_BACKUP"
-          : job.type === "CHANGE_EXECUTE"
-            ? "CHANGE_EXECUTION_FAILED"
-            : "JOB_FAILED";
-      const resourceType =
-        job.type === "CHANGE_EXECUTE" ? "ChangeRequest" : "ConfigSnapshot";
-      await tx.auditEvent.create({
-        data: {
-          actorName: "system:backup-worker",
-          action,
-          resourceType,
-          resourceId: job.type === "CHANGE_EXECUTE" ? job.targetId : deviceId ?? null,
-          resourceLabel:
-            job.type === "CHANGE_EXECUTE"
-              ? (typeof payload.changeNumber === "string" ? payload.changeNumber : job.targetId) ?? "unknown change"
-              : hostname ?? "unknown device",
-          result: "FAILURE",
-          correlationId: job.correlationId,
-          afterJson: JSON.stringify({ error: message, attempts: job.attempts, jobType: job.type }),
+  // F-2 — CAS: the requeue/dead-letter is written ONLY while the row is
+  // still RUNNING. A concurrent SUCCEEDED (e.g. the timeout race where the
+  // success post was still in flight — same claim epoch, so the F-012 guard
+  // cannot discriminate) wins the transition and this FAILED degrades to the
+  // late-complete acknowledgement: the requeue-after-success flip-flop is
+  // impossible. Audit row + lease release only on a real transition.
+  const cas = await db.jobExecution.updateMany({
+    where: { id: job.id, status: "RUNNING" },
+    data: requeue
+      ? {
+          status: "QUEUED",
+          progress: 0,
+          error: message,
+          scheduledAt: new Date(now.getTime() + 30_000 * job.attempts),
+        }
+      : {
+          status: "FAILED",
+          progress: 0,
+          error: message,
+          finishedAt: now,
         },
-      });
-    }
   });
+
+  if (cas.count === 0) {
+    // Already terminal — treat as late/duplicate, never requeue after a
+    // terminal state.
+    return racedTerminalAck(jobId);
+  }
+
+  // SAFE-003 — terminal FAILED releases the change's execution lease;
+  // a requeued retry is the SAME execution, so its lease STAYS (one
+  // queued/running execution per change, retries included).
+  if (!requeue) {
+    await db.changeExecutionLease.deleteMany({ where: { jobId: job.id } });
+  }
+
+  // Audit only terminal failures (retries are visible via attempts/scheduledAt).
+  if (!requeue) {
+    let hostname: string | null = null;
+    if (deviceId) {
+      const dev = await db.device.findUnique({
+        where: { id: deviceId },
+        select: { hostname: true },
+      });
+      hostname = dev?.hostname ?? null;
+    }
+    // Type-aware audit action: CONFIG_BACKUP failures keep the legacy
+    // action; other types get a generic JOB_FAILED (the change engine
+    // writes its own CHANGE_* audits, so those are excluded here).
+    const action =
+      job.type === "CONFIG_BACKUP"
+        ? "CONFIG_BACKUP"
+        : job.type === "CHANGE_EXECUTE"
+          ? "CHANGE_EXECUTION_FAILED"
+          : "JOB_FAILED";
+    const resourceType =
+      job.type === "CHANGE_EXECUTE" ? "ChangeRequest" : "ConfigSnapshot";
+    await db.auditEvent.create({
+      data: {
+        actorName: "system:backup-worker",
+        action,
+        resourceType,
+        resourceId: job.type === "CHANGE_EXECUTE" ? job.targetId : deviceId ?? null,
+        resourceLabel:
+          job.type === "CHANGE_EXECUTE"
+            ? (typeof payload.changeNumber === "string" ? payload.changeNumber : job.targetId) ?? "unknown change"
+            : hostname ?? "unknown device",
+        result: "FAILURE",
+        correlationId: job.correlationId,
+        afterJson: JSON.stringify({ error: message, attempts: job.attempts, jobType: job.type }),
+      },
+    });
+  }
 
   return ok({
     jobId,

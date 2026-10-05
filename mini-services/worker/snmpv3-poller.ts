@@ -9,6 +9,7 @@
 import { createSocket } from "node:dgram";
 import { isIP } from "node:net";
 import { resolveVaultSecret } from "./vault";
+import { resolveTargetForDial } from "./target-policy";
 import {
   buildSnmpV3GetRequest,
   decodeSnmpV3GetResponse,
@@ -34,6 +35,28 @@ const DEFAULT_JITTER_MS = 100;
 const DEFAULT_MAX_INTERFACES = 8;
 const MAX_INTERFACES = 32;
 const MAX_COUNTER64 = "18446744073709551615";
+
+/**
+ * Wave-8 (8-c F-2) — typed SNMP dial-plane failure. SNMP_POLL dials
+ * profile.mgmtIp directly over UDP, so the resolved-address target policy
+ * (R51-A1 parity with the SSH/WebAPI dial planes — the original sweep
+ * covered those two only) refuses governed address classes with a typed
+ * error BEFORE any vault/credential resolution or datagram. The message
+ * discipline mirrors the target-policy refusals (code, class detail, the
+ * "before any credential or connection work" clause).
+ */
+export class SnmpPollError extends Error {
+  constructor(
+    public readonly code:
+      | "SNMP_TARGET_FORBIDDEN"
+      | "SNMP_TARGET_UNRESOLVED"
+      | "SNMP_TARGET_RESOLVE_TIMEOUT",
+    message: string,
+  ) {
+    super(message);
+    this.name = "SnmpPollError";
+  }
+}
 
 export interface SnmpV3PollProfileReference {
   deviceId: string;
@@ -258,6 +281,28 @@ export async function pollSnmpV3(
   if (!Number.isInteger(profile.port) || profile.port < 1 || profile.port > 65_535) {
     throw new Error("SNMPv3 polling port is outside 1..65535");
   }
+  // Wave-8 (8-c F-2): the SNMP dial plane enforces the SAME resolved-address
+  // target policy as every other live dial plane (guardDialTarget's policy
+  // core, R51-A1). mgmtIp is a validated IPv4 literal, so the decision needs
+  // no DNS I/O; loopback / link-local / multicast / reserved refuse
+  // fail-closed BEFORE any vault resolution or socket activity, and the
+  // documented FAYANMS_PROBE_ALLOW_SPECIAL lab hatch is honored unchanged.
+  const dial = await resolveTargetForDial(profile.mgmtIp);
+  if (!dial.decision.ok) {
+    const code =
+      dial.decision.code === "SSH_TARGET_POLICY_REFUSED"
+        ? "SNMP_TARGET_FORBIDDEN"
+        : dial.decision.code === "SSH_TARGET_UNRESOLVED"
+          ? "SNMP_TARGET_UNRESOLVED"
+          : "SNMP_TARGET_RESOLVE_TIMEOUT";
+    throw new SnmpPollError(
+      code,
+      `${code}: ${dial.decision.detail} — the target network policy refuses this address class before any credential or connection work`,
+    );
+  }
+  // The poll dials the VALIDATED address (identical to mgmtIp for a literal,
+  // but the invariant stays structural: no dial of an unvalidated target).
+  const dialHost: string = dial.decision.dialedAddress;
   const engineId = hexBytes(profile.engineIdHex);
   const secret = await resolveVaultSecret(profile.secretRef);
   const timeoutMs = integerOption(options.timeoutMs, DEFAULT_TIMEOUT_MS, 200, 10_000);
@@ -294,7 +339,7 @@ export async function pollSnmpV3(
     });
     const result = await withRetry(
       async () => {
-        const responsePacket = await transport(profile.mgmtIp, profile.port, packet, timeoutMs);
+        const responsePacket = await transport(dialHost, profile.port, packet, timeoutMs);
         const response = decodeSnmpV3GetResponse(responsePacket, config);
         if (response.requestId !== requestId || response.oid !== requestedOid) {
           throw new Error("SNMPv3 response did not match the request");

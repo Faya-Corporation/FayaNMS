@@ -9,8 +9,16 @@ const SECRET = randomBytes(24).toString("hex");
 test("authenticated SNMPv3 poller collects system and initial IF-MIB data", async () => {
   const previousProvider = process.env.FAYANMS_VAULT_PROVIDER;
   const previousSecret = process.env.FAYANMS_VAULT_SNMP_POLL_PROFILE;
+  const previousHatch = process.env.FAYANMS_PROBE_ALLOW_SPECIAL;
   process.env.FAYANMS_VAULT_PROVIDER = "env";
   process.env.FAYANMS_VAULT_SNMP_POLL_PROFILE = SECRET;
+  // Wave-8 (8-c F-2): the SNMP dial plane now enforces the resolved-address
+  // target policy (R51-A1 parity) — loopback refuses by default. This
+  // harness agent listens on 127.0.0.1 ON PURPOSE (the documented lab
+  // hatch FAYANMS_PROBE_ALLOW_SPECIAL=true, the same one the SSH/WebAPI
+  // dial planes honor); production poll targets are private-class mgmt
+  // IPs, which stay allowed without the hatch.
+  process.env.FAYANMS_PROBE_ALLOW_SPECIAL = "true";
   const agent = createSnmpV3Agent({
     engineId: ENGINE_ID,
     username: "poll-user",
@@ -65,6 +73,8 @@ test("authenticated SNMPv3 poller collects system and initial IF-MIB data", asyn
     else process.env.FAYANMS_VAULT_PROVIDER = previousProvider;
     if (previousSecret === undefined) delete process.env.FAYANMS_VAULT_SNMP_POLL_PROFILE;
     else process.env.FAYANMS_VAULT_SNMP_POLL_PROFILE = previousSecret;
+    if (previousHatch === undefined) delete process.env.FAYANMS_PROBE_ALLOW_SPECIAL;
+    else process.env.FAYANMS_PROBE_ALLOW_SPECIAL = previousHatch;
   }
 });
 

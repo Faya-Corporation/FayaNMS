@@ -2,11 +2,19 @@
  * FayaNMS worker — job runner.
  *
  * Every 3 s the runner claims QUEUED JobExecutions from the Next.js API
- * (POST /api/v1/worker/claim), executes them with a concurrency cap of 3 and
- * a per-job timeout of 30 s, and reports progress/completion back over HTTP.
+ * (POST /api/v1/worker/claim), executes them with a concurrency cap of 3
+ * and a per-job race budget (flat 30 s for the locally-bounded types,
+ * derived per type for the evaluate-in-Next drivers — F-4 — and claim-time
+ * derived for CHANGE_EXECUTE, F-044), and reports progress/completion back
+ * over HTTP.
  * Task 10-a hardening: the claim loop is self-scheduling and immortal (the
  * next tick is always scheduled), backs off exponentially on claim failures
- * (3 s → 5 min cap) and auto-recovers with a greppable log line.
+ * (3 s → 5 min cap, ±20% jitter — F-6) and auto-recovers with a greppable
+ * log line.
+ * F-3: the runner exposes stopRunner() + drainInFlightJobs() so index.ts
+ * can drain in-flight executions on SIGTERM/SIGINT (bounded grace, then
+ * RESUMED requeues for the stragglers) instead of abandoning them to the
+ * reaper.
  * The runner is a pure orchestration/probe engine — no DB access.
  *
  * CONFIG_BACKUP step sequence (progress reported via /api/v1/worker/progress):
@@ -107,7 +115,7 @@ import {
   parseTargetCredential,
   resolveAdapter,
 } from "./adapter-router";
-import { nextPost, selfPost, log } from "./next-client";
+import { nextPost, selfPost, log, PostHttpError } from "./next-client";
 import {
   scanDiscoverySubnet,
   enumerateDiscoveryTargets,
@@ -123,14 +131,29 @@ import {
   CHANGE_PROGRESS_POST_TIMEOUT_MS,
   CHANGE_STEP_CALL_TIMEOUT_MS,
   JobTimeoutError,
+  WORKER_INNER_HTTP_TIMEOUT_MS,
   deriveChangeJobBudgetMs,
+  deriveWorkerJobBudgetMs,
 } from "../../src/lib/change/job-budget";
+import {
+  IDENTITY_FAULT_BACKOFF_MS,
+  isIdentityFaultStatus,
+  jitterBackoff,
+} from "./backoff";
 
 const CLAIM_INTERVAL_MS = 3_000;
 /** Claim-loop exponential backoff cap (Task 10-a) — 5 minutes. */
 const MAX_BACKOFF_MS = 300_000;
 const CONCURRENCY_CAP = 3;
 const CLAIM_BATCH = 3;
+/**
+ * Flat per-job race budget for the types whose bodies are locally bounded
+ * (CONFIG_BACKUP / DISCOVERY / DRIFT_CHECK / FIRMWARE_UPGRADE / ZTP_PROVISION
+ * spend sub-30s inner calls; SNMP_POLL has its own 120 s). The six
+ * evaluate-in-Next types get a DERIVED per-type budget instead (F-4 —
+ * deriveWorkerJobBudgetMs) so the outer race can never undercut the inner
+ * 60 s HTTP budget they spend on the app plane.
+ */
 const JOB_TIMEOUT_MS = 30_000;
 // F-044: the CHANGE_EXECUTE budget is DERIVED at claim time (see
 // executeJob + src/lib/change/job-budget.ts) — the static 600_000 race
@@ -228,15 +251,28 @@ async function reportProgress(jobId: string, progress: number, message: string) 
     // Wave-6: the timeout is the budget module's OWN factor constant (was a
     // hardcoded millisecond literal) — the derivation's progress-post factor
     // and the loop's actual spend cannot drift apart silently.
+    // F-5: progress posts are retried (3 attempts, exponential + jitter) —
+    // a single dropped packet used to lose the job's progress timeline.
     await nextPost(
       "/api/v1/worker/progress",
       { jobId, progress, message },
-      CHANGE_PROGRESS_POST_TIMEOUT_MS
+      CHANGE_PROGRESS_POST_TIMEOUT_MS,
+      { retries: COMPLETION_POST_ATTEMPTS }
     );
   } catch (e) {
     await log(`progress post failed for ${jobId} @${progress}%: ${(e as Error).message}`);
   }
 }
+
+/**
+ * F-5 — completion-plane posts are retried inside next-client (3 attempts,
+ * exponential + jitter, per-attempt AbortSignal timeout). The completion
+ * posts are the ONLY outbound calls whose loss is user-visible (a dropped
+ * SUCCEEDED leaves the job RUNNING until the reaper dead-letters it ≥10 min
+ * later), so they get the bounded retry; the claim POST does NOT (it has
+ * its own immortal loop + backoff).
+ */
+const COMPLETION_POST_ATTEMPTS = 3;
 
 /**
  * F-012 (audit A2-03) — every completion post carries the claim epoch
@@ -254,7 +290,8 @@ function completePost(
   return nextPost(
     "/api/v1/worker/complete",
     { attempt: job.attempts, ...payload },
-    timeoutMs
+    timeoutMs,
+    { retries: COMPLETION_POST_ATTEMPTS }
   );
 }
 
@@ -733,7 +770,7 @@ async function runAlertEvaluationJob(job: ClaimedJob): Promise<void> {
   const summary = (await nextPost(
     "/api/v1/alerts/evaluate",
     { jobId: job.id, triggeredBy },
-    60_000
+    WORKER_INNER_HTTP_TIMEOUT_MS
   )) as AlertEvaluationResponse;
 
   await reportProgress(
@@ -781,7 +818,7 @@ async function runMetricRetentionJob(job: ClaimedJob): Promise<void> {
     const counts = (await nextPost(
       "/api/v1/metrics/retention/prune",
       { triggeredBy: "SCHEDULE" },
-      60_000
+      WORKER_INNER_HTTP_TIMEOUT_MS
     )) as {
       metricSamplesDeleted?: number;
       rollup5MDeleted?: number;
@@ -846,7 +883,7 @@ async function runFlowRetentionJob(job: ClaimedJob): Promise<void> {
   const result = (await nextPost(
     "/api/v1/flows/retention/prune",
     { triggeredBy: "SCHEDULE" },
-    60_000,
+    WORKER_INNER_HTTP_TIMEOUT_MS,
   )) as FlowRetentionResult;
   await reportProgress(
     job.id,
@@ -891,7 +928,7 @@ async function runRollupAggregationJob(job: ClaimedJob): Promise<void> {
     const summary = (await nextPost(
       "/api/v1/metrics/rollup/aggregate",
       { jobId: job.id, triggeredBy: "JOB" },
-      60_000
+      WORKER_INNER_HTTP_TIMEOUT_MS
     )) as {
       groupsComputed?: number;
       groupsUpserted?: number;
@@ -967,7 +1004,7 @@ async function runProtocolQueueRetentionJob(job: ClaimedJob): Promise<void> {
     const result = (await nextPost(
       "/api/v1/protocol/queue/retention/prune",
       { triggeredBy: "SCHEDULE" },
-      60_000
+      WORKER_INNER_HTTP_TIMEOUT_MS
     )) as ProtocolQueueRetentionResult;
 
     await reportProgress(
@@ -1218,7 +1255,7 @@ async function runReportJob(job: ClaimedJob): Promise<void> {
   const summary = (await nextPost(
     "/api/v1/reports/execute",
     { jobId: job.id },
-    60_000
+    WORKER_INNER_HTTP_TIMEOUT_MS
   )) as ReportRunResponse;
 
   await reportProgress(
@@ -1332,7 +1369,23 @@ async function runSnmpPollJob(job: ClaimedJob): Promise<void> {
   );
 }
 
-async function executeJob(job: ClaimedJob): Promise<void> {
+/**
+ * F-4 — the per-job race budget is PER TYPE: the six evaluate-in-Next
+ * drivers derive it from the budget module (inner HTTP timeout + progress
+ * posts + margin — always strictly greater than the inner 60 s call they
+ * actually spend), CHANGE_EXECUTE keeps its claim-time F-044 derivation,
+ * and the locally-bounded types keep the flat JOB_TIMEOUT_MS.
+ */
+function jobBudgetMs(job: ClaimedJob): number {
+  return deriveWorkerJobBudgetMs(job.type) || JOB_TIMEOUT_MS;
+}
+
+/**
+ * Job body + failure classification (Task 10-a: the failure path itself
+ * must never produce an unhandled rejection — any single job failure is
+ * contained).
+ */
+async function executeJobBody(job: ClaimedJob): Promise<void> {
   try {
     if (job.type === "CONFIG_BACKUP") {
       await raceTimeout(runBackupJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
@@ -1352,17 +1405,17 @@ async function executeJob(job: ClaimedJob): Promise<void> {
       const budgetMs = deriveChangeJobBudgetMs(job.payload?.stepsTotal);
       await raceTimeout(runChangeExecutionJob(job), budgetMs, `job ${job.id}`);
     } else if (job.type === "ALERT_EVALUATION") {
-      await raceTimeout(runAlertEvaluationJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+      await raceTimeout(runAlertEvaluationJob(job), jobBudgetMs(job), `job ${job.id}`);
     } else if (job.type === "METRIC_RETENTION") {
-      await raceTimeout(runMetricRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+      await raceTimeout(runMetricRetentionJob(job), jobBudgetMs(job), `job ${job.id}`);
     } else if (job.type === "FLOW_RETENTION") {
-      await raceTimeout(runFlowRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+      await raceTimeout(runFlowRetentionJob(job), jobBudgetMs(job), `job ${job.id}`);
     } else if (job.type === "ROLLUP_AGGREGATION") {
-      await raceTimeout(runRollupAggregationJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+      await raceTimeout(runRollupAggregationJob(job), jobBudgetMs(job), `job ${job.id}`);
     } else if (job.type === "PROTOCOL_QUEUE_RETENTION") {
-      await raceTimeout(runProtocolQueueRetentionJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+      await raceTimeout(runProtocolQueueRetentionJob(job), jobBudgetMs(job), `job ${job.id}`);
     } else if (job.type === "REPORT_RUN") {
-      await raceTimeout(runReportJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
+      await raceTimeout(runReportJob(job), jobBudgetMs(job), `job ${job.id}`);
     } else if (job.type === "FIRMWARE_UPGRADE") {
       await raceTimeout(runFirmwareUpgradeJob(job), JOB_TIMEOUT_MS, `job ${job.id}`);
     } else if (job.type === "ZTP_PROVISION") {
@@ -1393,12 +1446,107 @@ async function executeJob(job: ClaimedJob): Promise<void> {
   }
 }
 
+/**
+ * F-3 — executeJob wraps the body with the in-flight registry so a graceful
+ * shutdown can AWAIT running executions (bounded grace) and post RESUMED for
+ * the stragglers. The registry entry is removed in finally: a job that
+ * settled during the drain is never resumed.
+ */
+async function executeJob(job: ClaimedJob): Promise<void> {
+  const done = executeJobBody(job);
+  inFlight.set(job.id, { job, done });
+  try {
+    await done;
+  } finally {
+    inFlight.delete(job.id);
+  }
+}
+
 let claiming = false;
+
+/* ───────── F-3 — graceful-drain hooks (claim loop + in-flight jobs) ────── */
+
+/**
+ * In-flight executions keyed by job id, registered in executeJob and
+ * removed when the body settles (success, failure or race timeout). The
+ * graceful shutdown (index.ts SIGTERM/SIGINT) awaits these under a bounded
+ * grace before posting RESUMED for the stragglers.
+ */
+const inFlight = new Map<string, { job: ClaimedJob; done: Promise<void> }>();
+
+/** Snapshot of the executions still running right now (drain + tests). */
+export function getInFlightJobs(): ClaimedJob[] {
+  return [...inFlight.values()].map((entry) => entry.job);
+}
+
+let stopped = false;
+let claimCycleTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * F-3 — stop the claim loop FIRST on shutdown: no new claim POST goes out,
+ * the pending self-scheduling timer is cleared, and an in-flight claim tick
+ * is allowed to settle (claimTick early-returns while stopped). Idempotent.
+ */
+export function stopRunner(): void {
+  stopped = true;
+  if (claimCycleTimer) {
+    clearTimeout(claimCycleTimer);
+    claimCycleTimer = undefined;
+  }
+}
+
+/**
+ * Bounded drain for graceful shutdown (F-3): await the in-flight executions
+ * for up to `graceMs`; for every job STILL running when the grace expires,
+ * post complete(RESUMED, "worker shutting down") — the app-side RESUMED
+ * branch requeues the row (QUEUED + scheduledAt backoff, lease kept) so the
+ * replacement worker re-runs it after restart instead of the reaper
+ * dead-lettering it ≥10 min later. Jobs whose body finished during the
+ * grace are gone from the in-flight map and are NEVER resumed; a body that
+ * loses a residual race (mid-completion-post at snapshot time) is still
+ * safe — the app-side terminal CAS + the F-012 attempt guard make the
+ * second terminal answer { updated: false }. Never throws.
+ */
+export async function drainInFlightJobs(graceMs: number): Promise<void> {
+  if (inFlight.size === 0) return;
+  await log(`drain: waiting up to ${Math.round(graceMs / 1000)}s for ${inFlight.size} in-flight job(s)`);
+  const deadline = Date.now() + graceMs;
+  for (const entry of [...inFlight.values()]) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await Promise.race([
+      entry.done.catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, remaining)),
+    ]);
+  }
+  const stragglers = [...inFlight.values()];
+  if (stragglers.length === 0) {
+    await log("drain: all in-flight jobs settled cleanly");
+    return;
+  }
+  await log(
+    `drain: grace expired with ${stragglers.length} job(s) still running — posting requeues`
+  );
+  for (const entry of stragglers) {
+    // Wave-8 F-3 — the RESUMED contract stays CHANGE_EXECUTE-only (the only
+    // resumable driver; the app refuses RESUMED for any other type with 400
+    // INVALID_OUTCOME). Every other straggler reports FAILED "worker shutting
+    // down" — the app-side FAILED requeue (attempts < maxAttempts) gives the
+    // same retry-when-budget-allows outcome without widening the contract.
+    if (entry.job.type === "CHANGE_EXECUTE") {
+      await reportResumed(entry.job, "worker shutting down");
+    } else {
+      await reportFailure(entry.job, "worker shutting down");
+    }
+  }
+}
 
 /**
  * Exponential claim backoff (Task 10-a): 3 s → 6 → 12 → 24 → 48 → 96 →
- * 192 → 300 s (capped at MAX_BACKOFF_MS). Pure function of the consecutive
- * failure count, so the scheduler and the failure log always agree.
+ * 192 → 300 s (capped at MAX_BACKOFF_MS). F-6: the returned base is
+ * jittered ±20% by the callers (via jitterBackoff) so a fleet of workers
+ * retrying an outage does not re-sync into a thundering herd; the pure
+ * base stays a function of the consecutive failure count only.
  */
 function claimBackoffDelay(failures: number): number {
   return Math.min(CLAIM_INTERVAL_MS * 2 ** failures, MAX_BACKOFF_MS);
@@ -1406,6 +1554,7 @@ function claimBackoffDelay(failures: number): number {
 
 async function claimTick(): Promise<"ok" | "failed" | "busy"> {
   if (claiming) return "busy";
+  if (stopped) return "busy";
   claiming = true;
   try {
     const free = CONCURRENCY_CAP - counters.running;
@@ -1437,9 +1586,20 @@ async function claimTick(): Promise<"ok" | "failed" | "busy"> {
       )) as ClaimedJob[];
     } catch (e) {
       counters.consecutiveClaimFailures += 1;
-      const delay = claimBackoffDelay(counters.consecutiveClaimFailures);
+      // F-6 — classify the failure: a 401/403 from the app plane is a
+      // CONFIG FAULT (the service identity was rejected — retrying harder
+      // is pointless), answered with a fixed slow cadence and a distinct,
+      // greppable log line; 5xx/timeouts keep the exponential curve.
+      const err = e as Error;
+      const isIdentityFault =
+        err instanceof PostHttpError && isIdentityFaultStatus(err.status);
+      const delay = isIdentityFault
+        ? IDENTITY_FAULT_BACKOFF_MS
+        : jitterBackoff(claimBackoffDelay(counters.consecutiveClaimFailures));
       await log(
-        `claim failed (consecutive=${counters.consecutiveClaimFailures}, next retry in ${Math.round(delay / 1000)}s): ${(e as Error)?.message ?? String(e)}`
+        isIdentityFault
+          ? `service identity rejected — check keys (F-6): claim failed: ${err.message} — retrying on a fixed ${IDENTITY_FAULT_BACKOFF_MS / 1000}s cadence`
+          : `claim failed (consecutive=${counters.consecutiveClaimFailures}, next retry in ${Math.round(delay / 1000)}s): ${err?.message ?? String(e)}`
       );
       return "failed";
     }
@@ -1477,18 +1637,20 @@ async function claimTick(): Promise<"ok" | "failed" | "busy"> {
  * failure, unexpected error, logging failure) can ever break the chain.
  * While the backend is unreachable the delay backs off exponentially up to
  * MAX_BACKOFF_MS; the first successful claim POST resets to CLAIM_INTERVAL_MS.
+ * F-3/F-6: the scheduled delay is jittered ±20% (thundering-herd guard) and
+ * stopRunner() ends the chain cleanly (the pending timer is cancelled).
  */
 async function runClaimCycle(): Promise<void> {
-  let nextDelay = CLAIM_INTERVAL_MS;
+  let nextDelay = jitterBackoff(CLAIM_INTERVAL_MS);
   try {
     const result = await claimTick();
     if (result === "failed") {
-      nextDelay = claimBackoffDelay(counters.consecutiveClaimFailures);
+      nextDelay = jitterBackoff(claimBackoffDelay(counters.consecutiveClaimFailures));
     }
   } catch (e) {
     // claimTick already contains its own errors; belt-and-braces guard so the
     // self-scheduling chain is truly immortal.
-    nextDelay = claimBackoffDelay(counters.consecutiveClaimFailures + 1);
+    nextDelay = jitterBackoff(claimBackoffDelay(counters.consecutiveClaimFailures + 1));
     try {
       await log(`claim loop unexpected error (contained): ${(e as Error)?.message ?? String(e)}`);
     } catch {
@@ -1496,13 +1658,15 @@ async function runClaimCycle(): Promise<void> {
     }
   } finally {
     counters.currentBackoffMs = nextDelay;
-    setTimeout(() => void runClaimCycle(), nextDelay);
+    if (!stopped) {
+      claimCycleTimer = setTimeout(() => void runClaimCycle(), nextDelay);
+    }
   }
 }
 
 export function startRunner(): void {
   log(
-    `runner started: claim every ${CLAIM_INTERVAL_MS / 1000}s (exponential backoff up to ${MAX_BACKOFF_MS / 1000}s on backend outage), batch ${CLAIM_BATCH}, concurrency ${CONCURRENCY_CAP}, per-job timeout ${JOB_TIMEOUT_MS / 1000}s`
+    `runner started: claim every ${CLAIM_INTERVAL_MS / 1000}s (exponential backoff up to ${MAX_BACKOFF_MS / 1000}s on backend outage), batch ${CLAIM_BATCH}, concurrency ${CONCURRENCY_CAP}, per-job budget flat ${JOB_TIMEOUT_MS / 1000}s / derived per type for the evaluate-in-Next drivers (F-4)`
   );
   void runClaimCycle();
 }

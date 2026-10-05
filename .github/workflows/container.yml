@@ -57,7 +57,43 @@ jobs:
       - name: Build ARM64 worker image
         run: |
           docker buildx build --platform linux/arm64 --load --file Dockerfile.worker --tag fayanms-worker:arm64-${CANDIDATE_SHA} --build-arg FAYANMS_SOURCE_SHA=${CANDIDATE_SHA} .
-          docker run --rm fayanms-worker:arm64-${CANDIDATE_SHA} --version
+
+      # F-1 (wave-8) — REAL boot probe for the worker image. The old smoke
+      # (`docker run … --version`) only executed `bun --version` and never
+      # imported index.ts, so the image could crash-loop at boot (a runtime
+      # import missing from the COPY whitelist) and CI stayed green. The
+      # probe actually boots the service: the worker's identity boot gate
+      # (identity-boot.ts) accepts the LEGACY symmetric shape, so a
+      # throwaway FAYANMS_SERVICE_SECRET is enough to boot; NEXT_BASE_URL is
+      # pointed at a closed port (the claim/tick loops fail contained and
+      # back off — no app needed). The probe then polls GET /health —
+      # module resolution of index.ts + the whole import graph is proven the
+      # moment it answers { ok: true } — and dumps the boot log on failure.
+      - name: Boot-probe ARM64 worker image (module resolution + /health)
+        run: |
+          docker run -d --name worker-boot-probe \
+            -e FAYANMS_SERVICE_SECRET=ci-boot-probe-throwaway-identity \
+            -e NEXT_BASE_URL=http://127.0.0.1:9 \
+            fayanms-worker:arm64-${CANDIDATE_SHA}
+          probe_ok=0
+          # 45 × 2 s ≈ 90 s budget — generous headroom for the emulated
+          # arm64 (QEMU) boot + per-exec bun startup; a healthy boot answers
+          # in single-digit seconds natively.
+          for i in $(seq 1 45); do
+            sleep 2
+            if docker exec worker-boot-probe /usr/local/bin/bun -e \
+              "const r = await fetch('http://127.0.0.1:3030/health'); if (!r.ok) process.exit(1); const j = await r.json(); process.exit(j.ok === true ? 0 : 1)"; then
+              probe_ok=1
+              echo "worker /health answered { ok: true } after ~$((i * 2))s"
+              break
+            fi
+          done
+          docker logs worker-boot-probe || true
+          docker rm -f worker-boot-probe >/dev/null 2>&1 || true
+          if [ "$probe_ok" != "1" ]; then
+            echo "::error::worker image failed to boot (no { ok: true } on /health within ~90s) — module-resolution or boot-gate regression"
+            exit 1
+          fi
 
       - name: Build ARM64 migration image
         run: |

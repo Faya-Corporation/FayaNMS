@@ -32,6 +32,19 @@ const evaluateSchema = z
   })
   .strip();
 
+/**
+ * F-4 (wave-8) — in-flight ALERT_EVALUATION executions keyed by jobId. The
+ * evaluate endpoint's RUNNING re-check is entry-only (check-then-act): when
+ * the worker's outer race fired mid-evaluation the job was requeued and
+ * re-claimed, and the second attempt re-fired the whole engine while the
+ * first evaluation was still running. The guard is set at entry and deleted
+ * in finally; a concurrent duplicate answers 409 JOB_ALREADY_EXECUTING so
+ * server-side evaluation can never double-fire for the same job. Manual
+ * posts (no jobId) are out of scope — the double-fire hazard is a
+ * re-claimed JOB attempt.
+ */
+const inFlightEvaluations = new Map<string, true>();
+
 export async function POST(request: Request) {
   // P19 SEC-002 — machine principal only (service JWT; see service-auth.ts).
   const service = authenticateServiceRequest(request, "alerts");
@@ -52,7 +65,6 @@ export async function POST(request: Request) {
   }
   const { jobId, triggeredBy } = parsed.data;
 
-  let jobCorrelationId: string | undefined;
   if (jobId) {
     const job = await db.jobExecution.findUnique({
       where: { id: jobId },
@@ -75,9 +87,32 @@ export async function POST(request: Request) {
         409
       );
     }
-    jobCorrelationId = job.correlationId;
+    // F-4 — a re-claimed attempt cannot enter while the first evaluation for
+    // this job is still in flight (checked AFTER the entry guards, deleted in
+    // finally so a crashed/failed evaluation never wedges the job).
+    if (inFlightEvaluations.has(jobId)) {
+      return fail(
+        "JOB_ALREADY_EXECUTING",
+        `Alert evaluation for job ${jobId} is already executing in this process — a re-claimed attempt must not double-fire the engine`,
+        409
+      );
+    }
+    inFlightEvaluations.set(jobId, true);
+    try {
+      return await runGuardedEvaluation(jobId, triggeredBy, job.correlationId);
+    } finally {
+      inFlightEvaluations.delete(jobId);
+    }
   }
 
+  return runGuardedEvaluation(undefined, triggeredBy, undefined);
+}
+
+async function runGuardedEvaluation(
+  jobId: string | undefined,
+  triggeredBy: string | undefined,
+  jobCorrelationId: string | undefined
+): Promise<Response> {
   try {
     const summary = await runAlertEvaluation({
       triggeredBy: triggeredBy ?? (jobId ? "JOB" : "MANUAL"),

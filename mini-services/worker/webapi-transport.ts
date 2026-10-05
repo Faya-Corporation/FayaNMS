@@ -23,7 +23,12 @@
  *     publicly-trusted or operator-imported certificates work as-is;
  *   - FAYANMS_WEBAPI_CA_PEM (worker env) pins an additional CA/cert for
  *     devices with private or self-signed certificates — the operator's
- *     enrollment action, worker-side only;
+ *     enrollment action, worker-side only. Node TLS semantics make a bare
+ *     `ca` option REPLACE the default trust store (the Mozilla roots are
+ *     NOT consulted once `ca` is set), so the option is built as
+ *     [pinnedPem, ...tls.rootCertificates] (8-c F-1): the pinned anchor
+ *     EXTENDS the system store — enrolling a private CA for one device can
+ *     never un-trust every publicly-trusted WebAPI device on this worker;
  *   - a TLS failure refuses the request BEFORE the api-key is ever
  *     transmitted (the key only ever travels inside an authenticated and
  *     integrity-protected channel).
@@ -39,6 +44,7 @@
 
 import { request as httpsRequest } from "node:https";
 import { readFileSync } from "node:fs";
+import { rootCertificates } from "node:tls";
 
 export class WebApiError extends Error {
   constructor(
@@ -108,6 +114,24 @@ function pinnedCaPem(): string | undefined {
   }
 }
 
+/**
+ * Build the `ca` option for the device-facing TLS request (8-c F-1).
+ *
+ * A bare `ca` option REPLACES the default trust store — the module's own
+ * documentation used to claim the pinned anchor "ADDS" to the system store,
+ * but https.request never consults the Mozilla roots once `ca` is set, so
+ * enrolling one private CA silently un-trusted every publicly-issued device
+ * certificate on the worker (fail-closed availability bug). The option is
+ * therefore built as [pinnedPem, ...tls.rootCertificates]: the pinned
+ * anchor EXTENDS the Node root store. With no pinned material the option
+ * stays `undefined` (exactly the default-store behavior). Exported for the
+ * wave-8 hardening unit pins.
+ */
+export function buildWebApiCa(pinnedPem: string | undefined): string[] | undefined {
+  if (!pinnedPem) return undefined;
+  return [pinnedPem, ...rootCertificates];
+}
+
 interface WebApiRawResponse {
   status: number;
   body: string;
@@ -120,7 +144,7 @@ function postJson(
   timeoutMs: number,
 ): Promise<WebApiRawResponse> {
   const body = JSON.stringify(payload);
-  const ca = pinnedCaPem();
+  const ca = buildWebApiCa(pinnedCaPem());
   return new Promise<WebApiRawResponse>((resolve, reject) => {
     const req = httpsRequest(
       {
@@ -132,8 +156,10 @@ function postJson(
           "content-type": "application/json",
           "content-length": Buffer.byteLength(body),
         },
-        // TLS verification is ALWAYS on. `ca` ADDS a worker-pinned anchor
-        // (operator enrollment); it never disables verification.
+        // TLS verification is ALWAYS on. `ca` EXTENDS the default store
+        // with the worker-pinned anchor ([pem, ...tls.rootCertificates],
+        // 8-c F-1) — it never disables verification and never replaces the
+        // system roots.
         ca,
         rejectUnauthorized: true,
         timeout: timeoutMs,

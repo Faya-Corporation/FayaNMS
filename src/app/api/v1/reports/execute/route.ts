@@ -36,6 +36,19 @@ export const maxDuration = 60;
  *   5. Audit REPORT_GENERATED with the run's shared correlationId
  *      (queue → claim → generate all carry the same REP-XXXXXX id).
  *
+ * Wave-8 F-4 — in-flight guard: a module-level Map keyed by jobId is set at
+ * entry and cleared in finally; a re-claimed second attempt (e.g. the
+ * worker's outer race fired, the job was requeued and re-claimed while the
+ * first execution was still generating) answers 409 JOB_ALREADY_EXECUTING
+ * so server-side generation can never double-fire for the same job.
+ *
+ * Wave-8 F-2 — the terminal write is a CAS: `updateMany` with
+ * `status: "RUNNING"` in the where. count 0 (a concurrent completion won —
+ * the entry check is check-then-act, not the write) skips the lastRunAt
+ * touch AND the audit row and answers the same 409 JOB_NOT_RUNNING envelope
+ * the entry guard uses, so a late duplicate can never flip the terminal
+ * state or double-persist the schedule bookkeeping.
+ *
  * Returns the generation summary { jobId, scheduleId, scheduleName,
  * reportType, format, range, rows, generatedAt }.
  */
@@ -45,6 +58,12 @@ const executeSchema = z
     jobId: z.string().trim().min(1).max(64),
   })
   .strip();
+
+/**
+ * F-4 — in-flight REPORT_RUN executions (jobId → true). Set after the entry
+ * guards, deleted in finally (success, 4xx and engine failure alike).
+ */
+const inFlightReportRuns = new Map<string, true>();
 
 function safeParseJson(text: string | null | undefined): Record<string, unknown> {
   if (!text) return {};
@@ -78,6 +97,24 @@ export async function POST(request: Request) {
   }
   const { jobId } = parsed.data;
 
+  // F-4 — in-flight guard: a second execution for the same job cannot enter
+  // while the first is still generating.
+  if (inFlightReportRuns.has(jobId)) {
+    return fail(
+      "JOB_ALREADY_EXECUTING",
+      `Report job ${jobId} is already executing in this process — a re-claimed attempt must not double-fire generation`,
+      409
+    );
+  }
+  inFlightReportRuns.set(jobId, true);
+  try {
+    return await executeReportRun(jobId);
+  } finally {
+    inFlightReportRuns.delete(jobId);
+  }
+}
+
+async function executeReportRun(jobId: string): Promise<Response> {
   const job = await db.jobExecution.findUnique({
     where: { id: jobId },
     select: {
@@ -140,9 +177,14 @@ export async function POST(request: Request) {
     });
 
     const now = new Date();
-    await db.$transaction([
-      db.jobExecution.update({
-        where: { id: job.id },
+    // F-2 — terminal CAS: the SUCCEEDED flip (and the schedule bookkeeping)
+    // only lands while the row is still RUNNING. A concurrent completion
+    // that won the transition (the entry check above is check-then-act)
+    // makes count 0 → nothing is written, nothing is audited.
+    let casCount = 0;
+    await db.$transaction(async (tx) => {
+      const cas = await tx.jobExecution.updateMany({
+        where: { id: job.id, status: "RUNNING" },
         data: {
           status: "SUCCEEDED",
           progress: 100,
@@ -150,12 +192,23 @@ export async function POST(request: Request) {
           error: null,
           resultJson: JSON.stringify(artifact),
         },
-      }),
-      db.reportSchedule.update({
-        where: { id: schedule.id },
-        data: { lastRunAt: now },
-      }),
-    ]);
+      });
+      casCount = cas.count;
+      if (cas.count === 1) {
+        await tx.reportSchedule.update({
+          where: { id: schedule.id },
+          data: { lastRunAt: now },
+        });
+      }
+    });
+
+    if (casCount === 0) {
+      return fail(
+        "JOB_NOT_RUNNING",
+        `Job ${job.id} left RUNNING before the terminal write (concurrent completion)`,
+        409
+      );
+    }
 
     await db.auditEvent.create({
       data: {

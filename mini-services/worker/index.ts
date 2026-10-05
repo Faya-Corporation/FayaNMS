@@ -106,7 +106,7 @@ import {
 } from "./vendor-fingerprint";
 import { resolveTargetForDial } from "./target-policy";
 import { resolveVaultSecret, VaultError } from "./vault";
-import { startRunner, getCounters } from "./runner";
+import { startRunner, getCounters, stopRunner, drainInFlightJobs } from "./runner";
 import { startScheduler, getSchedulerState } from "./scheduler";
 import { log } from "./next-client";
 import { controlRejectResponse, verifyControlToken } from "./control-auth";
@@ -1024,17 +1024,45 @@ if (import.meta.main) {
   startScheduler();
   const protocolCollector = startProtocolCollector();
 
-  process.on("SIGTERM", () => {
-    log("SIGTERM received — shutting down");
+  // F-3 (wave-8) — GRACEFUL DRAIN. The old handler stopped the collector and
+  // the server then process.exit(0) IMMEDIATELY: up to 3 in-flight jobs got
+  // no completion post and were dead-lettered terminal FAILED by the
+  // scheduler-tick reaper ≥10 min later. The shutdown order is now:
+  //   1. stopRunner()   — the claim loop stops FIRST (no new claims);
+  //   2. drainInFlightJobs(GRACE) — await the running executions under a
+  //      bounded grace; for every job STILL running at expiry, post
+  //      complete(RESUMED, "worker shutting down") — the app-side RESUMED
+  //      branch requeues the row (lease kept) so the replacement worker
+  //      re-runs it after restart instead of the reaper failing it;
+  //   3. stop the collector + HTTP surface and exit 0.
+  // If the grace expires mid-post, the app-side terminal CAS + the F-012
+  // attempt guard keep the flip-flop impossible; the reaper remains the
+  // backstop for anything that never answers.
+  const DRAIN_GRACE_MS = 25_000;
+  let draining = false;
+  async function gracefulShutdown(signal: string): Promise<void> {
+    if (draining) {
+      // Second signal: the operator wants out NOW.
+      process.exit(0);
+    }
+    draining = true;
+    log(`${signal} received — graceful shutdown: draining in-flight jobs (${DRAIN_GRACE_MS / 1000}s grace)`);
+    stopRunner();
+    try {
+      await drainInFlightJobs(DRAIN_GRACE_MS);
+    } catch (e) {
+      // Drain must never wedge the exit — the reaper is the backstop.
+      log(`drain error (proceeding with shutdown): ${(e as Error)?.message ?? String(e)}`);
+    }
     protocolCollector?.stop();
     server.stop(true);
     process.exit(0);
+  }
+  process.on("SIGTERM", () => {
+    void gracefulShutdown("SIGTERM");
   });
   process.on("SIGINT", () => {
-    log("SIGINT received — shutting down");
-    protocolCollector?.stop();
-    server.stop(true);
-    process.exit(0);
+    void gracefulShutdown("SIGINT");
   });
 }
 /* ───────────────────── change-apply delta (Task 4-b) ───────────────────── */
