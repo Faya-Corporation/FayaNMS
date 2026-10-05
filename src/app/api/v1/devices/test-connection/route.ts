@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSiteScope } from "@/lib/auth/session";
 import { getHostKeyPin } from "@/lib/ssh/host-keys";
 import { workerControlHeaders } from "@/lib/worker/control-client";
 import { WORKER_BASE_URL } from "@/lib/worker/worker-url";
@@ -19,6 +19,17 @@ export const dynamic = "force-dynamic";
  *     of an error state;
  *   - a reachable worker updates the device lastSeen (and status when the
  *     worker reports a known device status) and the result is audited.
+ *
+ * F-031 (site scoping — device-domain wave 7): MUTATION plane — a probe
+ * opens a live data-plane connection and can WRITE device state (lastSeen
+ * / status refresh), so after resolving the device FROM THE REQUEST BODY
+ * (`deviceId`) the route gates the DEVICE'S site through requireSiteScope →
+ * 403 SITE_SCOPE_FORBIDDEN (the documented mutation contract — no 404 shape
+ * here), BEFORE any probe fetch or device write. The existing missing-device
+ * envelope (404 DEVICE_NOT_FOUND) is preserved unchanged. A site-less
+ * device is an unscoped resource and bypasses the gate
+ * (assertSiteScope(null) rule). Wildcard sessions are byte-unchanged.
+ * authorization-matrix.md §5.1.
  */
 
 const WORKER_URL = `${WORKER_BASE_URL}/simulate/connect`;
@@ -104,6 +115,7 @@ export async function POST(request: Request) {
       mgmtIp: true,
       status: true,
       lastSeen: true,
+      site: { select: { code: true } },
       vendor: { select: { key: true, name: true, adapterKey: true } },
       // Phase 22 slice 1 — data-plane routing + credential REFERENCE fields
       // (secretRef is a vault pointer; the secret never travels — the worker
@@ -114,6 +126,19 @@ export async function POST(request: Request) {
   });
   if (!device) {
     return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
+  }
+
+  // F-031 wave-7 (mutation plane): the DEVICE'S site must be inside the
+  // session's scope before any probe is sent or device state is written —
+  // requireSiteScope answers 403 SITE_SCOPE_FORBIDDEN (no 404 shape on the
+  // mutation plane; a site-less device bypasses per the documented
+  // unscoped-resource rule).
+  try {
+    await requireSiteScope(request, device.site?.code ?? null);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
 
   const correlationId = newJobCorrelationId();

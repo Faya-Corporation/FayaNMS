@@ -291,8 +291,19 @@ export async function POST(request: Request) {
     }
   }
 
-  const existing = await db.device.findUnique({
-    where: { hostname: data.hostname },
+  // F-031 site-scope wave 7: the hostname probe is composed through
+  // scopedDeviceWhere so a sites-limited session no longer receives a
+  // global existence oracle (a 409 for an out-of-scope device's hostname
+  // confirmed that device exists). An in-scope collision still 409s
+  // HOSTNAME_TAKEN from this probe; a CROSS-scope collision falls through
+  // to the create and is answered by the DB unique-constraint catch below
+  // with the SAME HOSTNAME_TAKEN envelope — the constraint is the
+  // backstop, the oracle is gone. Wildcard sessions resolve the base
+  // where by identity, so their probe result shape is byte-unchanged.
+  const existing = await db.device.findFirst({
+    where: scopedDeviceWhere(await sessionScopeFor(request), {
+      hostname: data.hostname,
+    }),
     select: { id: true },
   });
   if (existing) {
@@ -365,6 +376,10 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     if (message.includes("Unique constraint")) {
+      // The hostname @unique constraint is the scope-proof backstop for the
+      // composed probe above: a cross-scope collision never reaches the
+      // probe, so it lands HERE — the envelope is identical to the probe's
+      // 409, keeping the response shape stable for every session kind.
       return fail("HOSTNAME_TAKEN", `A device with hostname "${data.hostname}" already exists`, 409);
     }
     return fail("CREATE_FAILED", "The device could not be created", 500);

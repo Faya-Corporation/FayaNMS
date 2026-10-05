@@ -1,9 +1,23 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSiteScope } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * POST /api/v1/devices/[id]/snmp/poll — enqueue an on-demand SNMPv3 poll
+ * job for the device (SNMP_POLL JobExecution + SNMP_POLL_QUEUED audit row).
+ *
+ * F-031 (site scoping — device-domain wave 7): MUTATION plane — the poll
+ * job burns worker capacity and touches the device's data plane, so after
+ * device resolution the route gates the DEVICE'S site through
+ * requireSiteScope → 403 SITE_SCOPE_FORBIDDEN (the documented mutation
+ * contract — no 404 shape here), BEFORE the engine/profile validations and
+ * before any job row is created. A site-less device is an unscoped resource
+ * and bypasses the gate (assertSiteScope(null) rule). Wildcard sessions are
+ * byte-unchanged. authorization-matrix.md §5.1.
+ */
 
 const pollSchema = z.object({
   credentialProfileId: z.string().trim().min(1).max(120).optional(),
@@ -38,10 +52,23 @@ export async function POST(
       id: true,
       hostname: true,
       snmpEngineIdHex: true,
+      site: { select: { code: true } },
       credentialProfile: { select: { id: true, type: true } },
     },
   });
   if (!device) return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
+
+  // F-031 wave-7 (mutation plane): the DEVICE'S site must be inside the
+  // session's scope before any poll job state is created — requireSiteScope
+  // answers 403 SITE_SCOPE_FORBIDDEN (no 404 shape on the mutation plane; a
+  // site-less device bypasses per the documented unscoped-resource rule).
+  try {
+    await requireSiteScope(request, device.site?.code ?? null);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
   if (!device.snmpEngineIdHex) {
     return fail("SNMP_ENGINE_UNENROLLED", "Enroll the device SNMPv3 engine ID before polling", 409);
   }

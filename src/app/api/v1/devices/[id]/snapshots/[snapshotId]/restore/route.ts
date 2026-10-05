@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { approvalLevelsFor } from "@/lib/change/risk";
 import { quorumRequiredFor } from "@/lib/change/approval-policy";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, requireSiteScope } from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +55,17 @@ export const dynamic = "force-dynamic";
  * refuses restore changes fail-closed (no device contact) until full-config
  * pushes are vendor-certified (LIVE_RESTORE_NOT_CERTIFIED). The prose below
  * keeps the human-readable audit copy of the target (id · version · sha256).
+ *
+ * F-031 (site scoping — device-domain wave 7): MUTATION plane — filing a
+ * restore change against a device is a privileged, audited act with real
+ * execution consequences, so after device resolution the route gates the
+ * DEVICE'S site through requireSiteScope → 403 SITE_SCOPE_FORBIDDEN (the
+ * documented mutation contract — existence confirmation is accepted on the
+ * mutation plane; unlike the reads above there is no 404 shape here). The
+ * gate runs BEFORE the hostname-confirmation check so an out-of-scope
+ * caller learns nothing (not even the hostname echo). A site-less device
+ * is an unscoped resource and bypasses the gate (assertSiteScope(null)
+ * rule). Wildcard sessions are byte-unchanged. authorization-matrix.md §5.1.
  */
 
 const restoreSchema = z.object({
@@ -106,10 +117,27 @@ export async function POST(
 
   const device = await db.device.findUnique({
     where: { id },
-    select: { id: true, hostname: true, criticality: true },
+    select: {
+      id: true,
+      hostname: true,
+      criticality: true,
+      site: { select: { code: true } },
+    },
   });
   if (!device) {
     return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
+  }
+
+  // F-031 wave-7 (mutation plane): the DEVICE'S site must be inside the
+  // session's scope before any restore state is touched — requireSiteScope
+  // answers 403 SITE_SCOPE_FORBIDDEN (no 404 shape on the mutation plane;
+  // a site-less device bypasses per the documented unscoped-resource rule).
+  try {
+    await requireSiteScope(request, device.site?.code ?? null);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
 
   // Guarded confirmation: exact, case-sensitive hostname match.

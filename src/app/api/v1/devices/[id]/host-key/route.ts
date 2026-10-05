@@ -1,7 +1,14 @@
 import { db } from "@/lib/db";
 import { isLiveWebApiVendor } from "@/lib/devices/live-transport";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  AuthError,
+  authErrorToFail,
+  requirePermission,
+  requireSiteScope,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionAllowsSite } from "@/lib/auth/scope";
 import {
   getEnrollment,
   isValidHostKeyFingerprint,
@@ -29,6 +36,22 @@ export const dynamic = "force-dynamic";
  *
  * Permission: config.backup (the same class the data-plane probes use).
  * Every action is attributed to the session principal and audited.
+ *
+ * F-031 (site scoping — device-domain wave 7):
+ *   - GET is a READ: the enrollment answer includes the endpoint's host
+ *     and port, so it is gated by the sessionAllowsSite row predicate with
+ *     404-NOT-403 parity — an out-of-scope device gets the SAME
+ *     DEVICE_NOT_FOUND envelope a wildcard session gets for a missing one
+ *     (a 403 would leak the device's existence).
+ *   - POST/PUT/DELETE are MUTATIONS (a probe opens a live connection; a
+ *     pin/ revoke rewrites the trust anchor for the endpoint) — after
+ *     device resolution they gate the DEVICE'S site through
+ *     requireSiteScope → 403 SITE_SCOPE_FORBIDDEN (the documented mutation
+ *     contract), BEFORE any credential/vendor validation and before any
+ *     worker probe or trust-anchor write. A site-less device is an
+ *     unscoped resource and bypasses the gate (assertSiteScope(null)
+ *     rule). Wildcard sessions are byte-unchanged.
+ *     authorization-matrix.md §5.1.
  */
 
 const probeSchema = z.object({
@@ -60,8 +83,18 @@ interface DeviceEndpoint {
   };
 }
 
-/** Resolve the device + its SSH endpoint coordinates (fail-closed). */
-async function loadEndpoint(deviceId: string): Promise<
+/** Resolve the device + its SSH endpoint coordinates (fail-closed).
+ *
+ * F-031 wave-7 (mutation plane): the site-scope gate lives HERE — directly
+ * after device resolution and before any credential/vendor endpoint
+ * validation — so an out-of-scope device answers 403 SITE_SCOPE_FORBIDDEN
+ * no matter what other endpoint state it carries. The gate rides the same
+ * AuthError contract the callers already map through `fail`.
+ */
+async function loadEndpoint(
+  request: Request,
+  deviceId: string
+): Promise<
   { ok: true; endpoint: DeviceEndpoint } | { ok: false; code: string; message: string; status: number }
 > {
   const device = await db.device.findUnique({
@@ -72,11 +105,24 @@ async function loadEndpoint(deviceId: string): Promise<
       mgmtIp: true,
       dataSource: true,
       vendor: { select: { key: true } },
+      site: { select: { code: true } },
       credentialProfile: { select: { username: true, port: true, secretRef: true } },
     },
   });
   if (!device) {
     return { ok: false, code: "DEVICE_NOT_FOUND", message: "The requested device does not exist", status: 404 };
+  }
+  // F-031 wave-7 (mutation plane): the DEVICE'S site must be inside the
+  // session's scope — requireSiteScope answers 403 SITE_SCOPE_FORBIDDEN
+  // (no 404 shape on the mutation plane; a site-less device bypasses per
+  // the documented unscoped-resource rule).
+  try {
+    await requireSiteScope(request, device.site?.code ?? null);
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return { ok: false, code: error.code, message: error.message, status: error.status };
+    }
+    throw error;
   }
   if (!device.credentialProfile) {
     return {
@@ -139,11 +185,21 @@ export async function GET(
     return authFail;
   }
   const { id } = await params;
+  const scopeClaims = await sessionScopeFor(_request);
   const device = await db.device.findUnique({
     where: { id },
-    select: { mgmtIp: true, credentialProfile: { select: { port: true } } },
+    select: {
+      mgmtIp: true,
+      site: { select: { code: true } },
+      credentialProfile: { select: { port: true } },
+    },
   });
-  if (!device) {
+  // F-031 wave-7: the SAME not-found envelope for a missing device AND an
+  // out-of-scope device — the enrollment answer exposes the endpoint's
+  // host + port, so it must not disclose an out-of-scope device's
+  // existence (404-not-403; sessionAllowsSite mirrors the list route's
+  // where filter).
+  if (!device || !sessionAllowsSite(scopeClaims, device.site?.code ?? null)) {
     return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
   }
   if (!device.mgmtIp || !device.credentialProfile) {
@@ -177,7 +233,7 @@ export async function POST(
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
 
-  const endpoint = await loadEndpoint(id);
+  const endpoint = await loadEndpoint(request, id);
   if (!endpoint.ok) {
     return fail(endpoint.code, endpoint.message, endpoint.status);
   }
@@ -275,7 +331,7 @@ export async function PUT(
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
 
-  const endpoint = await loadEndpoint(id);
+  const endpoint = await loadEndpoint(request, id);
   if (!endpoint.ok) {
     return fail(endpoint.code, endpoint.message, endpoint.status);
   }
@@ -364,7 +420,7 @@ export async function DELETE(
   }
   const { id } = await params;
 
-  const endpoint = await loadEndpoint(id);
+  const endpoint = await loadEndpoint(request, id);
   if (!endpoint.ok) {
     return fail(endpoint.code, endpoint.message, endpoint.status);
   }

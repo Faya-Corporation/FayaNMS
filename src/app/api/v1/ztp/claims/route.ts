@@ -1,6 +1,11 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
-import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSessionRead,
+  requireSiteScope,
+} from "@/lib/auth/session";
 import { ZTP_TEMPLATES, getZtpTemplate } from "@/lib/ztp/templates";
 import { projectMgmtIp } from "@/lib/ztp/provision";
 import { z } from "zod";
@@ -25,6 +30,9 @@ export const dynamic = "force-dynamic";
  *     422 TEMPLATE_MISMATCH    — template belongs to another vendor
  *     422 UNKNOWN_VENDOR       — vendorKey not in the seeded vendor set
  *     422 SITE_NOT_FOUND       — siteId does not resolve
+ *     403 SITE_SCOPE_FORBIDDEN — the session's site scope does not include
+ *                                the target site (F-031 create surface,
+ *                                site-scope wave 7)
  *     409 ZTP_CLAIM_EXISTS     — an ACTIVE claim (pending|provisioning) for
  *                                the serial already exists (failed/provisioned
  *                                serials may re-claim)
@@ -277,6 +285,19 @@ export async function POST(request: Request) {
     const site = await db.site.findUnique({ where: { id: parsed.data.siteId } });
     if (!site) {
       return fail("SITE_NOT_FOUND", "The referenced site does not exist", 422);
+    }
+    // F-031 site-scope wave 7 (create surfaces): a claim provisions its
+    // device into the target site, so a sites-limited session may only
+    // claim into a site inside its scope — requireSiteScope answers 403
+    // SITE_SCOPE_FORBIDDEN, mirroring POST /api/v1/devices's mutation
+    // contract (the existence error precedes the scope 403, exactly like
+    // the vendor 400 there).
+    try {
+      await requireSiteScope(request, site.code);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
     }
   }
 

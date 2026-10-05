@@ -27,6 +27,17 @@
  *     in-scope device out of the operator's own visibility is refused);
  *     POST /api/v1/devices — the target siteId must be in scope.
  *
+ *   WAVE-7 EXTENSIONS (this suite keeps owning the shared-rig pins):
+ *     - fleet summary exactness (deny-all → total 0; site-A → exact count,
+ *       never vacuous `>= 0`);
+ *     - a MALFORMED claim (`sites: "BAD"`) is deny-all on BOTH planes
+ *       (sub-resource read → 404; PATCH → 403);
+ *     - PATCH `siteId: null` (detach) → 403 from sites-limited/deny-all
+ *       sessions, byte-unchanged write for wildcard sessions;
+ *     - site-less devices (siteId null): hidden on reads, mutable on the
+ *       mutation plane (assertSiteScope(null) bypass), creatable without
+ *       a site (201, row carries null siteId).
+ *
  * Harness: the certified batch-25 pattern — REAL next-auth JWTs minted
  * with the production encoder (no mock.module), migrate-deploy-safe
  * upserts, surgical FK-order cleanup bounded to this suite's fixtures.
@@ -48,6 +59,7 @@ const SITE_B_CODE = `W2B-${RUN}`;
 const VENDOR_KEY = `b25w2-vendor-${RUN}`;
 const HOST_A = `b25w2-dev-a-${RUN.toLowerCase()}`;
 const HOST_B = `b25w2-dev-b-${RUN.toLowerCase()}`;
+const HOST_C = `b25w2-dev-c-${RUN.toLowerCase()}`; // site-less fixture (siteId null)
 const IF_NAME_A = `Gi0/1-w2a-${RUN}`;
 const IF_NAME_B = `Gi0/1-w2b-${RUN}`;
 const ADMIN_EMAIL = "admin@faya.local";
@@ -61,7 +73,9 @@ let siteBId = "";
 let vendorId = "";
 let deviceAId = "";
 let deviceBId = "";
+let deviceCId = ""; // site-less (siteId null)
 let postCreatedDeviceId = "";
+let postNoSiteDeviceId = ""; // created WITHOUT siteId (null site edge)
 
 type SessionShape = { id: string; email: string; name: string | null; role: string; sites?: unknown };
 
@@ -108,6 +122,17 @@ function detailRequest(
         }),
         { params: Promise.resolve({ id }) }
       )
+  );
+}
+
+async function deviceDetailRequest(jwt: string, id: string): Promise<Response> {
+  const { GET } = (await import("../../src/app/api/v1/devices/[id]/route")) as RouteModule;
+  return GET(
+    new NextRequest(`http://app.local/api/v1/devices/${id}`, {
+      method: "GET",
+      headers: { cookie: `next-auth.session-token=${jwt}` },
+    }),
+    { params: Promise.resolve({ id }) }
   );
 }
 
@@ -211,6 +236,11 @@ beforeAll(async () => {
     data: { hostname: HOST_B, mgmtIp: "192.0.2.44", vendorId, siteId: siteBId, status: "ONLINE" },
   });
   deviceBId = devB.id;
+  // Site-less fixture (wave-7): siteId null — the unscoped-resource edge.
+  const devC = await db.device.create({
+    data: { hostname: HOST_C, mgmtIp: "192.0.2.48", vendorId, siteId: null, status: "ONLINE" },
+  });
+  deviceCId = devC.id;
 
   // One interface per fixture device — the fleet-list parity probes.
   await db.deviceInterface.create({
@@ -230,12 +260,16 @@ afterAll(async () => {
   await db.auditEvent.deleteMany({
     where: {
       resourceType: "Device",
-      resourceId: { in: [deviceAId, deviceBId, postCreatedDeviceId].filter(Boolean) },
+      resourceId: {
+        in: [deviceAId, deviceBId, deviceCId, postCreatedDeviceId, postNoSiteDeviceId].filter(Boolean),
+      },
       createdAt: { gte: testStartedAt },
     },
   });
   await db.deviceInterface.deleteMany({ where: { deviceId: { in: [deviceAId, deviceBId].filter(Boolean) } } });
-  await db.device.deleteMany({ where: { id: { in: [deviceAId, deviceBId, postCreatedDeviceId].filter(Boolean) } } });
+  await db.device.deleteMany({
+    where: { id: { in: [deviceAId, deviceBId, deviceCId, postCreatedDeviceId, postNoSiteDeviceId].filter(Boolean) } },
+  });
   await db.vendor.deleteMany({ where: { id: vendorId } });
   await db.site.deleteMany({ where: { id: { in: [siteAId, siteBId].filter(Boolean) } } });
   await db.organization.deleteMany({ where: { id: orgId } });
@@ -310,6 +344,19 @@ describe("F-031 device domain — GET /api/v1/interfaces list composition", () =
   test("sites-limited session (site A) sees ONLY site A's interface — row AND summary agree", async () => {
     expect(await fixtureRows(await adminJwt([SITE_A_CODE]))).toEqual([IF_NAME_A]);
 
+    // Wave-7 summary exactness: the summary block shares the scoped where,
+    // so its total is determinable from the fixtures — the RUN-suffixed
+    // site code is unique to this run and only deviceA carries it, so
+    // site A has EXACTLY one interface (the previously unasserted total is
+    // now pinned) and it can never be smaller than the visible rows.
+    const scoped = await interfacesListRequest(await adminJwt([SITE_A_CODE]));
+    expect(scoped.status).toBe(200);
+    const scopedBody = (await scoped.json()) as {
+      data?: { rows?: Array<{ deviceId: string }>; summary?: { total: number } };
+    };
+    expect(scopedBody.data?.summary?.total).toBeGreaterThanOrEqual((scopedBody.data?.rows ?? []).length);
+    expect(scopedBody.data?.summary?.total).toBe(1);
+
     // The summary block shares the scoped where — its total counts only
     // in-scope rows for a deny-all scope (bounded assertion: the fixture
     // interfaces never appear).
@@ -321,7 +368,10 @@ describe("F-031 device domain — GET /api/v1/interfaces list composition", () =
     expect(
       (body.data?.rows ?? []).filter((r) => r.deviceId === deviceAId || r.deviceId === deviceBId).length
     ).toBe(0);
-    expect(body.data?.summary?.total).toBeGreaterThanOrEqual(0);
+    // Wave-7: the summary rides the SAME scoped where — for a deny-all
+    // scope (`site.code IN ()`) it matches NOTHING, so the previously
+    // vacuous `>= 0` pin is upgraded to the exact zero.
+    expect(body.data?.summary?.total).toBe(0);
   });
 
   test("deny-all scope sees NEITHER fixture interface", async () => {
@@ -414,6 +464,98 @@ describe("F-031 device domain — POST /api/v1/devices scope gate", () => {
     });
     expect(res.status).toBe(403);
     expect((await envelope(res)).error?.code).toBe("SITE_SCOPE_FORBIDDEN");
+  });
+});
+
+/* ── wave-7 — malformed claim is deny-all on BOTH planes ─────────────── */
+
+describe("F-031 wave-7 — malformed site-scope claim is deny-all on BOTH planes", () => {
+  test("malformed claim (sites: string) hides the device on the READ plane (alerts → 404 DEVICE_NOT_FOUND)", async () => {
+    const res = await detailRequest("alerts", await adminJwt("BAD"), deviceAId);
+    expect(res.status).toBe(404);
+    expect((await envelope(res)).error?.code).toBe("DEVICE_NOT_FOUND");
+  });
+
+  test("malformed claim (sites: string) refuses the MUTATION plane (PATCH → 403 SITE_SCOPE_FORBIDDEN)", async () => {
+    const res = await patchDeviceRequest(await adminJwt("BAD"), deviceAId, {
+      notes: "malformed claim probe",
+    });
+    expect(res.status).toBe(403);
+    expect((await envelope(res)).error?.code).toBe("SITE_SCOPE_FORBIDDEN");
+    const after = await db.device.findUnique({ where: { id: deviceAId }, select: { notes: true } });
+    expect(after?.notes).not.toBe("malformed claim probe");
+  });
+});
+
+/* ── wave-7 — PATCH siteId:null (detach) gate ─────────────────────────── */
+
+describe("F-031 wave-7 — PATCH siteId:null (detach) gate", () => {
+  test("sites-limited session cannot detach (403 SITE_SCOPE_FORBIDDEN, siteId unchanged)", async () => {
+    const res = await patchDeviceRequest(await adminJwt([SITE_A_CODE]), deviceAId, { siteId: null });
+    expect(res.status).toBe(403);
+    expect((await envelope(res)).error?.code).toBe("SITE_SCOPE_FORBIDDEN");
+    const after = await db.device.findUnique({ where: { id: deviceAId }, select: { siteId: true } });
+    expect(after?.siteId).toBe(siteAId);
+  });
+
+  test("deny-all scope cannot detach either (fail-closed)", async () => {
+    const res = await patchDeviceRequest(await adminJwt([]), deviceAId, { siteId: null });
+    expect(res.status).toBe(403);
+    expect((await envelope(res)).error?.code).toBe("SITE_SCOPE_FORBIDDEN");
+    const after = await db.device.findUnique({ where: { id: deviceAId }, select: { siteId: true } });
+    expect(after?.siteId).toBe(siteAId);
+  });
+
+  test("wildcard session detaches and re-attaches (byte-unchanged behavior)", async () => {
+    const detach = await patchDeviceRequest(await adminJwt(), deviceAId, { siteId: null });
+    expect(detach.status).toBe(200);
+    const after = await db.device.findUnique({ where: { id: deviceAId }, select: { siteId: true } });
+    expect(after?.siteId).toBeNull();
+
+    // Restore the fixture binding (the earlier tests pin deviceA at site A).
+    const reattach = await patchDeviceRequest(await adminJwt(), deviceAId, { siteId: siteAId });
+    expect(reattach.status).toBe(200);
+    const restored = await db.device.findUnique({ where: { id: deviceAId }, select: { siteId: true } });
+    expect(restored?.siteId).toBe(siteAId);
+  });
+});
+
+/* ── wave-7 — site-less devices (the unscoped-resource rules) ─────────── */
+
+describe("F-031 wave-7 — site-less devices (unscoped-resource rules)", () => {
+  test("sites-limited session: GET detail of a site-less device → 404 (row-level hidden); wildcard still 200", async () => {
+    const scoped = await deviceDetailRequest(await adminJwt([SITE_A_CODE]), deviceCId);
+    expect(scoped.status).toBe(404);
+    expect((await envelope(scoped)).error?.code).toBe("DEVICE_NOT_FOUND");
+
+    const wildcard = await deviceDetailRequest(await adminJwt(), deviceCId);
+    expect(wildcard.status).toBe(200);
+    expect((await envelope(wildcard)).success).toBe(true);
+  });
+
+  test("sites-limited session: PATCH without siteId on a site-less device → 2xx (unscoped-resource mutation bypass)", async () => {
+    const res = await patchDeviceRequest(await adminJwt([SITE_A_CODE]), deviceCId, {
+      displayName: `b25w2 siteless patch ${RUN}`,
+    });
+    expect(res.status).toBe(200);
+    const body = (await envelope(res)) as { data?: { displayName?: string } };
+    expect(body.data?.displayName).toBe(`b25w2 siteless patch ${RUN}`);
+  });
+
+  test("sites-limited session: POST /api/v1/devices WITHOUT siteId → 201 and the row carries a null site", async () => {
+    const hostname = `${POST_HOST}-nosite`;
+    const res = await postDeviceRequest(await adminJwt([SITE_A_CODE]), {
+      hostname,
+      vendorId,
+      mgmtIp: "192.0.2.49",
+    });
+    expect(res.status).toBe(201);
+    const body = (await envelope(res)) as { data?: { device?: { id?: string } } };
+    const createdId = body.data?.device?.id ?? "";
+    expect(createdId.length).toBeGreaterThan(0);
+    postNoSiteDeviceId = createdId;
+    const row = await db.device.findUnique({ where: { id: createdId }, select: { siteId: true } });
+    expect(row?.siteId).toBeNull();
   });
 });
 

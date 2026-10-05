@@ -6,6 +6,7 @@ import { fail } from "@/app/api/v1/_lib/api";
 import { authenticateApiClient, authenticateApiClientRead } from "@/lib/auth/api-client-auth";
 import {
   assertSiteScope,
+  SITE_SCOPE_CLAIM_KEY,
   SiteScopeDeniedError,
 } from "@/lib/auth/scope";
 import {
@@ -98,7 +99,7 @@ export async function getSessionUser(
     role: typeof token.role === "string" ? token.role : "viewer",
     // F-031: raw claim passthrough — validated fail-closed downstream by
     // sessionSiteScope() (absent → wildcard; empty/malformed → deny-all).
-    sites: token.sites,
+    sites: token[SITE_SCOPE_CLAIM_KEY],
   };
 }
 
@@ -279,6 +280,16 @@ export function sessionScopeFor(req: Request): Promise<SessionUser | null> {
  *   - sites-limited session holding the code → allowed;
  *   - otherwise → 403 SITE_SCOPE_FORBIDDEN.
  *
+ * Site-scope wave 7 strictness: when a CONCRETE site is being asserted and
+ * the request carries NO session claims at all (anonymous, or a malformed
+ * token that degraded to "no session"), the gate no longer lets the
+ * null-claims → wildcard resolution pass. It answers the same 401
+ * UNAUTHENTICATED envelope the require* auth gates produce — scope
+ * strictness is enforcement, not convention. Every current call site is
+ * ordered behind requirePermission (which has already answered 401 for
+ * anonymous requests), so no legitimate flow reaches this branch today;
+ * a null siteCode keeps the documented unscoped-resource bypass.
+ *
  * Routes that want 404-not-403 semantics on detail reads (anti
  * existence-leak) should NOT use this gate — compose the row-level
  * predicate (sessionAllowsSite) and answer the resource's ordinary
@@ -289,6 +300,13 @@ export async function requireSiteScope(
   siteCode: string | null
 ): Promise<void> {
   const claims = await sessionScopeFor(req);
+  if (siteCode !== null && claims === null) {
+    throw new AuthError(
+      "UNAUTHENTICATED",
+      "Sign in required — no valid session was provided.",
+      401
+    );
+  }
   try {
     assertSiteScope(claims, siteCode);
   } catch (error) {

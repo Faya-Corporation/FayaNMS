@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import { decryptSnapshotTexts } from "@/lib/config/crypto";
 import { fail, firstIssueMessage, ok, pageMeta, paginationSchema } from "../../../_lib/api";
-import { authErrorToFail, loadRolePermissions, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, loadRolePermissions, requirePermission, sessionScopeFor } from "@/lib/auth/session";
+import { sessionAllowsSite } from "@/lib/auth/scope";
 import { roleHasPermission } from "@/lib/auth/permissions";
 import { z } from "zod";
 
@@ -26,6 +27,14 @@ export const dynamic = "force-dynamic";
  *     decrypted configuration).
  * Optional `source` csv filter (used by the Backups tab to list backup-ish
  * runs).
+ *
+ * F-031 (site scoping — device-domain wave 7): the answer is gated by the
+ * sessionAllowsSite row predicate with 404-NOT-403 parity — an out-of-scope
+ * device gets the SAME DEVICE_NOT_FOUND envelope a wildcard session gets
+ * for a missing device (a device hidden from the list cannot leak its
+ * snapshot history through this sub-resource). Wildcard sessions (no
+ * `sites` claim — the single-tenant default) are byte-unchanged.
+ * authorization-matrix.md §5.1.
  */
 
 const querySchema = paginationSchema.extend({
@@ -72,11 +81,17 @@ export async function GET(
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
+  const scopeClaims = await sessionScopeFor(request);
   const device = await db.device.findUnique({
     where: { id },
-    select: { id: true, hostname: true },
+    select: { id: true, hostname: true, site: { select: { code: true } } },
   });
-  if (!device) {
+  // F-031 wave-7: the SAME not-found envelope for a missing device AND an
+  // out-of-scope device — no existence leak on the snapshot-history read
+  // (sessionAllowsSite mirrors the list route's where filter; site-less
+  // devices stay hidden from sites-limited sessions — fail-closed parity
+  // with SQL).
+  if (!device || !sessionAllowsSite(scopeClaims, device.site?.code ?? null)) {
     return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
   }
 

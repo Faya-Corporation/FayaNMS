@@ -1,6 +1,10 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSiteScope,
+} from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -119,9 +123,26 @@ export async function POST(request: Request) {
   const byIp = new Map(candidates.map((c) => [c.ip, c]));
 
   if (siteId) {
-    const site = await db.site.findUnique({ where: { id: siteId }, select: { id: true } });
+    const site = await db.site.findUnique({
+      where: { id: siteId },
+      select: { id: true, code: true },
+    });
     if (!site) {
       return fail("SITE_NOT_FOUND", "The selected site does not exist", 400);
+    }
+    // F-031 site-scope wave 7 (create surfaces): every imported candidate
+    // is pinned to the target site, so a sites-limited session may only
+    // import INTO a site inside its scope — requireSiteScope answers 403
+    // SITE_SCOPE_FORBIDDEN, mirroring POST /api/v1/devices's mutation
+    // contract (existence error first, then the scope 403). An OMITTED
+    // siteId creates site-less devices, which bypass scoping per the
+    // documented assertSiteScope(null) unscoped-resource rule.
+    try {
+      await requireSiteScope(request, site.code);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
     }
   }
   if (credentialProfileId) {
