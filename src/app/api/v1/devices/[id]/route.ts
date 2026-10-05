@@ -4,6 +4,7 @@ import {
   authErrorToFail,
   requirePermission,
   requireSessionRead,
+  requireSiteScope,
   sessionScopeFor,
 } from "@/lib/auth/session";
 import { sessionAllowsSite } from "@/lib/auth/scope";
@@ -221,16 +222,44 @@ export async function PATCH(
 
   const current = await db.device.findUnique({
     where: { id },
-    include: { vendor: { select: { key: true } } },
+    include: {
+      vendor: { select: { key: true } },
+      site: { select: { code: true } },
+    },
   });
   if (!current) {
     return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
   }
 
+  // F-031 (mutation plane — device-domain migration): a sites-limited
+  // session may only mutate devices inside its scope — requireSiteScope
+  // answers 403 SITE_SCOPE_FORBIDDEN (the documented mutation contract;
+  // unlike the GET above, mutations do not use the 404-not-403
+  // anti-existence-leak shape). A device with no site is an unscoped
+  // resource and bypasses site scoping (authorization-matrix.md §5.1).
+  try {
+    await requireSiteScope(request, current.site?.code ?? null);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
   if (data.siteId) {
-    const site = await db.site.findUnique({ where: { id: data.siteId }, select: { id: true } });
+    const site = await db.site.findUnique({ where: { id: data.siteId }, select: { id: true, code: true } });
     if (!site) {
       return fail("SITE_NOT_FOUND", "The selected site does not exist", 400);
+    }
+    // F-031 (mutation plane): repointing a device at a site must not be
+    // able to create out-of-scope state — the TARGET site must also be
+    // inside the session's scope, or a sites-limited operator could move
+    // an in-scope device beyond their own (and their peers') visibility.
+    try {
+      await requireSiteScope(request, site.code);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
     }
   }
   if (data.credentialProfileId) {

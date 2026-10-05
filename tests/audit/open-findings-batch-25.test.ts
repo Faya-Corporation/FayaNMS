@@ -291,9 +291,17 @@ describe("F-031 wiring pins (routes, admin surface, migration)", () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync("src/app/api/v1/devices/[id]/route.ts", "utf8");
     expect(src).toContain("sessionAllowsSite(scopeClaims, device.site?.code ?? null)");
+    // The gate is FUSED with the not-found branch — no unguarded read path.
+    expect(src).toContain("!device || !sessionAllowsSite");
     // The SAME envelope for missing and out-of-scope — no existence leak.
     expect(src).toContain('"DEVICE_NOT_FOUND"');
-    expect(src).not.toContain("SITE_SCOPE_FORBIDDEN");
+    // Site-scope wave 2 (device-domain migration): the PATCH mutation plane
+    // in this same file now gates through requireSiteScope — the 403
+    // SITE_SCOPE_FORBIDDEN contract lives ONLY on the mutation path (both
+    // the current-site gate and the repoint-target gate); the GET above
+    // keeps the 404-not-403 anti-existence-leak shape.
+    expect(src).toContain("requireSiteScope(request, current.site?.code ?? null)");
+    expect(src).toContain("requireSiteScope(request, site.code)");
   });
 
   test("options.ts mints the claim at sign-in and never in the refresh branch", async () => {

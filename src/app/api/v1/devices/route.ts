@@ -12,6 +12,7 @@ import {
   authErrorToFail,
   requirePermission,
   requireSessionRead,
+  requireSiteScope,
   sessionScopeFor,
 } from "@/lib/auth/session";
 import { scopedDeviceWhere } from "@/lib/auth/scope";
@@ -234,9 +235,21 @@ export async function POST(request: Request) {
   }
 
   if (data.siteId) {
-    const site = await db.site.findUnique({ where: { id: data.siteId }, select: { id: true } });
+    const site = await db.site.findUnique({ where: { id: data.siteId }, select: { id: true, code: true } });
     if (!site) {
       return fail("SITE_NOT_FOUND", "The selected site does not exist", 400);
+    }
+    // F-031 (mutation plane — device-domain migration): creating a device
+    // pins it to a site, so a sites-limited session may only create inside
+    // its scope — requireSiteScope answers 403 SITE_SCOPE_FORBIDDEN (the
+    // documented mutation contract; unlike detail reads, mutations do not
+    // use the 404-not-403 anti-existence-leak shape).
+    try {
+      await requireSiteScope(request, site.code);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
     }
   }
 

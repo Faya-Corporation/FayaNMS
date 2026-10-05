@@ -314,6 +314,30 @@ hidden from the list cannot leak through the detail route. Detail reads use
 envelope a wildcard session gets for a missing device (a 403 would confirm
 existence).
 
+**Device-domain migration (site-scope wave 2, wired today).** The whole
+device domain now composes the same two primitives — a device hidden from
+the list can no longer leak through any device-domain surface:
+
+- Sub-resource reads `GET /api/v1/devices/[id]/{alerts,audit,changes,
+  incidents,interfaces,metrics}` gate through the fused row predicate
+  `!device || !sessionAllowsSite(...)` and answer the SAME
+  `DEVICE_NOT_FOUND` envelope for an out-of-scope device as for a missing
+  one (404-not-403 parity with the detail route).
+- The fleet inventory `GET /api/v1/interfaces` composes the device
+  relation filter through `scopedDeviceWhere` — out-of-scope interfaces
+  vanish from the rows AND the summary block (one `where` feeds both);
+  wildcard sessions keep the byte-unchanged where shape.
+- Mutations gate through `requireSiteScope` (403 `SITE_SCOPE_FORBIDDEN`,
+  the documented mutation contract — no 404 shape here):
+  `PATCH /api/v1/devices/[id]` requires the device's CURRENT site in
+  scope AND the repoint target `siteId` in scope (an operator cannot move
+  an in-scope device beyond their own visibility), and `POST /api/v1/
+  devices` requires the target `siteId` in scope. A device with no site
+  is an unscoped resource and bypasses the gate (the documented
+  `assertSiteScope(null)` rule).
+- Pins: `tests/audit/site-scope-device-domain.test.ts` (behavioral, minted
+  JWTs) + the batch-25 wiring pins updated in place.
+
 **Scope administration.** `PATCH /api/v1/admin/users/[id]` accepts
 `siteScope: string[] | null` (admin-only; ≤ 32 codes, each ≤ 32 chars,
 pattern-validated, trimmed and deduped; `null` = wildcard reset), audited
@@ -327,9 +351,11 @@ JWTs only. API-client opaque-bearer principals and machine service JWTs
 remain unscoped (global) — their scope model is future work. `sites` is a
 SITE-code dimension only; device-group scoping does not exist yet.
 
-**Migration note (next signal).** The remaining `/api/v1` routes still
-trust their role gate alone. When multi-site customers actually arrive,
-migrate routes per domain with the same two primitives — list routes:
+**Migration note (next signal).** The device domain is FULLY migrated
+(reference routes + the wave-2 device-domain migration above). The
+remaining `/api/v1` routes still trust their role gate alone. When
+multi-site customers actually arrive, migrate the remaining domains with
+the same two primitives — list routes:
 `scopedDeviceWhere(scopeClaims, baseWhere)`; detail/singleton reads: the
 `sessionAllowsSite` row predicate with 404-not-403 semantics; mutation
 routes may prefer `requireSiteScope(req, siteCode)` (403
