@@ -73,7 +73,7 @@ jobs:
           test "$(docker image inspect fayanms-migrator:arm64-${CANDIDATE_SHA} --format '{{.Architecture}}')" = "arm64"
 
       - name: Scan ARM64 image
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: fayanms:arm64-${{ github.event.workflow_run.head_sha || github.sha }}
           format: table
@@ -82,7 +82,7 @@ jobs:
           exit-code: "1"
 
       - name: Scan ARM64 worker image
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: fayanms-worker:arm64-${{ github.event.workflow_run.head_sha || github.sha }}
           format: table
@@ -91,7 +91,7 @@ jobs:
           exit-code: "1"
 
       - name: Scan ARM64 migration image
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: fayanms-migrator:arm64-${{ github.event.workflow_run.head_sha || github.sha }}
           format: table
@@ -223,7 +223,7 @@ jobs:
       # gate in sarif format made ANY low-severity base-image finding fatal,
       # which is stricter than the R78 policy the repo actually enforces.)
       - name: Scan built image (HIGH/CRITICAL fatal)
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: fayanms:gate
@@ -233,7 +233,7 @@ jobs:
           exit-code: "1"
 
       - name: Scan built worker image (HIGH/CRITICAL fatal)
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: fayanms-worker:gate
@@ -243,7 +243,7 @@ jobs:
           exit-code: "1"
 
       - name: Scan built migration image (HIGH/CRITICAL fatal)
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: fayanms-migrator:gate
@@ -299,7 +299,7 @@ jobs:
       # trips so triage always has machine-readable findings.
       - name: Capture published-image scan evidence (SARIF, non-blocking)
         if: always()
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: ghcr.io/faya-corporation/fayanms:${{ github.event.workflow_run.head_sha }}
