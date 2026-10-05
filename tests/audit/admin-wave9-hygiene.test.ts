@@ -571,7 +571,7 @@ describe("wave-9 F-3: credential epoch (mint / check / bump)", () => {
     }
   });
 
-  test("the epoch bump rides the users/[id] PATCH transaction when (and only when) the password changes", async () => {
+  test("the epoch bump rides the users/[id] PATCH transaction on password SET and scope change (wave-11)", async () => {
     const admin = await db.user.findUnique({ where: { id: adminUserId } });
     const jwt = await mintSessionJwt(admin!);
     const before = await db.user.findUnique({ where: { id: targetUserId }, select: { credentialEpoch: true } });
@@ -588,11 +588,14 @@ describe("wave-9 F-3: credential epoch (mint / check / bump)", () => {
     const afterPassword = await db.user.findUnique({ where: { id: targetUserId }, select: { credentialEpoch: true } });
     expect(afterPassword?.credentialEpoch).toBe((before?.credentialEpoch ?? 0) + 1);
 
-    // Scope-only PATCH: epoch untouched.
+    // Wave-11 (audit 15-b F-3): a scope-only PATCH ALSO bumps the epoch in
+    // the same transaction — the documented "scope changes require
+    // re-login" is enforced (the stale-WIDER sites claim dies with the old
+    // token instead of riding it to expiry).
     const scopeOnly = await patchUser(jwt, targetUserId, { siteScope: null });
     expect(scopeOnly.status).toBe(200);
     const afterScope = await db.user.findUnique({ where: { id: targetUserId }, select: { credentialEpoch: true } });
-    expect(afterScope?.credentialEpoch).toBe((before?.credentialEpoch ?? 0) + 1);
+    expect(afterScope?.credentialEpoch).toBe((before?.credentialEpoch ?? 0) + 2);
   });
 
   test("options.ts mints the epoch at sign-in and the refresh branch never re-reads it", async () => {

@@ -59,6 +59,11 @@ function prodEnv(secrets: {
   return {
     NODE_ENV: "production",
     DATABASE_URL: "postgresql://fayanms:fayanms@localhost:5433/fayanms",
+    // Wave-11 F-5 (differential pin update): this fixture models a
+    // proxy-fronted deployment so the secret-focused assertions below stay
+    // the ONLY deltas — the proxy-hop guard matrix lives in
+    // tests/audit/wave11-edge.test.ts.
+    FAYANMS_PUBLIC_PROXY: "true",
     ...secrets,
   };
 }

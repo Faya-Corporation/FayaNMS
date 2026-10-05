@@ -18,7 +18,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 import {
   MAX_RATE_BUCKETS,
@@ -38,7 +38,7 @@ import {
   takeRateSlot,
 } from "@/lib/api/rate-gate";
 import { fail, failWithDetail, ok } from "@/app/api/v1/_lib/api";
-import { bearerTokenOf, verifyServiceToken } from "@/lib/auth/service-jwt";
+import { bearerTokenOf, resetServiceReplayCache, verifyServiceToken } from "@/lib/auth/service-jwt";
 import { proxy } from "@/proxy";
 import { NextRequest } from "next/server";
 
@@ -60,12 +60,51 @@ function headersOf(entries: Record<string, string>): Headers {
   return new Headers(entries);
 }
 
+/* ── hermetic service-plane sandbox (wave-11) ──────────────────────────────
+ * The ambient worktree .env carries a MISMATCHED Ed25519 keypair (documented
+ * in open-findings-batch-16), which makes the verifier EdDSA-only in this
+ * sandbox and false-fails the HS256 fixtures below — in CI (no .env) they
+ * run green for the right reason. The service-JWT blocks pin the env to
+ * exactly the CI shape (symmetric plane only, no asymmetric material) and
+ * restore it after each test; FAYANMS_SERVICE_ENV_FILE is pinned empty (the
+ * R64 knob) so a worker-side .env fallback cannot re-supply ambient key
+ * material behind the sandbox's back. The wave-11 jti replay bindings are
+ * reset on both edges so block-scoped verifications cannot leak state.
+ * ──────────────────────────────────────────────────────────────────────── */
+const SERVICE_ENV_KEYS = [
+  "FAYANMS_SERVICE_SECRET",
+  "FAYANMS_SERVICE_SECRETS",
+  "FAYANMS_SERVICE_ISSUERS",
+  "FAYANMS_SERVICE_PUBLIC_KEYS",
+  "FAYANMS_SERVICE_PRIVATE_KEY",
+  "FAYANMS_SERVICE_ENV_FILE",
+] as const;
+const TEST_SERVICE_SECRET = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2";
+let savedServiceEnv: Record<string, string | undefined> = {};
+
+function pinHermeticServiceEnv(): void {
+  savedServiceEnv = {};
+  for (const key of SERVICE_ENV_KEYS) savedServiceEnv[key] = process.env[key];
+  for (const key of SERVICE_ENV_KEYS) delete process.env[key];
+  process.env.FAYANMS_SERVICE_ENV_FILE = "";
+  process.env.FAYANMS_SERVICE_SECRET = TEST_SERVICE_SECRET;
+  resetServiceReplayCache();
+}
+
+function restoreServiceEnv(): void {
+  for (const [key, value] of Object.entries(savedServiceEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  resetServiceReplayCache();
+}
+
 /** Hand-mint an HS256 service JWT exactly per the Phase-19 contract. */
 function mintTestServiceToken(overrides?: {
   issuer?: string;
   expired?: boolean;
 }): string {
-  const secret = process.env.FAYANMS_SERVICE_SECRET ?? "";
+  const secret = TEST_SERVICE_SECRET;
   const nowS = Math.floor(Date.now() / 1000);
   const head = Buffer.from(
     JSON.stringify({ alg: "HS256", typ: "JWT" })
@@ -77,7 +116,8 @@ function mintTestServiceToken(overrides?: {
       aud: "fayanms:internal",
       iat: nowS,
       exp: overrides?.expired ? nowS - 3600 : nowS + 300,
-      jti: "test-jti",
+      // wave-11 replay guard binds jti to a mint cycle — every mint is unique
+      jti: randomUUID(),
       scopes: ["jobs"],
     })
   ).toString("base64url");
@@ -316,6 +356,9 @@ describe("SAFE-002 — 429 envelope contract", () => {
 });
 
 describe("SAFE-002 — service-JWT core (machine-plane exemption fuel)", () => {
+  beforeEach(pinHermeticServiceEnv);
+  afterEach(restoreServiceEnv);
+
   test("valid token verifies with its principal; expired does not", async () => {
     const good = verifyServiceToken(mintTestServiceToken());
     expect(good.ok).toBe(true);
@@ -349,6 +392,12 @@ describe("SAFE-002 — service-JWT core (machine-plane exemption fuel)", () => {
 });
 
 describe("SAFE-002 — proxy wiring (pre-handler order)", () => {
+  // Same hermetic sandbox: the exemption pins present an HS256 fixture to
+  // the proxy's verifyServiceToken — the ambient .env keypair would false-
+  // fail the verification outside CI (the pin itself is unchanged).
+  beforeEach(pinHermeticServiceEnv);
+  afterEach(restoreServiceEnv);
+
   test("unauthenticated POSTs consume slots BEFORE the 401 and 429 by #121", async () => {
     const headers = { "x-forwarded-for": "attacker-rotated, 10.0.0.1" };
     let saw401 = 0;

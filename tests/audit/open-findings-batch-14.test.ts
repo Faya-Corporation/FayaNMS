@@ -74,6 +74,9 @@ const BOOT_CHECKED_VARS = [
   "DATABASE_URL",
   EXPECTED_REPLICAS_ENV,
   RATE_STORE_ENV,
+  // Wave-11 F-5 knobs (the proxy-hop trust guard reads both).
+  "FAYANMS_TRUST_PROXY_HOPS",
+  "FAYANMS_PUBLIC_PROXY",
   NODE_ENV_KEY,
 ] as const;
 
@@ -258,6 +261,11 @@ function validEddsaProductionEnv(): NodeJS.ProcessEnv {
     FAYANMS_SERVICE_PRIVATE_KEY: pkcs8Pem,
     FAYANMS_CONFIG_ENC_KEY: FRESH_HEX_SECRET.split("").reverse().join(""),
     DATABASE_URL: "postgresql://faya:secret@localhost:5432/fayanms",
+    // Wave-11 F-5 (differential pin update): the fixture models a
+    // proxy-fronted deployment, so the appending-proxy declaration is part
+    // of the "fully valid" baseline — the no-proxy refusal has its own
+    // dedicated matrix in tests/audit/wave11-edge.test.ts.
+    FAYANMS_PUBLIC_PROXY: "true",
   };
 }
 

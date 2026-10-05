@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { encode } from "next-auth/jwt";
 
@@ -19,7 +19,10 @@ import { encode } from "next-auth/jwt";
  *     SameSite=Lax still guards the cookie);
  *   - reads are unaffected (mutations only);
  *   - API-client bearer plane and machine plane return BEFORE the check
- *     (they send no cookies and are not CSRF-able).
+ *     for their own callers (they send no cookies and are not CSRF-able);
+ *     wave-11 F-1 adds the SAME origin check at those early returns for
+ *     the cookie-carrying fallback case — pinned in
+ *     tests/audit/wave11-edge.test.ts.
  *
  * getToken is MOCKED (the app's next-auth/jwt import) — the session cookie
  * carries a base64url JSON token payload; only the proxy's gate logic is
@@ -64,7 +67,7 @@ function mintTestServiceToken(): string {
       aud: "fayanms:internal",
       iat: nowS,
       exp: nowS + 300,
-      jti: "rt008-test-jti",
+      jti: randomUUID(), // wave-11 replay guard: jti binds to a mint cycle — unique per mint
       scopes: ["jobs"],
     }),
   ).toString("base64url");

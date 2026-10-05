@@ -523,9 +523,18 @@ the references. Specifically (so the boundary stays explicit):
 `siteScope: string[] | null` (admin-only; ≤ 32 codes, each ≤ 32 chars,
 pattern-validated, trimmed and deduped; `null` = wildcard reset), audited
 as dedicated `USER_SCOPE_SET` / `USER_SCOPE_CLEARED` rows. EFFECT TIMING
-(honest): the JWT is minted at login, so a scope change lands on the
-user's NEXT sign-in — the session-refresh callback deliberately does not
-re-read the claim; there is no live token revocation.
+(wave-11): the `sites` claim itself is still minted only at login — the
+session-refresh callback deliberately does not re-read it — but a scope
+change now ALSO bumps the user's `credentialEpoch` in the same
+transaction, so every live session token minted before the change is
+EVICTED (requireUser / requireSessionRead epoch comparison) and the
+enforced NEXT sign-in mints the NEW scope: the previously documented
+re-login requirement is a hard guarantee, not a convention. Session
+lifetime honesty: next-auth v4 re-encodes the JWT with a fresh expiry on
+every session fetch, so the configured 12 h `maxAge` is a SLIDING
+inactivity window renewed per full page load — not an absolute cap;
+revocation-NOW is the credentialEpoch bump (password set/reset or scope
+change), and no absolute lifetime cap is implemented (owner decision).
 
 **Plane boundaries (honest).** Site-scope claims apply to HUMAN session
 JWTs only. API-client opaque-bearer principals and machine service JWTs

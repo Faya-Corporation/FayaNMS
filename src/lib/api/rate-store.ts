@@ -13,7 +13,8 @@
  *   - ONE store contract, two implementations:
  *       · in-memory (DEFAULT — the zero-new-infra single-host posture,
  *         identical semantics to the pre-SCALE gate: sliding window, bounded
- *         key cap with stale-first sweep, denied attempts consume no slots);
+ *         key cap with stale-first sweep plus a hard oldest-first eviction
+ *         cap (wave-11 F-4), denied attempts consume no slots);
  *       · PostgreSQL (OPT-IN via FAYANMS_RATE_STORE=postgres) — the shared
  *         store for horizontally scaled app instances. It reuses the
  *         database the app ALREADY depends on: no new mandatory service in
@@ -74,13 +75,36 @@ export interface SharedRateStore {
 export const MAX_MEMORY_RATE_KEYS = 5_000;
 
 /**
+ * Wave-11 F-4 (audit 15-a / 15-c): the stale sweep bounds the map in TIME,
+ * not in SIZE — every key survives until its stamps age past the window,
+ * so a flood of distinct LIVE keys (each stamped "now", e.g. attacker-
+ * chosen budget keys when the proxy-hop trust contract is misconfigured,
+ * the 15-c P3-2 posture) renews itself faster than staleness removes it.
+ * This hard cap is the SIZE backstop: past it the OLDEST-INSERTED buckets
+ * are evicted (Map iteration order = insertion order) down to
+ * MAX_MEMORY_RATE_KEYS before a new key is inserted. A flooded-away budget
+ * loses its history and re-accumulates from zero — a deliberate
+ * availability trade that keeps the process bounded. Deny-doesn't-consume
+ * semantics are untouched: eviction only removes keys, never extends a
+ * window.
+ */
+export const MAX_MEMORY_RATE_HARD_KEY_CAP = 10_000;
+
+/**
  * Bounded in-memory sliding-window store — the single-host default.
  * Same semantics the SAFE-002 gate has always had, extracted so the gate
  * itself becomes store-agnostic. Internal hits are synchronous (no
  * interleaving points), so per-key atomicity is process-guaranteed.
  */
-export function createInMemoryRateStore(maxKeys: number = MAX_MEMORY_RATE_KEYS): SharedRateStore {
+export function createInMemoryRateStore(
+  maxKeys: number = MAX_MEMORY_RATE_KEYS,
+  hardKeyCap: number = MAX_MEMORY_RATE_HARD_KEY_CAP
+): SharedRateStore {
   const buckets = new Map<string, number[]>();
+  // The eviction floor must sit ABOVE the stale-sweep threshold or the two
+  // policies would fight over the same keys; degenerate configurations are
+  // clamped, never trusted.
+  const hardCap = Math.max(hardKeyCap, maxKeys + 1);
 
   function sweepStale(nowMs: number): void {
     if (buckets.size <= maxKeys) return;
@@ -91,12 +115,31 @@ export function createInMemoryRateStore(maxKeys: number = MAX_MEMORY_RATE_KEYS):
     }
   }
 
+  /**
+   * Wave-11 F-4 hard cap: evict OLDEST-INSERTED keys down to the documented
+   * key cap. The leading Map entries are the oldest buckets (insertion
+   * order); deleting during iteration is safe and skips removed entries.
+   * Stale keys are swept FIRST (sweepStale above) so live history is only
+   * sacrificed once the map is genuinely full of live keys.
+   */
+  function evictOldestToHardCap(): void {
+    if (buckets.size < hardCap) return;
+    for (const key of buckets.keys()) {
+      buckets.delete(key);
+      if (buckets.size <= maxKeys) break;
+    }
+  }
+
   const store = {
     kind: "memory" as const,
     // Async signature for contract parity with the Postgres store (the
     // internal logic is synchronous — no interleaving points per key).
     async hit(key, limit, windowMs, nowMs = Date.now()) {
       sweepStale(nowMs);
+      // Wave-11 F-4: size backstop BEFORE any insertion. A denied attempt
+      // re-sets an EXISTING key (no growth); a genuinely new key must not
+      // be able to push the map past the hard cap either.
+      evictOldestToHardCap();
       const stamps = (buckets.get(key) ?? []).filter((stamp) => nowMs - stamp < windowMs);
       if (stamps.length >= limit) {
         const retryAfterSec = Math.max(1, Math.ceil((stamps[0] + windowMs - nowMs) / 1000));

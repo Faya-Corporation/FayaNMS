@@ -24,6 +24,15 @@
  *     drives both the API gate and the login guard, SCALE-001-A/B) is
  *     required before a multi-instance declaration may boot; a single
  *     instance (or an unset declaration) boots unchanged on the default.
+ *   - the proxy-hop trust contract is violated (wave-11 F-5, audit 15-c):
+ *     FAYANMS_TRUST_PROXY_HOPS resolves to > 0 while NO appending reverse
+ *     proxy is declared (FAYANMS_PUBLIC_PROXY) — with no proxy appending
+ *     the real client address, X-Forwarded-For is attacker-chosen and
+ *     rotating the header mints a fresh rate/login budget key per request
+ *     (the pre-SAFE-002 bypass shape, reintroduced by topology). Boot is
+ *     refused unless the operator either declares the appending proxy or
+ *     sets FAYANMS_TRUST_PROXY_HOPS=0 (trust nothing). Development is
+ *     unchanged: this check never fires outside production.
  *
  * Service identity modes (TASK-SVC-001-A, derived EXCLUSIVELY from the
  * configured environment — never from token metadata; runtime half lives
@@ -352,6 +361,81 @@ export function warnRateStoreScale(env: NodeJS.ProcessEnv = process.env): void {
   }
 }
 
+/* ───────── Wave-11 F-5: proxy-hop trust contract (audit 15-c P3-2) ─────── */
+
+/**
+ * The operator's declaration that a reverse proxy APPENDS the real client
+ * address to X-Forwarded-For in front of this app (the TLS compose
+ * profile's Caddy). Truthy values are an explicit allowlist
+ * (1/true/yes/on, case/space tolerant) so a typo can never silently
+ * assert a proxy that is not there — anything else (including empty and
+ * "false") means UNDECLARED.
+ */
+export const PUBLIC_PROXY_ENV = "FAYANMS_PUBLIC_PROXY";
+
+const TRUTHY_PROXY_FLAGS = new Set(["1", "true", "yes", "on"]);
+
+/**
+ * Pure parse mirroring getTrustedProxyHops() in src/lib/api/rate-gate.ts
+ * EXACTLY (that function reads process.env directly; the policy stays pure
+ * over a literal env — batch-14 convention). Default 1, clamped 0..8,
+ * non-numeric input falls back to the default 1. Drift between the two
+ * parsers is pinned by a parity test in tests/audit/wave11-edge.test.ts.
+ */
+export function parseTrustedProxyHops(raw: string | undefined): number {
+  const trimmed = raw?.trim();
+  if (trimmed === undefined || trimmed === "") return 1;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.min(8, Math.max(0, Math.floor(parsed)));
+}
+
+/**
+ * Wave-11 F-5 (audit 15-c P3-2): the rate gate AND the login guard key
+ * their budgets on the rightmost TRUSTED X-Forwarded-For hop
+ * (FAYANMS_TRUST_PROXY_HOPS, default 1 — src/lib/api/rate-gate.ts
+ * resolveClientIp). That default is only honest when a proxy actually
+ * APPENDS the real client address. The base compose profile publishes the
+ * app with NO appending proxy — there XFF is fully attacker-chosen and
+ * rotating the header mints a fresh budget key per request (budget
+ * bypass; the login guard shares resolveClientIp).
+ *
+ * Production therefore refuses to boot when hops > 0 without the explicit
+ * declaration FAYANMS_PUBLIC_PROXY (same refusal block as every other
+ * production posture violation — matching the F-032 severity convention;
+ * dev behavior is unchanged). The remediation is one of:
+ *   - run behind an appending proxy (the TLS compose profile) and declare
+ *     it with FAYANMS_PUBLIC_PROXY=true; or
+ *   - set FAYANMS_TRUST_PROXY_HOPS=0 — trust nothing: every caller shares
+ *     the conservative "local" bucket (an attacker can annoy that shared
+ *     bucket but can never bypass the budget).
+ */
+export function findProxyHopsViolations(
+  env: NodeJS.ProcessEnv = process.env
+): PolicyViolation[] {
+  const hops = parseTrustedProxyHops(env.FAYANMS_TRUST_PROXY_HOPS);
+  if (hops === 0) return [];
+
+  const proxyDeclared = TRUTHY_PROXY_FLAGS.has(
+    (env[PUBLIC_PROXY_ENV] ?? "").trim().toLowerCase()
+  );
+  if (proxyDeclared) return [];
+
+  return [
+    {
+      variable: "FAYANMS_TRUST_PROXY_HOPS",
+      reason:
+        `resolves to ${hops} trusted proxy hop(s) while ${PUBLIC_PROXY_ENV} is ` +
+        "not set — with no appending reverse proxy in front of the app, " +
+        "X-Forwarded-For is attacker-chosen and rotating it mints a fresh " +
+        "rate/login budget key per request (budget bypass). Run the app " +
+        "behind an appending proxy (the TLS compose profile) and declare it " +
+        `with ${PUBLIC_PROXY_ENV}=true, or set FAYANMS_TRUST_PROXY_HOPS=0 ` +
+        '(trust nothing — every caller shares one conservative "local" bucket).',
+    },
+  ];
+}
+
 /** Validate the production posture. Returns every violation found. */
 export function findProductionPolicyViolations(
   env: NodeJS.ProcessEnv = process.env
@@ -420,6 +504,12 @@ export function findProductionPolicyViolations(
   // budget store is an insecure posture — fail loud at boot (see the guard's
   // contract above; dev gets the same signal as a non-fatal warning).
   violations.push(...findRateStoreScaleViolations(env));
+
+  // Wave-11 F-5: hops > 0 without a DECLARED appending proxy is an insecure
+  // posture (attacker-chosen XFF budget keys — see the guard's contract
+  // above). Production fails loud, same refusal block as every other
+  // violation; development behavior is unchanged (no dev emitter wired).
+  violations.push(...findProxyHopsViolations(env));
 
   return violations;
 }

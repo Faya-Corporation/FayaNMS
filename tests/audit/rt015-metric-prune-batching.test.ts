@@ -18,7 +18,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 
 import { db } from "../../src/lib/db";
@@ -63,7 +63,7 @@ function mintServiceJwt(): string {
       aud: "fayanms:internal",
       iat: nowS,
       exp: nowS + 300,
-      jti: "rt015-test-jti",
+      jti: randomUUID(), // wave-11 replay guard: jti binds to a mint cycle — unique per mint
       scopes: ["metrics"],
     })
   ).toString("base64url");
