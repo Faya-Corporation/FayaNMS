@@ -528,7 +528,14 @@ export async function POST(request: Request) {
       data: {
         status: "FAILED",
         progress: 0,
-        error: "Orphaned: no worker heartbeat (reaped by scheduler tick)",
+        // F-7 (wave-8): truthful reap text — the old wording claimed a
+        // worker liveness-ping mechanism that has never existed. The actual
+        // mechanism: the worker posts completion/progress, and this reaper
+        // threshold is derived from the job's own budget (CHANGE_EXECUTE)
+        // or the stale-RUNNING window (everything else). The row prefix
+        // "Orphaned: " is load-bearing — the Job Center and the demo-world
+        // queries classify on it.
+        error: "Orphaned: no completion within the reaper threshold (reaped by scheduler tick)",
         finishedAt: now,
       },
     });

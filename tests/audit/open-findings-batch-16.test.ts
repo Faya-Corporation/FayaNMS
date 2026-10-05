@@ -671,7 +671,11 @@ describe("scheduler tick reaper (per-job derived thresholds)", () => {
     // The truth-telling reap for a driver that is provably gone keeps its
     // documented shape:
     expect(smallRow?.status).toBe("FAILED");
-    expect(smallRow?.error ?? "").toContain("Orphaned: no worker heartbeat");
+    // Wave-8 F-7 pin update (in place): the reap text no longer claims the
+    // phantom "worker heartbeat" mechanism — it names the real one.
+    expect(smallRow?.error ?? "").toContain(
+      "Orphaned: no completion within the reaper threshold (reaped by scheduler tick)"
+    );
     // The long-plan job is INSIDE its own derived budget — a live driver:
     expect(largeRow?.status).toBe("RUNNING");
     expect(largeRow?.finishedAt).toBeNull();

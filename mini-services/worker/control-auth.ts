@@ -21,6 +21,15 @@
  * secret no longer mints control-plane identities. A malformed configured
  * key is a misconfiguration, not a soft skip (WORKER_KEYS_MISCONFIGURED).
  *
+ * Wave-8 hardening: the HS256 plane accepts the SAME rotation list the app
+ * accepts — FAYANMS_SERVICE_SECRETS (comma-separated) with
+ * FAYANMS_SERVICE_SECRET as the primary — so a staged secret rotation
+ * verifies on both planes (8-b F3); only Ed25519 keys are accepted in
+ * FAYANMS_SERVICE_PUBLIC_KEYS (a well-formed RSA/EC entry is a
+ * misconfiguration, not a silently-poisoned rotation list — 8-b F1); and a
+ * control token must carry a non-empty `sub` (both minters always set one;
+ * an anonymous subject fails closed — 8-b F3).
+ *
  * /health stays open (liveness probe; counters only, no device surface).
  *
  * Zero external dependencies: same wire format as the Next.js verifier
@@ -121,10 +130,36 @@ export function readRootEnvValue(key: string): string | null {
 }
 
 /**
+ * All accepted HS256 secrets: the current FAYANMS_SERVICE_SECRET plus any
+ * comma-separated FAYANMS_SERVICE_SECRETS rotation-window values (dedup,
+ * primary first) — the exact iteration shape of the app verifier's
+ * getServiceSecrets (src/lib/auth/service-jwt.ts), so a rotation staged
+ * app-side verifies on the worker plane too (8-b F3).
+ */
+function configuredServiceSecrets(): string[] {
+  const secrets: string[] = [];
+  const primary = readRootEnvValue("FAYANMS_SERVICE_SECRET");
+  if (primary) secrets.push(primary);
+  const rotationRaw = readRootEnvValue("FAYANMS_SERVICE_SECRETS") ?? "";
+  for (const raw of rotationRaw.split(",")) {
+    const value = raw.trim();
+    if (value && !secrets.includes(value)) secrets.push(value);
+  }
+  return secrets;
+}
+
+/**
  * The configured Ed25519 public keys for verifying CONTROL-plane tokens.
  * Throws on malformed material — callers map that to
  * WORKER_KEYS_MISCONFIGURED (fail-tight, never silently dropped).
  * Exported for identity-boot.ts (TASK-SVC-001-A worker startup validation).
+ *
+ * 8-b F1: ONLY Ed25519 keys are accepted — mirroring the boot parser
+ * (identity-boot.ts parsePublicKeys) and the app verifier
+ * (parseServicePublicKeys). A well-formed RSA/EC entry must fail TIGHT as
+ * a keys-misconfiguration at the rotation boundary, not boot cleanly and
+ * then degrade every EdDSA verification to WORKER_TOKEN_INVALID while
+ * poisoning the rotation list.
  */
 export function configuredPublicKeys(): KeyObject[] {
   const raw = readRootEnvValue("FAYANMS_SERVICE_PUBLIC_KEYS");
@@ -134,13 +169,15 @@ export function configuredPublicKeys(): KeyObject[] {
     const entry = entryRaw.trim();
     if (!entry) continue;
     const pem = entry.includes("\\n") ? entry.replaceAll("\\n", "\n") : entry;
-    if (pem.startsWith("-----BEGIN")) {
-      keys.push(createPublicKey(pem));
-      continue;
+    const key = pem.startsWith("-----BEGIN")
+      ? createPublicKey(pem)
+      : createPublicKey({ key: Buffer.from(entry, "base64"), format: "der", type: "spki" });
+    if (key.asymmetricKeyType !== "ed25519") {
+      throw new TypeError(
+        `not an Ed25519 key (got ${key.asymmetricKeyType ?? "unknown"} type)`,
+      );
     }
-    keys.push(
-      createPublicKey({ key: Buffer.from(entry, "base64"), format: "der", type: "spki" })
-    );
+    keys.push(key);
   }
   return keys;
 }
@@ -179,24 +216,22 @@ export function verifyControlToken(
     };
   }
 
-  let secrets: string[] = [];
+  const secrets = configuredServiceSecrets();
   let publicKeys: KeyObject[] = [];
-  const sharedSecret = readRootEnvValue("FAYANMS_SERVICE_SECRET");
-  if (sharedSecret) secrets.push(sharedSecret);
   try {
     publicKeys = configuredPublicKeys();
   } catch {
     return {
       ok: false,
       code: "WORKER_KEYS_MISCONFIGURED",
-      message: "FAYANMS_SERVICE_PUBLIC_KEYS contains malformed key material (expected SPKI DER base64 or PEM).",
+      message: "FAYANMS_SERVICE_PUBLIC_KEYS contains malformed or non-Ed25519 key material (expected Ed25519 SPKI DER base64 or PEM).",
     };
   }
   if (secrets.length === 0 && publicKeys.length === 0) {
     return {
       ok: false,
       code: "WORKER_UNCONFIGURED",
-      message: "No service trust plane is configured on the worker — set FAYANMS_SERVICE_PUBLIC_KEYS (Ed25519 control identity) and/or FAYANMS_SERVICE_SECRET (legacy symmetric).",
+      message: "No service trust plane is configured on the worker — set FAYANMS_SERVICE_PUBLIC_KEYS (Ed25519 control identity) and/or FAYANMS_SERVICE_SECRETS / FAYANMS_SERVICE_SECRET (legacy symmetric).",
     };
   }
 
@@ -243,10 +278,14 @@ export function verifyControlToken(
         message: "HS256 control tokens are not accepted — the symmetric plane is retired on this worker.",
       };
     }
-    const expected = createHmac("sha256", sharedSecret as string)
-      .update(signingInput)
-      .digest();
-    signatureValid = timingSafeEqualBuffer(expected, presented);
+    // 8-b F3: any secret in the rotation list verifies (the app side
+    // iterates getServiceSecrets().some — same shape here).
+    signatureValid = secrets.some((secret) =>
+      timingSafeEqualBuffer(
+        createHmac("sha256", secret).update(signingInput).digest(),
+        presented,
+      ),
+    );
   }
   if (!signatureValid) {
     return { ok: false, code: "WORKER_TOKEN_INVALID", message: "Token signature verification failed." };
@@ -264,6 +303,19 @@ export function verifyControlToken(
       ok: false,
       code: "WORKER_ISSUER_INVALID",
       message: `Token issuer "${iss}" is not in the allowlist.`,
+    };
+  }
+  // 8-b F3: a control token must name its principal. Both minters always
+  // set a non-empty sub (the app mints "control-plane", the worker mints
+  // "worker:sim-1"), so anything else is malformed by construction and
+  // fails closed instead of surfacing as an anonymous identity on the
+  // audit-carrying simulate/live surfaces.
+  const sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
+  if (!sub) {
+    return {
+      ok: false,
+      code: "WORKER_TOKEN_INVALID",
+      message: "Token subject (sub) must be a non-empty string.",
     };
   }
   const nowS = Math.floor(Date.now() / 1000);

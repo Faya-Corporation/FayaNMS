@@ -9,6 +9,12 @@
  * The gateway's browser-only XTransformPort rule does not apply here.
  *
  * Zero external dependencies: fetch + AbortSignal.timeout are bun built-ins.
+ *
+ * F-5 (wave-8): the completion plane (complete/RESUMED/progress posts) is
+ * RETRIED — bounded attempts, exponential + jittered delay, per-attempt
+ * timeout — via nextPost's { retries } option (see nextPostWithRetry).
+ * Failures are typed (PostHttpError carries the HTTP status) so the claim/
+ * tick backoff can classify 401/403 as identity faults (F-6).
  */
 
 import { appendFile } from "node:fs/promises";
@@ -16,6 +22,7 @@ import { renameSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { serviceAuthHeader } from "./service-token";
+import { jitterBackoff } from "./backoff";
 
 /**
  * Resolve a base URL from the environment (runbook T5). Trims whitespace,
@@ -44,6 +51,16 @@ function envBaseUrl(name: string, fallback: string): string {
 
 export const NEXT_BASE_URL = envBaseUrl("NEXT_BASE_URL", "http://localhost:3000");
 export const SELF_BASE_URL = envBaseUrl("SELF_BASE_URL", "http://localhost:3030");
+
+/**
+ * Live base-URL read (wave-8 F-5): NEXT_BASE_URL is re-resolved PER REQUEST
+ * so a value set after module load — the behavioral-test seam, and a bun
+ * --hot env edit — always dials the current value. Validation semantics are
+ * identical to the module-load constant (same envBaseUrl guard).
+ */
+function currentNextBaseUrl(): string {
+  return envBaseUrl("NEXT_BASE_URL", "http://localhost:3000");
+}
 
 const LOG_FILE = join(import.meta.dir, "worker.log");
 
@@ -86,9 +103,26 @@ export async function log(message: string): Promise<void> {
 }
 
 /**
- * POST JSON and unwrap the FayaNMS envelope ({ success: true, data }).
- * The /simulate/connect self-endpoint answers { ok: true, ... } instead —
- * both shapes are accepted. Always bounded by AbortSignal.timeout.
+ * Typed HTTP failure (F-5): carries the response status so the retry
+ * wrapper can RETRY transport faults (network/timeout → not a
+ * PostHttpError), 5xx and 429, while never retrying other 4xx (a config
+ * or validation error replays identically), and so the claim/tick backoff
+ * can classify 401/403 as identity faults (F-6). The message keeps the
+ * historical `POST <path> -> HTTP <status>[...])` shape.
+ */
+export class PostHttpError extends Error {
+  readonly status: number;
+
+  constructor(path: string, status: number, message: string) {
+    super(`POST ${path} -> HTTP ${status}${message ? `: ${message}` : ""}`);
+    this.name = "PostHttpError";
+    this.status = status;
+  }
+}
+
+/**
+ * Single POST attempt (bounded by AbortSignal.timeout) + envelope unwrap.
+ * Never retries — see nextPostWithRetry for the retrying wrapper.
  */
 async function postJson(
   base: string,
@@ -123,21 +157,58 @@ async function postJson(
     const err = json?.error as { message?: string } | string | undefined;
     const msg =
       typeof err === "string" ? err : err?.message ?? text.slice(0, 200);
-    throw new Error(
-      `POST ${path} -> HTTP ${res.status}${msg ? `: ${msg}` : ""}`
-    );
+    throw new PostHttpError(path, res.status, msg);
   }
   // Next.js answers { success: true, data } → unwrap `data`. The worker's own
   // /simulate/connect answers { ok: true, ... } flat → return it verbatim.
   return "data" in json ? json.data : json;
 }
 
+/**
+ * F-5 — bounded retry for the completion plane (complete / RESUMED /
+ * progress posts): `retries` ATTEMPTS total (not extras), exponential
+ * delay + ±20% jitter on a ~250 ms → 1 s → 4 s scale, per-attempt
+ * AbortSignal.timeout preserved. Only transport faults (network/timeout),
+ * HTTP 5xx and HTTP 429 retry — other 4xx answers replay identically and
+ * are surfaced immediately. Swallowed-post behavior (the callers' catch +
+ * log) happens only AFTER the final attempt, unchanged.
+ */
+const RETRY_DELAYS_MS = [250, 1_000, 4_000];
+
+export async function nextPostWithRetry(
+  path: string,
+  body: unknown,
+  timeoutMs: number,
+  retries: number
+): Promise<unknown> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      return await postJson(currentNextBaseUrl(), path, body, timeoutMs, { serviceAuth: true });
+    } catch (e) {
+      lastError = e;
+      const retryable =
+        !(e instanceof PostHttpError) || e.status >= 500 || e.status === 429;
+      if (!retryable || attempt === retries) break;
+      const delay = jitterBackoff(RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)]);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError;
+}
+
 export function nextPost(
   path: string,
   body: unknown,
-  timeoutMs = 10_000
+  timeoutMs = 10_000,
+  opts: { retries?: number } = {}
 ): Promise<unknown> {
-  return postJson(NEXT_BASE_URL, path, body, timeoutMs, { serviceAuth: true });
+  // F-5: opts.retries = TOTAL attempts for the completion plane (default 1 —
+  // single-shot, the historical behavior for every other call site).
+  if (opts.retries && opts.retries > 1) {
+    return nextPostWithRetry(path, body, timeoutMs, opts.retries);
+  }
+  return postJson(currentNextBaseUrl(), path, body, timeoutMs, { serviceAuth: true });
 }
 
 /** Loopback self-call (runner connect step goes through /simulate/connect). */

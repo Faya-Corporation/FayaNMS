@@ -12,7 +12,8 @@
  * the consecutive-failure count exposed via getSchedulerState() for /health.
  */
 
-import { nextPost, log } from "./next-client";
+import { nextPost, log, PostHttpError } from "./next-client";
+import { IDENTITY_FAULT_BACKOFF_MS, isIdentityFaultStatus, jitterBackoff } from "./backoff";
 
 const TICK_INTERVAL_MS = 30_000;
 const FIRST_TICK_DELAY_MS = 10_000;
@@ -27,12 +28,24 @@ export function getSchedulerState() {
   return { consecutiveTickFailures };
 }
 
+/**
+ * Exponential tick backoff base (Task 10-a) — 30 s → 5 min cap. F-6: the
+ * caller applies the identity-fault classification and the ±20% jitter so
+ * the logged delay and the scheduled delay are the SAME value.
+ */
 function tickBackoffDelay(): number {
   return Math.min(TICK_INTERVAL_MS * 2 ** consecutiveTickFailures, MAX_TICK_BACKOFF_MS);
 }
 
-/** Runs one tick POST. Returns true when it succeeded. */
-async function tick(): Promise<boolean> {
+/** Outcome of one tick: whether it succeeded + the delay to schedule next. */
+interface TickOutcome {
+  ok: boolean;
+  /** The ACTUAL delay the caller must schedule (already classified/jittered). */
+  nextDelayMs: number;
+}
+
+/** Runs one tick POST (tick + protocol-event drain). */
+async function tick(): Promise<TickOutcome> {
   const started = Date.now();
   try {
     const data = (await nextPost("/api/v1/worker/tick", {}, 20_000)) as {
@@ -62,14 +75,25 @@ async function tick(): Promise<boolean> {
     await log(
       `scheduler tick ok in ${Date.now() - started}ms: enqueued=${data?.enqueued ?? "?"}; ${drainSummary}`,
     );
-    return true;
+    return { ok: true, nextDelayMs: TICK_INTERVAL_MS };
   } catch (e) {
     consecutiveTickFailures += 1;
-    const delay = tickBackoffDelay();
+    // F-6 — classify the failure: a 401/403 is a CONFIG fault (the service
+    // identity was rejected — keys rotated/absent), answered with a fixed
+    // slow cadence + a distinct greppable log line; 5xx/timeouts keep the
+    // jittered exponential curve.
+    const err = e as Error;
+    const isIdentityFault =
+      err instanceof PostHttpError && isIdentityFaultStatus(err.status);
+    const delay = isIdentityFault
+      ? IDENTITY_FAULT_BACKOFF_MS
+      : jitterBackoff(tickBackoffDelay());
     await log(
-      `scheduler tick failed (consecutive=${consecutiveTickFailures}, next retry in ${Math.round(delay / 1000)}s): ${(e as Error).message}`
+      isIdentityFault
+        ? `service identity rejected — check keys (F-6): scheduler tick failed: ${err.message} — retrying on a fixed ${IDENTITY_FAULT_BACKOFF_MS / 1000}s cadence`
+        : `scheduler tick failed (consecutive=${consecutiveTickFailures}, next retry in ${Math.round(delay / 1000)}s): ${err?.message ?? String(e)}`
     );
-    return false;
+    return { ok: false, nextDelayMs: delay };
   }
 }
 
@@ -77,20 +101,22 @@ async function tick(): Promise<boolean> {
  * Self-scheduling tick loop (Task 10-a): the next tick is ALWAYS scheduled
  * in `finally`, so no rejection can break the chain. A successful tick after
  * ≥1 failure logs a greppable recovery line and resets the counter.
+ * F-6: the failure delay is classified (identity fault → fixed cadence) and
+ * jittered ±20% by tick() itself, so the logged "next retry in" and the
+ * scheduled delay always agree.
  */
 async function runTickCycle(): Promise<void> {
   let nextDelay = TICK_INTERVAL_MS;
   try {
-    const ok = await tick();
-    if (ok) {
+    const outcome = await tick();
+    nextDelay = outcome.nextDelayMs;
+    if (outcome.ok) {
       if (consecutiveTickFailures > 0) {
         await log(
           `scheduler backend recovered after ${consecutiveTickFailures} consecutive tick failures`
         );
       }
       consecutiveTickFailures = 0;
-    } else {
-      nextDelay = tickBackoffDelay();
     }
   } catch {
     // tick() contains its own errors; belt-and-braces so the chain never dies.
