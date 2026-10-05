@@ -7,7 +7,7 @@ import {
   requireSiteScope,
   sessionScopeFor,
 } from "@/lib/auth/session";
-import { sessionAllowsSite } from "@/lib/auth/scope";
+import { sessionAllowsSite, sessionSiteScope } from "@/lib/auth/scope";
 import { requiredLiveCredentialType } from "@/lib/devices/live-transport";
 import { z } from "zod";
 
@@ -37,6 +37,14 @@ export const dynamic = "force-dynamic";
  * device exists (existence leak). Wildcard sessions (no `sites` claim —
  * the single-tenant default) are byte-unchanged; API-client bearer
  * principals stay unscoped by design (authorization-matrix.md §5).
+ *
+ * F-031 wave-7 (null-repoint gate): `siteId: null` DETACHES a device from
+ * its site. Sites-limited sessions may not detach — combined with a later
+ * re-attach by another operator it is a cross-site transfer that bypasses
+ * the repoint-target gate — so the request proceeds ONLY for wildcard
+ * sessions; everyone else gets the SAME 403 SITE_SCOPE_FORBIDDEN envelope
+ * the requireSiteScope gates produce. A site-less device's OTHER fields
+ * stay mutable from a sites-limited session (the unscoped-resource rule).
  */
 
 const OPEN_INCIDENT_STATUSES = [
@@ -260,6 +268,27 @@ export async function PATCH(
       const authFail = authErrorToFail(error);
       if (!authFail) throw error;
       return authFail;
+    }
+  }
+
+  // F-031 wave-7 (null-repoint gate): `siteId: null` (the schema's
+  // `.nullable()`) writes siteId = null — it DETACHES the device from its
+  // site, which a sites-limited session must not do: detach + re-attach by
+  // another operator is a cross-site transfer that silently bypasses the
+  // repoint-target gate above. ONLY wildcard sessions may detach —
+  // classified by sessionSiteScope (absent claim → wildcard; empty-array
+  // deny-all, malformed, or a concrete code list → sites-limited). The
+  // envelope is the SAME 403 SITE_SCOPE_FORBIDDEN shape the requireSiteScope
+  // gates produce (fail() is the helper authErrorToFail wraps). Wildcard
+  // sessions keep today's behavior byte-unchanged (the null write proceeds).
+  if (data.siteId === null) {
+    const scope = sessionSiteScope(await sessionScopeFor(request));
+    if (scope.mode !== "wildcard") {
+      return fail(
+        "SITE_SCOPE_FORBIDDEN",
+        "Detaching a device from its site requires an unscoped (wildcard) session.",
+        403
+      );
     }
   }
   if (data.credentialProfileId) {

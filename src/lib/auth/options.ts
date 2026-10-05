@@ -4,7 +4,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
 import { evaluateMfaChallenge } from "@/lib/auth/mfa";
-import { userSiteScopeClaim } from "@/lib/auth/scope";
+import { SITE_SCOPE_CLAIM_KEY, userSiteScopeClaim } from "@/lib/auth/scope";
 import {
   checkLoginAllowed,
   recordLoginFailure,
@@ -157,7 +157,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         // F-031: the site scope rides the sign-in claims — null column →
-        // undefined → the `sites` claim key is OMITTED (wildcard). The
+        // undefined → the sites claim key is OMITTED (wildcard). The
         // userSiteScopeClaim parser is fail-closed (malformed row → []),
         // so a hand-edited siteScopeJson can never mint wildcard access.
         const siteScope = userSiteScopeClaim(user.siteScopeJson);
@@ -166,7 +166,9 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           name: user.name,
           role: user.role as UserRole,
-          ...(siteScope !== undefined ? { sites: siteScope } : {}),
+          ...(siteScope !== undefined
+            ? { [SITE_SCOPE_CLAIM_KEY]: siteScope }
+            : {}),
         };
       },
     }),
@@ -179,11 +181,15 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email ?? token.email;
         token.name = user.name ?? token.name;
         token.role = (user as { role?: string }).role ?? "viewer";
-        // F-031: the `sites` claim is stamped ONLY here (sign-in time).
-        // Absent → no claim → wildcard (single-tenant default).
-        const sites = (user as { sites?: unknown }).sites;
+        // F-031: the sites claim is stamped ONLY here (sign-in time).
+        // Absent → no claim → wildcard (single-tenant default). The claim
+        // key is the single-sourced SITE_SCOPE_CLAIM_KEY constant — the
+        // token contract must not drift from the enforcement readers.
+        const sites = (user as unknown as Record<string, unknown>)[
+          SITE_SCOPE_CLAIM_KEY
+        ];
         if (Array.isArray(sites)) {
-          token.sites = sites;
+          token[SITE_SCOPE_CLAIM_KEY] = sites;
         }
         return token;
       }

@@ -52,8 +52,17 @@ export const SITE_SCOPE_CLAIM_KEY = "sites";
  * the parser's own threat model (a hand-edited DB row) must not mint an
  * unbounded claim whose per-request re-normalization degrades the request
  * path. Fail-closed: an oversized list denies all, never truncates.
+ *
+ * Per-code length bound (site-scope wave 7): any member longer than
+ * SITE_SCOPE_MAX_CODE_CHARS makes the WHOLE claim MALFORMED, mirroring the
+ * count rule above. Rationale: the write surface caps codes at 32 chars
+ * (SITE_SCOPE_MAX_CODE_LENGTH in the admin users route), so a >64-char
+ * member can only come from a hand-edited DB row — the documented
+ * hand-edited-row threat model must bound cookie size too, not just the
+ * code count.
  */
 export const SITE_SCOPE_MAX_CODES = 32;
+export const SITE_SCOPE_MAX_CODE_CHARS = 64;
 
 export function normalizeSiteScopeCodes(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
@@ -62,6 +71,7 @@ export function normalizeSiteScopeCodes(value: unknown): string[] | null {
   const codes: string[] = [];
   for (const member of value) {
     if (typeof member !== "string" || member.length === 0) return null;
+    if (member.length > SITE_SCOPE_MAX_CODE_CHARS) return null;
     if (!seen.has(member)) {
       seen.add(member);
       codes.push(member);

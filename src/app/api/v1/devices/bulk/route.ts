@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { authErrorToFail, requirePermission, sessionScopeFor } from "@/lib/auth/session";
+import { scopedDeviceWhere } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,17 @@ export const dynamic = "force-dynamic";
  * interactive transaction so every audit row is stamped into the hash chain
  * by the db extension at creation (createMany would bypass the stamp and
  * leave unhashed rows behind; the extension now refuses that verb).
+ *
+ * F-031 (site scoping — device-domain wave 7): the target devices are
+ * fetched in ONE findMany composed through the scope —
+ * `scopedDeviceWhere(sessionScopeFor(request), { id: { in: … } })` — so a
+ * device hidden from the caller's site scope is indistinguishable from a
+ * missing one: it lands in the SAME notFound bucket (`reason:
+ * "NOT_FOUND"`, no hostname, no out-of-scope detail) and NEVER reaches the
+ * eligible queue loop (no JobExecution, no CONFIG_BACKUP_QUEUED audit row).
+ * The whole request is NOT 403'd — the per-id batch keeps its per-id
+ * report. Wildcard sessions resolve the base where by identity, so their
+ * bucket shape is byte-unchanged. authorization-matrix.md §5.1.
  */
 
 const bulkSchema = z.object({
@@ -56,8 +68,14 @@ export async function POST(request: Request) {
   // De-duplicate while preserving order.
   const uniqueIds = Array.from(new Set(deviceIds));
 
+  // F-031 wave-7: ONE scoped findMany — the scope filter composes through
+  // scopedDeviceWhere (wildcard → base where identity; sites mode →
+  // `site.code IN (…)`), so out-of-scope ids are absent from the result
+  // and fall into the SAME notFound bucket as missing ids (leak-free).
   const devices = await db.device.findMany({
-    where: { id: { in: uniqueIds } },
+    where: scopedDeviceWhere(await sessionScopeFor(request), {
+      id: { in: uniqueIds },
+    }),
     select: { id: true, hostname: true, status: true },
   });
 

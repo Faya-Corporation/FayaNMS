@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { fail, newCorrelationId } from "../../../../../_lib/api";
 import { decryptSnapshotTexts } from "@/lib/config/crypto";
-import { requirePermission, authErrorToFail } from "@/lib/auth/session";
+import { requirePermission, authErrorToFail, sessionScopeFor } from "@/lib/auth/session";
+import { sessionAllowsSite } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,14 @@ export const dynamic = "force-dynamic";
  *
  * Response: text/plain attachment
  *   Content-Disposition: attachment; filename="<hostname>-v<version>.cfg"
+ *
+ * F-031 (site scoping — device-domain wave 7): the answer is gated by the
+ * sessionAllowsSite row predicate with 404-NOT-403 parity — this endpoint
+ * exports the DECRYPTED raw configuration, so an out-of-scope device gets
+ * the SAME DEVICE_NOT_FOUND envelope a wildcard session gets for a missing
+ * device (a 403 would confirm existence). Wildcard sessions (no `sites`
+ * claim — the single-tenant default) are byte-unchanged.
+ * authorization-matrix.md §5.1.
  */
 
 const ID_MAX = 64;
@@ -71,11 +80,18 @@ export async function GET(
     return authFail;
   }
 
+  const scopeClaims = await sessionScopeFor(request);
   const device = await db.device.findUnique({
     where: { id },
-    select: { id: true, hostname: true },
+    select: { id: true, hostname: true, site: { select: { code: true } } },
   });
-  if (!device) {
+  // F-031 wave-7: the SAME not-found envelope for a missing device AND an
+  // out-of-scope device — the decrypted-config export must not disclose
+  // the existence of a device hidden from the caller's site scope
+  // (sessionAllowsSite mirrors the list route's where filter; site-less
+  // devices stay hidden from sites-limited sessions — fail-closed parity
+  // with SQL).
+  if (!device || !sessionAllowsSite(scopeClaims, device.site?.code ?? null)) {
     return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
   }
 

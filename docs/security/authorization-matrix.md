@@ -296,7 +296,10 @@ same as absent.
   classified at enforcement by `sessionSiteScope`, at mint by
   `userSiteScopeClaim` for a hand-edited `siteScopeJson` row) → deny-all
   with a console.warn log line. A malformed scope can never widen access;
-  treating it as wildcard is forbidden.
+  treating it as wildcard is forbidden. The claim is SIZE-BOUNDED like the
+  write surface: more than `SITE_SCOPE_MAX_CODES` (32) codes, or any
+  member longer than `SITE_SCOPE_MAX_CODE_CHARS` (64 chars), is malformed
+  too — deny-all, never truncated.
 
 **Unscoped resources.** `assertSiteScope(session, null)` BYPASSES site
 scoping: a resource with no site dimension is global (the documented rule).
@@ -314,29 +317,87 @@ hidden from the list cannot leak through the detail route. Detail reads use
 envelope a wildcard session gets for a missing device (a 403 would confirm
 existence).
 
-**Device-domain migration (site-scope wave 2, wired today).** The whole
-device domain now composes the same two primitives — a device hidden from
-the list can no longer leak through any device-domain surface:
+**Device-domain migration (site-scope waves 2 + 7, wired today).** The
+migrated device-domain surface is exactly the list below — nothing more
+(no claim that any sibling route is covered without being listed here):
 
-- Sub-resource reads `GET /api/v1/devices/[id]/{alerts,audit,changes,
+- Core reads (wave 2): `GET /api/v1/devices` composes its where clause
+  through `scopedDeviceWhere`; `GET /api/v1/devices/[id]` and the six
+  sub-resource reads `GET /api/v1/devices/[id]/{alerts,audit,changes,
   incidents,interfaces,metrics}` gate through the fused row predicate
-  `!device || !sessionAllowsSite(...)` and answer the SAME
-  `DEVICE_NOT_FOUND` envelope for an out-of-scope device as for a missing
-  one (404-not-403 parity with the detail route).
-- The fleet inventory `GET /api/v1/interfaces` composes the device
-  relation filter through `scopedDeviceWhere` — out-of-scope interfaces
-  vanish from the rows AND the summary block (one `where` feeds both);
-  wildcard sessions keep the byte-unchanged where shape.
-- Mutations gate through `requireSiteScope` (403 `SITE_SCOPE_FORBIDDEN`,
-  the documented mutation contract — no 404 shape here):
-  `PATCH /api/v1/devices/[id]` requires the device's CURRENT site in
-  scope AND the repoint target `siteId` in scope (an operator cannot move
-  an in-scope device beyond their own visibility), and `POST /api/v1/
-  devices` requires the target `siteId` in scope. A device with no site
-  is an unscoped resource and bypasses the gate (the documented
-  `assertSiteScope(null)` rule).
-- Pins: `tests/audit/site-scope-device-domain.test.ts` (behavioral, minted
-  JWTs) + the batch-25 wiring pins updated in place.
+  `!device || !sessionAllowsSite(...)` — an out-of-scope device answers
+  the SAME `DEVICE_NOT_FOUND` envelope a wildcard session gets for a
+  missing device (404-not-403; a 403 would confirm existence). The fleet
+  inventory `GET /api/v1/interfaces` composes the device relation filter
+  through `scopedDeviceWhere` — out-of-scope interfaces vanish from the
+  rows AND the summary block; wildcard keeps the byte-unchanged where
+  shape.
+- Sibling device routes (wave 7): the snapshot reads —
+  `GET /api/v1/devices/[id]/snapshots` (list), `GET .../snapshots/diff`,
+  `GET .../snapshots/[snapshotId]/download` — fuse the scope into the
+  same DEVICE_NOT_FOUND 404; `POST .../snapshots/[snapshotId]/restore`
+  answers 403 `SITE_SCOPE_FORBIDDEN`; `GET /api/v1/devices/[id]/host-key`
+  is fused-404 while `POST/PUT/DELETE .../host-key` answer 403;
+  `POST /api/v1/devices/[id]/snmp/poll` and
+  `POST /api/v1/devices/test-connection` answer 403; and
+  `POST /api/v1/devices/bulk` walks each id through the row predicate —
+  an out-of-scope id lands in the `notFound` bucket (indistinguishable
+  from a missing device — leak-free, no whole-request 403), in-scope ids
+  process normally.
+- Mutations (403 `SITE_SCOPE_FORBIDDEN`, the documented mutation contract
+  — no 404 shape here): `PATCH /api/v1/devices/[id]` requires the
+  device's CURRENT site in scope AND the repoint target `siteId` in scope
+  (an operator cannot move an in-scope device beyond their own
+  visibility), and `POST /api/v1/devices` requires the target `siteId`
+  in scope (ordering: vendor 400 first, then the scope 403).
+- Create surfaces (wave 7): `POST /api/v1/devices/csv-import` marks each
+  row whose resolved site is out of scope failed with the route's
+  existing row-error shape and a `SITE_SCOPE_FORBIDDEN` reason (valid
+  rows still import; the request never aborts; wildcard sessions are
+  byte-unchanged); `POST /api/v1/discovery/import` gates the target site
+  through `requireSiteScope` (403) after the `SITE_NOT_FOUND` check;
+  `POST /api/v1/ztp/claims` gates the claim's `siteId` the same way
+  (existence 422 first, then the scope 403).
+- Pins: `tests/audit/site-scope-device-domain.test.ts` +
+  `tests/audit/site-scope-wave7-siblings.test.ts` (the wave-2/7 sibling
+  routes, minted JWTs) and `tests/audit/site-scope-hardening.test.ts`
+  (the parser length cap, requireSiteScope strictness, create surfaces,
+  hostname probe).
+
+**Documented scope rules and edges (honest).**
+
+- Create edge: `POST /api/v1/devices` with an OMITTED `siteId` creates a
+  site-less device that bypasses scoping per `assertSiteScope(null)` (the
+  unscoped-resource rule) — it is invisible to sites-limited sessions
+  (the row filter cannot match a null site) and manageable only by
+  wildcard sessions. Accepted edge; in practice only wildcard operators
+  reach it.
+- Site-detach edge: `PATCH /api/v1/devices/[id]` with `siteId: null`
+  (detach) is refused 403 for sites-limited sessions and remains a
+  wildcard-session operation (the current site is in scope, but a detach
+  is not an in-scope repoint).
+- Matching is EXACT-CASE on `site.code` today (no canonicalization at
+  the parser): a scope granted "hq-san" does not match site code
+  "HQ-SAN". The admin write surface pattern-validates codes; the
+  enforcement parser deliberately does not rewrite them.
+- Scope is grant-by-code, not by id: renaming a site orphans every
+  stored scope that named its old code (fail-closed — the orphaned codes
+  match nothing), and delete-then-recreate of the same code is honored
+  on the next mint.
+- Bulk semantics: `POST /api/v1/devices/bulk` reports per-id outcomes —
+  an out-of-scope id is reported exactly like a missing id (`notFound`
+  bucket), so the response leaks nothing about out-of-scope existence.
+
+**Remaining (next signal).** The device domain is the migrated one; the
+other `/api/v1` routes still trust their role gate alone. When
+multi-site customers actually arrive, migrate the remaining domains with
+the same two primitives — list routes:
+`scopedDeviceWhere(scopeClaims, baseWhere)`; detail/singleton reads: the
+`sessionAllowsSite` row predicate with 404-not-403 semantics; mutation
+routes may prefer `requireSiteScope(req, siteCode)` (403
+`SITE_SCOPE_FORBIDDEN`). The devices routes are the reference. The sites
+catalog (`GET /api/v1/sites`) stays global until a consumer needs it
+filtered.
 
 **Scope administration.** `PATCH /api/v1/admin/users/[id]` accepts
 `siteScope: string[] | null` (admin-only; ≤ 32 codes, each ≤ 32 chars,
@@ -351,17 +412,9 @@ JWTs only. API-client opaque-bearer principals and machine service JWTs
 remain unscoped (global) — their scope model is future work. `sites` is a
 SITE-code dimension only; device-group scoping does not exist yet.
 
-**Migration note (next signal).** The device domain is FULLY migrated
-(reference routes + the wave-2 device-domain migration above). The
-remaining `/api/v1` routes still trust their role gate alone. When
-multi-site customers actually arrive, migrate the remaining domains with
-the same two primitives — list routes:
-`scopedDeviceWhere(scopeClaims, baseWhere)`; detail/singleton reads: the
-`sessionAllowsSite` row predicate with 404-not-403 semantics; mutation
-routes may prefer `requireSiteScope(req, siteCode)` (403
-`SITE_SCOPE_FORBIDDEN`). The devices routes are the reference. The sites
-catalog (`GET /api/v1/sites`) stays global until a consumer needs it
-filtered.
+**Migration note (next signal).** See the "Remaining" paragraph above:
+the device domain is the migrated reference; the remaining domains
+migrate on demand with the same two primitives.
 
 ### 5.2 CSRF origin control on cookie-session mutations (RT-008 / F-010)
 

@@ -1,6 +1,11 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newJobCorrelationId, ok } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionAllowsSite } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +25,8 @@ export const dynamic = "force-dynamic";
  * DEVICE_CREATED AuditEvent per created device (shared correlationId,
  * resourceLabel = hostname). Rows are validated individually — a bad row is
  * collected in `skipped` with a reason (validation issue, unknown vendor or
- * site code, duplicate hostname/mgmtIp in the DB or within the batch) while
+ * site code, duplicate hostname/mgmtIp in the DB or within the batch, or a
+ * site outside the session's site scope — SITE_SCOPE_FORBIDDEN) while
  * valid rows still get created. Returns { created, devices, skipped }.
  */
 
@@ -62,6 +68,9 @@ export async function POST(request: Request) {
     return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
   }
   const { rows, siteIdFallback } = parsed.data;
+  // Canonical code of the fallback site (resolved below) — rows imported
+  // through the fallback still take the per-row site-scope check.
+  let fallbackSiteCode: string | null = null;
 
   // Phase 19-C (audit AUTHZ-001 sweep): CSV import creates devices — it
   // requires the "device.write" permission and the audit rows are
@@ -78,11 +87,12 @@ export async function POST(request: Request) {
   if (siteIdFallback) {
     const site = await db.site.findUnique({
       where: { id: siteIdFallback },
-      select: { id: true },
+      select: { id: true, code: true },
     });
     if (!site) {
       return fail("SITE_NOT_FOUND", "siteIdFallback does not reference an existing site", 400);
     }
+    fallbackSiteCode = site.code;
   }
 
   // Per-row validation: a bad row is skipped with a reason, not fatal.
@@ -124,6 +134,10 @@ export async function POST(request: Request) {
     vendorByToken.set(v.name.toLowerCase(), v.id);
   }
   const siteByCode = new Map(sites.map((s) => [s.code.toLowerCase(), s.id]));
+  // Canonical code per site id — the scope check runs against the Site
+  // table's exact-case code, not the row's (case-insensitively matched)
+  // input token.
+  const siteCodeById = new Map(sites.map((s) => [s.id, s.code]));
 
   // Pre-load conflicting hostnames / mgmt IPs for the whole batch.
   const [existingHostnames, existingIps] = await Promise.all([
@@ -149,6 +163,15 @@ export async function POST(request: Request) {
     tags: string[];
   }[] = [];
 
+  // F-031 site-scope wave 7 (create surfaces): importing a row pins the
+  // device to a site, so a sites-limited session may only import into
+  // sites inside its scope. An out-of-scope row is skipped per-row with
+  // the SITE_SCOPE_FORBIDDEN reason (same shape as the validation/
+  // not-found/duplicate skips — the request never aborts); wildcard
+  // sessions are byte-unchanged, and null claims (the unscoped API-client
+  // bearer plane) resolve wildcard through sessionAllowsSite by design.
+  const scopeClaims = await sessionScopeFor(request);
+
   for (const row of validRows) {
     const vendorId = vendorByToken.get(row.vendor.toLowerCase());
     if (!vendorId) {
@@ -164,6 +187,16 @@ export async function POST(request: Request) {
       }
     } else if (siteIdFallback) {
       siteId = siteIdFallback;
+    }
+    if (siteId !== null) {
+      const siteCode = siteCodeById.get(siteId) ?? null;
+      if (siteCode !== null && !sessionAllowsSite(scopeClaims, siteCode)) {
+        skipped.push({
+          ip: row.mgmtIp,
+          reason: `SITE_SCOPE_FORBIDDEN: site "${siteCode}" is outside this session's site scope`,
+        });
+        continue;
+      }
     }
     if (takenHostnames.has(row.hostname) || takenIps.has(row.mgmtIp)) {
       skipped.push({ ip: row.mgmtIp, reason: "duplicate" });

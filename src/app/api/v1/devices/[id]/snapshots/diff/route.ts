@@ -8,7 +8,8 @@ import {
 } from "../../../../_lib/api";
 import { diffLines, diffStats } from "@/lib/config/diff";
 import { normalizeConfig } from "@/lib/config/normalize";
-import { requirePermission, authErrorToFail } from "@/lib/auth/session";
+import { requirePermission, authErrorToFail, sessionScopeFor } from "@/lib/auth/session";
+import { sessionAllowsSite } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,14 @@ export const dynamic = "force-dynamic";
  * Permission gate runs BEFORE any DB work (R52-F-N1 ordering — 401/403,
  * never a pre-auth existence oracle); rejected attempts are audited as
  * CONFIG_DIFF_DENIED (best-effort, mirroring CONFIG_DOWNLOAD_DENIED).
+ *
+ * F-031 (site scoping — device-domain wave 7): READ-plane semantics — the
+ * diff rows are decrypted snapshot text, so the answer is gated by the
+ * sessionAllowsSite row predicate with 404-NOT-403 parity: an out-of-scope
+ * device gets the SAME DEVICE_NOT_FOUND envelope a wildcard session gets
+ * for a missing device (no existence leak). Wildcard sessions (no `sites`
+ * claim — the single-tenant default) are byte-unchanged.
+ * authorization-matrix.md §5.1.
  */
 
 const querySchema = z.object({
@@ -156,11 +165,22 @@ export async function GET(
   }
   const { from, to, mode } = parsed.data;
 
+  const scopeClaims = await sessionScopeFor(request);
   const device = await db.device.findUnique({
     where: { id },
-    select: { id: true, hostname: true, vendor: { select: { key: true } } },
+    select: {
+      id: true,
+      hostname: true,
+      vendor: { select: { key: true } },
+      site: { select: { code: true } },
+    },
   });
-  if (!device) {
+  // F-031 wave-7: the SAME not-found envelope for a missing device AND an
+  // out-of-scope device — no existence leak on the config-diff read
+  // (sessionAllowsSite mirrors the list route's where filter; site-less
+  // devices stay hidden from sites-limited sessions — fail-closed parity
+  // with SQL).
+  if (!device || !sessionAllowsSite(scopeClaims, device.site?.code ?? null)) {
     return fail("DEVICE_NOT_FOUND", "The requested device does not exist", 404);
   }
   const vendorKey = device.vendor?.key ?? "generic";
