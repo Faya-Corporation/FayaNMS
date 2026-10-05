@@ -33,6 +33,17 @@
  *     refused unless the operator either declares the appending proxy or
  *     sets FAYANMS_TRUST_PROXY_HOPS=0 (trust nothing). Development is
  *     unchanged: this check never fires outside production.
+ *   - FAYANMS_METRICS_TOKEN is missing/empty or a repository-public
+ *     placeholder (wave-12 F-1/F-2, audit 18-b — the A1-04 remedy): while
+ *     the token is unset, /api/metrics answers 200 UNAUTHENTICATED (the
+ *     documented dev/CI posture), and the wave-11 contract sanctions
+ *     DIRECT-PUBLISH topologies (FAYANMS_TRUST_PROXY_HOPS=0) where the
+ *     Caddy edge 404 for /api/metrics does NOT exist — the app-level
+ *     posture must be self-sufficient. Repository-public placeholder
+ *     values (the deploy templates' "SET_ON_HOST_ONLY", the production
+ *     example's placeholder) are refused too: a verbatim deploy must not
+ *     boot "configured" with a token any reader of this repo knows.
+ *     Development is unchanged: this check never fires outside production.
  *
  * Service identity modes (TASK-SVC-001-A, derived EXCLUSIVELY from the
  * configured environment — never from token metadata; runtime half lives
@@ -436,6 +447,90 @@ export function findProxyHopsViolations(
   ];
 }
 
+/* ────────── Wave-12 F-1/F-2: metrics bearer posture (audit 18-b) ────────── */
+
+/**
+ * The bearer token gating /api/metrics (and the worker's copy of the same
+ * endpoint). Unset, the route answers 200 UNAUTHENTICATED — that is the
+ * DOCUMENTED dev/CI posture (rt025/cloud-metrics pin it); the runtime
+ * token-set branch is NOT changed by this policy (request-path semantics
+ * stay byte-identical). What changes is the PRODUCTION BOOT posture below.
+ */
+export const METRICS_TOKEN_ENV = "FAYANMS_METRICS_TOKEN";
+
+/**
+ * F-2 (wave-12, audit 18-b): values that must never serve as the LIVE
+ * metrics bearer token, compared trimmed/lowercase like isKnownBad().
+ * The first two are the repository's own deploy placeholders — repo-public
+ * by construction, so a verbatim copy must never boot "configured" with
+ * one (the wave-12 known-bad scan extends to this variable exactly as
+ * P1-019 extended it to the session/service/KEK secrets). The rest are
+ * classic weak defaults; the shared KNOWN_BAD_SECRETS blocklist ALSO
+ * applies via findMetricsTokenViolations (one bar for every secret).
+ */
+const KNOWN_BAD_METRICS_TOKENS: readonly string[] = [
+  "SET_ON_HOST_ONLY", // deploy/oci/env.example (app + worker zones)
+  "REPLACE_WITH_GENERATED_64_HEX_TOKEN", // docs/deploy/env.app.production.example
+  "metrics",
+  "metrics-token",
+  "prometheus",
+  "bearer",
+];
+
+function isKnownBadMetricsToken(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    // Entries are stored in their SHIPPED literal form (the deploy
+    // templates' uppercase placeholders) — both sides normalize.
+    KNOWN_BAD_METRICS_TOKENS.some((bad) => bad.trim().toLowerCase() === normalized) ||
+    isKnownBad(value)
+  );
+}
+
+/**
+ * Wave-12 F-1/F-2 (audit 18-b — the A1-04 remedy, wave-11 F-5 guard shape):
+ * the wave-11 proxy-hop contract sanctions DIRECT-PUBLISH topologies
+ * (FAYANMS_TRUST_PROXY_HOPS=0). In that topology there is no Caddy edge
+ * 404 for /api/metrics (deploy/oci/Caddyfile:17-18,
+ * docs/deploy/Caddyfile.tls:41-42 only exist in the proxy-fronted
+ * profiles), so the app-level posture must be self-sufficient: production
+ * REQUIRES a strong FAYANMS_METRICS_TOKEN and refuses repository-public
+ * placeholder values. Wired into findProductionPolicyViolations
+ * (fail-close, same refusal block as every other production posture
+ * violation); NO dev-path emitter is wired — dev/CI open behavior is
+ * unchanged, exactly like every other production guard in this file.
+ */
+export function findMetricsTokenViolations(
+  env: NodeJS.ProcessEnv = process.env
+): PolicyViolation[] {
+  const token = env[METRICS_TOKEN_ENV]?.trim() ?? "";
+  if (token.length === 0) {
+    return [
+      {
+        variable: METRICS_TOKEN_ENV,
+        reason:
+          "missing — /api/metrics then answers 200 UNAUTHENTICATED (process " +
+          "gauges), and in a direct-published topology " +
+          "(FAYANMS_TRUST_PROXY_HOPS=0) no edge proxy blocks it. Set a " +
+          "strong bearer token: openssl rand -hex 32",
+      },
+    ];
+  }
+  if (isKnownBadMetricsToken(token)) {
+    return [
+      {
+        variable: METRICS_TOKEN_ENV,
+        reason:
+          "matches a repository-public placeholder/known-weak value — a " +
+          "verbatim deploy must not boot \"configured\" with a token any " +
+          "reader of this repository knows. Generate a strong bearer " +
+          "token: openssl rand -hex 32",
+      },
+    ];
+  }
+  return [];
+}
+
 /** Validate the production posture. Returns every violation found. */
 export function findProductionPolicyViolations(
   env: NodeJS.ProcessEnv = process.env
@@ -510,6 +605,12 @@ export function findProductionPolicyViolations(
   // above). Production fails loud, same refusal block as every other
   // violation; development behavior is unchanged (no dev emitter wired).
   violations.push(...findProxyHopsViolations(env));
+
+  // Wave-12 F-1/F-2: the metrics surface must be self-sufficient without an
+  // edge (the F-5 direct-publish topology sanctions one) — production
+  // requires a strong FAYANMS_METRICS_TOKEN and refuses repository-public
+  // placeholders (see the guard's contract above; dev posture unchanged).
+  violations.push(...findMetricsTokenViolations(env));
 
   return violations;
 }

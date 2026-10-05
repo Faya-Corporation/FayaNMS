@@ -15,6 +15,12 @@ import { z } from "zod";
  * API GOVERNANCE (SAFE-002 — external ULTRA audit P0-002 remediation):
  *   - X-Request-Id header on every response (crypto.randomUUID), also echoed
  *     as `requestId` in the envelope meta.
+ *   - Cache-Control: no-store on every envelope (wave-12 F-3, audit 18-b):
+ *     /api/v1 payloads are session/API-client scoped and one field away from
+ *     caller-varying (meta/users scope filtering), so shared caches must
+ *     never store them — 401/error envelopes included. This matches the
+ *     health/metrics routes' no-store posture (next.config.ts headers()
+ *     deliberately left untouched — the envelope is the single choke point).
  *   - Rate limiting does NOT live here anymore. It used to run inside these
  *     response builders — i.e. AFTER a handler had already committed its
  *     side effects (a rate-limited mutation still executed, answered 429,
@@ -69,7 +75,7 @@ export function ok<T>(
   const mergedMeta = { ...(meta ?? {}), requestId };
   return NextResponse.json(
     { success: true as const, data, meta: mergedMeta },
-    { status, headers: { "X-Request-Id": requestId } }
+    { status, headers: { "X-Request-Id": requestId, "Cache-Control": "no-store" } }
   );
 }
 
@@ -81,7 +87,7 @@ export function fail(
   const requestId = randomUUID();
   return NextResponse.json(
     { success: false as const, error: { code, message }, meta: { requestId } },
-    { status, headers: { "X-Request-Id": requestId } }
+    { status, headers: { "X-Request-Id": requestId, "Cache-Control": "no-store" } }
   );
 }
 
@@ -103,7 +109,7 @@ export function failWithMeta(
       error: { code, message },
       meta: { requestId, ...(extraMeta ?? {}) },
     },
-    { status, headers: { "X-Request-Id": requestId } }
+    { status, headers: { "X-Request-Id": requestId, "Cache-Control": "no-store" } }
   );
 }
 
@@ -130,7 +136,7 @@ export function failWithDetail(
       },
       meta: { requestId },
     },
-    { status, headers: { "X-Request-Id": requestId } }
+    { status, headers: { "X-Request-Id": requestId, "Cache-Control": "no-store" } }
   );
 }
 

@@ -1,5 +1,11 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import type { Prisma } from "@prisma/client";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
 import { ok } from "../../_lib/api";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +24,18 @@ export const dynamic = "force-dynamic";
  *
  * The 24 h / 72 h windows are a static policy approximation and must be
  * labeled as such in the UI.
+ *
+ * F-031 (wave-12, audit 18-a P2-2 — the wave-10 drift F-4 recipe): the
+ * fleet read is SCOPE-FUSED — scopedDeviceWhere composes the session's
+ * site scope into the single device fetch and every derived artifact
+ * (banded rows, KPIs, perSite bands, the staleDevices top-10) describes
+ * the SCOPED fleet only. The per-site breakdown's catalog scan intersects
+ * the scope codes (the cmdb/items exemplar) so out-of-scope site rows
+ * never appear, and snapshotsLast24h joins the same rule through the
+ * snapshot's device relation. Wildcard sessions (no `sites` claim — the
+ * single-tenant default) keep the byte-unchanged queries and output; a
+ * deny-all scope (empty/malformed claim) answers zeroed KPIs with empty
+ * rows/perSite/staleDevices (still 200, the plane convention).
  */
 
 const HOURS_MS = 3_600_000;
@@ -43,9 +61,20 @@ export async function GET(request: Request) {
   const atRiskCutoff = new Date(now - AT_RISK_WINDOW_MS);
   const snapshotsSince24h = new Date(now - COMPLIANT_WINDOW_MS);
 
+  // F-031 (wave-12): the session's site scope drives every fetch below
+  // (wildcard sessions — absent claims — keep byte-identical behavior).
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+
   const [devices, snapshotsLast24h] = await Promise.all([
     db.device.findMany({
-      where: { status: { not: "UNMANAGED" } },
+      where: scopedDeviceWhere(scopeClaims, {
+        // F-031 (wave-12): the managed-fleet base where composed with the
+        // session scope — wildcard passes the base where through unchanged
+        // (parity), sites-limited scopes restrict to `site.code IN (…)` and
+        // a deny-all scope (`in: []`) matches nothing.
+        status: { not: "UNMANAGED" },
+      }),
       select: {
         id: true,
         hostname: true,
@@ -55,7 +84,15 @@ export async function GET(request: Request) {
       },
     }),
     db.configSnapshot.count({
-      where: { createdAt: { gte: snapshotsSince24h } },
+      where: {
+        createdAt: { gte: snapshotsSince24h },
+        // Scope-fused too (the snapshot's device relation): wildcard keeps
+        // the bare createdAt filter, deny-all/scoped counts only in-scope
+        // devices' snapshots.
+        ...(scope.mode === "wildcard"
+          ? {}
+          : { device: scopedDeviceWhere(scopeClaims, {}) }),
+      },
     }),
   ]);
 
@@ -95,6 +132,11 @@ export async function GET(request: Request) {
 
   // Per-site breakdown (devices without a site land in an "Unassigned" row).
   const siteRows = await db.site.findMany({
+    // F-031 (wave-12): the per-site bands only include IN-SCOPE sites —
+    // the catalog scan intersects the scope codes (cmdb/items exemplar);
+    // wildcard keeps the full scan. A deny-all scope matches no site rows,
+    // so perSite collapses to [] with the scoped device rows.
+    ...(scope.mode === "wildcard" ? {} : { where: { code: { in: scope.codes } } }),
     orderBy: { name: "asc" },
     select: { id: true, name: true, code: true },
   });
