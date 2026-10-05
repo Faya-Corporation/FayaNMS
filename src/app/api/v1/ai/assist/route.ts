@@ -8,6 +8,7 @@ import {
 } from "../../_lib/api";
 import { consumeAiDailyQuota } from "@/lib/api/ai-quota";
 import { resolveActingUser } from "../../_lib/actor";
+import { sessionScopeFor } from "@/lib/auth/session";
 import { buildDeviceContext, buildIncidentContext } from "@/lib/ai/context";
 import { buildAssistMessages, type AiLocale } from "@/lib/ai/prompts";
 import { AiUnavailableError, aiChat } from "@/lib/ai/zai-client";
@@ -34,6 +35,11 @@ export const dynamic = "force-dynamic";
  *
  * Errors: 400 INVALID_BODY · 404 DEVICE_NOT_FOUND/INCIDENT_NOT_FOUND ·
  * 503 AI_UNAVAILABLE (actionable message, after timeout+retry exhausted).
+ *
+ * F-031 (wave 9, audit 9-b F-1): the session's site scope is resolved with
+ * sessionScopeFor and fused into the context builders' not-found branch —
+ * an out-of-scope device/incident answers the SAME 404 envelope as a
+ * nonexistent one (no existence leak through the AI plane).
  */
 
 const bodySchema = z.object({
@@ -73,6 +79,10 @@ export async function POST(request: Request) {
     return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
   }
 
+  // F-031 (wave 9): the session's site scope for the context builders
+  // (wildcard sessions — absent claims — keep byte-identical behavior).
+  const scopeClaims = await sessionScopeFor(request);
+
   // ── Assemble the operational context (server-side, secret-free) ──────
   let contextText: string;
   let contextSummary: {
@@ -83,8 +93,8 @@ export async function POST(request: Request) {
   try {
     const context =
       scope === "device"
-        ? await buildDeviceContext(id)
-        : await buildIncidentContext(id);
+        ? await buildDeviceContext(id, scopeClaims)
+        : await buildIncidentContext(id, scopeClaims);
     if (!context) {
       return fail(
         scope === "device" ? "DEVICE_NOT_FOUND" : "INCIDENT_NOT_FOUND",

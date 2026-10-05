@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import {
@@ -29,7 +30,47 @@ export const dynamic = "force-dynamic";
  * flagged `imported: true` and the top level gains an `importedIps` array
  * (raw candidate fields are preserved). One DEVICE_CREATED AuditEvent is
  * written per created device with the scan's correlationId.
+ *
+ * Wave-9 (audit 9-b P3):
+ *   - HOSTNAME RE-VALIDATION: candidate hostnames come from PTR/reverse-DNS
+ *     (up to 255 chars, attacker-influenceable) and were previously
+ *     persisted verbatim. They are now re-validated with the SAME device
+ *     hostname policy the csv-import surface enforces (byte-identical
+ *     regex + the 63-char cap — csv-import/route.ts HOSTNAME_PATTERN), and
+ *     modelGuess is capped at 120 chars. Invalid candidates are SKIPPED
+ *     per-row with the route's row-skip vocabulary ({ ip, reason }).
+ *   - P2002 → per-row skip, never a raw 500: Device.hostname is @unique,
+ *     so a concurrent create that raced past this request's pre-load
+ *     surfaces as Prisma P2002 inside the import transaction. The aborted
+ *     transaction committed nothing (Prisma ITX rollback — PostgreSQL
+ *     aborts the tx on a failed statement, so catch-and-continue inside it
+ *     is not possible); the batch replays ROW-BY-ROW in individual
+ *     transactions, the raced row lands in `skipped`, and the resultJson
+ *     import flags are rewritten for what actually persisted. The success
+ *     path (no race) stays byte-identical.
  */
+
+/**
+ * The device-hostname policy — kept BYTE-IDENTICAL to csv-import's
+ * HOSTNAME_PATTERN (csv-import/route.ts) so every device-creating surface
+ * enforces exactly the same shape (letters/digits/hyphens, each label
+ * bounded so the whole hostname is ≤ 63 chars; PTR names with dots fail by
+ * design — they are discovery DATA, not a valid device hostname).
+ */
+const HOSTNAME_PATTERN = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
+const HOSTNAME_MAX = 63;
+/** modelGuess cap (matches csv-import's model row cap). */
+const MODEL_GUESS_MAX = 120;
+
+/** True only for Prisma's unique-constraint violation error class (P2002). */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+  );
+}
+
+/** The $extends-wrapped transaction client the exported db hands to ITX callbacks. */
+type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
 const IPV4_PATTERN =
   /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
@@ -194,6 +235,20 @@ export async function POST(request: Request) {
       skipped.push({ ip, reason: "IP is not part of this scan's results" });
       continue;
     }
+    // Wave-9 hostname re-validation (P3): PTR-controlled data must satisfy
+    // the same device-hostname policy csv-import enforces before it may
+    // become a real device row.
+    if (candidate.hostname.length > HOSTNAME_MAX || !HOSTNAME_PATTERN.test(candidate.hostname)) {
+      skipped.push({
+        ip,
+        reason: `hostname fails validation (1-${HOSTNAME_MAX} letters, digits or hyphens)`,
+      });
+      continue;
+    }
+    if (typeof candidate.modelGuess === "string" && candidate.modelGuess.length > MODEL_GUESS_MAX) {
+      skipped.push({ ip, reason: `model guess exceeds ${MODEL_GUESS_MAX} characters` });
+      continue;
+    }
     if (takenHostnames.has(candidate.hostname) || takenIps.has(ip)) {
       skipped.push({ ip, reason: "duplicate" });
       continue;
@@ -210,77 +265,109 @@ export async function POST(request: Request) {
 
   const created: { id: string; hostname: string; ip: string }[] = [];
 
-  if (pending.length > 0) {
-    await db.$transaction(async (tx) => {
-      for (const entry of pending) {
-        const device = await tx.device.create({
-          data: {
-            hostname: entry.candidate.hostname,
-            displayName: entry.candidate.hostname,
-            mgmtIp: entry.ip,
-            vendorId: entry.vendorId,
-            model: entry.candidate.modelGuess ?? null,
-            siteId: siteId ?? null,
-            status: managed ? "UNKNOWN" : "UNMANAGED",
-            criticality,
-            healthScore: 0,
-            backupCompliance: "UNKNOWN",
-            tagsJson: JSON.stringify(["discovered"]),
-            notes: `Discovered via scan ${job.correlationId}`,
-          },
-          select: { id: true, hostname: true, mgmtIp: true },
-        });
-        created.push({
-          id: device.id,
-          hostname: device.hostname,
-          ip: device.mgmtIp,
-        });
+  // Create one pending candidate + its DEVICE_CREATED audit inside `tx`
+  // (shared verbatim by the single-transaction fast path and race replay).
+  const importOne = async (tx: TxClient, entry: PendingImport) => {
+    const device = await tx.device.create({
+      data: {
+        hostname: entry.candidate.hostname,
+        displayName: entry.candidate.hostname,
+        mgmtIp: entry.ip,
+        vendorId: entry.vendorId,
+        model: entry.candidate.modelGuess ?? null,
+        siteId: siteId ?? null,
+        status: managed ? "UNKNOWN" : "UNMANAGED",
+        criticality,
+        healthScore: 0,
+        backupCompliance: "UNKNOWN",
+        tagsJson: JSON.stringify(["discovered"]),
+        notes: `Discovered via scan ${job.correlationId}`,
+      },
+      select: { id: true, hostname: true, mgmtIp: true },
+    });
+    created.push({
+      id: device.id,
+      hostname: device.hostname,
+      ip: device.mgmtIp,
+    });
 
-        await tx.auditEvent.create({
-          data: {
-            actorId: actor.id,
-            actorName: actor.name ?? "Unknown user",
-            action: "DEVICE_CREATED",
-            resourceType: "Device",
-            resourceId: device.id,
-            resourceLabel: device.hostname,
-            result: "SUCCESS",
-            correlationId: job.correlationId,
-            afterJson: JSON.stringify({
-              hostname: device.hostname,
-              mgmtIp: device.mgmtIp,
-              vendor: entry.candidate.vendorGuess,
-              model: entry.candidate.modelGuess ?? null,
-              siteId: siteId ?? null,
-              credentialProfileId: credentialProfileId ?? null,
-              criticality,
-              status: managed ? "UNKNOWN" : "UNMANAGED",
-              source: "DISCOVERY",
-              scanCorrelationId: job.correlationId,
-            }),
-          },
+    await tx.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        actorName: actor.name ?? "Unknown user",
+        action: "DEVICE_CREATED",
+        resourceType: "Device",
+        resourceId: device.id,
+        resourceLabel: device.hostname,
+        result: "SUCCESS",
+        correlationId: job.correlationId,
+        afterJson: JSON.stringify({
+          hostname: device.hostname,
+          mgmtIp: device.mgmtIp,
+          vendor: entry.candidate.vendorGuess,
+          model: entry.candidate.modelGuess ?? null,
+          siteId: siteId ?? null,
+          credentialProfileId: credentialProfileId ?? null,
+          criticality,
+          status: managed ? "UNKNOWN" : "UNMANAGED",
+          source: "DISCOVERY",
+          scanCorrelationId: job.correlationId,
+        }),
+      },
+    });
+  };
+
+  // Mark the imported candidates in the job's resultJson (raw fields kept).
+  const markImported = async (tx: TxClient, importedSet: Set<string>) => {
+    const previouslyImported = Array.isArray(result.importedIps)
+      ? (result.importedIps as string[])
+      : [];
+    const updatedCandidates = candidates.map((c) =>
+      importedSet.has(c.ip) ? { ...c, imported: true } : c
+    );
+    await tx.jobExecution.update({
+      where: { id: job.id },
+      data: {
+        resultJson: JSON.stringify({
+          ...result,
+          candidates: updatedCandidates,
+          importedIps: Array.from(new Set([...previouslyImported, ...importedSet])),
+        }),
+      },
+    });
+  };
+
+  if (pending.length > 0) {
+    try {
+      await db.$transaction(async (tx) => {
+        for (const entry of pending) {
+          await importOne(tx, entry);
+        }
+        await markImported(tx, new Set(created.map((d) => d.ip)));
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      // Concurrent-duplicate race (Device.hostname @unique): the aborted
+      // transaction committed NOTHING — replay row-by-row so only the
+      // raced row skips (the route's row-skip vocabulary) and the rest
+      // persist; then rewrite the import flags for what actually landed.
+      created.length = 0;
+      for (const entry of pending) {
+        try {
+          await db.$transaction(async (tx) => {
+            await importOne(tx, entry);
+          });
+        } catch (rowError) {
+          if (!isUniqueViolation(rowError)) throw rowError;
+          skipped.push({ ip: entry.ip, reason: "duplicate hostname (concurrent create raced this import)" });
+        }
+      }
+      if (created.length > 0) {
+        await db.$transaction(async (tx) => {
+          await markImported(tx, new Set(created.map((d) => d.ip)));
         });
       }
-
-      // Mark the imported candidates in the job's resultJson (raw fields kept).
-      const importedSet = new Set(created.map((d) => d.ip));
-      const previouslyImported = Array.isArray(result.importedIps)
-        ? (result.importedIps as string[])
-        : [];
-      const updatedCandidates = candidates.map((c) =>
-        importedSet.has(c.ip) ? { ...c, imported: true } : c
-      );
-      await tx.jobExecution.update({
-        where: { id: job.id },
-        data: {
-          resultJson: JSON.stringify({
-            ...result,
-            candidates: updatedCandidates,
-            importedIps: Array.from(new Set([...previouslyImported, ...importedSet])),
-          }),
-        },
-      });
-    });
+    }
   }
 
   return ok({ created: created.length, devices: created, skipped });

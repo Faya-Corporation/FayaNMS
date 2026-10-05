@@ -5,7 +5,11 @@ import {
   newCorrelationId,
   ok,
 } from "../../_lib/api";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSiteScope,
+} from "@/lib/auth/session";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +25,15 @@ export const dynamic = "force-dynamic";
  *        window never touches alerts/incidents — suppression simply ends.
  *
  * Both: 404 MAINTENANCE_NOT_FOUND.
+ *
+ * F-031 wave-9 (mutation gates — the wave-7 contract): after the 404
+ * check, the EXISTING window's site linkage (its device's site, else its
+ * site) must be inside the session's scope — 403 SITE_SCOPE_FORBIDDEN
+ * otherwise; a fleet-wide window (no device, no site) is a global resource
+ * and bypasses (the documented rule). PATCH additionally gates every
+ * referenced target device/site (existence 400s first, then the scope
+ * 403 — the POST /devices ordering); explicit nulls (clearing a link)
+ * need no gate.
  */
 
 const isoDatetime = z.coerce.date();
@@ -73,19 +86,61 @@ export async function PATCH(
   }
   const data = parsed.data;
 
-  const existing = await db.maintenanceWindow.findUnique({ where: { id } });
+  const existing = await db.maintenanceWindow.findUnique({
+    where: { id },
+    include: {
+      device: { select: { site: { select: { code: true } } } },
+      site: { select: { code: true } },
+    },
+  });
   if (!existing) {
     return fail("MAINTENANCE_NOT_FOUND", "Maintenance window not found", 404);
   }
 
-  // Validate referenced records (null clears the link and is always fine).
+  // F-031 wave-9 (mutation gate): the window's site linkage must be in
+  // scope. Device site wins when device-linked; a fleet-wide window (no
+  // device, no site) is a global resource and bypasses scoping.
+  try {
+    await requireSiteScope(
+      request,
+      existing.device?.site?.code ?? existing.site?.code ?? null
+    );
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
+  }
+
+  // Validate referenced records (null clears the link and is always fine),
+  // and F-031 wave-9: the NEW targets must be inside the session's scope
+  // (existence 400s first, then the scope 403).
   if (data.siteId) {
-    const site = await db.site.findUnique({ where: { id: data.siteId }, select: { id: true } });
+    const site = await db.site.findUnique({
+      where: { id: data.siteId },
+      select: { id: true, code: true },
+    });
     if (!site) return fail("SITE_INVALID", "The selected site does not exist", 400);
+    try {
+      await requireSiteScope(request, site.code);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
   }
   if (data.deviceId) {
-    const device = await db.device.findUnique({ where: { id: data.deviceId }, select: { id: true } });
+    const device = await db.device.findUnique({
+      where: { id: data.deviceId },
+      select: { id: true, site: { select: { code: true } } },
+    });
     if (!device) return fail("DEVICE_INVALID", "The selected device does not exist", 400);
+    try {
+      await requireSiteScope(request, device.site?.code ?? null);
+    } catch (error) {
+      const authFail = authErrorToFail(error);
+      if (!authFail) throw error;
+      return authFail;
+    }
   }
   if (data.changeId) {
     const change = await db.changeRequest.findUnique({ where: { id: data.changeId }, select: { id: true } });
@@ -196,9 +251,29 @@ export async function DELETE(
     return authFail;
   }
 
-  const existing = await db.maintenanceWindow.findUnique({ where: { id } });
+  const existing = await db.maintenanceWindow.findUnique({
+    where: { id },
+    include: {
+      device: { select: { site: { select: { code: true } } } },
+      site: { select: { code: true } },
+    },
+  });
   if (!existing) {
     return fail("MAINTENANCE_NOT_FOUND", "Maintenance window not found", 404);
+  }
+
+  // F-031 wave-9 (mutation gate): the window's site linkage must be in
+  // scope before it can be deleted (device site wins; a fleet-wide window
+  // is a global resource and bypasses — the documented rule).
+  try {
+    await requireSiteScope(
+      _request,
+      existing.device?.site?.code ?? existing.site?.code ?? null
+    );
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
 
   await db.maintenanceWindow.delete({ where: { id } });

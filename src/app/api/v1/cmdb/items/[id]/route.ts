@@ -1,6 +1,13 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../_lib/api";
-import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionAllowsSite, sessionSiteScope } from "@/lib/auth/scope";
 import {
   CMDB_ITEM_SUMMARY_SELECT,
   cmdbCriticalitySchema,
@@ -24,6 +31,17 @@ export const dynamic = "force-dynamic";
  *   `[id]` accepts the cuid primary key OR the CI-000NNN identifier.
  *   Read-only → no audit event (app convention).
  *
+ *   F-031 wave-9 (read-plane migration): the CI detail is gated by the
+ *   same visibility predicate the list uses — the linked device's site
+ *   code, else the CI's siteId tag; a CI with no site linkage is a global
+ *   resource. An out-of-scope CI answers the SAME `CMDB_NOT_FOUND` 404
+ *   envelope a wildcard session gets for a missing CI (404-not-403 — no
+ *   existence leak). The relation lists drop edges whose counterpart is
+ *   out-of-scope, and the audit rows drop entries referencing
+ *   out-of-scope/unresolvable CIs (labels embed CI- identifiers of BOTH
+ *   relation endpoints). Wildcard sessions keep the byte-unchanged
+ *   queries.
+ *
  * PATCH /api/v1/cmdb/items/[id]
  *   Update status / criticality / ownerId / description. Guards:
  *     404 CMDB_NOT_FOUND           — unknown CI
@@ -44,18 +62,31 @@ const updateItemSchema = z
   })
   .strict();
 
-async function loadItemDetail(id: string) {
+async function loadItemDetail(
+  id: string,
+  scoped: {
+    claims: Parameters<typeof sessionSiteScope>[0];
+    ciScopeWhere: Prisma.CmdbItemWhereInput;
+  } | null
+) {
   const item = await resolveCmdbItem(id);
   if (!item) return null;
 
   const [outgoing, incoming, audits] = await Promise.all([
     db.cmdbRelation.findMany({
-      where: { sourceId: item.id },
+      where: {
+        sourceId: item.id,
+        // F-031 wave-9: hide edges whose counterpart is out-of-scope.
+        ...(scoped ? { target: scoped.ciScopeWhere } : {}),
+      },
       orderBy: [{ relationType: "asc" }, { id: "asc" }],
       include: { target: { select: CMDB_ITEM_SUMMARY_SELECT } },
     }),
     db.cmdbRelation.findMany({
-      where: { targetId: item.id },
+      where: {
+        targetId: item.id,
+        ...(scoped ? { source: scoped.ciScopeWhere } : {}),
+      },
       orderBy: [{ relationType: "asc" }, { id: "asc" }],
       include: { source: { select: CMDB_ITEM_SUMMARY_SELECT } },
     }),
@@ -68,6 +99,8 @@ async function loadItemDetail(id: string) {
       take: 12,
       select: {
         action: true,
+        resourceType: true,
+        resourceId: true,
         result: true,
         actorName: true,
         resourceLabel: true,
@@ -77,6 +110,12 @@ async function loadItemDetail(id: string) {
       },
     }),
   ]);
+
+  // F-031 wave-9: relation rows label BOTH endpoints ("CI-A → CI-B") —
+  // drop rows referencing an out-of-scope or unresolvable counterpart.
+  const scopedAudits = scoped
+    ? await filterCmdbAuditsForScope(scoped.claims, audits)
+    : audits;
 
   const [device, owner] = await Promise.all([
     item.deviceId
@@ -115,7 +154,10 @@ async function loadItemDetail(id: string) {
           }
         : null,
       ownerId: item.ownerId,
-      ownerName: owner ? owner.name ?? owner.email ?? owner.id : null,
+      // R69 re-review discipline (mirrors meta/users): the fallback is the
+      // email LOCAL-PART — a bare `?? owner.email` ships the full address
+      // of any owner whose name is null.
+      ownerName: owner ? owner.name ?? owner.email.split("@")[0] ?? owner.id : null,
       createdAt: item.createdAt.toISOString(),
       updatedAt: item.updatedAt.toISOString(),
     },
@@ -131,7 +173,7 @@ async function loadItemDetail(id: string) {
       counterpart: rel.source,
       createdAt: rel.createdAt.toISOString(),
     })),
-    audits: audits.map((a) => ({
+    audits: scopedAudits.map((a) => ({
       action: a.action,
       result: a.result,
       actorName: a.actorName,
@@ -234,7 +276,38 @@ export async function GET(
   }
   const { id } = await params;
 
-  const detail = await loadItemDetail(id);
+  // F-031 wave-9: resolve the scope and gate the target CI BEFORE any
+  // detail assembly. The SAME CMDB_NOT_FOUND envelope answers a missing CI
+  // and an out-of-scope CI (404-not-403 — a 403 would confirm existence).
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const isWildcard = scope.mode === "wildcard";
+  // Sites-limited sessions scope the CI legs; the wildcard path never
+  // consumes ciScopeWhere (every use is guarded).
+  const scopedCodes = scope.mode === "sites" ? scope.codes : [];
+  const ciScopeWhere: Prisma.CmdbItemWhereInput = {
+    OR: [
+      { device: { site: { code: { in: scopedCodes } } } },
+      { AND: [{ deviceId: null }, { siteId: { in: scopedCodes } }] },
+      { AND: [{ deviceId: null }, { siteId: null }] },
+    ],
+  };
+
+  const target = await resolveCmdbItem(id);
+  if (!target) {
+    return fail("CMDB_NOT_FOUND", `No configuration item matches "${id}"`, 404);
+  }
+  if (
+    !isWildcard &&
+    !sessionAllowsSite(scopeClaims, await cmdbItemSiteCode(target))
+  ) {
+    return fail("CMDB_NOT_FOUND", `No configuration item matches "${id}"`, 404);
+  }
+
+  const detail = await loadItemDetail(
+    id,
+    isWildcard ? null : { claims: scopeClaims, ciScopeWhere }
+  );
   if (!detail) {
     return fail("CMDB_NOT_FOUND", `No configuration item matches "${id}"`, 404);
   }
@@ -340,7 +413,7 @@ export async function PATCH(
 
   if (Object.keys(patch).length === 0) {
     // Nothing actually changed — return the current state without an audit row.
-    const detail = await loadItemDetail(id);
+    const detail = await loadItemDetail(id, null);
     return ok(detail, { unchanged: true }, 200);
   }
 
@@ -389,4 +462,105 @@ export async function PATCH(
     { actor: actorName },
     200
   );
+}
+
+/* ───────────────────────── F-031 wave-9 helpers ───────────────────────── */
+
+/**
+ * Resolve the CI's governing site code: the LINKED DEVICE's site when
+ * device-linked (a site-less linked device yields null, which HIDES the CI
+ * from sites-limited sessions — row-level parity with the device rules);
+ * otherwise the CI's own siteId tag; null when the CI has no site linkage
+ * at all (a global resource — the assertSiteScope(null) bypass).
+ */
+async function cmdbItemSiteCode(item: {
+  deviceId: string | null;
+  siteId: string | null;
+}): Promise<string | null> {
+  if (item.deviceId) {
+    const device = await db.device.findUnique({
+      where: { id: item.deviceId },
+      select: { site: { select: { code: true } } },
+    });
+    return device?.site?.code ?? null;
+  }
+  return item.siteId;
+}
+
+type CmdbAuditRow = {
+  action: string;
+  resourceType: string;
+  resourceId: string | null;
+  resourceLabel: string | null;
+  result: string;
+  actorName: string | null;
+  correlationId: string | null;
+  afterJson: string | null;
+  createdAt: Date;
+};
+
+/**
+ * Scope-filter the CMDB_* audit rows for sites-limited sessions — a row
+ * passes only when EVERY CI- identifier it references (resourceLabel
+ * tokens; a CmdbItem row's resourceId) resolves to a visible CI. Labels
+ * embed "CI-A → CI-B" for relation rows, so an out-of-scope counterpart
+ * drops the row; stale references (removed relation / deleted CI) drop it
+ * fail-closed. Rows without CI references pass. Wildcard never calls this.
+ *
+ * KEPT IN SYNC with the twin helper in cmdb/items/route.ts (no shared lib
+ * file in this wave's ownership).
+ */
+async function filterCmdbAuditsForScope(
+  claims: Parameters<typeof sessionSiteScope>[0],
+  rows: CmdbAuditRow[]
+): Promise<CmdbAuditRow[]> {
+  const labelTokens = new Set<string>();
+  const itemResourceIds: string[] = [];
+  for (const row of rows) {
+    for (const token of row.resourceLabel?.match(/CI-\d{6}/g) ?? []) {
+      labelTokens.add(token);
+    }
+    if (row.resourceType === "CmdbItem" && row.resourceId) {
+      itemResourceIds.push(row.resourceId);
+    }
+  }
+  if (labelTokens.size === 0 && itemResourceIds.length === 0) return rows;
+
+  const referenced = await db.cmdbItem.findMany({
+    where: {
+      OR: [
+        ...(itemResourceIds.length > 0 ? [{ id: { in: itemResourceIds } }] : []),
+        ...(labelTokens.size > 0 ? [{ ciId: { in: [...labelTokens] } }] : []),
+      ],
+    },
+    select: {
+      id: true,
+      ciId: true,
+      deviceId: true,
+      siteId: true,
+      device: { select: { site: { select: { code: true } } } },
+    },
+  });
+
+  const visibleById = new Set<string>();
+  const visibleByCiId = new Set<string>();
+  for (const item of referenced) {
+    const visible = item.deviceId
+      ? sessionAllowsSite(claims, item.device?.site?.code ?? null)
+      : item.siteId === null || sessionAllowsSite(claims, item.siteId);
+    if (visible) {
+      visibleById.add(item.id);
+      visibleByCiId.add(item.ciId);
+    }
+  }
+
+  return rows.filter((row) => {
+    for (const token of row.resourceLabel?.match(/CI-\d{6}/g) ?? []) {
+      if (!visibleByCiId.has(token)) return false;
+    }
+    if (row.resourceType === "CmdbItem" && row.resourceId) {
+      if (!visibleById.has(row.resourceId)) return false;
+    }
+    return true;
+  });
 }

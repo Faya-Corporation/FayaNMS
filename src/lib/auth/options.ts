@@ -161,11 +161,22 @@ export const authOptions: NextAuthOptions = {
         // userSiteScopeClaim parser is fail-closed (malformed row → []),
         // so a hand-edited siteScopeJson can never mint wildcard access.
         const siteScope = userSiteScopeClaim(user.siteScopeJson);
+        // Wave-9 credential epoch (audit 9-a F-3): the epoch rides the
+        // sign-in claims so requireUser can detect a token minted BEFORE
+        // the last credential change (password SET bumps User.credentialEpoch
+        // in the same transaction). Absent → 0 semantics (backward
+        // compatible with every pre-epoch token).
+        const credentialEpoch =
+          typeof user.credentialEpoch === "number" &&
+          Number.isFinite(user.credentialEpoch)
+            ? user.credentialEpoch
+            : 0;
         return {
           id: user.id,
           email: user.email,
           name: user.name,
           role: user.role as UserRole,
+          credentialEpoch,
           ...(siteScope !== undefined
             ? { [SITE_SCOPE_CLAIM_KEY]: siteScope }
             : {}),
@@ -191,6 +202,14 @@ export const authOptions: NextAuthOptions = {
         if (Array.isArray(sites)) {
           token[SITE_SCOPE_CLAIM_KEY] = sites;
         }
+        // Wave-9 credential epoch: stamped ONLY here (sign-in time),
+        // exactly like the sites claim. The refresh branch below must NOT
+        // re-read it from the DB — a password reset must never self-heal a
+        // token minted before it, or session eviction (requireUser's
+        // epoch-vs-DB comparison) would silently stop working.
+        const epoch = (user as unknown as Record<string, unknown>).credentialEpoch;
+        token.credentialEpoch =
+          typeof epoch === "number" && Number.isFinite(epoch) ? epoch : 0;
         return token;
       }
 
@@ -216,6 +235,10 @@ export const authOptions: NextAuthOptions = {
           token.role = fresh.role;
           // F-031: token.sites is deliberately NOT refreshed here — scope
           // changes land on the NEXT sign-in (the JWT is minted at login).
+          // Wave-9: token.credentialEpoch is deliberately NOT refreshed
+          // here either — a password SET bumps the DB epoch, and the
+          // stale token must keep its old claim so requireUser evicts it
+          // (a refresh would defeat the eviction entirely).
         } catch {
           // keep previous claims
         }

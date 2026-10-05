@@ -110,7 +110,22 @@ const EXPORT_PAGE_SIZE = 100;
 function csvEscape(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return "";
   const text = String(value);
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  // Wave-9 (audit 9-b P3): CSV formula-injection neutralization — the same
+  // standard the reports exporter uses (src/lib/reports/generate.ts).
+  // Spreadsheet apps interpret cells BEGINNING with `=`, `+`, `-`, `@` (or
+  // a tab/CR before the payload) as formulas/DDE when the exported CSV is
+  // opened, so a hostile cell ("=cmd|' /C calc'!A0") would execute in the
+  // analyst's spreadsheet. Such cells get the OWASP leading-' guard, which
+  // forces text interpretation. Pure numbers (optionally signed/decimal)
+  // are exempt: a negative number is data, never a formula, and the guard
+  // would corrupt legitimate numeric exports. Clean cells are byte-identical.
+  const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+  const PLAIN_NUMBER = /^[+-]?\d+(?:\.\d+)?$/;
+  const neutralized =
+    text !== "" && FORMULA_PREFIX.test(text) && !PLAIN_NUMBER.test(text)
+      ? `'${text}`
+      : text;
+  return /[",\n]/.test(neutralized) ? `"${neutralized.replace(/"/g, '""')}"` : neutralized;
 }
 
 function buildDeviceCsv(rows: DeviceRowType[]): string {

@@ -77,9 +77,15 @@ export async function POST(
   const correlationId = newCorrelationId("USR");
 
   await db.$transaction(async (tx) => {
+    // Wave-9 credential epoch (audit 9-a F-3): the bump rides the SAME
+    // transaction as the hash swap — every token minted before this reset
+    // fails requireUser's epoch-vs-DB comparison on its next request and
+    // answers 401 UNAUTHENTICATED (fresh sign-in with the new password
+    // mints the new epoch). The resetting admin's own session is untouched
+    // (the epoch is per-target).
     await tx.user.update({
       where: { id: target.id },
-      data: { passwordHash },
+      data: { passwordHash, credentialEpoch: { increment: 1 } },
     });
     await tx.auditEvent.create({
       data: {

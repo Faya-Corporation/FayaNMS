@@ -116,37 +116,41 @@ export async function PATCH(
         ? Array.from(new Set(parsed.data.scopes))
         : undefined;
 
-    const updated = await db.apiClient.update({
-      where: { id },
-      data: {
-        ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-        ...(scopes !== undefined ? { scopesJson: JSON.stringify(scopes) } : {}),
-        ...(parsed.data.isActive !== undefined
-          ? { isActive: parsed.data.isActive }
-          : {}),
-      },
+    // Wave-9 (audit 9-a F-2): the update and its audit row commit together.
+    const updated = await db.$transaction(async (tx) => {
+      const row = await tx.apiClient.update({
+        where: { id },
+        data: {
+          ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+          ...(scopes !== undefined ? { scopesJson: JSON.stringify(scopes) } : {}),
+          ...(parsed.data.isActive !== undefined
+            ? { isActive: parsed.data.isActive }
+            : {}),
+        },
+      });
+
+      const auditCorrelationId = newCorrelationId("AXC");
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          action: revoking ? "API_CLIENT_REVOKED" : "API_CLIENT_UPDATED",
+          resourceType: "ApiClient",
+          resourceId: id,
+          resourceLabel: row.name,
+          result: "SUCCESS",
+          correlationId: auditCorrelationId,
+          beforeJson: JSON.stringify(clientView(existing)),
+          afterJson: JSON.stringify(clientView(row)),
+        },
+      });
+      return { row, correlationId: auditCorrelationId };
     });
 
-    const correlationId = newCorrelationId("AXC");
-    const after = clientView(updated);
-    await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? actor.email,
-        action: revoking ? "API_CLIENT_REVOKED" : "API_CLIENT_UPDATED",
-        resourceType: "ApiClient",
-        resourceId: id,
-        resourceLabel: updated.name,
-        result: "SUCCESS",
-        correlationId,
-        beforeJson: JSON.stringify(clientView(existing)),
-        afterJson: JSON.stringify(after),
-      },
-    });
-
+    const after = clientView(updated.row);
     return ok(
-      { client: after, audit: { correlationId } },
-      { correlationId },
+      { client: after, audit: { correlationId: updated.correlationId } },
+      { correlationId: updated.correlationId },
       200
     );
   } catch (error) {
@@ -184,21 +188,24 @@ export async function DELETE(
       );
     }
 
-    await db.apiClient.delete({ where: { id } });
-
+    // Wave-9 (audit 9-a F-2): the delete and its API_CLIENT_DELETED audit
+    // row commit together — no deleted row can lack its beforeJson snapshot.
     const correlationId = newCorrelationId("AXC");
-    await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? actor.email,
-        action: "API_CLIENT_DELETED",
-        resourceType: "ApiClient",
-        resourceId: id,
-        resourceLabel: existing.name,
-        result: "SUCCESS",
-        correlationId,
-        beforeJson: JSON.stringify(clientView(existing)),
-      },
+    await db.$transaction(async (tx) => {
+      await tx.apiClient.delete({ where: { id } });
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          action: "API_CLIENT_DELETED",
+          resourceType: "ApiClient",
+          resourceId: id,
+          resourceLabel: existing.name,
+          result: "SUCCESS",
+          correlationId,
+          beforeJson: JSON.stringify(clientView(existing)),
+        },
+      });
     });
 
     return ok(

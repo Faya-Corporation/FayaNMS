@@ -39,7 +39,7 @@ describe("R52-F-N1 — AI routes resolve the actor BEFORE any DB work", () => {
   const cases: { file: string; dbMarker: string; label: string }[] = [
     {
       file: "src/app/api/v1/ai/assist/route.ts",
-      dbMarker: "buildDeviceContext(id)",
+      dbMarker: "buildDeviceContext(id,",
       label: "ai/assist hoists resolveActingUser above the context build",
     },
     {

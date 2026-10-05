@@ -9,6 +9,8 @@ import {
 } from "../../_lib/api";
 import { consumeAiDailyQuota } from "@/lib/api/ai-quota";
 import { resolveActingUser } from "../../_lib/actor";
+import { sessionScopeFor } from "@/lib/auth/session";
+import { scopedDeviceWhere, type SessionScopeClaims } from "@/lib/auth/scope";
 import { buildChangeDraftMessages, type AiLocale } from "@/lib/ai/prompts";
 import {
   AiBadResponseError,
@@ -42,6 +44,14 @@ export const dynamic = "force-dynamic";
  *     unknown hostnames are dropped (never invented into ids) and the
  *     matched rows are returned as matchedDevices with their server ids.
  *
+ * F-031 (wave 9, audit 9-b F-1): the inventory snapshot is composed through
+ * scopedDeviceWhere — a sites-limited session's prompt only ever contains
+ * in-scope devices, and an out-of-scope hostname referenced by the draft
+ * grounds exactly like an unknown hostname (dropped — no match/no-match
+ * existence leak beyond what the wildcard path already shows). The load is
+ * also bounded by INVENTORY_PROMPT_CAP (see the constant's justification).
+ * The grounding matcher is exported as a pure function for behavioral pins.
+ *
  * The draft is ONLY a suggestion for the change wizard — this endpoint never
  * writes a Change row; the user reviews and submits through the wizard.
  * Audit row NL_CHANGE_DRAFT_GENERATED stays lean: lengths/counts/hints only,
@@ -60,6 +70,15 @@ const bodySchema = z.object({
 const RAW_DETAIL_MAX = 4000;
 /** Wizard contract caps a change at 20 devices. */
 const MAX_MATCHED_DEVICES = 20;
+/**
+ * Inventory rows embedded in the LLM prompt (wave-9 take cap). Each row is
+ * one ~80-char line, so 200 rows ≈ 16 KB of prompt — comfortably inside the
+ * model budget while the wizard itself caps a change at 20 devices
+ * (MAX_MATCHED_DEVICES). hostname-asc ordering makes any truncation
+ * deterministic, and the bound keeps a pathological fleet from degrading
+ * (or pricing out) every draft request. Typical fleets sit far below this.
+ */
+const INVENTORY_PROMPT_CAP = 200;
 
 /** Coerce "string | string[]" into a clean string array (LLMs do both). */
 const stringList = z
@@ -102,6 +121,17 @@ export interface AiMatchedDeviceRow {
   criticality: string;
   siteCode: string | null;
   vendorKey: string | null;
+}
+
+/** Minimal inventory-row shape the grounding matcher consumes. */
+export interface AiInventoryDeviceRow {
+  id: string;
+  hostname: string;
+  model: string | null;
+  role: string | null;
+  criticality: string;
+  vendor: { key: string } | null;
+  site: { name: string; code: string } | null;
 }
 
 /**
@@ -175,19 +205,12 @@ export async function POST(request: Request) {
     return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
   }
 
+  // F-031 (wave 9): the session's site scope bounds the grounding inventory
+  // (wildcard sessions — absent claims — keep byte-identical behavior).
+  const scopeClaims = await sessionScopeFor(request);
+
   // ── Real inventory snapshot for grounding (labels only — no secrets) ──
-  const devices = await db.device.findMany({
-    orderBy: { hostname: "asc" },
-    select: {
-      id: true,
-      hostname: true,
-      model: true,
-      role: true,
-      criticality: true,
-      vendor: { select: { key: true } },
-      site: { select: { name: true, code: true } },
-    },
-  });
+  const devices = await loadChangeDraftInventory(scopeClaims);
 
   const correlationId = newCorrelationId("AI");
 
@@ -313,36 +336,13 @@ export async function POST(request: Request) {
     );
   }
 
-  // ── Ground the hostnames in the real inventory ───────────────────────
-  // Case-insensitive match (LLMs drift on casing); unknown hostnames are
-  // dropped — device ids are only ever resolved server-side.
-  const byHostname = new Map<string, (typeof devices)[number]>();
-  for (const device of devices) {
-    byHostname.set(device.hostname.toLowerCase(), device);
-  }
-  const seen = new Set<string>();
-  const matchedDevices: AiMatchedDeviceRow[] = [];
-  let droppedHostnames = 0;
-  for (const rawHostname of draft.deviceHostnames ?? []) {
-    const device = byHostname.get(String(rawHostname).trim().toLowerCase());
-    if (!device) {
-      droppedHostnames += 1;
-      continue;
-    }
-    if (seen.has(device.id)) continue;
-    seen.add(device.id);
-    if (matchedDevices.length < MAX_MATCHED_DEVICES) {
-      matchedDevices.push({
-        id: device.id,
-        hostname: device.hostname,
-        model: device.model,
-        role: device.role,
-        criticality: device.criticality,
-        siteCode: device.site?.code ?? null,
-        vendorKey: device.vendor?.key ?? null,
-      });
-    }
-  }
+  // ── Ground the hostnames in the real (scope-filtered) inventory ─────
+  // The matcher drops unknown AND out-of-scope hostnames identically —
+  // device ids are only ever resolved server-side.
+  const { matchedDevices, droppedHostnames } = groundDeviceHostnames(
+    devices,
+    draft.deviceHostnames ?? []
+  );
 
   // ── Lean audit row (lengths/counts/hints only — never prompt or draft) ─
   try {
@@ -395,4 +395,75 @@ export async function POST(request: Request) {
     { correlationId },
     200
   );
+}
+
+/**
+ * The REAL device inventory the draft is grounded against (labels only — no
+ * secrets). F-031 (wave 9): composed through scopedDeviceWhere so a
+ * sites-limited session's prompt and grounding vocabulary contain ONLY
+ * in-scope devices; wildcard sessions (absent claims) get the base load
+ * unchanged, byte-identical to pre-wave-9. Bounded by INVENTORY_PROMPT_CAP.
+ * Exported for behavioral scoping pins (tests/audit/ai-scope-hardening.test.ts).
+ */
+export async function loadChangeDraftInventory(
+  scopeClaims?: SessionScopeClaims | null
+): Promise<AiInventoryDeviceRow[]> {
+  return db.device.findMany({
+    where: scopedDeviceWhere(scopeClaims, {}),
+    orderBy: { hostname: "asc" },
+    take: INVENTORY_PROMPT_CAP,
+    select: {
+      id: true,
+      hostname: true,
+      model: true,
+      role: true,
+      criticality: true,
+      vendor: { select: { key: true } },
+      site: { select: { name: true, code: true } },
+    },
+  });
+}
+
+/**
+ * Ground the draft's hostname references in the (already scope-filtered)
+ * inventory — case-insensitive match (LLMs drift on casing); unknown
+ * hostnames are dropped and device ids are only ever resolved server-side.
+ * Because the inventory is scope-filtered by loadChangeDraftInventory, an
+ * OUT-OF-SCOPE hostname falls into the same dropped bucket as an unknown
+ * one — no match/no-match existence leak beyond what the wildcard path
+ * already shows. Extracted verbatim from the POST body (wave 9) so the
+ * grounding is behaviorally pinnable; the semantics are unchanged.
+ */
+export function groundDeviceHostnames(
+  devices: readonly AiInventoryDeviceRow[],
+  rawHostnames: readonly string[]
+): { matchedDevices: AiMatchedDeviceRow[]; droppedHostnames: number } {
+  const byHostname = new Map<string, AiInventoryDeviceRow>();
+  for (const device of devices) {
+    byHostname.set(device.hostname.toLowerCase(), device);
+  }
+  const seen = new Set<string>();
+  const matchedDevices: AiMatchedDeviceRow[] = [];
+  let droppedHostnames = 0;
+  for (const rawHostname of rawHostnames) {
+    const device = byHostname.get(String(rawHostname).trim().toLowerCase());
+    if (!device) {
+      droppedHostnames += 1;
+      continue;
+    }
+    if (seen.has(device.id)) continue;
+    seen.add(device.id);
+    if (matchedDevices.length < MAX_MATCHED_DEVICES) {
+      matchedDevices.push({
+        id: device.id,
+        hostname: device.hostname,
+        model: device.model,
+        role: device.role,
+        criticality: device.criticality,
+        siteCode: device.site?.code ?? null,
+        vendorKey: device.vendor?.key ?? null,
+      });
+    }
+  }
+  return { matchedDevices, droppedHostnames };
 }

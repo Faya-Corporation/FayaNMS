@@ -111,7 +111,7 @@ export async function PATCH(request: Request) {
 
     // Validate every update against the whitelist + type constraints FIRST
     // (atomic: nothing is written unless the whole batch is valid).
-    const prepared: { key: string; value: unknown; before: unknown }[] = [];
+    const prepared: { key: string; value: unknown }[] = [];
     for (const { key, value } of parsed.data.updates) {
       const spec = SETTING_CATALOG[key];
       if (!spec) {
@@ -144,33 +144,43 @@ export async function PATCH(request: Request) {
           return fail("INVALID_BODY", `Setting "${key}" must be ≤ ${spec.max} chars`, 400);
         }
       }
-      const existing = await db.setting.findUnique({ where: { key } });
-      prepared.push({ key, value, before: existing ? parseValue(existing.valueJson) : null });
+      prepared.push({ key, value });
     }
 
-    const after: Record<string, unknown> = {};
-    for (const { key, value } of prepared) {
-      await db.setting.upsert({
-        where: { key },
-        update: { valueJson: JSON.stringify(value) },
-        create: { key, valueJson: JSON.stringify(value) },
-      });
-      after[key] = value;
-    }
-
+    // Wave-9 (audit 9-a F-2): the WHOLE batch is one transaction — the
+    // per-key before-reads, every upsert and the single SETTINGS_UPDATED
+    // audit row commit together or not at all. Previously the upserts ran
+    // as independent sequential writes, so a crash mid-batch could persist
+    // a partial batch with no audit row (and the before-snapshot was read
+    // outside any transaction, so concurrent writers could desync it).
     const correlationId = newCorrelationId("SET");
-    await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? actor.email,
-        action: "SETTINGS_UPDATED",
-        resourceType: "Setting",
-        resourceLabel: prepared.map((p) => p.key).join(", ").slice(0, 120),
-        result: "SUCCESS",
-        correlationId,
-        beforeJson: JSON.stringify(Object.fromEntries(prepared.map((p) => [p.key, p.before]))),
-        afterJson: JSON.stringify(after),
-      },
+    const after: Record<string, unknown> = {};
+    await db.$transaction(async (tx) => {
+      const before: Record<string, unknown> = {};
+      for (const { key, value } of prepared) {
+        const existing = await tx.setting.findUnique({ where: { key } });
+        before[key] = existing ? parseValue(existing.valueJson) : null;
+        await tx.setting.upsert({
+          where: { key },
+          update: { valueJson: JSON.stringify(value) },
+          create: { key, valueJson: JSON.stringify(value) },
+        });
+        after[key] = value;
+      }
+
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          action: "SETTINGS_UPDATED",
+          resourceType: "Setting",
+          resourceLabel: prepared.map((p) => p.key).join(", ").slice(0, 120),
+          result: "SUCCESS",
+          correlationId,
+          beforeJson: JSON.stringify(before),
+          afterJson: JSON.stringify(after),
+        },
+      });
     });
 
     return ok(

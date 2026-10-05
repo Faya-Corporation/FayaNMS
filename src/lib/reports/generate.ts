@@ -606,11 +606,29 @@ export async function generateReport(
  * escaping). Null/undefined cells become empty values. Direction-agnostic:
  * cell values are data (ISO timestamps, hostnames, numbers), so the file
  * reads identically in LTR and RTL contexts.
+ *
+ * P3 (wave-9) — CSV FORMULA-INJECTION NEUTRALIZATION: spreadsheet apps
+ * interpret cells that BEGIN with `=`, `+`, `-`, `@` (or a tab/CR before
+ * the payload) as formulas/DDE when the CSV is opened, so a hostile cell
+ * value ("=cmd|' /C calc'!A0") would execute in the analyst's spreadsheet.
+ * Such cells get the standard OWASP neutralization — a leading `'` guard
+ * forces text interpretation. Cells whose ENTIRE content is a plain number
+ * (optionally signed/decimal) are exempt: a pure number is never a formula
+ * and the guard would corrupt legitimate numeric exports (negative slopes,
+ * deltas). Clean cells (no dangerous prefix) are byte-unchanged.
  */
 export function artifactToCsv(artifact: ReportArtifact): string {
+  const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+  const PLAIN_NUMBER = /^[+-]?\d+(?:\.\d+)?$/;
   const escape = (value: ReportRow[string] | undefined): string => {
     const s = value === null || value === undefined ? "" : String(value);
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    const neutralized =
+      s !== "" && FORMULA_PREFIX.test(s) && !PLAIN_NUMBER.test(s)
+        ? `'${s}`
+        : s;
+    return /[",\n\r]/.test(neutralized)
+      ? `"${neutralized.replace(/"/g, '""')}"`
+      : neutralized;
   };
   const lines: string[] = [
     artifact.columns.map((column) => escape(column.label)).join(","),

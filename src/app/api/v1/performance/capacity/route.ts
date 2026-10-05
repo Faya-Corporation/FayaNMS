@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere } from "@/lib/auth/scope";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import {
   backtestCapacityModel,
@@ -55,6 +60,13 @@ export const dynamic = "force-dynamic";
  * `modelSkipReason` — metrics are never fabricated. The training input is
  * the PUBLISHED (rounded) series, so the client reproduces byte-identical
  * results from `series` alone; v2 fields keep their exact meaning.
+ *
+ * F-031 wave-9 (read-plane migration): the device population composes
+ * scopedDeviceWhere, so the forecast pool, `risks` and the `summary`
+ * counts cover the session's devices only (rollup rows for out-of-scope
+ * devices are already skipped by the deviceById guard). Wildcard sessions
+ * keep the byte-unchanged where (parity guarantee); deny-all sessions get
+ * an empty pool with zeroed summary counts.
  */
 
 const querySchema = z.object({
@@ -98,6 +110,7 @@ export async function GET(request: Request) {
   const since = new Date(now.getTime() - days * DAY_MS);
 
   const devices = await db.device.findMany({
+    where: scopedDeviceWhere(await sessionScopeFor(request), {}),
     select: { id: true, hostname: true, site: { select: { code: true } } },
     orderBy: { hostname: "asc" },
   });

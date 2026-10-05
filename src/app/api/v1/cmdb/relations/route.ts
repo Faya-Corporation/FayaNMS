@@ -6,7 +6,13 @@ import {
   newCorrelationId,
   ok,
 } from "../../_lib/api";
-import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionAllowsSite, sessionSiteScope } from "@/lib/auth/scope";
 import {
   CMDB_ITEM_SUMMARY_SELECT,
   cmdbRelationTypeSchema,
@@ -24,6 +30,15 @@ export const dynamic = "force-dynamic";
  *   Edge list with source/target summaries joined. itemId resolves by cuid
  *   OR CI-000NNN and matches edges where the item is EITHER endpoint.
  *   Read-only → no audit event (app convention).
+ *
+ *   F-031 wave-9 (read-plane migration): a sites-limited session sees only
+ *   edges whose BOTH endpoints are visible CIs (the list predicate from
+ *   cmdb/items — linked device's site, else the siteId tag; linkage-less
+ *   CIs are global). An itemId whose CI is out-of-scope answers the SAME
+ *   `CMDB_NOT_FOUND` 404 envelope a wildcard session gets for a missing CI
+ *   (404-not-403 — no existence leak). Wildcard keeps the byte-unchanged
+ *   queries; deny-all still lists edges between linkage-less CIs (the
+ *   documented global-resource edge).
  *
  * POST /api/v1/cmdb/relations  { sourceId, targetId, relationType }
  *   Create a directed edge. Guards:
@@ -75,8 +90,31 @@ export async function GET(request: Request) {
     if (!item) {
       return fail("CMDB_NOT_FOUND", `No configuration item matches "${itemIdParam}"`, 404);
     }
+    // F-031 wave-9: out-of-scope CI → the SAME 404 as a missing one.
+    const scopeClaims = await sessionScopeFor(request);
+    const scope = sessionSiteScope(scopeClaims);
+    if (
+      scope.mode === "sites" &&
+      !sessionAllowsSite(scopeClaims, await cmdbItemSiteCode(item))
+    ) {
+      return fail("CMDB_NOT_FOUND", `No configuration item matches "${itemIdParam}"`, 404);
+    }
     itemIdFilter = item.id;
   }
+
+  // F-031 wave-9: both endpoints must be visible for the edge to render.
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const ciScopeWhere: Prisma.CmdbItemWhereInput | undefined =
+    scope.mode === "sites"
+      ? {
+          OR: [
+            { device: { site: { code: { in: scope.codes } } } },
+            { AND: [{ deviceId: null }, { siteId: { in: scope.codes } }] },
+            { AND: [{ deviceId: null }, { siteId: null }] },
+          ],
+        }
+      : undefined;
 
   const relations = await db.cmdbRelation.findMany({
     where: {
@@ -85,6 +123,9 @@ export async function GET(request: Request) {
         : {}),
       ...(itemIdFilter
         ? { OR: [{ sourceId: itemIdFilter }, { targetId: itemIdFilter }] }
+        : {}),
+      ...(ciScopeWhere
+        ? { AND: [{ source: ciScopeWhere }, { target: ciScopeWhere }] }
         : {}),
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -291,4 +332,30 @@ export async function DELETE(request: Request) {
     { actor: actorName },
     200
   );
+}
+
+/* ───────────────────────── F-031 wave-9 helper ───────────────────────── */
+
+/**
+ * Resolve the CI's governing site code (the list predicate's linkage): the
+ * LINKED DEVICE's site when device-linked (a site-less linked device
+ * yields null, which HIDES the CI from sites-limited sessions); otherwise
+ * the CI's own siteId tag; null when the CI has no site linkage (global
+ * resource — the assertSiteScope(null) bypass).
+ *
+ * KEPT IN SYNC with the twin helpers in cmdb/items/route.ts and
+ * cmdb/items/[id]/route.ts (no shared lib file in this wave's ownership).
+ */
+async function cmdbItemSiteCode(item: {
+  deviceId: string | null;
+  siteId: string | null;
+}): Promise<string | null> {
+  if (item.deviceId) {
+    const device = await db.device.findUnique({
+      where: { id: item.deviceId },
+      select: { site: { select: { code: true } } },
+    });
+    return device?.site?.code ?? null;
+  }
+  return item.siteId;
 }

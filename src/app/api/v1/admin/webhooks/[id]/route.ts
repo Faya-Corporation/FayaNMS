@@ -86,30 +86,34 @@ export async function PATCH(
     }
     if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
 
-    const row = await db.webhookEndpoint.update({ where: { id }, data });
-
+    // Wave-9 (audit 9-a F-2): the update and its WEBHOOK_UPDATED audit row
+    // commit together.
     const correlationId = newCorrelationId("WH");
-    await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? actor.email,
-        action: "WEBHOOK_UPDATED",
-        resourceType: "WebhookEndpoint",
-        resourceId: id,
-        resourceLabel: row.name,
-        result: "SUCCESS",
-        correlationId,
-        beforeJson: JSON.stringify({
-          name: existing.name,
-          url: existing.url,
-          isActive: existing.isActive,
-        }),
-        afterJson: JSON.stringify({
-          name: row.name,
-          url: row.url,
-          isActive: row.isActive,
-        }),
-      },
+    const row = await db.$transaction(async (tx) => {
+      const updated = await tx.webhookEndpoint.update({ where: { id }, data });
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          action: "WEBHOOK_UPDATED",
+          resourceType: "WebhookEndpoint",
+          resourceId: id,
+          resourceLabel: updated.name,
+          result: "SUCCESS",
+          correlationId,
+          beforeJson: JSON.stringify({
+            name: existing.name,
+            url: existing.url,
+            isActive: existing.isActive,
+          }),
+          afterJson: JSON.stringify({
+            name: updated.name,
+            url: updated.url,
+            isActive: updated.isActive,
+          }),
+        },
+      });
+      return updated;
     });
 
     return ok(
@@ -147,24 +151,27 @@ export async function DELETE(
       return fail("WEBHOOK_NOT_FOUND", `No webhook endpoint with id ${id}`, 404);
     }
 
-    await db.webhookEndpoint.delete({ where: { id } });
-
+    // Wave-9 (audit 9-a F-2): the delete and its WEBHOOK_DELETED audit row
+    // commit together.
     const correlationId = newCorrelationId("WH");
-    await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? actor.email,
-        action: "WEBHOOK_DELETED",
-        resourceType: "WebhookEndpoint",
-        resourceId: id,
-        resourceLabel: existing.name,
-        result: "SUCCESS",
-        correlationId,
-        beforeJson: JSON.stringify({
-          name: existing.name,
-          url: existing.url,
-        }),
-      },
+    await db.$transaction(async (tx) => {
+      await tx.webhookEndpoint.delete({ where: { id } });
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          action: "WEBHOOK_DELETED",
+          resourceType: "WebhookEndpoint",
+          resourceId: id,
+          resourceLabel: existing.name,
+          result: "SUCCESS",
+          correlationId,
+          beforeJson: JSON.stringify({
+            name: existing.name,
+            url: existing.url,
+          }),
+        },
+      });
     });
 
     return ok(

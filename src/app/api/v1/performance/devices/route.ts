@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere } from "@/lib/auth/scope";
 import { fail, firstIssueMessage, ok, pageMeta, paginationSchema } from "../../_lib/api";
 import {
   fetchRollups,
@@ -41,6 +46,14 @@ export const dynamic = "force-dynamic";
  *               zero baseline is undefined)
  * - trend     = last ≤24 bucket avgs, chronological (sparkline input)
  * - sorted by latest.value desc, server-side pagination over the fleet
+ *
+ * F-031 wave-9 (read-plane migration): the device leg composes
+ * scopedDeviceWhere over the caller filters, so the caller-chosen
+ * ?siteCode= INTERSECTS the session scope instead of overriding it — a
+ * sites-limited session asking for an out-of-scope site gets an empty
+ * result (200 + zero rows, the list empty state), never the unscoped set.
+ * Wildcard sessions keep the byte-unchanged where (parity guarantee);
+ * deny-all sessions see zero rows.
  */
 
 const METRICS = ["CPU", "MEMORY", "LATENCY_MS", "PACKET_LOSS", "UTILIZATION"] as const;
@@ -103,9 +116,12 @@ export async function GET(request: Request) {
   const win = rangeWindow(parsed.data.range);
   const granularity = await resolveGranularity(win);
 
-  // Devices visible under the site/q filters (status kept for the rows).
+  // Devices visible under the site/q filters AND the session scope (status
+  // kept for the rows). The caller's siteCode rides INSIDE the base where,
+  // so a sites-limited session's scope intersects it instead of being
+  // overridden by it (F-031 wave-9).
   const devices = await db.device.findMany({
-    where: {
+    where: scopedDeviceWhere(await sessionScopeFor(request), {
       ...(siteCode ? { site: { code: siteCode } } : {}),
       ...(q
         ? {
@@ -116,7 +132,7 @@ export async function GET(request: Request) {
             ],
           }
         : {}),
-    },
+    }),
     select: {
       id: true,
       hostname: true,

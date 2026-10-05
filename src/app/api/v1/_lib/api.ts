@@ -147,9 +147,20 @@ export function pageMeta(
   };
 }
 
-/** Shared pagination query params (pageSize hard-capped at 100). */
+/**
+ * Shared pagination query params (pageSize hard-capped at 100; page capped
+ * at 1000 — deep-pagination abuse bound).
+ *
+ * P3 F-9 (wave-9): `page` used to be unbounded above 1, so a client could
+ * ask for page=10^9 and every caller computed skip = (page-1)*pageSize over
+ * the whole table (and some callers sliced unbounded offsets in memory).
+ * The cap answers the same INVALID_QUERY 400 envelope every caller already
+ * produces (all call sites route the schema failure through
+ * firstIssueMessage), and no real consumer paginates past 1000 pages of
+ * ≤100 rows (100k rows deep). pageSize semantics untouched.
+ */
 export const paginationSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(1000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 

@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere } from "@/lib/auth/scope";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import {
   fetchRollups,
@@ -37,6 +42,15 @@ export const dynamic = "force-dynamic";
  *   devices of max(avg UTILIZATION_IN, avg UTILIZATION_OUT) — the same
  *   combination topUtilizers ranks by.
  * - healthDistribution is LIVE Device.status grouping (all six statuses).
+ *
+ * F-031 wave-9 (read-plane migration): the device population composes
+ * scopedDeviceWhere, so every derived surface — bucket series, KPIs
+ * (including the standalone PACKET_LOSS pass), topUtilizers and the live
+ * health distribution — covers the session's devices only. Rollup rows for
+ * out-of-scope devices are already skipped by the deviceById guard; the
+ * packet-loss KPI now applies the same guard. Wildcard sessions keep the
+ * byte-unchanged where (parity guarantee); deny-all sessions get zeroed
+ * KPIs and empty distributions.
  */
 
 const HEALTH_STATUSES = ["ONLINE", "DEGRADED", "OFFLINE", "MAINTENANCE", "UNKNOWN", "UNMANAGED"] as const;
@@ -77,6 +91,7 @@ export async function GET(request: Request) {
   const granularity = await resolveGranularity(win);
 
   const devices = await db.device.findMany({
+    where: scopedDeviceWhere(await sessionScopeFor(request), {}),
     select: { id: true, hostname: true, status: true, site: { select: { code: true, name: true } } },
     orderBy: { hostname: "asc" },
   });
@@ -188,7 +203,11 @@ export async function GET(request: Request) {
   };
 
   const lossRows: RollupRow[] = await fetchRollups(granularity, win.since, ["PACKET_LOSS"]);
-  kpis.packetLossPct = round1(mean(lossRows.map((r) => r.avg)));
+  // F-031 wave-9: same device guard the bucket series applies — the
+  // packet-loss KPI covers the session's devices only.
+  kpis.packetLossPct = round1(
+    mean(lossRows.filter((r) => deviceById.has(r.deviceId)).map((r) => r.avg))
+  );
 
   // ── top utilizers (top 5 by max(avgIn, avgOut) over the range) ───────
   const topUtilizers = perDeviceMaxUtil

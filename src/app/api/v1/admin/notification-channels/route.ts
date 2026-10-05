@@ -107,28 +107,32 @@ export async function POST(request: Request) {
       }
     }
 
-    const row = await db.notificationChannel.create({
-      data: {
-        name: parsed.data.name,
-        type,
-        configJson: JSON.stringify(config),
-        isActive: parsed.data.isActive ?? true,
-      },
-    });
-
+    // Wave-9 (audit 9-a F-2): the create and its CHANNEL_CREATED audit row
+    // commit together.
     const correlationId = newCorrelationId("CH");
-    await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? actor.email,
-        action: "CHANNEL_CREATED",
-        resourceType: "NotificationChannel",
-        resourceId: row.id,
-        resourceLabel: row.name,
-        result: "SUCCESS",
-        correlationId,
-        afterJson: JSON.stringify({ name: row.name, type, config }),
-      },
+    const row = await db.$transaction(async (tx) => {
+      const created = await tx.notificationChannel.create({
+        data: {
+          name: parsed.data.name,
+          type,
+          configJson: JSON.stringify(config),
+          isActive: parsed.data.isActive ?? true,
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          action: "CHANNEL_CREATED",
+          resourceType: "NotificationChannel",
+          resourceId: created.id,
+          resourceLabel: created.name,
+          result: "SUCCESS",
+          correlationId,
+          afterJson: JSON.stringify({ name: created.name, type, config }),
+        },
+      });
+      return created;
     });
 
     return ok(

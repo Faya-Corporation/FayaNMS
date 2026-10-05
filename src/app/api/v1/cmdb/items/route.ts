@@ -6,7 +6,13 @@ import {
   newCorrelationId,
   ok,
 } from "../../_lib/api";
-import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionSiteScope, sessionAllowsSite } from "@/lib/auth/scope";
 import {
   cmdbCiTypeSchema,
   cmdbCriticalitySchema,
@@ -24,14 +30,25 @@ export const dynamic = "force-dynamic";
  *
  * GET /api/v1/cmdb/items
  *   One bundled read for the CMDB view: the (filterable) CI list with the
- *   linked inventory device + owner resolved, GLOBAL KPI counts (independent
- *   of the filters so polling does not move the tiles while filtering), the
+ *   linked inventory device + owner resolved, KPI counts (independent of
+ *   the filters so polling does not move the tiles while filtering), the
  *   real site option list (create dialog + filters) and the recent CMDB_*
  *   audit trail (history section). Read-only → no audit event (app
  *   convention). List ordering is ciId asc — deterministic across polls.
  *
  *   Filters: ciType, status, criticality, environment, siteId (site CODE),
  *   q (name/ciId/description contains), limit (1..500, default 200).
+ *
+ *   F-031 wave-9 (read-plane migration): a CI is visible to a
+ *   sites-limited session when its site linkage — the LINKED DEVICE's site
+ *   code, else the CI's own siteId tag — is inside the scope; a CI with NO
+ *   site linkage is a global resource and stays visible (the documented
+ *   assertSiteScope(null) bypass, authorization-matrix §5.1). The same
+ *   predicate scopes the device join (deviceHostname/Status only render
+ *   for in-scope devices), the site catalog, the KPI counts and the audit
+ *   history (rows whose CI- references are out-of-scope or unresolvable
+ *   drop fail-closed). Wildcard sessions keep the byte-unchanged queries;
+ *   deny-all sessions see only the linkage-less CIs (global resource edge).
  *
  * POST /api/v1/cmdb/items
  *   Create a CI. The CI-000NNN identifier is auto-assigned (next free
@@ -96,6 +113,25 @@ export async function GET(request: Request) {
   const { ciType, status, criticality, environment, siteId, q, limit } =
     parsedQuery.data;
 
+  // ── F-031 wave-9: CI visibility predicate (see the header note) ──────
+  // device-linked CI → the linked device's site must be in scope (a
+  // site-less linked device hides the CI — row-level parity with devices);
+  // device-less CI → the siteId tag must be in scope, and a CI with NO
+  // linkage at all is a global resource (visible to every session).
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const isWildcard = scope.mode === "wildcard";
+  // Sites-limited sessions scope the CI legs; the wildcard path never
+  // consumes ciScopeWhere (every use is guarded).
+  const scopedCodes = scope.mode === "sites" ? scope.codes : [];
+  const ciScopeWhere: Prisma.CmdbItemWhereInput = {
+    OR: [
+      { device: { site: { code: { in: scopedCodes } } } },
+      { AND: [{ deviceId: null }, { siteId: { in: scopedCodes } }] },
+      { AND: [{ deviceId: null }, { siteId: null }] },
+    ],
+  };
+
   const where: Prisma.CmdbItemWhereInput = {
     ...(ciType ? { ciType } : {}),
     ...(status ? { status } : {}),
@@ -116,28 +152,50 @@ export async function GET(request: Request) {
   const [items, ownerRows, deviceRows, siteRows, counts, relationsCount, audits] =
     await Promise.all([
       db.cmdbItem.findMany({
-        where,
+        where: isWildcard ? where : { AND: [where, ciScopeWhere] },
         orderBy: { ciId: "asc" },
         take: limit,
       }),
       db.user.findMany({ select: { id: true, name: true, email: true } }),
       db.device.findMany({
+        // F-031 wave-9: the hostname/status join renders in-scope devices
+        // only (defense in depth — the CI rows are already filtered).
+        ...(isWildcard ? {} : { where: { site: { code: { in: scope.codes } } } }),
         select: { id: true, hostname: true, status: true },
       }),
       db.site.findMany({
+        // F-031 wave-9: the site catalog (create dialog + filters) shows
+        // the session's sites; wildcard keeps the full scan.
+        ...(isWildcard ? {} : { where: { code: { in: scope.codes } } }),
         orderBy: { code: "asc" },
         select: { code: true, name: true },
       }),
-      // GLOBAL KPI counts — deliberately unfiltered so the KPI row stays
-      // stable while the user narrows the table.
-      db.cmdbItem.groupBy({ by: ["status"], _count: { _all: true } }),
-      db.cmdbRelation.count(),
+      // KPI counts — still unfiltered by the ciType/status/... filters so
+      // the KPI row stays stable while the user narrows the table, but now
+      // SCOPE-relative (F-031 wave-9: the tiles describe the session's
+      // world, not the whole fleet).
+      db.cmdbItem.groupBy({
+        by: ["status"],
+        _count: { _all: true },
+        ...(isWildcard ? {} : { where: ciScopeWhere }),
+      }),
+      db.cmdbRelation.count({
+        ...(isWildcard
+          ? {}
+          : {
+              where: {
+                AND: [{ source: ciScopeWhere }, { target: ciScopeWhere }],
+              },
+            }),
+      }),
       db.auditEvent.findMany({
         where: { action: { startsWith: "CMDB_" } },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 12,
         select: {
           action: true,
+          resourceType: true,
+          resourceId: true,
           result: true,
           actorName: true,
           resourceLabel: true,
@@ -147,17 +205,33 @@ export async function GET(request: Request) {
       }),
     ]);
 
+  // F-031 wave-9: the history strip drops rows whose CI references are
+  // out-of-scope or unresolvable (fail-closed) for sites-limited sessions.
+  const scopedAudits = isWildcard
+    ? audits
+    : await filterCmdbAuditsForScope(scopeClaims, audits);
+
   const total = counts.reduce((sum, row) => sum + row._count._all, 0);
   const active =
     counts.find((row) => row.status === "active")?._count._all ?? 0;
   // Critical-tier: critical CIs plus every tier-1 service anchor. Computed
   // from a dedicated indexed query instead of re-scanning the list rows.
   const criticalTier = await db.cmdbItem.count({
-    where: { OR: [{ criticality: "critical" }, { serviceTier: "tier-1" }] },
+    where: isWildcard
+      ? { OR: [{ criticality: "critical" }, { serviceTier: "tier-1" }] }
+      : {
+          AND: [
+            ciScopeWhere,
+            { OR: [{ criticality: "critical" }, { serviceTier: "tier-1" }] },
+          ],
+        },
   });
 
   const ownerById = new Map(
-    ownerRows.map((u) => [u.id, u.name ?? u.email ?? u.id])
+    // R69 re-review discipline (mirrors meta/users): the fallback is the
+    // email LOCAL-PART — a bare `?? u.email` ships the full address of any
+    // owner whose name is null.
+    ownerRows.map((u) => [u.id, u.name ?? u.email.split("@")[0] ?? u.id])
   );
   const deviceById = new Map(deviceRows.map((d) => [d.id, d]));
 
@@ -194,7 +268,7 @@ export async function GET(request: Request) {
         relations: relationsCount,
       },
       sites: siteRows,
-      history: audits.map((a) => ({
+      history: scopedAudits.map((a) => ({
         action: a.action,
         result: a.result,
         actorName: a.actorName,
@@ -239,11 +313,16 @@ export async function POST(request: Request) {
 
   // ── Domain validation (device ↔ site ↔ uniqueness) ──
   if (data.deviceId) {
+    // F-031 wave-9: the device reference is scope-validated — for a
+    // sites-limited session an out-of-scope device answers the SAME
+    // UNKNOWN_DEVICE envelope as a missing one (no existence leak; the
+    // sites catalog stays global per the matrix, so siteId needs no gate).
+    const scopeClaims = await sessionScopeFor(request);
     const device = await db.device.findUnique({
       where: { id: data.deviceId },
-      select: { id: true, hostname: true },
+      select: { id: true, hostname: true, site: { select: { code: true } } },
     });
-    if (!device) {
+    if (!device || !sessionAllowsSite(scopeClaims, device.site?.code ?? null)) {
       return fail("UNKNOWN_DEVICE", "The referenced device does not exist", 422);
     }
     const mapped = await db.cmdbItem.findUnique({
@@ -370,4 +449,92 @@ export async function POST(request: Request) {
 
   // Unreachable in practice — defensive fall-through keeps the type checker happy.
   return fail("CMDB_ID_EXHAUSTED", "Could not allocate a CI identifier", 500);
+}
+
+/* ───────────────────────── F-031 wave-9 helper ───────────────────────── */
+
+type CmdbAuditRow = {
+  action: string;
+  resourceType: string;
+  resourceId: string | null;
+  resourceLabel: string | null;
+  result: string;
+  actorName: string | null;
+  correlationId: string | null;
+  createdAt: Date;
+};
+
+/**
+ * Scope-filter the CMDB_* audit history for sites-limited sessions.
+ *
+ * Audit rows carry NO site linkage, but CMDB rows are self-identifying:
+ * resourceLabel embeds the stable CI-000NNN identifier(s) —
+ * "CI-000001 — name" for CI rows and "CI-A → CI-B (type)" for relation
+ * rows — and a CmdbItem row's resourceId resolves to the item directly.
+ * A row passes only when EVERY CI- identifier it references resolves to a
+ * visible CI (the same predicate the CI list uses); references that are
+ * out-of-scope, or that no longer resolve (removed relation / deleted CI),
+ * drop the row fail-closed. Rows without CI references pass through.
+ * Wildcard sessions never enter this helper (byte-unchanged history).
+ *
+ * KEPT IN SYNC with the twin helper in cmdb/items/[id]/route.ts (no shared
+ * lib file in this wave's ownership).
+ */
+async function filterCmdbAuditsForScope(
+  claims: Parameters<typeof sessionSiteScope>[0],
+  rows: CmdbAuditRow[]
+): Promise<CmdbAuditRow[]> {
+  const labelTokens = new Set<string>();
+  const itemResourceIds: string[] = [];
+  for (const row of rows) {
+    for (const token of row.resourceLabel?.match(/CI-\d{6}/g) ?? []) {
+      labelTokens.add(token);
+    }
+    if (row.resourceType === "CmdbItem" && row.resourceId) {
+      itemResourceIds.push(row.resourceId);
+    }
+  }
+  if (labelTokens.size === 0 && itemResourceIds.length === 0) return rows;
+
+  const referenced = await db.cmdbItem.findMany({
+    where: {
+      OR: [
+        ...(itemResourceIds.length > 0 ? [{ id: { in: itemResourceIds } }] : []),
+        ...(labelTokens.size > 0 ? [{ ciId: { in: [...labelTokens] } }] : []),
+      ],
+    },
+    select: {
+      id: true,
+      ciId: true,
+      deviceId: true,
+      siteId: true,
+      device: { select: { site: { select: { code: true } } } },
+    },
+  });
+
+  const visibleById = new Set<string>();
+  const visibleByCiId = new Set<string>();
+  for (const item of referenced) {
+    // Same visibility predicate as the CI list: the linked device's site
+    // governs when device-linked (a site-less linked device HIDES the CI
+    // from sites-limited sessions); otherwise the siteId tag; a CI with no
+    // linkage is a global resource.
+    const visible = item.deviceId
+      ? sessionAllowsSite(claims, item.device?.site?.code ?? null)
+      : item.siteId === null || sessionAllowsSite(claims, item.siteId);
+    if (visible) {
+      visibleById.add(item.id);
+      visibleByCiId.add(item.ciId);
+    }
+  }
+
+  return rows.filter((row) => {
+    for (const token of row.resourceLabel?.match(/CI-\d{6}/g) ?? []) {
+      if (!visibleByCiId.has(token)) return false; // out-of-scope or stale
+    }
+    if (row.resourceType === "CmdbItem" && row.resourceId) {
+      if (!visibleById.has(row.resourceId)) return false;
+    }
+    return true;
+  });
 }

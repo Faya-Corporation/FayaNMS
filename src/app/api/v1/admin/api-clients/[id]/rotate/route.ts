@@ -51,25 +51,30 @@ export async function POST(
     const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
     const tokenPrefix = token.slice(0, 8);
 
-    const updated = await db.apiClient.update({
-      where: { id },
-      data: { tokenHash, tokenPrefix },
-    });
-
+    // Wave-9 (audit 9-a F-2): the hash/prefix swap and its
+    // API_CLIENT_ROTATED audit row commit together — a rotated credential
+    // can never exist without its audit trail (or vice versa).
     const correlationId = newCorrelationId("AXC");
-    await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? actor.email,
-        action: "API_CLIENT_ROTATED",
-        resourceType: "ApiClient",
-        resourceId: id,
-        resourceLabel: updated.name,
-        result: "SUCCESS",
-        correlationId,
-        beforeJson: JSON.stringify({ tokenPrefix: existing.tokenPrefix }),
-        afterJson: JSON.stringify({ tokenPrefix }),
-      },
+    const updated = await db.$transaction(async (tx) => {
+      const row = await tx.apiClient.update({
+        where: { id },
+        data: { tokenHash, tokenPrefix },
+      });
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          action: "API_CLIENT_ROTATED",
+          resourceType: "ApiClient",
+          resourceId: id,
+          resourceLabel: row.name,
+          result: "SUCCESS",
+          correlationId,
+          beforeJson: JSON.stringify({ tokenPrefix: existing.tokenPrefix }),
+          afterJson: JSON.stringify({ tokenPrefix }),
+        },
+      });
+      return row;
     });
 
     let scopes: string[] = [];

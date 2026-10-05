@@ -180,7 +180,15 @@ export async function PATCH(
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.role !== undefined ? { role: data.role } : {}),
         ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
-        ...(passwordHash !== undefined ? { passwordHash } : {}),
+        // Wave-9 credential epoch (audit 9-a F-3): a password SET bumps the
+        // epoch in the SAME transaction, so every session token minted
+        // before it fails requireUser's epoch-vs-DB comparison and answers
+        // 401 — the stolen-cookie window closes at the SET, not at the 12 h
+        // maxAge. Name/role/isActive/scope-only changes leave the epoch (and
+        // therefore live sessions) untouched.
+        ...(passwordHash !== undefined
+          ? { passwordHash, credentialEpoch: { increment: 1 } }
+          : {}),
         // F-031: rides the same transactional update; its audit trail is
         // the dedicated scope row below (deliberately NOT folded into the
         // USER_UPDATED before/after — each audit row states one fact).

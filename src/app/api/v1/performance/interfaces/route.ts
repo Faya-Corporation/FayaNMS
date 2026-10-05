@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
 import { fail, firstIssueMessage, ok, pageMeta, paginationSchema } from "../../_lib/api";
 import {
   rangeSchema,
@@ -41,6 +46,16 @@ export const dynamic = "force-dynamic";
  * - meta.operStatusCounts  = operStatus counts over the FULL filtered set
  * - sort=UTIL              → desc by max(utilInPct, utilOutPct)
  *   sort=PACKET_LOSS       → desc by packetLossPct
+ *
+ * F-031 wave-9 (read-plane migration): raw samples are device-derived —
+ * for a sites-limited session the utilization AND packet-loss sample
+ * windows are bounded to the session's device ids (the twin fleet route
+ * /api/v1/interfaces is the reference composition), so another site's
+ * interface counters never enter the aggregation. The caller's in-memory
+ * ?siteCode= filter stays and now INTERSECTS the scope: an out-of-scope
+ * siteCode yields the empty state, never the unscoped set. Wildcard
+ * sessions keep the byte-unchanged queries (parity guarantee); deny-all
+ * sessions get the empty state.
  */
 
 const querySchema = z.object({
@@ -78,12 +93,33 @@ export async function GET(request: Request) {
   const { range, siteCode, q, sort, page, pageSize } = parsed.data;
   const win = rangeWindow(range);
 
+  // F-031 wave-9: bound the sample windows to the session's devices.
+  // Wildcard (no `sites` claim) adds NO filter — the queries stay exactly
+  // as before. Sites-mode resolves the in-scope device ids once and rides
+  // them on both sample scans (deny-all → ids [] → the empty state below).
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const scopeDeviceFilter: { deviceId: { in: string[] } } | Record<string, never> =
+    scope.mode === "sites"
+      ? {
+          deviceId: {
+            in: (
+              await db.device.findMany({
+                where: scopedDeviceWhere(scopeClaims, {}),
+                select: { id: true },
+              })
+            ).map((d) => d.id),
+          },
+        }
+      : {};
+
   // ── utilization samples grouped per (deviceId, interfaceId) ──────────
   const utilSamples = await db.metricSample.findMany({
     where: {
       metric: { in: ["UTILIZATION_IN", "UTILIZATION_OUT"] },
       interfaceId: { not: null },
       ts: { gte: win.since },
+      ...scopeDeviceFilter,
     },
     select: { deviceId: true, interfaceId: true, metric: true, value: true, ts: true },
     orderBy: { ts: "asc" },
@@ -146,8 +182,12 @@ export async function GET(request: Request) {
     where: {
       metric: "PACKET_LOSS",
       interfaceId: null,
-      deviceId: { in: deviceIds },
       ts: { gte: win.since },
+      ...scopeDeviceFilter,
+      // deviceIds already derive from in-scope aggregates — this narrows
+      // the same in-scope set to the sampled ids (placed after the spread
+      // so the explicit filter wins; TS2783 otherwise).
+      deviceId: { in: deviceIds },
     },
     select: { deviceId: true, value: true, ts: true },
     orderBy: { ts: "asc" },

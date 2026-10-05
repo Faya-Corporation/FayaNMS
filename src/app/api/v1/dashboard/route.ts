@@ -1,6 +1,12 @@
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { csvParam, fail, firstIssueMessage, ok } from "../_lib/api";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +22,27 @@ export const dynamic = "force-dynamic";
  * F-008 phase 1 (read-plane defense-in-depth): the handler verifies the
  * human session itself (requireSessionRead) — the proxy matcher stays the
  * coarse gate, not the only check, for the dashboard read domain.
+ *
+ * F-031 wave-9 (read-plane migration): every device-derived leg composes
+ * the session scope — KPI counts (status/compliance/lastBackup aggregates
+ * via scopedDeviceWhere; alert/drift counts via their device relation),
+ * the utilization trend and capacity risks (bounded to the session's
+ * device ids) and the incident/change lists (via their `site` relation,
+ * the same codes the claims resolve to). Wildcard sessions (no `sites`
+ * claim — the single-tenant default) keep the byte-unchanged query
+ * shapes; deny-all sessions get zeroed KPIs and empty lists.
+ *
+ * RESIDUALS (honest, authorization-matrix §5.1):
+ * - `kpis.activeJobs` stays GLOBAL: JobExecution rows carry no site
+ *   linkage and the count exposes no resource identity.
+ * - `recentActivity` (AuditEvent stream): rows carry NO site linkage and
+ *   `resourceLabel` is free text that frequently names out-of-scope
+ *   resources (device hostnames from the alert/snapshot/drift/job/ZTP
+ *   writers, user emails, CI labels). Sites-limited sessions therefore
+ *   receive the stream with resourceLabel STRIPPED (actor/action/result/
+ *   time survive — no cross-scope identity); wildcard sessions keep the
+ *   verbatim labels. The deep fix (a site dimension on audit rows) is a
+ *   deferred owner decision.
  */
 
 const OPEN_INCIDENT_STATUSES = [
@@ -62,6 +89,21 @@ export async function GET(request: Request) {
   const rawRange = parsed.data.range;
   const requestedRange = ["7d", "30d"].includes(rawRange) ? "7d" : "24h";
 
+  // ── F-031 wave-9: resolve the session scope once for every leg ──────
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  const isWildcard = scope.mode === "wildcard";
+  // Sites-mode only: the session's device ids bound the metric-derived
+  // legs (utilization trend, capacity risks). Deny-all → [] → empty.
+  const scopeDeviceIds: string[] | null = isWildcard
+    ? null
+    : (
+        await db.device.findMany({
+          where: scopedDeviceWhere(scopeClaims, {}),
+          select: { id: true },
+        })
+      ).map((d) => d.id);
+
   // ── KPI counts (independent → parallel) ──────────────────────────────
   const [
     statusGroups,
@@ -74,21 +116,60 @@ export async function GET(request: Request) {
     complianceGroups,
     lastBackupAgg,
   ] = await Promise.all([
-    db.device.groupBy({ by: ["status"], _count: { _all: true } }),
-    db.alert.count({ where: { status: "ACTIVE", severity: "CRITICAL" } }),
-    db.alert.count({ where: { status: "ACTIVE" } }),
-    db.incident.count({ where: { status: { in: OPEN_INCIDENT_STATUSES } } }),
-    db.changeRequest.count({ where: { status: "AWAITING_APPROVAL" } }),
+    db.device.groupBy({
+      by: ["status"],
+      _count: { _all: true },
+      ...(isWildcard ? {} : { where: scopedDeviceWhere(scopeClaims, {}) }),
+    }),
+    db.alert.count({
+      where: {
+        status: "ACTIVE",
+        severity: "CRITICAL",
+        ...(isWildcard ? {} : { device: scopedDeviceWhere(scopeClaims, {}) }),
+      },
+    }),
+    db.alert.count({
+      where: {
+        status: "ACTIVE",
+        ...(isWildcard ? {} : { device: scopedDeviceWhere(scopeClaims, {}) }),
+      },
+    }),
+    db.incident.count({
+      where: {
+        status: { in: OPEN_INCIDENT_STATUSES },
+        ...(isWildcard ? {} : { site: { code: { in: scope.codes } } }),
+      },
+    }),
+    db.changeRequest.count({
+      where: {
+        status: "AWAITING_APPROVAL",
+        ...(isWildcard ? {} : { site: { code: { in: scope.codes } } }),
+      },
+    }),
+    // GLOBAL by design (residual): JobExecution has no site linkage and
+    // the bare count exposes no resource identity — see the header note.
     db.jobExecution.count({ where: { status: { in: ["QUEUED", "RUNNING"] } } }),
-    db.driftRecord.count({ where: { status: "OPEN" } }),
+    db.driftRecord.count({
+      where: {
+        status: "OPEN",
+        ...(isWildcard ? {} : { device: scopedDeviceWhere(scopeClaims, {}) }),
+      },
+    }),
     db.device.groupBy({
       by: ["backupCompliance"],
       _count: { _all: true },
-      where: { status: { not: "UNMANAGED" } },
+      where: isWildcard
+        ? { status: { not: "UNMANAGED" } }
+        : scopedDeviceWhere(scopeClaims, { status: { not: "UNMANAGED" } }),
     }),
     db.device.aggregate({
       _max: { lastBackupAt: true },
-      where: { status: { not: "UNMANAGED" }, lastBackupAt: { not: null } },
+      where: isWildcard
+        ? { status: { not: "UNMANAGED" }, lastBackupAt: { not: null } }
+        : scopedDeviceWhere(scopeClaims, {
+            status: { not: "UNMANAGED" },
+            lastBackupAt: { not: null },
+          }),
     }),
   ]);
 
@@ -132,6 +213,8 @@ export async function GET(request: Request) {
         granularity,
         metric: { in: ["CPU", "MEMORY"] },
         periodStart: { gte: since },
+        // F-031 wave-9: sites-limited sessions trend THEIR devices only.
+        ...(scopeDeviceIds ? { deviceId: { in: scopeDeviceIds } } : {}),
       },
       orderBy: { periodStart: "asc" },
       select: { metric: true, periodStart: true, avg: true },
@@ -190,8 +273,13 @@ export async function GET(request: Request) {
     .sort((a, b) => b.count - a.count);
 
   // ── Open incidents (top 5 by severity then recency) ──────────────────
+  // F-031 wave-9: the site relation carries the scope (the same codes the
+  // KPI count uses); wildcard keeps the byte-unchanged where.
   const openIncidents = await db.incident.findMany({
-    where: { status: { in: OPEN_INCIDENT_STATUSES } },
+    where: {
+      status: { in: OPEN_INCIDENT_STATUSES },
+      ...(isWildcard ? {} : { site: { code: { in: scope.codes } } }),
+    },
     orderBy: { createdAt: "desc" },
     take: 20,
     select: {
@@ -215,7 +303,10 @@ export async function GET(request: Request) {
 
   // ── Upcoming changes ──────────────────────────────────────────────────
   const upcomingChanges = await db.changeRequest.findMany({
-    where: { status: { in: UPCOMING_CHANGE_STATUSES } },
+    where: {
+      status: { in: UPCOMING_CHANGE_STATUSES },
+      ...(isWildcard ? {} : { site: { code: { in: scope.codes } } }),
+    },
     orderBy: { scheduledStart: "asc" },
     take: 5,
     select: {
@@ -239,6 +330,9 @@ export async function GET(request: Request) {
       metric: { in: ["UTILIZATION_IN", "UTILIZATION_OUT"] },
       periodStart: { gte: utilSince },
       avg: { gt: 75 },
+      // F-031 wave-9: capacity risks name hostnames — sites-limited
+      // sessions rank THEIR devices only.
+      ...(scopeDeviceIds ? { deviceId: { in: scopeDeviceIds } } : {}),
     },
     orderBy: { avg: "desc" },
     take: 40,
@@ -270,7 +364,11 @@ export async function GET(request: Request) {
   }
 
   // ── Recent activity (latest audit events) ─────────────────────────────
-  const recentActivity = await db.auditEvent.findMany({
+  // F-031 wave-9 residual: AuditEvent rows have no site linkage and
+  // resourceLabel is free text that can name out-of-scope devices (and
+  // users). Sites-limited sessions get the stream with resourceLabel
+  // stripped; wildcard keeps the verbatim labels (parity).
+  const recentActivityRows = await db.auditEvent.findMany({
     orderBy: { createdAt: "desc" },
     take: 12,
     select: {
@@ -282,6 +380,10 @@ export async function GET(request: Request) {
       createdAt: true,
     },
   });
+  const recentActivity = recentActivityRows.map((row) => ({
+    ...row,
+    resourceLabel: isWildcard ? row.resourceLabel : null,
+  }));
 
   return ok(
     {

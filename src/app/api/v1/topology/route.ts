@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
 import { ok } from "../_lib/api";
 import { z } from "zod";
 import {
@@ -36,6 +41,18 @@ export const dynamic = "force-dynamic";
  * GET → no audit event (app convention). Identical data always yields a
  * byte-identical graph — two back-to-back GETs differ only in generatedAt
  * (deterministic-composition contract, verified in Task 18-b).
+ *
+ * F-031 wave-9 (read-plane migration): a sites-limited session sees ITS
+ * sites + their devices only — the sites backbone is filtered to the scope
+ * codes, the device scan composes scopedDeviceWhere, and the 24h discovery
+ * evidence (openPorts / osFingerprint / IP) only resolves for in-scope
+ * devices (a scope filter rides the observation's device relation).
+ * Circuit CIs feed the pure builder, which emits edges only between
+ * graph-present (in-scope) devices, so out-of-scope endpoints can never
+ * appear as nodes or edge endpoints. Wildcard sessions keep the exact
+ * pre-F-031 query shapes (parity guarantee); deny-all sessions get an
+ * empty graph. A discovery observation row for an out-of-scope device is
+ * dropped whole — no IP/hostname/port evidence survives.
  * ───────────────────────────────────────────────────────────────────────────── */
 
 /* ── response schema (Zod-validated response contract) ── */
@@ -105,15 +122,22 @@ export async function GET(request: Request) {
     if (envelope) return envelope;
     throw error;
   }
-  /* 1 — sites (grouping backbone, ordered by code for determinism). */
+  /* 1 — sites (grouping backbone, ordered by code for determinism).
+   * F-031 wave-9: sites-limited sessions see only their own sites; wildcard
+   * keeps the unfiltered scan. */
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
   const sites = await db.site.findMany({
+    ...(scope.mode === "sites" ? { where: { code: { in: scope.codes } } } : {}),
     select: { id: true, code: true, name: true, region: true },
     orderBy: { code: "asc" },
   });
 
-  /* 2 — devices minus UNMANAGED (graph exclusion rule) with site code. */
+  /* 2 — devices minus UNMANAGED (graph exclusion rule) with site code.
+   * F-031 wave-9: the scope composes through scopedDeviceWhere — wildcard
+   * keeps the exact pre-F-031 where ({ status: { not: UNMANAGED } }). */
   const devices = await db.device.findMany({
-    where: { status: { not: "UNMANAGED" } },
+    where: scopedDeviceWhere(scopeClaims, { status: { not: "UNMANAGED" } }),
     select: {
       id: true,
       hostname: true,
@@ -196,6 +220,12 @@ export async function GET(request: Request) {
     where: {
       observedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1_000) },
       deviceId: { not: null },
+      // F-031 wave-9: evidence only for in-scope devices — sites-limited
+      // sessions cannot read another site's open ports / OS fingerprint.
+      // Wildcard keeps the where shape unchanged; deny-all matches nothing.
+      ...(scope.mode === "sites"
+        ? { device: scopedDeviceWhere(scopeClaims, {}) }
+        : {}),
     },
     orderBy: { observedAt: "desc" },
     take: 500,

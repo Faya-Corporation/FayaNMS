@@ -27,6 +27,26 @@ const configSchema = z.object({
   url: z.string().trim().url().optional(),
 });
 
+/**
+ * Parse a stored configJson for the CHANNEL_UPDATED audit snapshot (wave-9
+ * audit 9-a F-2). The schema is CLOSED (address / displayName / url only —
+ * no credential fields exist in the channel config), so the full config is
+ * recorded — mirroring how CHANNEL_CREATED and the webhook routes record
+ * the URL. A malformed stored row degrades to {} (never throws, never
+ * invents fields).
+ */
+function parseStoredConfig(configJson: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(configJson);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // fall through
+  }
+  return {};
+}
+
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   config: configSchema.optional(),
@@ -77,22 +97,35 @@ export async function PATCH(
     }
     if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
 
-    const row = await db.notificationChannel.update({ where: { id }, data });
-
+    // Wave-9 (audit 9-a F-2): the update and its CHANNEL_UPDATED audit row
+    // commit together, and the audit payload now carries the FULL config
+    // before/after (name/isActive-only snapshots hid URL/email retargets).
     const correlationId = newCorrelationId("CH");
-    await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? actor.email,
-        action: "CHANNEL_UPDATED",
-        resourceType: "NotificationChannel",
-        resourceId: id,
-        resourceLabel: row.name,
-        result: "SUCCESS",
-        correlationId,
-        beforeJson: JSON.stringify({ name: existing.name, isActive: existing.isActive }),
-        afterJson: JSON.stringify({ name: row.name, isActive: row.isActive }),
-      },
+    const row = await db.$transaction(async (tx) => {
+      const updated = await tx.notificationChannel.update({ where: { id }, data });
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          action: "CHANNEL_UPDATED",
+          resourceType: "NotificationChannel",
+          resourceId: id,
+          resourceLabel: updated.name,
+          result: "SUCCESS",
+          correlationId,
+          beforeJson: JSON.stringify({
+            name: existing.name,
+            isActive: existing.isActive,
+            config: parseStoredConfig(existing.configJson),
+          }),
+          afterJson: JSON.stringify({
+            name: updated.name,
+            isActive: updated.isActive,
+            config: parseStoredConfig(updated.configJson),
+          }),
+        },
+      });
+      return updated;
     });
 
     return ok(
@@ -130,21 +163,24 @@ export async function DELETE(
       return fail("CHANNEL_NOT_FOUND", `No notification channel with id ${id}`, 404);
     }
 
-    await db.notificationChannel.delete({ where: { id } });
-
+    // Wave-9 (audit 9-a F-2): the delete and its CHANNEL_DELETED audit row
+    // commit together.
     const correlationId = newCorrelationId("CH");
-    await db.auditEvent.create({
-      data: {
-        actorId: actor.id,
-        actorName: actor.name ?? actor.email,
-        action: "CHANNEL_DELETED",
-        resourceType: "NotificationChannel",
-        resourceId: id,
-        resourceLabel: existing.name,
-        result: "SUCCESS",
-        correlationId,
-        beforeJson: JSON.stringify({ name: existing.name, type: existing.type }),
-      },
+    await db.$transaction(async (tx) => {
+      await tx.notificationChannel.delete({ where: { id } });
+      await tx.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          action: "CHANNEL_DELETED",
+          resourceType: "NotificationChannel",
+          resourceId: id,
+          resourceLabel: existing.name,
+          result: "SUCCESS",
+          correlationId,
+          beforeJson: JSON.stringify({ name: existing.name, type: existing.type }),
+        },
+      });
     });
 
     return ok(

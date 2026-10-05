@@ -7,7 +7,13 @@ import {
 } from "../_lib/api";
 import { parsePolicyScope, scopeDeviceWhere } from "../_lib/scope";
 import { isValidCronExpr } from "@/lib/cron";
-import { authErrorToFail, requirePermission, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -95,7 +101,14 @@ export async function GET(request: Request) {
     policies.map(async (policy) => {
       const scope = parsePolicyScope(policy.scopeJson);
       const [scopedDeviceCount, lastEnqueued] = await Promise.all([
-        db.device.count({ where: scopeDeviceWhere(scope) }),
+        // F-031 wave-9: the count INTERSECTS the policy's device scope with
+        // the session's site scope — a sites-limited session sees how many
+        // of ITS devices the policy would schedule, not the fleet-wide
+        // count (aggregate-only leak of out-of-scope existence). Wildcard
+        // sessions compose the identical where (parity guarantee).
+        db.device.count({
+          where: scopedDeviceWhere(await sessionScopeFor(request), scopeDeviceWhere(scope)),
+        }),
         db.jobExecution.findFirst({
           where: {
             type: "CONFIG_BACKUP",
