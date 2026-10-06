@@ -4,11 +4,14 @@ Live tracker. One row per wave; details live in the worklog and PR descriptions.
 
 | Wave | Scope (findings) | Status | PR / commits | Verification |
 |---|---|---|---|---|
-| 0 | Engagement setup: re-verify ALL open findings vs `d281873` (zero stale), write STATE/REMEDIATION_PLAN/PROGRESS, local stack live-verified | **DONE (this PR)** | this PR | tsc 0, lint 0, targeted suites green, app+worker live probes green |
-| GA-1 | P1-A02 `/sites` scope + P1-A03 backup-policy cross-site (POST/PATCH) | PENDING | — | — |
-| GA-2 | P1-A01 report scoping end-to-end + P2 notification receipts | PENDING | — | — |
-| GA-3 | P1-A04 API-client expiry + P1-A05 API-client site scope | PENDING | — | — |
-| GA-4 | P1-O03 DLQ recovery + P0-R05/P1-O02 simulation gating + P0-R06 collector control plane (phase 1) | PENDING | — | — |
+| 0 | Engagement setup: re-verify ALL open findings vs `d281873` (zero stale), write STATE/REMEDIATION_PLAN/PROGRESS, local stack live-verified. BONUS: sharp override 0.35.4→0.35.5 (new upstream HIGH advisory GHSA-wq5f-xc86-pv6w) to restore the scan gate | **MERGED** | PR #74 → `60ea5c6` | 4/4 checks green; osv-scanner clean locally w/ the CI-pinned binary |
+| GA-1 | P1-A02 `/sites` scope + P1-A03 backup-policy cross-site (POST/PATCH) | **MERGED** | PR #75 → `fe9c39e` | 19-test suite; 4/4 checks green |
+| GA-2 | P1-A01 report scoping end-to-end (frozen schedule scope + worker-path pin) + P2 notification receipts | **MERGED** | PR #76 → `f817e3a` | 12-test suite; 4/4 checks green |
+| GA-3 | P1-A04 API-client expiry/rotation + P1-A05 API-client site scope (incl. removing the acknowledge client bypass) | **MERGED** | PR #77 → `3af334c` | 15-test suite; 4/4 checks green |
+| GA-4 | P1-O03 DLQ recovery (dead list + guarded idempotent requeue + audit + depth metric/alert) + P0-R05/P1-O02 simulation gating (HA failover-test + rebalance APPLY behind FAYANMS_DEMO_MODE) | **PR #78 OPEN (CI running)** | PR #78 | 7-test suite; full sweep 2447/0 fail; tsc 0; lint 0 |
+| GA-4b | P0-R06/P1-O01 collector REAL control plane (registration/heartbeat/lease/fencing/failover) | PENDING (next session — largest remaining build) | — | — |
+| GA-5 | Report formats: real PDF/XLSX renderers or honest removal | PENDING | — | — |
+| GA-6 | GA-READINESS canonical doc, doc-truth repair, P2-S01 absolute session cap, DR tooling (WAL/PITR + backup sidecar), P0-R01 container dispatch, P3 evidence regen | PENDING | — | — |
 | GA-5 | Report formats: real PDF/XLSX renderers or honest removal | PENDING | — | — |
 | GA-6 | GA-READINESS doc, doc-truth repair, P2-S01 absolute session cap, DR tooling (WAL/PITR + backup sidecar), P0-R01 container dispatch, P3 evidence regen | PENDING | — | — |
 | GA-7 | Vendor T3 certification | **BLOCKED — EXTERNAL** | — | needs real/vendor-virtual appliances |

@@ -100,3 +100,13 @@ groups:
       #   annotations:
       #     summary: "TLS certificate expires in under 14 days"
       #     description: 'Requires the blackbox exporter decision above.'
+      # P1-O03 (GA re-audit 2026-10-06): protocol DLQ depth — dead letters
+      # await operator replay (POST /api/v1/protocol/queue/dead/requeue).
+      - alert: FayanmsProtocolDlqDepth
+        expr: fayanms_protocol_queue_dead > 50
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Protocol dead-letter queue is accumulating"
+          description: 'The protocol event queue holds more than 50 DEAD events for 15 minutes (fayanms_protocol_queue_dead). Events exhausted their bounded retries — inspect GET /api/v1/protocol/queue/dead (reason/attempts per row) and replay with POST /api/v1/protocol/queue/dead/requeue once the downstream cause is fixed.'

@@ -3946,3 +3946,52 @@ Stage Summary:
 - main advanced d281873 → fe9c39e with waves 0+GA-1; PR #76 (GA-2) open and rebased, CI running.
 - sharp 0.35.5 supply-chain fix now on main (scan gate healthy again).
 - Next: GA-3 (API-client expiry + siteScopeJson resource scope), then GA-4 (DLQ recovery + simulation gating + collector plane phase 1).
+
+---
+
+Task ID: 5 (GA-2/GA-3 ship + GA-4 start, session web-4924c74a, trace 1a112a3f56ce0449)
+Agent: main agent (Z.ai Code)
+Task: merge GA-2, ship GA-3, start GA-4 (simulation gating + DLQ recovery).
+
+Work Log:
+- PR #76 (GA-2 report scoping + notification receipts) ALL FOUR CHECKS GREEN at 63445c5 → merged via API as f817e3a. main @ f817e3a now carries waves 0, GA-1, GA-2.
+- PR #77 (GA-3 API-client lifecycle + resource scope) opened (rebased a6dcd0a, CI running). En route: fixed the events route bearer-strip key (claims-not-human, preserving the wave-11 unconditional strip contract), superseded the wave-10 F-3 source pin (the alerts-acknowledge api-client site-scope BYPASS is removed — clients are no longer global by design), retotaled the i18n pins (3385 → 3392 per side; adminApiClients namespace 48 → 55).
+- Deployment restarted on merged main; app/health 200; worker live.
+- GA-4 started on branch GLM/ga4-simulation-gating-dlq: P0-R05/P1-O02 simulation gating + P1-O03 DLQ operator recovery. The collector real-control-plane build (P0-R06 phase 1) is scoped honestly against remaining session capacity after the gating + DLQ work lands.
+
+Stage Summary:
+- main: d281873 → f817e3a (three merged security waves + supply-chain fix, all four checks green on every merge).
+- PR #77 CI running; GA-4 branch active.
+
+---
+Task ID: 6 (GA-3 merged; GA-4 shipped to PR #78; session wrap, trace 1a112a3f56ce0449)
+Agent: main agent (Z.ai Code)
+Task: merge GA-3, open+verify GA-4, record the honest remaining-work disposition.
+
+Work Log:
+- PR #77 (GA-3) ALL FOUR CHECKS GREEN at a6dcd0a → merged via API as 3af334c. main now carries waves 0 + GA-1 + GA-2 + GA-3.
+- PR #78 (GA-4) opened; CI running. En route: dev-DB hygiene incident — parallel test workers left RUN-suffixed fixture sites (G3A/G3B from three GA-3 runs) in the shared DB; purged to exact seed parity (HQ-SAN/DC-ADN/BR1-HOD/BR2-MUK) and live re-probed.
+- Deployment restarted on merged main; app/health 200, auth flow 302, /sites wildcard parity re-verified post-purge.
+- Honest disposition recorded: the collector REAL control plane (P0-R06 phase 1) is the largest remaining build and is deferred to the next session rather than faked; GA-5 (report formats) and GA-6 (GA-READINESS doc, P2-S01 session cap, DR tooling, P0-R01 container dispatch, P3 regen) likewise queued with precise next steps.
+
+Stage Summary:
+- 4 security waves merged (all four CI checks green on every merge), 1 PR open in CI.
+- Every repository-actionable P1 authorization finding from the 2026-10-06 re-audit is now CLOSED on main: P1-A01..A05. DLQ (P1-O03) closed behind PR #78. Simulated surfaces (P0-R05/P1-O02) now fail closed outside demo mode behind PR #78.
+- Remaining: P0-R06 collector plane, GA-5 formats, GA-6 release/DR/docs, P0-R02/R03/R04 + GA-7/GA-8 BLOCKED — EXTERNAL.
+
+
+---
+Task ID: 5 (GA-4 CI disposition, session web-4924c74a, trace 1a1132d11483f549)
+Agent: main agent (Z.ai Code)
+Task: diagnose and fix the failing gate check on PR #78 (GA-4), re-verify, push, merge when green.
+
+Work Log:
+- State re-establishment: origin/main had advanced to 3af334c (PRs #74-#77 merged: GA wave 0 + GA-1..GA-3); PR #78 open @ 416959c with gate FAILED (e2e/scan/browser skipped).
+- Root cause via check annotations: tests/audit/ga4-simulation-gating-dlq.test.ts:159 expected 403 SIMULATION_DISABLED on the rebalance APPLY leg, received 404. In the route, `moves.length === 0 → 404 COLLECTOR_NO_MOVES` preceded the demo-mode gate; the CI gate job runs `bun test tests/` after `migrate deploy` with NO seed (ci.yml line 171), so the CI DB has zero devices → empty plan → 404 masked the gate. Local dev DB (66k seeded fleet, has moves) masked the bug pre-push.
+- Fix (9a69c20): moved the APPLY-leg simulation gate before the plan computation (mirrors the failover-test route's proven gate order); 404 NO_MOVES stays reachable for previews and demo-mode applies. Test hardened: PREVIEW assertion is now fleet-shape-independent (200 plan OR 404 NO_MOVES both prove availability; 403 there is the pinned regression).
+- Dual-shape verification: suite 7/7 on the dev DB (preview-200 path) AND 7/7 on a scratch migrations-only DB `fayanms_ga4verify` replicating the CI gate job exactly (preview-404 path). Scratch DB dropped after. tsc 0; lint 0.
+- Harness incident (known class): cwd/branch resets between tool calls; worklog stash landed on main's tree and was re-applied onto the branch by hand.
+
+Stage Summary:
+- GA-4 fix pushed (9a69c20); CI re-running. Merge follows per precedent once green.
+- Standing learning recorded: CI gate DB is migrations-only (no seed) — suites must never assume demo-fleet data; prefer gates before data-dependent branches.

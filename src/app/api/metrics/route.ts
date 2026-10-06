@@ -1,5 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
+import { db } from "@/lib/db";
+
 const CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +37,27 @@ export async function GET(request: Request): Promise<Response> {
 
   const memory = process.memoryUsage();
   const version = escapeLabel(process.env.FAYANMS_RELEASE_SHA?.trim() || "unknown");
+
+  // P1-O03 (GA re-audit 2026-10-06): protocol DLQ depth — the alerting
+  // hook for dead-letter accumulation. Counted per scrape (status is
+  // indexed via the queue's delivery path; a rising value means events
+  // exhausted their bounded retries and await operator replay via
+  // POST /api/v1/protocol/queue/dead/requeue). A DB failure must never
+  // take the whole metrics endpoint down — the gauge degrades to absent.
+  let deadDepth: number | null = null;
+  try {
+    deadDepth = await db.protocolEventQueue.count({ where: { status: "DEAD" } });
+  } catch {
+    deadDepth = null;
+  }
+  const deadGauge =
+    deadDepth === null
+      ? []
+      : [
+          "# HELP fayanms_protocol_queue_dead Dead-letter depth of the protocol event queue.",
+          "# TYPE fayanms_protocol_queue_dead gauge",
+          `fayanms_protocol_queue_dead ${deadDepth}`,
+        ];
   const lines = [
     "# HELP fayanms_process_uptime_seconds Process uptime in seconds.",
     "# TYPE fayanms_process_uptime_seconds gauge",
@@ -45,6 +68,7 @@ export async function GET(request: Request): Promise<Response> {
     "# HELP fayanms_process_heap_used_bytes Used V8 heap in bytes.",
     "# TYPE fayanms_process_heap_used_bytes gauge",
     `fayanms_process_heap_used_bytes ${memory.heapUsed}`,
+    ...deadGauge,
     "# HELP fayanms_build_info Build identity for this process.",
     "# TYPE fayanms_build_info gauge",
     `fayanms_build_info{version="${version}"} 1`,

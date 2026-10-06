@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../_lib/api";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import { isDemoMode, simulationDisabledFail } from "@/lib/demo/simulation-guard";
 import {
   defaultActiveMember,
   FAILOVER_STAGE_SLEEP_MS,
@@ -69,6 +70,14 @@ export async function POST(request: Request) {
     const authFail = authErrorToFail(error);
     if (!authFail) throw error;
     return authFail;
+  }
+
+  // P0-R05/P1-O02 (GA re-audit 2026-10-06): the failover test is a
+  // DOCUMENTED SIMULATION (staged sleeps + audit rows; no infrastructure
+  // effect). It is demo-mode-gated — 403 SIMULATION_DISABLED otherwise.
+  if (!isDemoMode()) {
+    const disabled = simulationDisabledFail();
+    return fail(disabled.code, disabled.message, disabled.status);
   }
 
   const pair = findHaPair(pairId);
