@@ -13,7 +13,8 @@ import {
   requireSessionRead,
   sessionScopeFor,
 } from "@/lib/auth/session";
-import { scopedDeviceWhere } from "@/lib/auth/scope";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
+import { backupPolicyScopeDenial } from "./policy-scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -165,13 +166,23 @@ export async function POST(request: Request) {
     return authFail;
   }
 
+  // P1-A03 (GA re-audit 2026-10-06 — SUPERSEDES the 13-c F-10 owner note
+  // above): a sites-limited config.backup holder may only TARGET sites it
+  // holds, and may never create a fleet-wide policy (no "*", and no missing
+  // or empty siteCodes — an empty scope object means fleet-wide under the
+  // canonical contract). Wildcard sessions are byte-unchanged. Scheduling is
+  // actuation: the worker executes what the policy says, so the guard runs
+  // BEFORE the inventory check (an out-of-scope code is a 403, not a 400).
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
+  if (scope.mode === "sites") {
+    const denial = backupPolicyScopeDenial(scope.codes, data.scope?.siteCodes);
+    if (denial) {
+      return fail("SITE_SCOPE_FORBIDDEN", denial, 403);
+    }
+  }
+
   // Validate site codes against the inventory (or "*" for fleet-wide).
-  // NOTE (audit 13-c F-10 — owner decision, deliberately NOT changed here):
-  // a sites-limited config.backup holder may still TARGET any site (or
-  // "*") in scope.siteCodes. Backup-policy scheduling is a global fleet
-  // operation executed by the worker and carries no read-exfiltration path
-  // (all device reads are session-scoped); intersecting the policy scope
-  // with the author's session scope is an owner decision (worklog 14-c).
   if (data.scope?.siteCodes && data.scope.siteCodes.length > 0) {
     const codes = data.scope.siteCodes;
     if (!codes.includes("*")) {

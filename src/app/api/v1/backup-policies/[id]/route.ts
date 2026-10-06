@@ -13,7 +13,8 @@ import {
   requireSessionRead,
   sessionScopeFor,
 } from "@/lib/auth/session";
-import { scopedDeviceWhere } from "@/lib/auth/scope";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
+import { backupPolicyScopeDenial } from "../policy-scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -174,6 +175,25 @@ export async function PATCH(
   }
   const data = parsed.data;
 
+  // P1-A03 (GA re-audit 2026-10-06 — supersedes the POST route's old 13-c
+  // F-10 owner note): PATCH replaces the scope WHOLE when provided, so the
+  // guard evaluates the EFFECTIVE post-replacement site list: a provided
+  // scope without siteCodes (or with an empty array) serializes to a
+  // fleet-wide scopeJson and is therefore denied for site-limited sessions,
+  // exactly like an explicit "*". When the patch does not touch scope at
+  // all, the actor cannot widen anything and no check is needed. Wildcard
+  // sessions are byte-unchanged.
+  if (data.scope !== undefined) {
+    const scope = sessionSiteScope(await sessionScopeFor(request));
+    if (scope.mode === "sites") {
+      const denial = backupPolicyScopeDenial(scope.codes, data.scope.siteCodes);
+      if (denial) {
+        return fail("SITE_SCOPE_FORBIDDEN", denial, 403);
+      }
+    }
+  }
+
+  // Validate site codes against the inventory (or "*" for fleet-wide).
   if (data.scope?.siteCodes && data.scope.siteCodes.length > 0) {
     const codes = data.scope.siteCodes;
     if (!codes.includes("*")) {
