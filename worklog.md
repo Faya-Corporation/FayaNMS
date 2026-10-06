@@ -3946,3 +3946,18 @@ Stage Summary:
 - main advanced d281873 → fe9c39e with waves 0+GA-1; PR #76 (GA-2) open and rebased, CI running.
 - sharp 0.35.5 supply-chain fix now on main (scan gate healthy again).
 - Next: GA-3 (API-client expiry + siteScopeJson resource scope), then GA-4 (DLQ recovery + simulation gating + collector plane phase 1).
+
+---
+Task ID: 5 (GA-2/GA-3 ship + GA-4 start, session web-4924c74a, trace 1a112a3f56ce0449)
+Agent: main agent (Z.ai Code)
+Task: merge GA-2, ship GA-3, start GA-4 (simulation gating + DLQ recovery).
+
+Work Log:
+- PR #76 (GA-2 report scoping + notification receipts) ALL FOUR CHECKS GREEN at 63445c5 → merged via API as f817e3a. main @ f817e3a now carries waves 0, GA-1, GA-2.
+- PR #77 (GA-3 API-client lifecycle + resource scope) opened (rebased a6dcd0a, CI running). En route: fixed the events route bearer-strip key (claims-not-human, preserving the wave-11 unconditional strip contract), superseded the wave-10 F-3 source pin (the alerts-acknowledge api-client site-scope BYPASS is removed — clients are no longer global by design), retotaled the i18n pins (3385 → 3392 per side; adminApiClients namespace 48 → 55).
+- Deployment restarted on merged main; app/health 200; worker live.
+- GA-4 started on branch GLM/ga4-simulation-gating-dlq: P0-R05/P1-O02 simulation gating + P1-O03 DLQ operator recovery. The collector real-control-plane build (P0-R06 phase 1) is scoped honestly against remaining session capacity after the gating + DLQ work lands.
+
+Stage Summary:
+- main: d281873 → f817e3a (three merged security waves + supply-chain fix, all four checks green on every merge).
+- PR #77 CI running; GA-4 branch active.
