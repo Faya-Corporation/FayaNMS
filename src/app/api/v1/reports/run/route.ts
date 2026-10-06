@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionSiteScope } from "@/lib/auth/scope";
 import {
   fail,
   firstIssueMessage,
@@ -79,9 +84,15 @@ export async function POST(request: Request) {
 
   const correlationId = newCorrelationId("RB");
 
+  // P1-A01 (GA re-audit 2026-10-06): the artifact's data scope is the
+  // ACTING session's resolved site scope — a site-limited report.create
+  // holder can no longer generate a fleet-wide report. (The API-client
+  // bearer plane resolves wildcard — its documented F-031 posture.)
+  const scope = sessionSiteScope(await sessionScopeFor(request));
+
   let artifact;
   try {
-    artifact = await generateReport(reportType, { frequency, format });
+    artifact = await generateReport(reportType, { frequency, format, scope });
   } catch (error) {
     // Same failure convention as the worker path (reports/execute): a
     // stable code + the underlying message; nothing was persisted.

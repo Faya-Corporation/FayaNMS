@@ -192,7 +192,27 @@ export function scopedDeviceWhere(
   session: SessionScopeClaims | null | undefined,
   baseWhere: Prisma.DeviceWhereInput
 ): Prisma.DeviceWhereInput {
-  const scope = sessionSiteScope(session);
+  return deviceWhereForScope(sessionSiteScope(session), baseWhere);
+}
+
+/**
+ * The RESOLVED-SCOPE variant of scopedDeviceWhere (GA re-audit 2026-10-06,
+ * P1-A01): compose the site filter over a base where from an ALREADY
+ * resolved SiteScope — for report generation, where the scope is FROZEN at
+ * schedule-creation/run time and carried as a value object rather than
+ * re-resolved from the (service-plane) request's claims. Semantics are
+ * IDENTICAL to scopedDeviceWhere:
+ *
+ *   - wildcard → the BASE WHERE, unchanged;
+ *   - sites mode → `{ AND: [baseWhere, { site: { code: { in: codes } } }] }`.
+ *
+ * scopedDeviceWhere(session, base) is exactly deviceWhereForScope(
+ * sessionSiteScope(session), base) — one composition, no drift.
+ */
+export function deviceWhereForScope(
+  scope: SiteScope,
+  baseWhere: Prisma.DeviceWhereInput
+): Prisma.DeviceWhereInput {
   if (scope.mode === "wildcard") return baseWhere;
   return {
     AND: [baseWhere, { site: { code: { in: scope.codes } } }],

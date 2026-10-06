@@ -67,6 +67,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   configSnapshots   ConfigSnapshot[]
+  notificationReceipts NotificationReceipt[] @relation("NotificationReceipts")
   approvedBaselines ConfigBaseline[]         @relation("BaselineApprover")
   requestedChanges  ChangeRequest[]          @relation("ChangeRequester")
   ownedChanges      ChangeRequest[]          @relation("ChangeOwner")
@@ -780,9 +781,26 @@ model Notification {
   severity  String?
   readAt    DateTime?
   createdAt DateTime  @default(now())
+  // P2 (GA re-audit 2026-10-06) — per-user read state for broadcasts:
+  // a broadcast row's own readAt stays null; each user's read is a receipt.
+  receipts  NotificationReceipt[]
 
   @@index([userId, createdAt])
   @@index([readAt])
+}
+
+model NotificationReceipt {
+  id             String       @id @default(cuid())
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  notificationId String
+  user           User         @relation("NotificationReceipts", fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  // When the user marked this notification read (per-user; broadcasts keep
+  // their row-level readAt null so other users still see them unread).
+  readAt         DateTime     @default(now())
+
+  @@unique([notificationId, userId])
+  @@index([userId])
 }
 
 model JobExecution {
@@ -1022,6 +1040,14 @@ model ReportSchedule {
   format         String    @default("PDF")
   // recipientsJson: JSON array of email addresses
   recipientsJson String
+  // P1-A01 (GA re-audit 2026-10-06) — the schedule's IMMUTABLE site scope,
+  // frozen at creation from the creating session's resolved scope. Semantics
+  // mirror User.siteScopeJson: null = wildcard (every site; the pre-GA-2
+  // default for seeded/legacy rows), JSON array of site codes = sites mode
+  // (empty array = deny-all, fail-closed), malformed = deny-all. Every
+  // report query executed for this schedule intersects this scope — the
+  // worker's global service identity never widens it. NOT PATCHable.
+  scopeJson      String?
   isActive       Boolean   @default(true)
   lastRunAt      DateTime?
 

@@ -1,6 +1,13 @@
 import { db } from "@/lib/db";
 import { INCIDENT_OPEN_STATUSES } from "@/lib/incidents/lifecycle";
 import {
+  deviceWhereForScope,
+  normalizeSiteScopeCodes,
+  sessionSiteScope,
+  type SessionScopeClaims,
+  type SiteScope,
+} from "@/lib/auth/scope";
+import {
   confidenceFromR2,
   fetchRollups,
   linearRegressionDaily,
@@ -69,6 +76,78 @@ export interface ReportArtifact {
   format: string;
   columns: ReportColumn[];
   rows: ReportRow[];
+  /**
+   * P1-A01 (GA re-audit 2026-10-06) — set ONLY when the artifact's content
+   * exceeds the frozen scope in a way the consumer must know about (today:
+   * CHANGE_SUMMARY under a site-limited scope — change requests carry no
+   * site attribution, so counts remain fleet-wide and the note says so).
+   */
+  scopeNote?: string;
+}
+
+/* ── P1-A01 report scope: freeze/parse helpers ─────────────────────────── */
+
+const WILDCARD_SCOPE: SiteScope = { mode: "wildcard" };
+
+/**
+ * Parse a frozen ReportSchedule.scopeJson into a SiteScope. Contract
+ * mirrors User.siteScopeJson / the `sites` JWT claim (fail-closed):
+ *   null/undefined column → wildcard (every site — the legacy + wildcard
+ *     created default);
+ *   valid JSON array → sites mode (empty array = deny-all);
+ *   malformed → deny-all (a hand-edited row can never widen access).
+ */
+export function reportScopeFromJson(json: string | null | undefined): SiteScope {
+  if (json === null || json === undefined) return WILDCARD_SCOPE;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    const codes = normalizeSiteScopeCodes(parsed);
+    return codes === null ? { mode: "sites", codes: [] } : { mode: "sites", codes };
+  } catch {
+    return { mode: "sites", codes: [] };
+  }
+}
+
+/**
+ * Freeze a session's resolved scope into the schedule's scopeJson column at
+ * creation time: wildcard → null (keeps legacy rows and wildcard-created
+ * schedules indistinguishable — both mean every site); sites mode → the
+ * deduped code array as JSON (deny-all mints "[]", an explicit admin act).
+ */
+export function reportScopeJsonForClaims(
+  claims: SessionScopeClaims | null | undefined
+): string | null {
+  const scope = sessionSiteScope(claims);
+  return scope.mode === "wildcard" ? null : JSON.stringify(scope.codes);
+}
+
+/**
+ * Incident-query scope composition (P1-A01): an incident is in scope when
+ * ANY device linked through the IncidentDevice join sits in a scoped site.
+ * Wildcard composes the base where unchanged; deny-all (`in: []`) matches
+ * nothing (fail-closed).
+ */
+function deviceWhereForIncidentScope(scope: SiteScope, since: Date) {
+  const base = { createdAt: { gte: since } };
+  if (scope.mode === "wildcard") return base;
+  return {
+    AND: [
+      base,
+      {
+        devices: {
+          some: { device: { site: { code: { in: scope.codes } } } },
+        },
+      },
+    ],
+  };
+}
+
+/** Scope note for fleet-derived artifacts executed under a site-limited scope. */
+function changeScopeNote(scope: SiteScope): string | undefined {
+  if (scope.mode !== "sites") return undefined;
+  return scope.codes.length === 0
+    ? "Report scope: deny-all (no sites) — change-request aggregates are fleet-wide by nature; this artifact is empty-basis for a site-limited schedule."
+    : `Report scope: limited to site(s) ${scope.codes.join(", ")}. Change requests carry no site attribution, so the change aggregates in this artifact remain fleet-wide.`;
 }
 
 const MAX_ROWS = 500;
@@ -104,7 +183,8 @@ export function expectedRangeFor(
 
 async function generateAvailability(
   frequency: string,
-  format: string
+  format: string,
+  scope: SiteScope
 ): Promise<ReportArtifact> {
   const days = frequency === "DAILY" ? 1 : 7;
   const since = new Date(Date.now() - days * DAY_MS);
@@ -112,6 +192,8 @@ async function generateAvailability(
 
   const [devices, slaSetting] = await Promise.all([
     db.device.findMany({
+      // P1-A01: the report intersects the FROZEN schedule/run scope.
+      where: deviceWhereForScope(scope, {}),
       select: {
         id: true,
         hostname: true,
@@ -188,14 +270,16 @@ async function generateAvailability(
 /* ───────────────────────── BACKUP_COMPLIANCE ───────────────────────── */
 
 async function generateBackupCompliance(
-  format: string
+  format: string,
+  scope: SiteScope
 ): Promise<ReportArtifact> {
   const now = Date.now();
   const compliantCutoff = new Date(now - COMPLIANT_WINDOW_MS);
   const atRiskCutoff = new Date(now - AT_RISK_WINDOW_MS);
 
   const devices = await db.device.findMany({
-    where: { status: { not: "UNMANAGED" } },
+    // P1-A01: intersect the frozen scope with the managed-device base.
+    where: deviceWhereForScope(scope, { status: { not: "UNMANAGED" } }),
     select: {
       id: true,
       hostname: true,
@@ -259,9 +343,11 @@ async function generateBackupCompliance(
 
 async function generateChangeSummary(
   frequency: string,
-  format: string
+  format: string,
+  scope: SiteScope
 ): Promise<ReportArtifact> {
   const since = new Date(Date.now() - 30 * DAY_MS);
+  const scopeNote = changeScopeNote(scope);
 
   const changes = await db.changeRequest.findMany({
     where: { createdAt: { gte: since } },
@@ -303,6 +389,7 @@ async function generateChangeSummary(
     generatedAt: new Date().toISOString(),
     range: expectedRangeFor("CHANGE_SUMMARY", frequency),
     format,
+    ...(scopeNote ? { scopeNote } : {}),
     columns: [
       { key: "status", label: "Change status" },
       { key: "low", label: "Low risk" },
@@ -319,13 +406,16 @@ async function generateChangeSummary(
 
 async function generateIncidentSummary(
   frequency: string,
-  format: string
+  format: string,
+  scope: SiteScope
 ): Promise<ReportArtifact> {
   const now = new Date();
   const since = new Date(now.getTime() - 30 * DAY_MS);
 
   const incidents = await db.incident.findMany({
-    where: { createdAt: { gte: since } },
+    // P1-A01: an incident is in scope when ANY linked device sits in a
+    // scoped site (the incident↔device join); wildcard composes no filter.
+    where: deviceWhereForIncidentScope(scope, since),
     select: {
       severity: true,
       status: true,
@@ -434,12 +524,15 @@ async function generateIncidentSummary(
 
 async function generateCapacity(
   frequency: string,
-  format: string
+  format: string,
+  scope: SiteScope
 ): Promise<ReportArtifact> {
   const days = 30;
   const since = new Date(Date.now() - days * DAY_MS);
 
   const devices = await db.device.findMany({
+    // P1-A01: the report intersects the FROZEN schedule/run scope.
+    where: deviceWhereForScope(scope, {}),
     select: { id: true, hostname: true, site: { select: { code: true } } },
     orderBy: { hostname: "asc" },
   });
@@ -581,21 +674,26 @@ async function generateCapacity(
  */
 export async function generateReport(
   reportType: string,
-  opts: { frequency?: string; format?: string } = {}
+  opts: { frequency?: string; format?: string; scope?: SiteScope } = {}
 ): Promise<ReportArtifact> {
   const frequency = opts.frequency ?? "WEEKLY";
   const format = opts.format ?? "JSON";
+  // P1-A01: the effective data scope. Default = wildcard, so legacy callers
+  // (tests, demo tooling) keep byte-identical artifacts; every production
+  // path (run route = acting session scope, execute route = schedule's
+  // frozen scope) passes an explicit scope.
+  const scope = opts.scope ?? WILDCARD_SCOPE;
   switch (reportType) {
     case "AVAILABILITY":
-      return generateAvailability(frequency, format);
+      return generateAvailability(frequency, format, scope);
     case "BACKUP_COMPLIANCE":
-      return generateBackupCompliance(format);
+      return generateBackupCompliance(format, scope);
     case "CHANGE_SUMMARY":
-      return generateChangeSummary(frequency, format);
+      return generateChangeSummary(frequency, format, scope);
     case "INCIDENT_SUMMARY":
-      return generateIncidentSummary(frequency, format);
+      return generateIncidentSummary(frequency, format, scope);
     case "CAPACITY":
-      return generateCapacity(frequency, format);
+      return generateCapacity(frequency, format, scope);
     default:
       throw new Error(`Unsupported report type: ${reportType}`);
   }

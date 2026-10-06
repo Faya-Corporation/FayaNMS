@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, ok } from "../../_lib/api";
 import { authenticateServiceRequest } from "@/lib/auth/service-auth";
-import { generateReport } from "@/lib/reports/generate";
+import { generateReport, reportScopeFromJson } from "@/lib/reports/generate";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -170,10 +170,17 @@ async function executeReportRun(jobId: string): Promise<Response> {
     );
   }
 
+  // P1-A01 (GA re-audit 2026-10-06): the SCHEDULE's frozen scope governs —
+  // frozen at creation from the creating session's resolved scope and never
+  // reconstructed from the worker's global service identity. Null column =
+  // wildcard (legacy + wildcard-created schedules execute byte-identically).
+  const scope = reportScopeFromJson(schedule.scopeJson);
+
   try {
     const artifact = await generateReport(schedule.reportType, {
       frequency: schedule.frequency,
       format: schedule.format,
+      scope,
     });
 
     const now = new Date();
