@@ -3948,6 +3948,7 @@ Stage Summary:
 - Next: GA-3 (API-client expiry + siteScopeJson resource scope), then GA-4 (DLQ recovery + simulation gating + collector plane phase 1).
 
 ---
+
 Task ID: 5 (GA-2/GA-3 ship + GA-4 start, session web-4924c74a, trace 1a112a3f56ce0449)
 Agent: main agent (Z.ai Code)
 Task: merge GA-2, ship GA-3, start GA-4 (simulation gating + DLQ recovery).
@@ -3977,3 +3978,20 @@ Stage Summary:
 - 4 security waves merged (all four CI checks green on every merge), 1 PR open in CI.
 - Every repository-actionable P1 authorization finding from the 2026-10-06 re-audit is now CLOSED on main: P1-A01..A05. DLQ (P1-O03) closed behind PR #78. Simulated surfaces (P0-R05/P1-O02) now fail closed outside demo mode behind PR #78.
 - Remaining: P0-R06 collector plane, GA-5 formats, GA-6 release/DR/docs, P0-R02/R03/R04 + GA-7/GA-8 BLOCKED — EXTERNAL.
+
+
+---
+Task ID: 5 (GA-4 CI disposition, session web-4924c74a, trace 1a1132d11483f549)
+Agent: main agent (Z.ai Code)
+Task: diagnose and fix the failing gate check on PR #78 (GA-4), re-verify, push, merge when green.
+
+Work Log:
+- State re-establishment: origin/main had advanced to 3af334c (PRs #74-#77 merged: GA wave 0 + GA-1..GA-3); PR #78 open @ 416959c with gate FAILED (e2e/scan/browser skipped).
+- Root cause via check annotations: tests/audit/ga4-simulation-gating-dlq.test.ts:159 expected 403 SIMULATION_DISABLED on the rebalance APPLY leg, received 404. In the route, `moves.length === 0 → 404 COLLECTOR_NO_MOVES` preceded the demo-mode gate; the CI gate job runs `bun test tests/` after `migrate deploy` with NO seed (ci.yml line 171), so the CI DB has zero devices → empty plan → 404 masked the gate. Local dev DB (66k seeded fleet, has moves) masked the bug pre-push.
+- Fix (9a69c20): moved the APPLY-leg simulation gate before the plan computation (mirrors the failover-test route's proven gate order); 404 NO_MOVES stays reachable for previews and demo-mode applies. Test hardened: PREVIEW assertion is now fleet-shape-independent (200 plan OR 404 NO_MOVES both prove availability; 403 there is the pinned regression).
+- Dual-shape verification: suite 7/7 on the dev DB (preview-200 path) AND 7/7 on a scratch migrations-only DB `fayanms_ga4verify` replicating the CI gate job exactly (preview-404 path). Scratch DB dropped after. tsc 0; lint 0.
+- Harness incident (known class): cwd/branch resets between tool calls; worklog stash landed on main's tree and was re-applied onto the branch by hand.
+
+Stage Summary:
+- GA-4 fix pushed (9a69c20); CI re-running. Merge follows per precedent once green.
+- Standing learning recorded: CI gate DB is migrations-only (no seed) — suites must never assume demo-fleet data; prefer gates before data-dependent branches.
