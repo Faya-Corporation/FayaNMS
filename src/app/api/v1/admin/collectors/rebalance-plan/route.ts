@@ -27,6 +27,11 @@ export const dynamic = "force-dynamic";
  *                             correlationId (COLL-XXXXXX) — audit-as-event-
  *                             store, no schema, no worker.
  *   404 COLLECTOR_NO_MOVES  — the plan is empty (fleet already balanced).
+ *
+ * GA-4 gate order (P0-R05/P1-O02): the APPLY leg's demo-mode gate
+ * (403 SIMULATION_DISABLED) precedes the plan computation, so an empty or
+ * balanced fleet (e.g. the CI DB) cannot mask the refusal with 404. The
+ * dryRun preview stays available in a production posture.
  * ───────────────────────────────────────────────────────────────────────────── */
 
 const planSchema = z.object({
@@ -79,6 +84,17 @@ export async function POST(request: Request) {
     return authFail;
   }
 
+  // P0-R05/P1-O02 (GA re-audit 2026-10-06): the APPLY leg is a
+  // DOCUMENTED SIMULATION (staged audit rows — no real collector is
+  // redeployed). Demo-mode-gated BEFORE the plan computation: a balanced
+  // or empty fleet must not mask the simulation refusal with 404
+  // COLLECTOR_NO_MOVES (that is a plan outcome, not an authz one). The
+  // dryRun preview stays available in a production posture.
+  if (!dryRun && !isDemoMode()) {
+    const disabled = simulationDisabledFail();
+    return fail(disabled.code, disabled.message, disabled.status);
+  }
+
   const rows = await loadAssignments();
   const assignments = assignDevices(rows);
   const moves = planRebalance(assignments);
@@ -96,13 +112,8 @@ export async function POST(request: Request) {
   // apply is identical — without a cooldown an identical planId would pass
   // the staleness check forever. The newest apply row must be ≥ 3 min old.
   if (!dryRun) {
-    // P0-R05/P1-O02 (GA re-audit 2026-10-06): the APPLY leg is a
-    // DOCUMENTED SIMULATION (staged audit rows — no real collector is
-    // redeployed). Demo-mode-gated; the dryRun preview stays available.
-    if (!isDemoMode()) {
-      const disabled = simulationDisabledFail();
-      return fail(disabled.code, disabled.message, disabled.status);
-    }
+    // The simulation gate already fired above (before the plan
+    // computation); what remains here is the audit-as-event-store cooldown.
     const latestApply = await db.auditEvent.findFirst({
       where: { action: "COLLECTOR_REBALANCE" },
       select: { correlationId: true, createdAt: true },

@@ -149,7 +149,7 @@ describe("GA-4: simulation honesty gating", () => {
     process.env.FAYANMS_DEMO_MODE = undefined;
     const { POST } = await import("../../src/app/api/v1/admin/collectors/rebalance-plan/route");
 
-    // The APPLY leg refuses (fast — the gate precedes the cooldown query).
+    // The APPLY leg refuses (fast — the gate precedes the plan computation and the cooldown query).
     const apply = await POST(
       await authedRequest("POST", "http://app.local/api/v1/admin/collectors/rebalance-plan", {
         dryRun: false,
@@ -160,15 +160,24 @@ describe("GA-4: simulation honesty gating", () => {
     const applyBody = (await apply.json()) as Envelope;
     expect(applyBody.error?.code).toBe("SIMULATION_DISABLED");
 
-    // The read-only PREVIEW stays available in a production posture.
+    // The read-only PREVIEW stays available in a production posture — the
+    // simulation gate must NOT mask it. Both plan outcomes prove
+    // availability: 200 (the fleet has a rebalance plan) or 404
+    // COLLECTOR_NO_MOVES (the CI DB has no devices, so nothing is over
+    // capacity). A 403 SIMULATION_DISABLED here is the regression pinned.
     const preview = await POST(
       await authedRequest("POST", "http://app.local/api/v1/admin/collectors/rebalance-plan", {
         dryRun: true,
       })
     );
-    expect(preview.status).toBe(200);
     const previewBody = (await preview.json()) as Envelope;
-    expect(previewBody.success).toBe(true);
+    expect(preview.status === 200 || preview.status === 404).toBe(true);
+    expect(previewBody.error?.code).not.toBe("SIMULATION_DISABLED");
+    if (preview.status === 200) {
+      expect(previewBody.success).toBe(true);
+    } else {
+      expect(previewBody.error?.code).toBe("COLLECTOR_NO_MOVES");
+    }
   });
 });
 
