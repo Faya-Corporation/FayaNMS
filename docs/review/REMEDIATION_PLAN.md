@@ -1,104 +1,74 @@
-# REMEDIATION PLAN — FayaNMS audit findings (branch `GLM/full-audit-and-fix`)
+# REMEDIATION PLAN — FayaNMS GA program (2026-10-06 re-audit)
 
-Inputs: `docs/review/FINDINGS.md` (F-001..F-066, 66 findings; F-003 merges A2-03+A3-03), `docs/review/notes/*.md` (A1..A5), `docs/review/STATE.md`. Task files live in `docs/review/tasks/RT-###-*.md` (40 files; every RT lists its linked F-/A-IDs). Deferred work: `docs/review/BACKLOG.md` (23 findings).
+Input: the 2026-10-06 full re-audit (`docs/review/STATE.md` carries the verified finding register).
+Ordering follows the mission priority: P0 blockers → site-scope/tenancy → API-client expiry/scoping →
+report scoping → `/sites` → backup-policy cross-site → collector/DLQ hardening → staging/release/DR → remaining P2/P3.
+The audit's own wave order (GA-01 authorization first) is preserved inside that priority.
 
-## Coverage math
+Rules of engagement (unchanged for every wave):
+inspect first → write/adjust tests → implement → lint + tsc + targeted suites (+ full sweep before ship) →
+update progress docs → Conventional Commit → PR → CI → merge per precedent → post-merge live probes.
+Never weaken/skip/delete tests or gates. Never fabricate evidence; external blockers are labeled `BLOCKED — EXTERNAL`.
 
-| Bucket | Findings | RT files |
+## Wave GA-1 — tenancy completion I: `/sites` + backup-policy actuation (no schema change)
+
+| Item | Finding | Fix shape |
 |---|---|---|
-| Wave 0 (all 7 P1) | 7 | 6 (F-005+F-006 share RT-005) |
-| Wave 1 (P2 contained + A1-04) | 15 (incl. F-049/F-050 folded into RT-015) | 16 |
-| Wave 1.5 (P3 trivial + A5-07) | 17 | 17 |
-| **Fixed total** | **43** | **40** |
-| Deferred (BACKLOG.md) | 23 | — |
-| **Total** | **66** | — |
+| 1 | P1-A02 `/sites` global | Filter site rows by the session's site scope (`sessionScopeFor` + `sessionAllowsSite`); aggregate counts intersect the same scope; wildcard sessions keep the global view byte-for-byte. |
+| 2 | P1-A03 backup-policy POST | For non-wildcard sessions: every `scope.siteCodes` entry must be in the session's allowed codes; `*` → 403 SITE_SCOPE_FORBIDDEN. Wildcard sessions unchanged. |
+| 3 | P1-A03 backup-policy PATCH | Same rule on the PATCH handler (`[id]/route.ts`), applied to the EFFECTIVE scope (existing row merged with the patch). |
+| 4 | Tests | New suite: sites filtering (site-limited vs wildcard), backup-policy POST/PATCH subset enforcement + `*` refusal + audit rows. Run all touched pre-existing suites. |
 
-Scope note: the binding scope lists left four fixable findings unassigned (F-019/A4-04, F-020/A4-05, F-021/A4-06 — all P2/S-M i18n sweeps — and F-060/A5-08, P3/S). They are scheduled here as RT-020..RT-022 and RT-030 so that 66 = 43 fixed + 23 deferred balances exactly; the main agent can re-scope them to BACKLOG by dropping the four files and their rows. Flagged in each RT file.
+## Wave GA-2 — tenancy completion II: report data scoping + notification receipts (schema change)
 
-## WAVE 0 — P0 (none) + all 7 P1  → merge gate: full suite + build
+| Item | Finding | Fix shape |
+|---|---|---|
+| 1 | P1-A01 scope model | `ReportSchedule.scopeJson` column (migration); `ReportRun`/artifact path carries the immutable effective scope. |
+| 2 | P1-A01 generator | `generateReport(reportType, opts)` gains a required scope object; every fleet query (availability/backup-compliance/change/incident/capacity) intersects it via the scope helpers. |
+| 3 | P1-A01 freeze-at-creation | `POST /reports/schedules` freezes the creating session's resolved scope into the row; `POST /reports/run` freezes the acting session's scope for the run; `/reports/execute` (worker) uses the SCHEDULE's frozen scope, never the worker's global identity. |
+| 4 | P2 notification receipts | `NotificationReceipt(notificationId, userId, readAt)` migration + read route marks PER-USER receipts (broadcast read no longer global); read-state aggregation updated; stale "SQLite demo" comment removed. |
+| 5 | Tests | Generator scope-intersection suite per report type; schedule freeze immutability; per-user receipt behavior; migration replay. |
 
-| Order | RT | Finding(s) | Fix | Depends on |
-|---|---|---|---|---|
-| 0.1 | RT-001 | F-001 (A3-01) | Alert suppression reactivation (evaluate.ts) | — |
-| 0.2 | RT-005 | F-005+F-006 (A4-02+A4-03) | i18n: hook toasts + alert components (shared fix) | — |
-| 0.3 | RT-002 | F-002 (A3-02) | MetricRollup runtime producer (job + route + engine) | RT-015 recommended (index before rollup volume grows) |
-| 0.4 | RT-003 | F-003 (A2-03+A3-03) | ProtocolEventQueue retention sweep | — |
-| 0.5 | RT-004 | F-004 (A4-01) | error/global-error/not-found + view boundary | — (RT-037 improves its fallback copy) |
-| 0.6 | RT-006 | F-007 (A5-01) | OCI compose per-service env split | operator action on host before next deploy |
+## Wave GA-3 — API-client lifecycle + resource scope (schema change)
 
-Wave 0 gate: `bun test tests/` fully green (baseline 1340 pass/18 skip), `node_modules/typescript/bin/tsc --noEmit` clean, `bun run lint` clean, `bun run build:gate` exit 0. RT-006 additionally requires a staging `docker compose config` render check.
+| Item | Finding | Fix shape |
+|---|---|---|
+| 1 | P1-A04 expiry columns | `ApiClient.expiresAt` (+ `rotatedAt`, `lastRotatedFromId` audit linkage) migration; max-lifetime policy knob (env, clamped, default 90 d) enforced at creation. |
+| 2 | P1-A04 enforcement | `resolveActiveClient()` refuses expired clients centrally (typed failure); expiry/rotation/revocation audit events. |
+| 3 | P1-A05 resource scope | `ApiClient.siteScopeJson` (same claim semantics as humans: null = wildcard for compat with existing rows, `[]` = deny-all); enforcement on device-scoped faces via the existing scope helpers; admin UI shows expiry warning + scope; tests for both. |
 
-## WAVE 1 — P2 contained (fix)
+## Wave GA-4 — DLQ operator recovery + simulation honesty gating
 
-| Order | RT | Finding(s) | Fix | Depends on |
-|---|---|---|---|---|
-| 1.1 | RT-015 | F-017 (A3-08) + F-049 (A3-13) + F-050 (A3-14) | Batched metric prune + ONE additive index migration | **First in wave** — perf RTs ride on its indexes |
-| 1.2 | RT-007 | F-009 (A1-02) | Security headers in next.config.ts | — |
-| 1.3 | RT-008 | F-010 (A1-03) | Origin/Sec-Fetch-Site check in proxy.ts | — |
-| 1.4 | RT-009 | F-027 (A1-04, S part only) | timingSafeEqual in /api/metrics | — |
-| 1.5 | RT-010 | F-011 (A2-01) | Bounded WebAPI response accumulation (4 MiB cap) | — |
-| 1.6 | RT-011 | F-013 (A3-04) | Prune must not cascade OPEN DriftRecords / baselines | — (**before RT-016**, same code region) |
-| 1.7 | RT-012 | F-014 (A3-05) | devices/bulk audit rows hash-stamped (no createMany) | — |
-| 1.8 | RT-013 | F-015 (A3-06) | Tail-anchored chain verify | — |
-| 1.9 | RT-014 | F-016 (A3-07) | Incident/change P2002 retry (cmdb pattern) | — |
-| 1.10 | RT-016 | F-018 (A3-09) | Snapshot prune due-ness gating + set-based candidates | RT-011 |
-| 1.11 | RT-017 | F-024 (A5-03) | container.yml scan-before-publish (**file-only: workflow disabled at repo level — no CI runtime effect until the owner re-enables**) | — |
-| 1.12 | RT-018 | F-023 (A5-02) | Worker scrape path → /api/metrics | — (before RT-030 validation) |
-| 1.13 | RT-019 | F-022 (A4-07) | RTL logical spacing sweep (9 files) | — |
-| 1.14 | RT-020 | F-019 (A4-04) | Sign-in gate i18n (gap-closure add) | after RT-005 conventions |
-| 1.15 | RT-021 | F-020 (A4-05) | High-risk dialog i18n (gap-closure add) | after RT-005 |
-| 1.16 | RT-022 | F-021 (A4-06) | Device form + CSV import i18n (gap-closure add) | after RT-005 |
+| Item | Finding | Fix shape |
+|---|---|---|
+| 1 | P1-O03 DLQ surface | Dead-letter list API (reason/attempt details, bounded), requeue one/many with replay idempotency, quarantine marker, permission gate + audit trail; alert threshold wiring into the existing alert rules. |
+| 2 | P0-R05/P1-O02 HA honesty | HA/failover-test + collector rebalance surfaces refuse (or label-only, feature-flagged OFF by default) when `FAYANMS_DEMO_MODE` is not true; production boot policy warning; UI labels preserved. |
+| 3 | P0-R06 (phase 1) | Real collector control-plane primitives: registration + heartbeat + assignment lease epochs + fencing + failover/rebalance that actually moves ownership rows (DB-backed), replacing the static in-code fleet for assignment decisions; static simulation stays only as seed/demo data, clearly labeled. Scoped to what the sandbox can honestly verify end-to-end; anything requiring real remote collectors is documented, not simulated silently. |
 
-Wave 1 gate: same as Wave 0, plus: RT-015 migration applied via `prisma migrate deploy` on the local DB in CI; RT-008's proxy suite + `tests/auth/` green; RT-017's updated workflow-contract tests (r78/docker-image-provenance) green.
+## Wave GA-5 — reporting formats
 
-## WAVE 1.5 — P3 trivial (fix; one finding per RT)
+| Item | Finding | Fix shape |
+|---|---|---|
+| 1 | PDF/XLSX honesty | Implement REAL, dependency-free renderers (hand-rolled PDF 1.4 writer; minimal OOXML/SpreadsheetML writer) OR remove the formats. Decision recorded in-wave after inspecting artifact consumers; format-honesty comments/labels updated to match reality. |
+| 2 | Tests | Byte-level artifact tests (PDF header/xref validity, XLSX zip structure), pipeline matrix for all 4 formats. |
 
-| Order | RT | Finding | Fix |
-|---|---|---|---|
-| 1.5.1 | RT-023 | F-035 (A1-12) | Remove `/api` hello stub |
-| 1.5.2 | RT-024 | F-028 (A1-05) | Trim pre-auth /meta payload (verify-then-split; Deferred fallback if a pre-auth consumer appears) |
-| 1.5.3 | RT-025 | F-040 (A2-08) | Worker metrics timing-safe compare + 403 for scope-insufficient |
-| 1.5.4 | RT-026 | F-042 (A2-10) | appendBounded exact cap |
-| 1.5.5 | RT-027 | F-043 (A2-11) | Worker error-detail hygiene + log rotation |
-| 1.5.6 | RT-028 | F-059 (A5-07) | `/api/health` readiness endpoint + probe switch |
-| 1.5.7 | RT-029 | F-058 (A5-06) | Caddy access log → stdout |
-| 1.5.8 | RT-030 | F-060 (A5-08) | Starter Prometheus alert rules + mount (gap-closure add) |
-| 1.5.9 | RT-031 | F-061 (A5-09) | TLS-profile /api/metrics 404 (all three Caddyfiles) |
-| 1.5.10 | RT-032 | F-062 (A5-10) | backup.sh umask 077 |
-| 1.5.11 | RT-033 | F-063 (A5-11) | restore-drill URL off argv |
-| 1.5.12 | RT-034 | F-064 (A5-12) | ci.yml governance header refresh (comment-only) |
-| 1.5.13 | RT-035 | F-065 (A5-13) | dependabot github-actions ecosystem |
-| 1.5.14 | RT-036 | F-066 (A5-14) | Remove --web.enable-lifecycle |
-| 1.5.15 | RT-037 | F-053 (A4-08) | ErrorState localized defaults — **after RT-005** |
-| 1.5.16 | RT-038 | F-054 (A4-09) | Locked-download hint keyboard-reachable |
-| 1.5.17 | RT-039 | F-055 (A4-10) | text-right → text-end sweep |
-| 1.5.18 | RT-040 | F-056 (A4-11) | ChartStyle CSS whitelist guard |
+## Wave GA-6 — release evidence, docs truth, session lifetime, DR tooling
 
-Wave 1.5 gate: per-RT test files green; full `bun test tests/`, tsc, lint green after the wave. RT-028 staged: land route + probes together only after a day of the route running in staging.
+| Item | Finding | Fix shape |
+|---|---|---|
+| 1 | P0-R07 | `docs/release/GA-READINESS.md` — the ONE canonical gate table (machine-verifiable rows per audit §16); refresh `docs/implementation/CURRENT-STATE.md` to current truth; fix `MATRIX.md` §4 stale GOV/CI rows. |
+| 2 | P2-S01 | Absolute session lifetime: enforce a token-age cap (configurable `FAYANMS_SESSION_MAX_AGE_HOURS`, default 12, 0 = legacy off) on the session callback; documented decision note replaces the "deliberately NOT implemented" comment. |
+| 3 | P0-R03 (in-repo) | WAL archiving/PITR config template + scheduled encrypted-backup sidecar in `deploy/oci/compose.yml` + drill documentation updates. Actual off-host/key custody/restore target stay `BLOCKED — EXTERNAL`. |
+| 4 | P0-R01 | Dispatch `container.yml` on the post-remediation main SHA; record run IDs/digests in GA-READINESS if green. If publish fails on infra, record the run as evidence-with-blocker (never fabricated). |
+| 5 | P3 | Regenerate release-evidence manifest for the final SHA; draft release notes/CHANGELOG. Tag/GA approval remains an owner decision. |
 
-## Cross-cutting dependency rules
+## Waves NOT executable in-repo (documented, never fabricated)
 
-1. **RT-015 (migration) first in Wave 1** — RT-002's rollup volume and RT-030's queue-growth rule are meaningless without the indexes; never ship a perf RT before its index.
-2. **RT-005 before RT-020/021/022/037** — one direction for dictionary conventions + leaf-count updates.
-3. **RT-011 before RT-016** — both rewrite `pruneRetention` in tick/route.ts; land in that order, review together.
-4. **RT-018 before RT-030** — the worker-down rule needs a scraping target.
-5. **RT-006 needs an operator step** (create `.env.app`/`.env.worker` on the host) — schedule the staging window explicitly; deploy.sh's new preflight enforces ordering.
-6. **container.yml is disabled at repo level** (owner request): RT-017 is file-only and its tests are the sole verification until re-enable — do not attempt a live GHCR validation.
-7. **RT-028 probe flip is the only semantic health change** — everything else in the plan keeps today's liveness semantics.
-8. i18n RTs (RT-004/005/020/021/022/037) each add dictionary leaves: keep en/ar parity exact and update ONLY the newest tranche test's totals assertion if it pins counts (2,850 today).
+- **GA-7 vendor T3 certification** — needs real/vendor-virtual appliances (`BLOCKED — EXTERNAL`).
+- **GA-8 final independent re-audit + staging burn-in (P0-R02)** — needs OCI staging secrets/host and owner sign-off.
+- Monitoring alert-fire drills (P2) — depend on staging.
 
-## Global verification gate (every RT + each wave)
+## Exit criteria for this program
 
-```bash
-bun test tests/<rt-test-file>            # the RT's own suite
-bun test tests/                          # full suite (baseline 1340 pass / 18 skip / 2 env-fail)
-node_modules/typescript/bin/tsc --noEmit # exit 0, no output
-bun run lint                             # 0 errors
-bun run build:gate                       # per-wave (Wave 0 mandatory; after any next.config/layout change)
-```
-
-## Post-wave operational checks
-
-- After Wave 0: one full staging boot with the RT-006 split env files; alert-engine run exercised (RT-001) via a forced alert fire/resolve.
-- After Wave 1: `prisma migrate deploy` on staging (RT-015), chain verify verdict wording reviewed (RT-013), one browser pass over the devices list in ar (RT-019).
-- After Wave 1.5: monitoring profile boot (RT-018/030/036), a backup+restore drill (RT-032/033), TLS entrypoint curl checks (RT-031).
+Every finding in the STATE register is either (a) fixed with tests at a green CI merge, (b) documented as
+`BLOCKED — EXTERNAL` with the exact missing owner input, or (c) an explicitly recorded architecture/owner decision.

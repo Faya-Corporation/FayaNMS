@@ -3907,3 +3907,23 @@ Stage Summary:
 - Follow-up readback found attempt 1 has the same signature: setup/login/metadata passed, multi-architecture build/push stayed in progress, then the job failed after 20m46s; attempt 2 failed after 22m42s. Both are below the configured 45-minute timeout; both logs are `BlobNotFound`, so root cause remains unknown.
 - Updated the canonical state and cloud progress ledger. Did not rerun the workflow or claim an image digest. Local validation: documentation facts cross-checked against both attempt job lists, logs, artifacts, run, and branch API responses.
 - Commit: a separate focused commit records this evidence refresh.
+
+---
+Task ID: 1 (GA-wave-0, session web-4924c74a trace 1a112a3f56ce0449)
+Agent: main agent (Z.ai Code)
+Task: FayaNMS autonomous production remediation — new 2026-10-06 owner re-audit input; re-establish engagement and produce the verified state/plan/progress baseline.
+
+Work Log:
+- Sandbox filesystem had been ROLLED BACK to a wave-8-era template snapshot (no origin remote, mangled git history, stale worklog). GitHub state re-probed via API: PR #72 merged (22:24:45Z, merge commit eee9d04) and PR #73 merged (23:31:47Z) during the prior session; main @ d281873; PR #65 (trivy, RT-034 governance) still open.
+- Fresh clone of FayaNMS @ d281873 restored into /home/z/my-project (upload/ + sandbox infra preserved).
+- Stack re-deployed: Zonky PG 16.4.0 binaries re-provisioned into db/pg-embed (jar from Maven Central), initdb + `fayanms` DB created (single-user mode — Zonky ships no createdb), bun install (root + worker), .env generated for BOTH planes without printing secrets (agent-ctx/provision-env.ts): NEXTAUTH_SECRET, FAYANMS_CONFIG_ENC_KEY, EdDSA CONTROL/WORKER keypairs, FAYANMS_DEMO_MODE=true, FAYANMS_METRICS_TOKEN.
+- `bun run db:deploy` replayed full migration history; `bun prisma/seed.ts` seeded 66,108 rows; app :3000 + worker :3030 launched via canonical setsid pattern.
+- Worker 401 "Token signature verification failed" on loopback /simulate/connect diagnosed: self-calls mint iss=fayanms:worker tokens verified by the worker's own FAYANMS_SERVICE_PUBLIC_KEYS trust list, which must therefore include the worker's OWN public key alongside the control-plane key. Fixed in worker .env (2-key rotation list) after also killing a stale duplicate worker instance (cmdline "bun --hot index.ts" is not killable by path-pattern pkill). Post-fix: claim→execute→complete SUCCEEDED end-to-end (real bytes, junos/cisco-ios flavors).
+- Read the 2026-10-06 re-audit END-TO-END before any changes; re-verified EVERY OPEN P0/P1/P2 finding against d281873 source (agent 0-a for docs/evidence/CI findings; main agent for code-level P1s). ZERO stale findings — full register with file:line evidence written into docs/review/STATE.md.
+- Auth smoke on fresh DB: tests/auth 114 pass / 0 fail; tsc clean (tracked tree; untracked sandbox probes/ excluded), lint clean.
+- Wrote the engagement docs: docs/review/STATE.md (verified register + disposition buckets incl. BLOCKED—EXTERNAL set), REMEDIATION_PLAN.md (waves GA-1..GA-6 + external GA-7/GA-8), PROGRESS.md (tracker). Prior 2026-09 program docs archived under docs/review/notes/.
+
+Stage Summary:
+- Engagement re-established at d281873 with a LIVE verified deployment (app/auth/worker/PG) and a fully re-verified finding register — zero trusted-stale findings.
+- Key ops learning for the repo: worker loopback self-auth requires the worker's own public key in its own FAYANMS_SERVICE_PUBLIC_KEYS rotation list; .env.example's ownership block does not document this (queued as a docs fix).
+- Next: Wave GA-1 (/sites scoping + backup-policy cross-site actuation enforcement), then GA-2 (report scoping + notification receipts).
