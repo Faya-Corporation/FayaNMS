@@ -10,6 +10,14 @@ POSTGRES_IMAGE="postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b67
 DB_PASSWORD="$(openssl rand -hex 24)"
 DB_URL="postgresql://fayanms:${DB_PASSWORD}@postgres:5432/fayanms"
 RUN_SECRET="$(openssl rand -hex 32)"
+# GA-6: the production startup policy REFUSES boot without a metrics bearer
+# token (the /api/metrics surface would answer unauthenticated) and without
+# an honest proxy-hop declaration. This smoke IS a direct-published topology
+# (the app port is bound to loopback only), so the honest declaration is
+# FAYANMS_TRUST_PROXY_HOPS=0 — every caller shares one conservative bucket.
+# Both values are fresh random per run — the deterministic CI fixture values
+# are REFUSED by the same policy (P1-019).
+METRICS_TOKEN="$(openssl rand -hex 32)"
 
 cleanup() {
   docker rm -f "$APP" "$POSTGRES" >/dev/null 2>&1 || true
@@ -40,13 +48,23 @@ docker run -d --name "$APP" --network "$NETWORK" -p 127.0.0.1:34000:3000 \
   -e FAYANMS_SERVICE_SECRET="$RUN_SECRET" \
   -e FAYANMS_CONFIG_ENC_KEY="$RUN_SECRET" \
   -e FAYANMS_CONFIG_ENC_KEY_ID=ci-smoke \
+  -e FAYANMS_METRICS_TOKEN="$METRICS_TOKEN" \
+  -e FAYANMS_TRUST_PROXY_HOPS=0 \
   -e FAYANMS_DEMO_MODE= \
   "$IMAGE" >/dev/null
 
 for _ in $(seq 1 60); do
   if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:34000/ >/dev/null; then
     echo "ARM64 application runtime smoke passed"
-    exit 0
+    # GA-6: the metrics surface must NOT answer unauthenticated in a
+    # production posture — a 401 here is part of the certified contract.
+    if curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 \
+         http://127.0.0.1:34000/api/metrics | grep -q '^401$'; then
+      echo "metrics unauthenticated refusal verified (401 without bearer)"
+      exit 0
+    fi
+    echo "metrics surface did NOT refuse an unauthenticated scrape" >&2
+    exit 1
   fi
   sleep 2
 done

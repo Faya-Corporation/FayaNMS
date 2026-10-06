@@ -1,5 +1,15 @@
 # Canonical Implementation State
 
+> **GA-6 truth retotal (2026-10-06):** the canonical, live gate table now
+> lives in **[`docs/release/GA-READINESS.md`](../release/GA-READINESS.md)** —
+> read it FIRST. Corrections to the snapshot below, verified by API read-back
+> at main `24ccacf`: branch protection on `main` IS ACTIVE (required checks
+> `gate`+`e2e`+`browser`+`scan`, strict, no force-push/deletion; the older
+> "NOT ACTIVE" claim was wrong); CI is GREEN on current main (runs
+> `37530420835`, `37538435081`); the container workflow was `disabled_manually`
+> and has been re-enabled + dispatched (run `37542612715`). The table below is
+> retained as the 2026-09-23 historical snapshot — rows are NOT current claims.
+
 **Snapshot date:** 2026-09-23 01:01 UTC
 **Purpose:** concise, evidence-qualified status for implementation and release work. Historical audit pages retain their original dates; use this page for the latest consolidated state.
 

@@ -17,13 +17,50 @@ Set and approve explicit RPO/RTO values before production. The repository defaul
 
 ## Backup
 
-Install age and configure an age recipient outside Git. Run:
+Install age and configure an age recipient outside Git. Two equivalent execution paths exist — pick ONE per host and verify whichever is used:
 
 ~~~bash
+# Host-cron path (runs on the host via docker compose exec):
 sudo FAYANMS_BACKUP_AGE_RECIPIENT='age1...' /opt/fayanms/backup.sh
+
+# Compose sidecar path (GA-6, P0-R03): the `backup` service in
+# deploy/oci/compose.yml runs the same contract on a schedule
+# (FAYANMS_BACKUP_INTERVAL_SECONDS, default 6h) with the plaintext dump
+# confined to the pg_dump→age pipe — it refuses to start without an age
+# recipient. Build + pin the image first:
+#   docker build -t fayanms/backup-sidecar deploy/oci/backup-sidecar
+#   docker push → set FAYANMS_BACKUP_IMAGE=<ghcr ref @sha256:...>
 ~~~
 
-The script refuses to create plaintext output, deletes the temporary plaintext dump, writes a checksum, and applies retention to encrypted files. Upload to approved off-host storage only after checksum verification. Do not log the recipient private key or database URL.
+Both paths write `fayanms-<timestamp>.sql.age` plus a `.sha256` sidecar into the backups location, and both apply the same retention policy. Upload to approved off-host storage only after checksum verification. Do not log the recipient private key or database URL.
+
+## Point-in-time recovery (WAL archiving — GA-6, P0-R03)
+
+The compose `postgres` service runs with `wal_level=replica`, `archive_mode=on`, and an `archive_command` that copies every completed WAL segment into the `fayanms-wal` volume (`test ! -f /wal-archive/%f && cp %p /wal-archive/%f` — idempotent, refuses to overwrite). The one-shot `wal-init` service (provision profile) pre-creates the archive directory with postgres ownership; run it once before the first archiving start:
+
+~~~bash
+docker compose --env-file .env --profile provision up wal-init
+docker compose --env-file .env up -d postgres
+# Verify archiving is live (the volume fills with 16MB segments):
+docker compose --env-file .env exec postgres ls /wal-archive | head
+~~~
+
+**Restore to a point in time** (disposable target, never production): restore the latest base backup, then replay archived WAL:
+
+~~~bash
+# 1. Copy the WAL archive and the chosen base backup to the isolated target host.
+# 2. Restore the base backup into the target's PGDATA (see restore-drill.sh for
+#    the encrypted-dump path; a physical base backup restores file-level).
+# 3. Configure recovery on the target:
+#    restore_command = 'cp /wal-archive/%f %p'
+#    recovery_target_time = '<the instant you must return to>'
+#    recovery_target_action = 'promote'
+# 4. Start the target; PostgreSQL replays WAL up to the target and promotes.
+# 5. Verify exactly as a restore drill: migration status, row counts,
+#    audit-chain verification, application boot, elapsed time — record all.
+~~~
+
+The archived WAL bounds data loss to the segment granularity BETWEEN base backups — RPO is therefore `min(base-backup interval, WAL archive completeness)`, and the WAL volume must be included in the off-host copy policy.
 
 ## Restore drill
 
@@ -37,4 +74,4 @@ Record schema migration status, representative row counts, audit-chain verificat
 
 ## External blockers
 
-Off-host object storage, key custody, scheduled execution, final RPO/RTO, and a real restore target require OCI/operator access. Until those are demonstrated, database DR remains BLOCKED — EXTERNAL.
+Off-host object storage, age key custody, the real restore target, and final RPO/RTO approval require OCI/operator access — those remain BLOCKED — EXTERNAL. Scheduled execution is NO LONGER an external blocker: the compose `backup` sidecar (or host cron with backup.sh) provides it in-repo, and WAL archiving/PITR configuration ships in compose. Until off-host custody and a real drill on the actual target are demonstrated, database DR overall remains BLOCKED — EXTERNAL.

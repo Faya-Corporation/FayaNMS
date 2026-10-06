@@ -4014,3 +4014,19 @@ Stage Summary:
 - GA-5 shippable: all four delivery formats are now byte-honest; zero new dependencies.
 - PROGRESS.md retotaled (GA-0..GA-4 MERGED, GA-5 this PR, GA-4b queued after GA-6).
 - Remaining repository-actionable: GA-4b (collector control plane — largest build), GA-6 (docs truth, P2-S01, DR tooling, container dispatch), then owner-decision/external items.
+
+---
+Task ID: 7 (GA-6 release readiness, session web-4924c74a, trace 1a1132d11483f549)
+Agent: main agent (Z.ai Code)
+Task: GA-6 — P2-S01 absolute session lifetime, GA-READINESS canonical gate table, doc-truth repair, DR tooling, container dispatch, CHANGELOG draft.
+
+Work Log:
+- P2-S01: verified EMPIRICALLY that next-auth v4 encode preserves `iat` across re-encodes (only exp refreshes) — making iat a sound absolute-issuance anchor. New src/lib/auth/session-lifetime.ts: FAYANMS_SESSION_MAX_AGE_HOURS (default 12, 0=legacy off, invalid/negative FAIL SAFE to the default so a typo can never disable the cap); absoluteSessionLifetimeExceeded fail-closed on missing iat. Wired FIRST in the jwt refresh path (claims stripped exactly like mid-session deactivation; an expired token costs no DB work). 9-test suite incl. jwt-callback integration (claim-strip before DB, live-user re-hydration, sign-in bypass).
+- DR tooling (P0-R03 in-repo): compose postgres now runs wal_level=replica + archive_mode=on with archive_command into a fayanms-wal volume; one-shot wal-init provision service fixes volume ownership (uid 70); deploy/oci/backup-sidecar/ (digest-pinned postgres+age image, pipe-only plaintext window, refuse-plaintext without recipient, min-interval hot-loop guard, checksum sidecars, retention) scheduled by compose; DR runbook gains the Point-in-time recovery section (enable/verify/PITR restore template) and the external-blocker retotal (scheduled execution no longer external).
+- Doc truth (P0-R07): docs/release/GA-READINESS.md created as the ONE canonical 14-row gate table, every row with evidence + re-verify instructions; MATRIX.md §4 GOV-001-A retotaled to ACTIVE—PARTIAL (LIVE API read-back: protected=true, 4 required checks strict, no force-push/deletion; residual owner gap = approval requirement) and CI-001-A to RESOLVED (green runs listed); CURRENT-STATE.md carries a truth banner (its 2026-09-23 snapshot stays historical).
+- P0-R01: container.yml discovered disabled_manually — re-enabled via API (204); dispatched on main 24ccacf (run 37542612715, then superseded by workflow_run-triggered 37542703382 on the same head via the container-<ref> concurrency group — recorded honestly in GA-READINESS row 11).
+- P3: docs/release/CHANGELOG-GA-draft.md drafted (final gated on owner rows).
+- Verification: session-lifetime 9/9; tests/auth 123/123; tsc 0; lint 0; compose YAML validated (7 services incl. wal-init/backup, volumes registered).
+
+Stage Summary:
+- GA-6 shippable. Remaining after merge: record container run verdict + digests in GA-READINESS (row 11), regenerate the release-evidence manifest at the final SHA, then GA-4b (collector real control plane) is the LAST repository-actionable wave; everything else is BLOCKED — EXTERNAL with owner inputs named.

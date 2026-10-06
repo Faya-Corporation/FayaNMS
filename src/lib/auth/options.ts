@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
 import { evaluateMfaChallenge } from "@/lib/auth/mfa";
 import { SITE_SCOPE_CLAIM_KEY, userSiteScopeClaim } from "@/lib/auth/scope";
+import { absoluteSessionLifetimeExceeded } from "@/lib/auth/session-lifetime";
 import {
   checkLoginAllowed,
   recordLoginFailure,
@@ -87,11 +88,15 @@ export const authOptions: NextAuthOptions = {
     // the token with a FRESH expiry on every /api/auth/session fetch (its
     // core session route re-issues the cookie), so this maxAge is a SLIDING
     // inactivity window renewed per full page load — NOT an absolute
-    // lifetime. Revocation-NOW is the credentialEpoch bump (password
-    // set/reset or scope change → requireUser / requireSessionRead evict
-    // every token minted before the bump); an ABSOLUTE cap is deliberately
-    // NOT implemented (owner decision — noted here as such, revisit if the
-    // NOC threat model changes).
+    // lifetime. GA-6 (P2-S01, 2026-10-06 re-audit): the ABSOLUTE cap is now enforced
+    // on top — the jwt callback's refresh path strips the claims once the
+    // token's `iat` age exceeds FAYANMS_SESSION_MAX_AGE_HOURS
+    // (default 12, 0 = legacy off; see src/lib/auth/session-lifetime.ts).
+    // next-auth preserves `iat` across re-encodes (only exp refreshes), so
+    // it is a sound absolute-issuance anchor.
+    // Revocation-NOW is the credentialEpoch bump (password set/reset or
+    // scope change → requireUser / requireSessionRead evict every token
+    // minted before the bump).
     maxAge: 12 * 60 * 60, // 12 h — bounded admin-plane sessions (was 30 d)
   },
   pages: {
@@ -262,6 +267,17 @@ export const authOptions: NextAuthOptions = {
       // Session refresh — re-hydrate claims so role/deactivation changes
       // propagate live. DB hiccups keep the previous claims (availability
       // over freshness for the demo platform).
+      //
+      // GA-6 (P2-S01): the ABSOLUTE lifetime check runs FIRST — a token
+      // past its absolute cap is dead regardless of the sliding window,
+      // and its claims are stripped exactly like a mid-session
+      // deactivation (requireUser answers 401; the next session fetch
+      // drops the session). An expired token costs no DB work.
+      if (absoluteSessionLifetimeExceeded(token)) {
+        delete token.id;
+        delete token.role;
+        return token;
+      }
       const userId = token.id;
       if (typeof userId === "string" && userId.length > 0) {
         try {
