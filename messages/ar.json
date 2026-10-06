@@ -644,7 +644,9 @@
       "durationSeconds": "{seconds} ث",
       "rangeNA": "—",
       "errorTitleRun": "فشل التشغيل",
-      "retries": "المحاولة {attempts} من {maxAttempts}"
+      "retries": "المحاولة {attempts} من {maxAttempts}",
+      "downloadPdf": "تنزيل PDF",
+      "downloadXlsx": "تنزيل XLSX"
     },
     "scheduled": {
       "title": "التقارير المجدولة",
@@ -681,7 +683,7 @@
       "dialog": {
         "createTitle": "جدول تقارير جديد",
         "editTitle": "تعديل جدول التقارير",
-        "description": "تُدرج كل دورة مهمة REPORT_RUN؛ وتظهر التشغيلات المكتملة في التقارير مع ملفات CSV/JSON قابلة للتنزيل.",
+        "description": "كل دورة تُدرج مهمة REPORT_RUN؛ تظهر التشغيلات المنتهية في التقارير مع عناصر قابلة للتنزيل بصيغ PDF/XLSX/CSV/JSON.",
         "name": "الاسم",
         "namePlaceholder": "تقرير امتثال النسخ الاحتياطي الأسبوعي",
         "type": "نوع التقرير",
@@ -1793,7 +1795,7 @@
     "frequencyAria": "تكرار التقرير",
     "formatLabel": "الصيغة",
     "formatAria": "صيغة التقرير",
-    "formatNote": "PDF و XLSX مجرد وسم لصيغة التسليم في هذه المنصة التجريبية — بيانات المعاينة متطابقة. نزّل CSV أو JSON للحصول على الملف الفعلي.",
+    "formatNote": "تنسيقات الجدولة PDF/XLSX تُسلّم ملفات ثنائية حقيقية — تُنزَّل التشغيلات المنتهية كمستندات PDF ومصنفات Excel فعلية (تُولَّد من العنصر المخزَّن وقت التنزيل). تنزيلات المعاينة هنا بصيغتي CSV/JSON.",
     "run": "تشغيل المعاينة",
     "saveSchedule": "حفظ كجدول",
     "emptyTitle": "لا توجد معاينة بعد",

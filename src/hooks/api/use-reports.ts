@@ -266,6 +266,6 @@ export function useRunReportNow() {
  * Attachment URL for a SUCCEEDED run — used as a plain anchor href so the
  * browser streams the download (cookies flow, direction-independent).
  */
-export function reportRunDownloadUrl(runId: string, format: "CSV" | "JSON") {
+export function reportRunDownloadUrl(runId: string, format: "CSV" | "JSON" | "PDF" | "XLSX") {
   return `/api/v1/reports/runs/${runId}/download?format=${format}`;
 }

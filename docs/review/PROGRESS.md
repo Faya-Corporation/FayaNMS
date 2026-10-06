@@ -8,12 +8,10 @@ Live tracker. One row per wave; details live in the worklog and PR descriptions.
 | GA-1 | P1-A02 `/sites` scope + P1-A03 backup-policy cross-site (POST/PATCH) | **MERGED** | PR #75 → `fe9c39e` | 19-test suite; 4/4 checks green |
 | GA-2 | P1-A01 report scoping end-to-end (frozen schedule scope + worker-path pin) + P2 notification receipts | **MERGED** | PR #76 → `f817e3a` | 12-test suite; 4/4 checks green |
 | GA-3 | P1-A04 API-client expiry/rotation + P1-A05 API-client site scope (incl. removing the acknowledge client bypass) | **MERGED** | PR #77 → `3af334c` | 15-test suite; 4/4 checks green |
-| GA-4 | P1-O03 DLQ recovery (dead list + guarded idempotent requeue + audit + depth metric/alert) + P0-R05/P1-O02 simulation gating (HA failover-test + rebalance APPLY behind FAYANMS_DEMO_MODE) | **PR #78 OPEN (CI running)** | PR #78 | 7-test suite; full sweep 2447/0 fail; tsc 0; lint 0 |
-| GA-4b | P0-R06/P1-O01 collector REAL control plane (registration/heartbeat/lease/fencing/failover) | PENDING (next session — largest remaining build) | — | — |
-| GA-5 | Report formats: real PDF/XLSX renderers or honest removal | PENDING | — | — |
+| GA-4 | P1-O03 DLQ recovery (dead list + guarded idempotent requeue + audit + depth metric/alert) + P0-R05/P1-O02 simulation gating (HA failover-test + rebalance APPLY behind FAYANMS_DEMO_MODE) | **MERGED** | PR #78 → `5140b2c` | 7-test suite + CI gate-order fix (9a69c20, dual-shape verified); 4/4 checks green |
+| GA-4b | P0-R06/P1-O01 collector REAL control plane (registration/heartbeat/lease/fencing/failover) | PENDING (largest remaining build — queued after GA-6) | — | — |
+| GA-5 | Report formats: REAL PDF 1.4 + XLSX renderers (zero-dependency render-pdf.ts/render-xlsx.ts), render-at-delivery download route, byte-level tests + 4-format matrix, honesty copy | **PR OPEN (CI running)** | this PR | 10-test suite (both fleet shapes); full sweep 2453/0 fail; tsc 0; lint 0 |
 | GA-6 | GA-READINESS canonical doc, doc-truth repair, P2-S01 absolute session cap, DR tooling (WAL/PITR + backup sidecar), P0-R01 container dispatch, P3 evidence regen | PENDING | — | — |
-| GA-5 | Report formats: real PDF/XLSX renderers or honest removal | PENDING | — | — |
-| GA-6 | GA-READINESS doc, doc-truth repair, P2-S01 absolute session cap, DR tooling (WAL/PITR + backup sidecar), P0-R01 container dispatch, P3 evidence regen | PENDING | — | — |
 | GA-7 | Vendor T3 certification | **BLOCKED — EXTERNAL** | — | needs real/vendor-virtual appliances |
 | GA-8 | Staging deploy/burn-in + final independent re-audit | **BLOCKED — EXTERNAL** | — | needs OCI staging secrets/host + owner sign-off |
 

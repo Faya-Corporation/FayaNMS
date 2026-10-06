@@ -58,8 +58,8 @@ describe("R100 — admin users namespace", () => {
   });
 
   test("checks dictionary totals at current HEAD after R102", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(3392);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(3392);
+    expect(leaves(readJson("messages/en.json")).length).toBe(3394);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(3394);
   });
 });
 

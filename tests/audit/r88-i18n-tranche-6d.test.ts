@@ -58,8 +58,8 @@ describe("R88 — admin API clients namespace", () => {
   });
 
   test("checks dictionary totals at current HEAD after R102 (+2 F-034 totpCode/totpHint)", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(3392);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(3392);
+    expect(leaves(readJson("messages/en.json")).length).toBe(3394);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(3394);
   });
 });
 

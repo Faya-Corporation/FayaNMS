@@ -3995,3 +3995,22 @@ Work Log:
 Stage Summary:
 - GA-4 fix pushed (9a69c20); CI re-running. Merge follows per precedent once green.
 - Standing learning recorded: CI gate DB is migrations-only (no seed) — suites must never assume demo-fleet data; prefer gates before data-dependent branches.
+
+---
+Task ID: 6 (GA-5 report renderers, session web-4924c74a, trace 1a1132d11483f549)
+Agent: main agent (Z.ai Code)
+Task: GA-5 — close the report-format honesty gap (PDF/XLSX were delivery tags only) with REAL, dependency-free renderers.
+
+Work Log:
+- Consumer inspection: artifacts are JSON (resultJson) with format as a tag; the run download route refused PDF/XLSX (CSV|JSON only); the builder view does client-side CSV/JSON downloads; the run-history view has per-run download buttons (reportRunDownloadUrl).
+- Implemented render-at-delivery (no schema change, artifact stays source of truth): src/lib/reports/render-pdf.ts (PDF 1.4 writer — byte-accurate xref, Helvetica regular+bold, paginated landscape table, WinAnsi collapse, deterministic) and src/lib/reports/render-xlsx.ts (minimal OOXML package — hand-built STORE zip with table-driven CRC-32, inlineStr cells, frozen header, fixed DOS timestamps for determinism).
+- Download route now accepts format=CSV|JSON|PDF|XLSX; PDF/XLSX render from the stored artifact with correct Content-Type/Content-Disposition; audit unchanged (REPORT_DOWNLOAD per format).
+- UI: run-history gains Download PDF/Download XLSX buttons (locked state mirrors existing); i18n en+ar honesty copy updated (builder.formatNote, scheduled dialog description, 2 new runs keys); helper type widened.
+- Byte-level tests (tests/audit/ga5-report-renderers.test.ts, 10 tests): PDF xref parsed and every offset verified; ZIP central directory walked with INDEPENDENT CRC-32 recompute per part; pagination math; hostile-value escaping (=cmd inline-str safety, PDF metachars, Latin-1 collapse); route 4-format matrix + guards (400/409/404) + audit counts; live generateReport render proof.
+- i18n retotal: +2 keys per side → 3392→3394; 25 pinning files updated INCLUDING honest history comments (3392 stays attributed to GA-3; GA-5 appends 3394) — no falsified narratives.
+- Verification: GA-5 suite 10/10 on dev DB AND on a migrations-only scratch DB (CI-replica, GA-4 lesson); neighbor report suites 39/39; full sweep 2453 pass / 0 fail (one transient shared-DB ordering flake in a wave10 events test — passes in isolation and on re-run, pre-existing class); tsc 0; lint 0; prisma client regenerated for GA-3 fields.
+
+Stage Summary:
+- GA-5 shippable: all four delivery formats are now byte-honest; zero new dependencies.
+- PROGRESS.md retotaled (GA-0..GA-4 MERGED, GA-5 this PR, GA-4b queued after GA-6).
+- Remaining repository-actionable: GA-4b (collector control plane — largest build), GA-6 (docs truth, P2-S01, DR tooling, container dispatch), then owner-decision/external items.
