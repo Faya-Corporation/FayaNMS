@@ -2338,6 +2338,11 @@ export interface AdminApiClientRow {
   tokenPrefix: string;
   scopes: string[];
   isActive: boolean;
+  /** P1-A04: credential expiry (null = legacy row, never expires). */
+  expiresAt: string | null;
+  rotatedAt: string | null;
+  /** P1-A05: resource scope (null = global/unbounded, [] = deny-all). */
+  siteCodes: string[] | null;
   lastUsedAt: string | null;
   createdAt: string;
   createdBy: string | null;
@@ -2352,6 +2357,10 @@ export interface ApiClientCreatePayload {
   name: string;
   scopes: string[];
   isActive?: boolean;
+  /** P1-A04: explicit expiry (ISO datetime); omitted → the lifetime policy default. */
+  expiresAt?: string;
+  /** P1-A05: resource scope; omitted → global (documented admin choice). */
+  siteCodes?: string[];
 }
 
 export interface ApiClientCreateResult {

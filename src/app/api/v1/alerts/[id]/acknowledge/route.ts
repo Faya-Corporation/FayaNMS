@@ -82,14 +82,16 @@ export async function POST(
   }
   // F-031 wave-10: the scope gate runs BEFORE the state check and the
   // mutation (403-not-404 — mutations accept existence confirmation).
-  if (actor.role !== "api-client") {
-    try {
-      await requireSiteScope(request, alert.device.site?.code ?? null);
-    } catch (error) {
-      const authFail = authErrorToFail(error);
-      if (!authFail) throw error;
-      return authFail;
-    }
+  // P1-A05 (GA re-audit 2026-10-06): the previous api-client bypass is
+  // REMOVED — API clients now carry a RESOURCE scope (ApiClient.siteScopeJson
+  // resolved through sessionScopeFor), so the gate enforces it exactly as it
+  // does for human sessions. A wildcard-scope client passes unchanged.
+  try {
+    await requireSiteScope(request, alert.device.site?.code ?? null);
+  } catch (error) {
+    const authFail = authErrorToFail(error);
+    if (!authFail) throw error;
+    return authFail;
   }
   if (alert.status !== "ACTIVE") {
     return fail(

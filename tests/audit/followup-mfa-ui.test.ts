@@ -19,7 +19,7 @@ import { join } from "node:path";
  *   4. The api-client MFA family targets the real backend surfaces
  *      (POST /api/v1/me/mfa/enroll, POST /confirm, DELETE /api/v1/me/mfa)
  *      with the reveal-once recovery-codes contract in the types.
- *   5. The retotal: dictionary leaf count moved 3314 → 3385 in BOTH locales
+ *   5. The retotal: dictionary leaf count moved 3314 → 3385 → 3392 (GA-3) in BOTH locales
  *      (all prior retotal pins updated in the same commit).
  */
 
@@ -195,11 +195,11 @@ describe("followup-mfa-ui — api-client MFA family", () => {
 });
 
 describe("followup-mfa-ui — retotal", () => {
-  test("dictionary totals moved 3314 → 3385 in BOTH locales", () => {
+  test("dictionary totals moved 3314 → 3385 → 3392 (GA-3) in BOTH locales", () => {
     const en = leaves(readJson("messages/en.json"));
     const ar = leaves(readJson("messages/ar.json"));
-    expect(en.length).toBe(3385);
-    expect(ar.length).toBe(3385);
+    expect(en.length).toBe(3392);
+    expect(ar.length).toBe(3392);
   });
 });
 

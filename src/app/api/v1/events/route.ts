@@ -137,7 +137,14 @@ export async function GET(request: Request) {
   const scopeClaims = await sessionScopeFor(request);
   const scope = sessionSiteScope(scopeClaims);
   const isWildcard = scope.mode === "wildcard";
-  const bearerPrincipalId = scopeClaims === null ? principal.id : null;
+  // P1-A05 (GA re-audit 2026-10-06): claims are now ALSO resolved for the
+  // API-client bearer plane (its resource scope) — but the bearer STRIP
+  // class still keys on "not a human session": a human session's claims
+  // carry the User id; client claims carry only the site list. Strip when
+  // the authenticated principal is NOT a human (client or anonymous).
+  const claimsAreHuman =
+    typeof (scopeClaims as { id?: unknown } | null)?.id === "string";
+  const bearerPrincipalId = claimsAreHuman ? null : principal.id;
 
   /** All filters — used for the page itself. (Contextually typed so the
    *  `mode: "insensitive"` literals stay narrow for Prisma's Exact<>.) */
@@ -356,7 +363,11 @@ export async function GET(request: Request) {
     const inScopeSiteIds = new Set(
       sites.filter((s) => siteScopeAllows(scope, s.code)).map((s) => s.id)
     );
-    const sessionActorId = scopeClaims?.id ?? null;
+    // P1-A05: the claims may now also be an API-client resource scope
+    // (no id — clients never self-identify as a User row), so the
+    // self-actor visibility exception only exists for HUMAN sessions.
+    const sessionActorId =
+      (scopeClaims as { id?: string } | null)?.id ?? null;
     for (let i = 0; i < data.length; i += 1) {
       const row = data[i]!;
       if (sessionActorId !== null && row.actorId === sessionActorId) continue;

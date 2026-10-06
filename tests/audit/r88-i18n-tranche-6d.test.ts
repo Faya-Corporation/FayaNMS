@@ -38,11 +38,11 @@ function candidates(src: string): string[] {
 }
 
 describe("R88 — admin API clients namespace", () => {
-  test("has 48 non-empty leaves with deep EN/AR parity", () => {
+  test("has 55 non-empty leaves with deep EN/AR parity (GA-3 added 7 apiClients keys per side)", () => {
     const en = readJson("messages/en.json") as Record<string, any>;
     const ar = readJson("messages/ar.json") as Record<string, any>;
-    expect(leaves(en.adminApiClients).length).toBe(48);
-    expect(leaves(ar.adminApiClients).length).toBe(48);
+    expect(leaves(en.adminApiClients).length).toBe(55);
+    expect(leaves(ar.adminApiClients).length).toBe(55);
     expect(new Set(leaves(en.adminApiClients))).toEqual(new Set(leaves(ar.adminApiClients)));
     for (const file of ["messages/en.json", "messages/ar.json"]) {
       const namespace = (readJson(file) as Record<string, any>).adminApiClients;
@@ -58,8 +58,8 @@ describe("R88 — admin API clients namespace", () => {
   });
 
   test("checks dictionary totals at current HEAD after R102 (+2 F-034 totpCode/totpHint)", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(3385);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(3385);
+    expect(leaves(readJson("messages/en.json")).length).toBe(3392);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(3392);
   });
 });
 
