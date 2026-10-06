@@ -11,7 +11,7 @@ Live tracker. One row per wave; details live in the worklog and PR descriptions.
 | GA-4 | P1-O03 DLQ recovery (dead list + guarded idempotent requeue + audit + depth metric/alert) + P0-R05/P1-O02 simulation gating (HA failover-test + rebalance APPLY behind FAYANMS_DEMO_MODE) | **MERGED** | PR #78 → `5140b2c` | 7-test suite + CI gate-order fix (9a69c20, dual-shape verified); 4/4 checks green |
 | GA-4b | P0-R06/P1-O01 collector REAL control plane (registration/heartbeat/lease/fencing/failover) | PENDING (largest remaining build — queued after GA-6) | — | — |
 | GA-5 | Report formats: REAL PDF 1.4 + XLSX renderers (zero-dependency render-pdf.ts/render-xlsx.ts), render-at-delivery download route, byte-level tests + 4-format matrix, honesty copy | **PR OPEN (CI running)** | this PR | 10-test suite (both fleet shapes); full sweep 2453/0 fail; tsc 0; lint 0 |
-| GA-6 | GA-READINESS canonical doc, doc-truth repair, P2-S01 absolute session cap, DR tooling (WAL/PITR + backup sidecar), P0-R01 container dispatch, P3 evidence regen | PENDING | — | — |
+| GA-6 | P2-S01 absolute session cap + GA-READINESS canonical gate table + doc-truth repair (MATRIX §4 retotal, CURRENT-STATE banner) + DR tooling (WAL/PITR compose + backup sidecar + PITR runbook) + container workflow re-enabled & certification run on main + CHANGELOG draft | **PR OPEN (CI running)** | this PR | 9-test lifetime suite (auth 123/123); tsc 0; lint 0 |
 | GA-7 | Vendor T3 certification | **BLOCKED — EXTERNAL** | — | needs real/vendor-virtual appliances |
 | GA-8 | Staging deploy/burn-in + final independent re-audit | **BLOCKED — EXTERNAL** | — | needs OCI staging secrets/host + owner sign-off |
 

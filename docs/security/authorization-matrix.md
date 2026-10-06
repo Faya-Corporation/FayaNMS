@@ -534,7 +534,11 @@ lifetime honesty: next-auth v4 re-encodes the JWT with a fresh expiry on
 every session fetch, so the configured 12 h `maxAge` is a SLIDING
 inactivity window renewed per full page load — not an absolute cap;
 revocation-NOW is the credentialEpoch bump (password set/reset or scope
-change), and no absolute lifetime cap is implemented (owner decision).
+change). GA-6 (P2-S01, 2026-10-06 re-audit): the sliding window is now
+backed by an ABSOLUTE lifetime cap — the jwt refresh path strips claims
+once the token's `iat` age exceeds FAYANMS_SESSION_MAX_AGE_HOURS
+(default 12, 0 = legacy off, invalid values fail safe to the default);
+next-auth preserves `iat` across re-encodes, making it a sound anchor.
 
 **Plane boundaries (honest).** Site-scope claims apply to HUMAN session
 JWTs only. API-client opaque-bearer principals and machine service JWTs

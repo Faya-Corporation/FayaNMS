@@ -523,11 +523,15 @@ describe("wave-11 — source pins (the mechanisms cannot silently rot)", () => {
     expect(src).not.toMatch(/await db\.user\.update/);
   });
 
-  test("F-4 PIN: the maxAge docstring states the sliding truth and the owner decision", () => {
+  test("F-4 PIN: the maxAge docstring states the sliding truth and the absolute-cap truth (P2-S01)", () => {
     const src = read("src/lib/auth/options.ts");
     expect(src).toContain("inactivity window renewed per full page load");
     expect(src).toContain("Revocation-NOW is the credentialEpoch bump");
-    expect(src).toContain("ABSOLUTE cap is deliberately");
+    // GA-6 (P2-S01): the old "deliberately NOT implemented (owner decision)"
+    // note is RETIRED — the docstring now pins the implemented absolute cap
+    // and its env lever (see tests/auth/session-lifetime.test.ts).
+    expect(src).toContain("ABSOLUTE cap is now enforced");
+    expect(src).toContain("FAYANMS_SESSION_MAX_AGE_HOURS");
     // The matrix carries the same honesty (and the batch-25 anchor phrase).
     const matrix = read("docs/security/authorization-matrix.md");
     expect(matrix).toMatch(/SLIDING\s+inactivity window renewed per full page load/);
