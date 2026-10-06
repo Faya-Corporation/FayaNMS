@@ -3961,3 +3961,19 @@ Work Log:
 Stage Summary:
 - main: d281873 → f817e3a (three merged security waves + supply-chain fix, all four checks green on every merge).
 - PR #77 CI running; GA-4 branch active.
+
+---
+Task ID: 6 (GA-3 merged; GA-4 shipped to PR #78; session wrap, trace 1a112a3f56ce0449)
+Agent: main agent (Z.ai Code)
+Task: merge GA-3, open+verify GA-4, record the honest remaining-work disposition.
+
+Work Log:
+- PR #77 (GA-3) ALL FOUR CHECKS GREEN at a6dcd0a → merged via API as 3af334c. main now carries waves 0 + GA-1 + GA-2 + GA-3.
+- PR #78 (GA-4) opened; CI running. En route: dev-DB hygiene incident — parallel test workers left RUN-suffixed fixture sites (G3A/G3B from three GA-3 runs) in the shared DB; purged to exact seed parity (HQ-SAN/DC-ADN/BR1-HOD/BR2-MUK) and live re-probed.
+- Deployment restarted on merged main; app/health 200, auth flow 302, /sites wildcard parity re-verified post-purge.
+- Honest disposition recorded: the collector REAL control plane (P0-R06 phase 1) is the largest remaining build and is deferred to the next session rather than faked; GA-5 (report formats) and GA-6 (GA-READINESS doc, P2-S01 session cap, DR tooling, P0-R01 container dispatch, P3 regen) likewise queued with precise next steps.
+
+Stage Summary:
+- 4 security waves merged (all four CI checks green on every merge), 1 PR open in CI.
+- Every repository-actionable P1 authorization finding from the 2026-10-06 re-audit is now CLOSED on main: P1-A01..A05. DLQ (P1-O03) closed behind PR #78. Simulated surfaces (P0-R05/P1-O02) now fail closed outside demo mode behind PR #78.
+- Remaining: P0-R06 collector plane, GA-5 formats, GA-6 release/DR/docs, P0-R02/R03/R04 + GA-7/GA-8 BLOCKED — EXTERNAL.
