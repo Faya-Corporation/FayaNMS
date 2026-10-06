@@ -47,29 +47,47 @@ export async function GET(request: Request) {
   if (!actor) {
     return fail("UNAUTHENTICATED", "Sign in required — no valid session was provided.", 401);
   }
+  // P2 (GA re-audit 2026-10-06) — read state is PER-USER: own rows ride
+  // their row-level readAt; broadcasts are read for THIS user iff a
+  // NotificationReceipt(notificationId, userId=me) exists. The broadcast
+  // row's own readAt stays null (the nobody-read-it baseline).
   const visibility = {
     OR: [{ userId: null }, ...(actor ? [{ userId: actor.id }] : [])],
   };
-  const where = {
-    AND: [
-      visibility,
-      parsed.data.unreadOnly === "true" ? { readAt: null } : {},
-    ],
-  };
+  const unreadFilter = parsed.data.unreadOnly === "true"
+    ? {
+        OR: [
+          { userId: actor.id, readAt: null as Date | null },
+          { userId: null, receipts: { none: { userId: actor.id } } },
+        ],
+      }
+    : {};
 
   const limit = parsed.data.limit;
   const [rows, unreadCount, total] = await Promise.all([
     db.notification.findMany({
-      where,
+      where: { AND: [visibility, unreadFilter] },
       orderBy: { createdAt: "desc" },
       take: limit,
     }),
-    db.notification.count({ where: { AND: [visibility, { readAt: null }] } }),
+    db.notification.count({ where: { AND: [visibility, unreadFilter] } }),
     db.notification.count({ where: visibility }),
   ]);
 
+  // Per-user receipts for THIS page — one query, then compose the effective
+  // readAt (row-level first, receipt fallback for broadcasts).
+  const receipts = await db.notificationReceipt.findMany({
+    where: { userId: actor.id, notificationId: { in: rows.map((r) => r.id) } },
+    select: { notificationId: true, readAt: true },
+  });
+  const receiptByNotification = new Map(receipts.map((r) => [r.notificationId, r.readAt]));
+
   return ok(
-    rows.map((row) => ({ ...row, mine: row.userId !== null })),
+    rows.map((row) => ({
+      ...row,
+      readAt: row.readAt ?? receiptByNotification.get(row.id) ?? null,
+      mine: row.userId !== null,
+    })),
     { unreadCount, total, identity: actor ? { id: actor.id, name: actor.name } : null },
     200
   );

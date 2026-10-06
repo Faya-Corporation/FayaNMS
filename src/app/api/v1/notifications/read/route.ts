@@ -8,11 +8,18 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/v1/notifications/read — mark notifications read (Task 5-a).
  *
- * Body: { ids?: string[], all?: boolean } — either a list of
- * ids or all:true. Only rows visible to the acting user (own + broadcast)
- * are touched; unread ones get readAt = now. Demo simplification: marking
- * a broadcast row read is global (SQLite demo has no per-user read state).
- * Returns { updated, unreadCount }.
+ * Body: { ids?: string[], all?: boolean } — either a list of ids or
+ * all:true. Only rows visible to the acting user (own + broadcast) are
+ * touched; unread ones get read.
+ *
+ * P2 (GA re-audit 2026-10-06) — PER-USER read state: marking a broadcast
+ * read is no longer global. Own rows keep their row-level readAt; broadcasts
+ * get a NotificationReceipt(notificationId, userId, readAt) UPSERT for the
+ * acting user — every other user still sees the broadcast unread. The
+ * broadcast row's own readAt stays null (it is the "nobody read it yet"
+ * baseline, not a per-user flag).
+ * Returns { updated, unreadCount } — `updated` counts rows+receipts this
+ * call created/touched for the CALLING user only.
  */
 const readSchema = z
   .object({
@@ -44,20 +51,44 @@ export async function POST(request: Request) {
     OR: [{ userId: null }, ...(actor ? [{ userId: actor.id }] : [])],
   };
 
-  const updated = await db.notification.updateMany({
+  const idFilter = parsed.data.all ? [] : [{ id: { in: parsed.data.ids ?? [] } }];
+
+  // Own rows: the row-level readAt (per-user rows, already user-scoped).
+  const own = await db.notification.updateMany({
     where: {
-      AND: [
-        visibility,
-        { readAt: null },
-        ...(parsed.data.all ? [] : [{ id: { in: parsed.data.ids ?? [] } }]),
-      ],
+      AND: [{ userId: actor.id }, { readAt: null }, ...idFilter],
     },
     data: { readAt: new Date() },
   });
 
+  // Broadcasts: a per-user receipt (P2) — never the global row.readAt.
+  const broadcastTargets = await db.notification.findMany({
+    where: {
+      AND: [{ userId: null }, ...idFilter],
+    },
+    select: { id: true },
+  });
+  const now = new Date();
+  let receiptCount = 0;
+  for (const target of broadcastTargets) {
+    const receipt = await db.notificationReceipt.upsert({
+      where: {
+        notificationId_userId: { notificationId: target.id, userId: actor.id },
+      },
+      create: { notificationId: target.id, userId: actor.id, readAt: now },
+      update: {}, // already read by this user — idempotent, readAt preserved
+    });
+    if (receipt.readAt.getTime() === now.getTime()) receiptCount += 1;
+  }
+
   const unreadCount = await db.notification.count({
-    where: { AND: [visibility, { readAt: null }] },
+    where: {
+      OR: [
+        { userId: actor.id, readAt: null },
+        { userId: null, receipts: { none: { userId: actor.id } } },
+      ],
+    },
   });
 
-  return ok({ updated: updated.count, unreadCount });
+  return ok({ updated: own.count + receiptCount, unreadCount });
 }

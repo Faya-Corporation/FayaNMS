@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { requireUser, authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  requireUser,
+  authErrorToFail,
+  requirePermission,
+  sessionScopeFor,
+} from "@/lib/auth/session";
 import {
   fail,
   firstIssueMessage,
@@ -16,6 +21,7 @@ import {
   REPORT_FORMATS,
   REPORT_FREQUENCIES,
   REPORT_TYPES,
+  reportScopeJsonForClaims,
 } from "@/lib/reports/generate";
 import { z } from "zod";
 
@@ -179,6 +185,17 @@ export async function POST(request: Request) {
 
   const correlationId = newCorrelationId("REP");
 
+  // P1-A01 (GA re-audit 2026-10-06): the schedule's site scope is FROZEN
+  // at creation from the creating session's resolved scope and is never
+  // reconstructed from the worker's global service identity at run time.
+  // Wildcard sessions freeze null (byte-identical legacy behavior); a
+  // site-limited creator freezes their code list (deny-all freezes "[]").
+  // The column is deliberately NOT PATCHable — the frozen scope is part of
+  // the schedule's identity (recreate the schedule to change it).
+  const frozenScopeJson = await reportScopeJsonForClaims(
+    await sessionScopeFor(request)
+  );
+
   const schedule = await db.reportSchedule.create({
     data: {
       name: data.name,
@@ -186,6 +203,7 @@ export async function POST(request: Request) {
       frequency: data.frequency,
       format: data.format,
       recipientsJson: JSON.stringify(data.recipients),
+      scopeJson: frozenScopeJson,
       isActive: data.isActive,
     },
   });
