@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requireSessionRead } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requireSessionRead,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { scopedDeviceWhere, sessionSiteScope } from "@/lib/auth/scope";
 import { ok } from "../_lib/api";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +14,14 @@ export const dynamic = "force-dynamic";
  * device count by status, interface count, criticality mix and backup
  * compliance percentage (managed devices only). All aggregation happens in
  * one device fetch + JS reduce — the fleet is small; swap to groupBy when
- * this outgrows SQLite.
+ * this outgrows the demo fleet.
+ *
+ * P1-A02 (GA re-audit 2026-10-06): the catalog itself is SCOPE-AWARE — a
+ * sites-limited session sees only its own site rows and aggregates (the
+ * response carries operational metadata + addresses, so an unfiltered
+ * catalog was a confidentiality leak). The wildcard default (absent claim,
+ * API-client bearer plane) composes NO where at all — byte-identical
+ * pre-existing behavior. A deny-all scope matches nothing (`in: []`).
  */
 
 const MANAGED_EXCLUDE = ["UNMANAGED"];
@@ -25,12 +37,20 @@ export async function GET(request: Request) {
     if (envelope) return envelope;
     throw error;
   }
+  // P1-A02: resolve the session scope ONCE (per-request memoized claims)
+  // and compose it into BOTH the site rows and the device aggregates.
+  const scopeClaims = await sessionScopeFor(request);
+  const scope = sessionSiteScope(scopeClaims);
   const [sites, devices] = await Promise.all([
     db.site.findMany({
+      ...(scope.mode === "sites"
+        ? { where: { code: { in: scope.codes } } }
+        : {}),
       orderBy: { name: "asc" },
       select: { id: true, name: true, code: true, region: true, address: true },
     }),
     db.device.findMany({
+      where: scopedDeviceWhere(scopeClaims, {}),
       select: {
         id: true,
         siteId: true,
