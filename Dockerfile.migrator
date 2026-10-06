@@ -5,7 +5,13 @@ WORKDIR /migrator
 
 COPY package.json bun.lock ./
 COPY prisma ./prisma
-RUN bun install --frozen-lockfile
+# GA-6: production-only install — the migrator needs ONLY the prisma CLI
+# chain (a production dependency) and its engines. The full install dragged
+# the devDependency chain (eslint → micromatch → braces) into the image,
+# where trivy blocks on CVE-2026-93687 (braces, HIGH — NO upstream fixed
+# version). Dropping devDependencies removes the package from the image
+# instead of ignoring the CVE — a smaller image and no allowlist rot.
+RUN bun install --frozen-lockfile --production
 COPY scripts/ci/prepare-prisma-runtime.sh /usr/local/bin/prepare-prisma-runtime.sh
 RUN chmod 0755 /usr/local/bin/prepare-prisma-runtime.sh \
  && apt-get update \
