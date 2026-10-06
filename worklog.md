@@ -3927,3 +3927,22 @@ Stage Summary:
 - Engagement re-established at d281873 with a LIVE verified deployment (app/auth/worker/PG) and a fully re-verified finding register — zero trusted-stale findings.
 - Key ops learning for the repo: worker loopback self-auth requires the worker's own public key in its own FAYANMS_SERVICE_PUBLIC_KEYS rotation list; .env.example's ownership block does not document this (queued as a docs fix).
 - Next: Wave GA-1 (/sites scoping + backup-policy cross-site actuation enforcement), then GA-2 (report scoping + notification receipts).
+
+---
+Task ID: 2-4 (GA wave 0 + GA-1 + GA-2, session web-4924c74a, trace 1a112a3f56ce0449)
+Agent: main agent (Z.ai Code)
+Task: execute the 2026-10-06 GA remediation program waves 0-GA-2 and ship them through CI.
+
+Work Log:
+- Wave 0 (PR #74, merged 60ea5c6): engagement baseline — every OPEN audit finding re-verified at d281873 (zero stale); docs/review/STATE.md (verified register + BLOCKED—EXTERNAL buckets), REMEDIATION_PLAN.md (GA-1..GA-8), PROGRESS.md; prior 2026-09 program docs archived under notes/. First scan run FAILED on a NEW upstream advisory (sharp 0.35.4, GHSA-wq5f-xc86-pv6w HIGH 8.9, fixed 0.35.5) — bumped the repo's overrides pin to 0.35.5; verified with the CI-pinned osv-scanner v2.5.1 binary locally ("No issues found"); rescan green.
+- GA-1 (PR #75, merged fe9c39e): P1-A02 — /api/v1/sites is scope-aware (rows AND aggregates; wildcard byte-parity; deny-all/malformed fail-closed). P1-A03 — backup-policy POST/PATCH enforce requestedPolicySites ⊆ sessionAllowedSites, refuse fleet-wide (no "*", no missing/empty siteCodes — empty scope = fleet-wide); PATCH evaluates the EFFECTIVE post-replacement scope; the superseded 13-c F-10 owner note removed. Shared pure guard policy-scope.ts. New 19-test suite.
+- GA-2 (PR #76, opened, rebased onto fe9c39e): P1-A01 — ReportSchedule.scopeJson (migration 20261006190000) frozen at creation, immutable; generateReport(scope) intersects availability/backup/capacity (device leg via new deviceWhereForScope; scopedDeviceWhere delegates — one composition), incidents (IncidentDevice join); CHANGE_SUMMARY carries an explicit fleet-wide scopeNote under site scope (honesty); /reports/run freezes the acting session's scope; /reports/execute runs under the SCHEDULE's frozen scope (service token authenticates, never widens) — pinned by a real-HS256-token test. P2 — NotificationReceipt per-user broadcast reads (row readAt stays null; unread filters/counts compose; all:true idempotent). New 12-test suite.
+- Sandbox-env gaps fixed en route (R64 class, not repo regressions): the worker's loopback self-auth needs its OWN public key in its trust list alongside the control key; the service-plane regression suites need FAYANMS_SERVICE_SECRET configured (CI exports one; dual-mode state 2). After both: FULL sweep 2402 pass / 0 fail; tsc 0; lint 0.
+- PROCESS INCIDENT (recovered): the harness resets cwd/branch between tool calls — the GA-1 commit initially landed on LOCAL main (remote untouched) and PR #75 briefly contained only the sharp fix. Recovered via reflog cherry-pick + force-with-lease; PR #75 verified file-by-file via API. Every future commit block now starts with `git checkout <branch>` + `git branch --show-current`.
+- TEST-DB HYGIENE INCIDENT (recovered): a first GA-2 run's afterAll bug left malformed INC-G2A-* incidents in the shared dev DB, poisoning RT-014's number allocator (fails even in isolation). Purged; fixtures made format-conforming (INC-YYYY-NNNNN) + lazy + in-test cleanup.
+- Merges: #74 and #75 merged via API (merge commits, all four checks green on each). Post-merge: main fetched/reset (fe9c39e), app+worker restarted, live probes green (signin 302, sites wildcard parity = 4 sites, fleet-wide policy create parity 201 + cleanup DELETE 200).
+
+Stage Summary:
+- main advanced d281873 → fe9c39e with waves 0+GA-1; PR #76 (GA-2) open and rebased, CI running.
+- sharp 0.35.5 supply-chain fix now on main (scan gate healthy again).
+- Next: GA-3 (API-client expiry + siteScopeJson resource scope), then GA-4 (DLQ recovery + simulation gating + collector plane phase 1).
