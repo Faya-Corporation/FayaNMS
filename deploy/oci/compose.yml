@@ -92,16 +92,35 @@ services:
     pids_limit: 64
     mem_limit: 64m
 
+  # GA-6: one-shot backups-volume preparation (provision profile) — a fresh
+  # named volume is root-owned; the sidecar runs as uid 70 (non-root, semgrep
+  # dockerfile.security.missing-user-entrypoint) and needs a writable
+  # /backups. Idempotent; run once before the backup service first starts.
+  backup-init:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    profiles: ["provision"]
+    restart: "no"
+    user: root
+    volumes:
+      - fayanms-backups:/backups
+    command: ["sh", "-c", "mkdir -p /backups && chown 70:70 /backups && chmod 700 /backups"]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 64m
+
   backup:
     image: ${FAYANMS_BACKUP_IMAGE:?FAYANMS_BACKUP_IMAGE must be an immutable GHCR reference (build deploy/oci/backup-sidecar)}
     restart: unless-stopped
     # GA-6 (P0-R03): SCHEDULED encrypted backups as a first-class service —
     # the host-cron path (backup.sh) remains valid; this sidecar removes the
     # "scheduled execution" external blocker for hosts that run compose
-    # without host cron. The entrypoint refuses to run without an age
-    # recipient (fail-closed, same contract as backup.sh: never plaintext).
-    # Secrets come ONLY from the host-side --env-file interpolation below —
-    # no env_file (SEC-ENV-001 / RT-006 house rule).
+    # without host cron. Runs NON-ROOT (uid 70; the image declares USER) —
+    # run the backup-init one-shot once so the volume is writable. The
+    # entrypoint refuses to run without an age recipient (fail-closed, same
+    # contract as backup.sh: never plaintext). Secrets come ONLY from the
+    # host-side --env-file interpolation below — no env_file
+    # (SEC-ENV-001 / RT-006 house rule).
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in /opt/fayanms/.env}
       FAYANMS_BACKUP_AGE_RECIPIENT: ${FAYANMS_BACKUP_AGE_RECIPIENT:?FAYANMS_BACKUP_AGE_RECIPIENT must be set — refuse-plaintext is non-negotiable}

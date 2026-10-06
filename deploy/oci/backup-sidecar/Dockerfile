@@ -16,6 +16,12 @@ RUN apk add --no-cache age
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 0550 /usr/local/bin/entrypoint.sh
 
+# Non-root runtime (semgrep dockerfile.security.missing-user-entrypoint):
+# uid 70 is the postgres-image user — pg_dump needs no privileges, and the
+# fayanms-backups volume is chowned 70:70 by the backup-init provision
+# one-shot (deploy/oci/compose.yml) before first start.
+USER 70:70
+
 # The container runs read-only with a /tmp tmpfs (compose house rules);
 # backups stream to /backups (named volume, mounted by compose).
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
