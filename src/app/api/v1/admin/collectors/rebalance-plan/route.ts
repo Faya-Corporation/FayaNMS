@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../_lib/api";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
+import { isDemoMode, simulationDisabledFail } from "@/lib/demo/simulation-guard";
 import { z } from "zod";
 import {
   assignDevices,
@@ -95,6 +96,13 @@ export async function POST(request: Request) {
   // apply is identical — without a cooldown an identical planId would pass
   // the staleness check forever. The newest apply row must be ≥ 3 min old.
   if (!dryRun) {
+    // P0-R05/P1-O02 (GA re-audit 2026-10-06): the APPLY leg is a
+    // DOCUMENTED SIMULATION (staged audit rows — no real collector is
+    // redeployed). Demo-mode-gated; the dryRun preview stays available.
+    if (!isDemoMode()) {
+      const disabled = simulationDisabledFail();
+      return fail(disabled.code, disabled.message, disabled.status);
+    }
     const latestApply = await db.auditEvent.findFirst({
       where: { action: "COLLECTOR_REBALANCE" },
       select: { correlationId: true, createdAt: true },
