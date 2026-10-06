@@ -58,7 +58,10 @@ export async function POST(
     const updated = await db.$transaction(async (tx) => {
       const row = await tx.apiClient.update({
         where: { id },
-        data: { tokenHash, tokenPrefix },
+        // P1-A04: rotation bookkeeping — rotatedAt stamps the credential
+        // handover; the full trail lives in the API_CLIENT_ROTATED audit
+        // rows (beforeJson/afterJson carry the token prefixes).
+        data: { tokenHash, tokenPrefix, rotatedAt: new Date() },
       });
       await tx.auditEvent.create({
         data: {

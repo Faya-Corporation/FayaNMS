@@ -9,6 +9,7 @@ import {
 } from "../../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
+import { SITE_SCOPE_MAX_CODES } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +35,21 @@ const patchSchema = z
       .max(32, "at most 32 scopes")
       .optional(),
     isActive: z.boolean().optional(),
+    // P1-A04: extend/set the expiry (must remain in the future; the
+    // max-lifetime policy bounds it the same way creation does). null
+    // clears the expiry — only meaningful when the lifetime policy is 0.
+    expiresAt: z
+      .union([z.string().datetime({ offset: true }), z.null()])
+      .optional(),
+    // P1-A05: re-scope the client's resource scope (same contract as
+    // create; omitted = unchanged).
+    siteCodes: z
+      .array(z.string().trim().min(1).max(64))
+      .max(SITE_SCOPE_MAX_CODES)
+      .optional(),
   })
   .refine((data) => Object.values(data).some((v) => v !== undefined), {
-    message: "at least one of name/scopes/isActive is required",
+    message: "at least one of name/scopes/isActive/expiresAt/siteCodes is required",
   });
 
 /** Serialize WITHOUT tokenHash — the hash never leaves the server. */
@@ -116,6 +129,62 @@ export async function PATCH(
         ? Array.from(new Set(parsed.data.scopes))
         : undefined;
 
+    // P1-A04: expiry updates honor the max-lifetime policy like creation.
+    let expiresAt: Date | null | undefined;
+    if (parsed.data.expiresAt !== undefined) {
+      if (parsed.data.expiresAt === null) {
+        expiresAt = null;
+      } else {
+        const parsedExpiry = new Date(parsed.data.expiresAt);
+        if (
+          Number.isNaN(parsedExpiry.getTime()) ||
+          parsedExpiry.getTime() <= Date.now()
+        ) {
+          return fail("INVALID_EXPIRY", "expiresAt must be a future ISO datetime", 400);
+        }
+        const rawLifetimeDays = Number.parseInt(
+          process.env.FAYANMS_API_CLIENT_MAX_LIFETIME_DAYS ?? "90",
+          10
+        );
+        const maxLifetimeDays = Number.isFinite(rawLifetimeDays)
+          ? Math.min(Math.max(rawLifetimeDays, 0), 3650)
+          : 90;
+        if (
+          maxLifetimeDays > 0 &&
+          parsedExpiry.getTime() > Date.now() + maxLifetimeDays * 86_400_000
+        ) {
+          return fail(
+            "EXPIRY_BEYOND_MAX_LIFETIME",
+            `expiresAt exceeds the ${maxLifetimeDays}-day maximum lifetime policy`,
+            400
+          );
+        }
+        expiresAt = parsedExpiry;
+      }
+    }
+
+    // P1-A05: site re-scoping validates codes exactly like creation.
+    let siteScopeJson: string | null | undefined;
+    if (parsed.data.siteCodes !== undefined) {
+      const codes = Array.from(new Set(parsed.data.siteCodes));
+      if (codes.length > 0) {
+        const sites = await db.site.findMany({
+          where: { code: { in: codes } },
+          select: { code: true },
+        });
+        const known = new Set(sites.map((site) => site.code));
+        const unknown = codes.filter((code) => !known.has(code));
+        if (unknown.length > 0) {
+          return fail(
+            "SITE_CODE_INVALID",
+            `Unknown site code(s): ${unknown.join(", ")}`,
+            400
+          );
+        }
+      }
+      siteScopeJson = JSON.stringify(codes); // [] preserved = deny-all
+    }
+
     // Wave-9 (audit 9-a F-2): the update and its audit row commit together.
     const updated = await db.$transaction(async (tx) => {
       const row = await tx.apiClient.update({
@@ -126,6 +195,8 @@ export async function PATCH(
           ...(parsed.data.isActive !== undefined
             ? { isActive: parsed.data.isActive }
             : {}),
+          ...(expiresAt !== undefined ? { expiresAt } : {}),
+          ...(siteScopeJson !== undefined ? { siteScopeJson } : {}),
         },
       });
 

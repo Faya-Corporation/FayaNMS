@@ -3,11 +3,16 @@ import type { User } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { fail } from "@/app/api/v1/_lib/api";
-import { authenticateApiClient, authenticateApiClientRead } from "@/lib/auth/api-client-auth";
+import {
+  authenticateApiClient,
+  authenticateApiClientRead,
+  resolveApiClientScopeClaims,
+} from "@/lib/auth/api-client-auth";
 import {
   assertSiteScope,
   SITE_SCOPE_CLAIM_KEY,
   SiteScopeDeniedError,
+  type SessionScopeClaims,
 } from "@/lib/auth/scope";
 import {
   APPROVAL_LEVEL_PERMISSIONS,
@@ -309,7 +314,7 @@ async function requireReadPrincipal(req: Request): Promise<User> {
  * Request object, entries die with the request. This is deliberately a
  * SEPARATE cache — the F-008 read-gate internals are untouched.
  */
-const scopeClaimsCache = new WeakMap<object, Promise<SessionUser | null>>();
+const scopeClaimsCache = new WeakMap<object, Promise<SessionScopeClaims | null>>();
 
 /**
  * Resolve (and memoize per-request) the session claims a route needs for
@@ -317,17 +322,28 @@ const scopeClaimsCache = new WeakMap<object, Promise<SessionUser | null>>();
  * routes: the read gate runs first (401/403 handling), then this feeds the
  * pure helpers in src/lib/auth/scope.ts.
  *
- * null claims mean the request authenticated on a NON-session plane (the
- * API-client opaque-bearer read plane) or never authenticated at all. Both
- * resolve WILDCARD downstream (sessionSiteScope(null) → wildcard): the
- * bearer plane stays unscoped by design for F-031, and a truly anonymous
- * request never reaches scope evaluation because the route's auth gate has
- * already answered 401.
+ * P1-A05 (GA re-audit 2026-10-06) — the API-client bearer plane is now
+ * RESOURCE-SCOPED: when the request carries a valid client token, its
+ * ApiClient.siteScopeJson resolves into the SAME claims shape human sessions
+ * use, so scopedDeviceWhere/requireSiteScope enforce the client's site list
+ * with zero per-route changes. A client without a site list (legacy rows and
+ * admins who deliberately left it unbounded) resolves wildcard — the
+ * documented pre-GA-3 posture. Unknown tokens still resolve null (wildcard
+ * downstream): a truly anonymous request never reaches scope evaluation
+ * because the route's auth gate has already answered 401.
  */
-export function sessionScopeFor(req: Request): Promise<SessionUser | null> {
+export async function sessionScopeFor(req: Request): Promise<SessionScopeClaims | null> {
   const cached = scopeClaimsCache.get(req);
   if (cached) return cached;
-  const pending = getSessionUser(req as never);
+  const pending = (async () => {
+    const session = await getSessionUser(req as never);
+    if (session) return session;
+    // Not a human session — resolve the API-client resource scope (null
+    // when the header is not a valid client token; the gate above decides
+    // what an anonymous caller may do).
+    const authorization = req.headers.get("authorization");
+    return resolveApiClientScopeClaims(authorization);
+  })();
   scopeClaimsCache.set(req, pending);
   return pending;
 }

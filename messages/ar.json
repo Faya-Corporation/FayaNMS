@@ -2778,7 +2778,14 @@
       "lastUsed": "آخر استخدام",
       "created": "أُنشئ",
       "active": "نشط",
-      "actions": "الإجراءات"
+      "actions": "الإجراءات",
+      "siteScope": "نطاق المواقع",
+      "expiry": "انتهاء الصلاحية",
+      "globalScope": "عالمي",
+      "denyAll": "رفض الكل",
+      "noExpiry": "بلا انتهاء (عميل قديم)",
+      "expiringSoon": "ينتهي قريبًا",
+      "expired": "منتهي"
     },
     "dialog": {
       "create": {

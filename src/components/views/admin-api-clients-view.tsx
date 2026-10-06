@@ -150,6 +150,8 @@ export function AdminApiClientsView() {
                 <TableHead>{t("table.client")}</TableHead>
                 <TableHead>{t("table.token")}</TableHead>
                 <TableHead>{t("table.scopes")}</TableHead>
+                <TableHead>{t("table.siteScope")}</TableHead>
+                <TableHead>{t("table.expiry")}</TableHead>
                 <TableHead>{t("table.lastUsed")}</TableHead>
                 <TableHead>{t("table.created")}</TableHead>
                 <TableHead>{t("table.active")}</TableHead>
@@ -173,6 +175,32 @@ export function AdminApiClientsView() {
                         </Badge>
                       ))}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {client.siteCodes === null ? (
+                      <Badge variant="outline" className="text-[10px]">
+                        {t("row.globalScope")}
+                      </Badge>
+                    ) : client.siteCodes.length === 0 ? (
+                      <Badge variant="destructive" className="text-[10px]">
+                        {t("row.denyAll")}
+                      </Badge>
+                    ) : (
+                      <div className="flex max-w-40 flex-wrap gap-1">
+                        {client.siteCodes.map((code) => (
+                          <Badge key={code} variant="outline" className="font-mono text-[10px]">
+                            {code}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {client.expiresAt === null ? (
+                      <span aria-label={t("row.noExpiry")}>—</span>
+                    ) : (
+                      <ExpiryBadge expiresAt={client.expiresAt} warnLabel={t("row.expiringSoon")} expiredLabel={t("row.expired")} />
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {client.lastUsedAt
@@ -332,6 +360,42 @@ export function AdminApiClientsView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * GA-3 (P1-A04) — expiry display with the audit's "expiration warning UI":
+ * a LIVE token expiring within 7 days renders an amber warning badge; an
+ * expired token renders a destructive badge. Null expiry (legacy row) shows
+ * a plain dash.
+ */
+function ExpiryBadge({
+  expiresAt,
+  warnLabel,
+  expiredLabel,
+}: {
+  expiresAt: string;
+  warnLabel: string;
+  expiredLabel: string;
+}) {
+  const ms = parseISO(expiresAt).getTime() - Date.now();
+  if (ms <= 0) {
+    return (
+      <Badge variant="destructive" className="text-[10px]">
+        {expiredLabel}
+      </Badge>
+    );
+  }
+  const soon = ms <= 7 * 86_400_000;
+  return (
+    <div className="flex items-center gap-1.5">
+      <span>{formatDistanceToNow(parseISO(expiresAt), { addSuffix: true })}</span>
+      {soon && (
+        <Badge variant="outline" className="border-amber-500/50 text-[10px] text-amber-600 dark:text-amber-400">
+          {warnLabel}
+        </Badge>
+      )}
     </div>
   );
 }

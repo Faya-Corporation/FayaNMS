@@ -11,6 +11,7 @@ import {
 } from "../../_lib/api";
 import { resolveAdminActor } from "@/lib/auth/acting-admin";
 import { authErrorToFail, requireRole } from "@/lib/auth/session";
+import { SITE_SCOPE_MAX_CODES } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,14 @@ const createSchema = z.object({
     .min(1, "select at least one scope")
     .max(32, "at most 32 scopes"),
   isActive: z.boolean().optional(),
+  // P1-A04: optional explicit expiry (ISO datetime). When omitted, the
+  // FAYANMS_API_CLIENT_MAX_LIFETIME_DAYS policy applies (default 90; 0
+  // disables the automatic lifetime — the row then has no expiry unless
+  // the admin passes one explicitly).
+  expiresAt: z.string().datetime({ offset: true }).optional(),
+  // P1-A05: optional resource scope. Omitted/null = global (the admin's
+  // explicit choice, documented); [] = deny-all; codes = sites mode.
+  siteCodes: z.array(z.string().trim().min(1).max(64)).max(SITE_SCOPE_MAX_CODES).optional(),
 });
 
 /** Serialize WITHOUT tokenHash — the hash never leaves the server. */
@@ -68,6 +77,9 @@ function clientView(row: {
   tokenPrefix: string;
   scopesJson: string;
   isActive: boolean;
+  expiresAt: Date | null;
+  rotatedAt: Date | null;
+  siteScopeJson: string | null;
   lastUsedAt: Date | null;
   createdAt: Date;
   createdBy: string | null;
@@ -81,12 +93,26 @@ function clientView(row: {
   } catch {
     scopes = [];
   }
+  let siteCodes: string[] | null = null;
+  if (row.siteScopeJson !== null) {
+    try {
+      const parsed: unknown = JSON.parse(row.siteScopeJson);
+      siteCodes = Array.isArray(parsed)
+        ? parsed.filter((s): s is string => typeof s === "string")
+        : [];
+    } catch {
+      siteCodes = [];
+    }
+  }
   return {
     id: row.id,
     name: row.name,
     tokenPrefix: row.tokenPrefix,
     scopes,
     isActive: row.isActive,
+    expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
+    rotatedAt: row.rotatedAt ? row.rotatedAt.toISOString() : null,
+    siteCodes,
     lastUsedAt: row.lastUsedAt ? row.lastUsedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     createdBy: row.createdBy,
@@ -140,6 +166,62 @@ export async function POST(request: Request) {
     }
 
     const scopes = Array.from(new Set(parsed.data.scopes));
+
+    // P1-A04 — credential lifetime policy (FAYANMS_API_CLIENT_MAX_LIFETIME_DAYS,
+    // clamped 0..3650, default 90): an explicit future expiresAt is honored
+    // but must not exceed the maximum; an omitted expiresAt gets the
+    // default lifetime (unless the policy is 0 — then no expiry at all).
+    const rawLifetimeDays = Number.parseInt(
+      process.env.FAYANMS_API_CLIENT_MAX_LIFETIME_DAYS ?? "90",
+      10
+    );
+    const maxLifetimeDays = Number.isFinite(rawLifetimeDays)
+      ? Math.min(Math.max(rawLifetimeDays, 0), 3650)
+      : 90;
+    let expiresAt: Date | null = null;
+    if (parsed.data.expiresAt) {
+      expiresAt = new Date(parsed.data.expiresAt);
+      if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
+        return fail("INVALID_EXPIRY", "expiresAt must be a future ISO datetime", 400);
+      }
+      if (maxLifetimeDays > 0) {
+        const maxMs = Date.now() + maxLifetimeDays * 86_400_000;
+        if (expiresAt.getTime() > maxMs) {
+          return fail(
+            "EXPIRY_BEYOND_MAX_LIFETIME",
+            `expiresAt exceeds the ${maxLifetimeDays}-day maximum lifetime policy`,
+            400
+          );
+        }
+      }
+    } else if (maxLifetimeDays > 0) {
+      expiresAt = new Date(Date.now() + maxLifetimeDays * 86_400_000);
+    }
+
+    // P1-A05 — resource scope: dedupe + fail on unknown site codes (the
+    // creator is an admin with a global view; a typo must not silently
+    // grant nothing or widen anything).
+    let siteScopeJson: string | null = null;
+    if (parsed.data.siteCodes !== undefined) {
+      const codes = Array.from(new Set(parsed.data.siteCodes));
+      if (codes.length > 0) {
+        const sites = await db.site.findMany({
+          where: { code: { in: codes } },
+          select: { code: true },
+        });
+        const known = new Set(sites.map((site) => site.code));
+        const unknown = codes.filter((code) => !known.has(code));
+        if (unknown.length > 0) {
+          return fail(
+            "SITE_CODE_INVALID",
+            `Unknown site code(s): ${unknown.join(", ")}`,
+            400
+          );
+        }
+      }
+      siteScopeJson = JSON.stringify(codes); // [] preserved = deny-all
+    }
+
     const token = randomBytes(32).toString("base64url");
     const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
     const tokenPrefix = token.slice(0, 8);
@@ -156,6 +238,8 @@ export async function POST(request: Request) {
           tokenPrefix,
           scopesJson: JSON.stringify(scopes),
           isActive: parsed.data.isActive ?? true,
+          expiresAt,
+          siteScopeJson,
           createdBy: actor.id,
         },
       });
@@ -174,6 +258,8 @@ export async function POST(request: Request) {
             scopes,
             tokenPrefix,
             isActive: created.isActive,
+            expiresAt: created.expiresAt ? created.expiresAt.toISOString() : null,
+            siteScopeJson: created.siteScopeJson,
           }),
         },
       });

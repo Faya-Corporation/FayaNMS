@@ -729,9 +729,15 @@ describe("wave10 workflow: source pins", () => {
     }
   });
 
-  test("F-3: the acknowledge route keeps the documented API-client unscoped posture", () => {
+  test("F-3: the acknowledge route runs the site-scope gate for EVERY principal", () => {
+    // SUPERSEDED by P1-A05 (GA re-audit 2026-10-06): the old pin asserted
+    // the api-client BYPASS (clients were global by design). API clients
+    // now carry a resource scope (ApiClient.siteScopeJson resolved through
+    // sessionScopeFor), so the gate applies unconditionally — the bypass
+    // must stay gone.
     const src = readFileSync(join(API_ROOT, "alerts", "[id]", "acknowledge", "route.ts"), "utf8");
-    expect(src).toContain('actor.role !== "api-client"');
+    expect(src).not.toContain('actor.role !== "api-client"');
+    expect(src).toContain("await requireSiteScope(request, alert.device.site?.code ?? null);");
   });
 
   test("F-2: incidents detail + export fuse sessionAllowsSite into the not-found branch", () => {

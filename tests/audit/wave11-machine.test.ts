@@ -176,7 +176,11 @@ describe("wave11 machine: source contract", () => {
   test("the events route puts bearer principals into the strip class unconditionally", () => {
     const src = readFileSync("src/app/api/v1/events/route.ts", "utf8");
     expect(src).toContain("F-2 wave-11 (audit 15-c P3-3)");
-    expect(src).toContain("const bearerPrincipalId = scopeClaims === null ? principal.id : null;");
+    // P1-A05 (GA re-audit 2026-10-06): the bearer plane now resolves its
+    // RESOURCE scope into claims too, so the strip-class key moved from
+    // "claims === null" to "claims are not a human session" — the strip
+    // class still applies to EVERY non-human principal unconditionally.
+    expect(src).toContain("const bearerPrincipalId = claimsAreHuman ? null : principal.id;");
     // The bearer branch comes FIRST and ignores the resolved scope mode.
     expect(src).toContain("if (bearerPrincipalId !== null) {");
     expect(src).toContain("} else if (!isWildcard) {");

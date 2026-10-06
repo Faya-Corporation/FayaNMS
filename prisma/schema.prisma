@@ -1144,6 +1144,25 @@ model ApiClient {
   // scopes: JSON array, e.g. ["metrics.read","devices.read","alerts.write"]
   scopesJson  String
   isActive    Boolean   @default(true)
+  // P1-A04 (GA re-audit 2026-10-06) — credential lifecycle:
+  //   expiresAt — the token dies centrally in resolveActiveClient() once
+  //     this passes (API_CLIENT_EXPIRED, 401). null = legacy row created
+  //     before the policy (grandfathered, documented — never silently
+  //     expire an existing integration); NEW rows always carry a value
+  //     unless the operator disabled the maximum-lifetime policy (0).
+  //   rotatedAt / lastRotatedFromId — rotation bookkeeping; the full
+  //     trail lives in the API_CLIENT_ROTATED audit rows.
+  expiresAt   DateTime?
+  rotatedAt   DateTime?
+  lastRotatedFromId String?
+  // P1-A05 (GA re-audit 2026-10-06) — RESOURCE scope (capability × site):
+  //   same semantics as User.siteScopeJson — null = wildcard (the
+  //   pre-GA-3 global posture for legacy rows; a NEW client without an
+  //   explicit site list is global only because the ADMIN chose not to
+  //   bound it — the create contract documents this), JSON code array =
+  //   sites mode, empty array = deny-all, malformed = deny-all. Enforced
+  //   through the SAME scope primitives human sessions use.
+  siteScopeJson String?
   lastUsedAt  DateTime?
   createdAt   DateTime  @default(now())
   createdBy   String?

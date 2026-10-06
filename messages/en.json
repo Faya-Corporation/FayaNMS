@@ -2778,7 +2778,14 @@
       "lastUsed": "Last used",
       "created": "Created",
       "active": "Active",
-      "actions": "Actions"
+      "actions": "Actions",
+      "siteScope": "Site scope",
+      "expiry": "Expiry",
+      "globalScope": "Global",
+      "denyAll": "Deny all",
+      "noExpiry": "No expiry (legacy client)",
+      "expiringSoon": "Expiring soon",
+      "expired": "Expired"
     },
     "dialog": {
       "create": {

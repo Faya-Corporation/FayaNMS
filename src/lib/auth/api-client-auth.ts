@@ -4,6 +4,7 @@ import type { User } from "@prisma/client";
 import { db } from "@/lib/db";
 import { bearerTokenOf } from "@/lib/auth/service-jwt";
 import { roleHasPermission } from "@/lib/auth/permissions";
+import { normalizeSiteScopeCodes } from "@/lib/auth/scope";
 
 /**
  * API-client bearer authentication (P1-012 — external ULTRA audit).
@@ -188,6 +189,20 @@ async function resolveActiveClient(authorization: string | null): Promise<Resolv
     };
   }
 
+  // P1-A04 (GA re-audit 2026-10-06): CENTRAL expiry enforcement — every
+  // plane (mutation + read) funnels through this resolver, so an expired
+  // token is dead everywhere at the same instant. null expiresAt = a
+  // legacy row created before the lifecycle policy (grandfathered by
+  // design: existing integrations are never silently expired).
+  if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
+    return {
+      outcome: "rejected",
+      code: "API_CLIENT_EXPIRED",
+      message: "This API client token has expired — rotate or issue a new client.",
+      status: 401,
+    };
+  }
+
   let scopes: string[] = [];
   try {
     const parsed: unknown = JSON.parse(row.scopesJson);
@@ -198,6 +213,37 @@ async function resolveActiveClient(authorization: string | null): Promise<Resolv
     scopes = [];
   }
   return { outcome: "client", row, scopes };
+}
+
+/**
+ * P1-A05 (GA re-audit 2026-10-06): the RESOURCE scope of an API client,
+ * shaped as session-scope claims so the SAME primitives that scope human
+ * sessions (sessionSiteScope / scopedDeviceWhere / requireSiteScope) scope
+ * the machine plane. Semantics mirror User.siteScopeJson:
+ *   null column  → { sites: undefined } = wildcard (legacy/global rows);
+ *   valid array  → { sites: codes } (empty array = deny-all);
+ *   malformed    → { sites: [] } = deny-all (fail-closed, never widen).
+ * Returns null when the header is NOT a valid, active, unexpired API-client
+ * token (the caller keeps its own plane decision).
+ */
+export async function resolveApiClientScopeClaims(
+  authorization: string | null
+): Promise<{ sites?: string[] } | null> {
+  const resolved = await resolveActiveClient(authorization);
+  if (resolved.outcome !== "client") return null;
+  const row = resolved.row as {
+    siteScopeJson?: string | null;
+  };
+  if (row.siteScopeJson === null || row.siteScopeJson === undefined) {
+    return { sites: undefined }; // wildcard — the documented legacy posture
+  }
+  try {
+    const parsed: unknown = JSON.parse(row.siteScopeJson);
+    const codes = normalizeSiteScopeCodes(parsed);
+    return { sites: codes ?? [] }; // malformed → deny-all
+  } catch {
+    return { sites: [] }; // malformed → deny-all
+  }
 }
 
 /** sha256 of the bearer token — matches POST creation storage exactly. */
