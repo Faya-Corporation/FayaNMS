@@ -40,12 +40,13 @@ export const maxDuration = 60;
  *   4. ONE audit row: REPORT_BUILT with an RB-XXXXXX correlation id and a
  *      metadata-only afterJson (never the artifact content).
  *
- * FORMAT HONESTY: on this demo platform the scheduled pipeline treats the
- * format as a delivery tag only (the artifact rows/columns are identical
- * for PDF/XLSX/CSV/JSON — there is no binary renderer). This endpoint
- * behaves the same way and tags the artifact with the requested format;
- * the builder UI treats CSV/JSON as downloadable and PDF/XLSX as
- * metadata-tagged previews and says so in the UI copy.
+ * FORMAT HONESTY (GA-5, 2026-10-06 re-audit): the scheduled pipeline and
+ * this endpoint tag the artifact with the requested format, and the run
+ * download route (/api/v1/reports/runs/[id]/download) now delivers REAL
+ * PDF 1.4 and XLSX (SpreadsheetML) bytes rendered at delivery time from
+ * the stored artifact (render-pdf.ts / render-xlsx.ts — zero new
+ * dependencies). The builder UI treats CSV/JSON as downloadable previews
+ * and says so in the UI copy.
  */
 
 const runSchema = z

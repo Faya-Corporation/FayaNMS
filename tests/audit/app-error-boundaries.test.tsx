@@ -192,9 +192,9 @@ describe("RT-004 — dictionaries carry the new keys in both locales", () => {
     // Totals: 2850 (R102) → 2856 (RT-004) → 3193 → 3206 → 3214 → 3309 → 3312
     // (RT-037, +2 common.errors) → 3392 (GA-3, +7 apiClients keys per side; was 3385 after F-034, +2 auth.signIn
     // totpCode/totpHint per side; every pinning test updated in the same
-    // change).
-    expect(leaves(en).length).toBe(3392);
-    expect(leaves(ar).length).toBe(3392);
+    // change) → 3394 (GA-5, +2 runs downloadPdf/downloadXlsx per side).
+    expect(leaves(en).length).toBe(3394);
+    expect(leaves(ar).length).toBe(3394);
   });
 });
 

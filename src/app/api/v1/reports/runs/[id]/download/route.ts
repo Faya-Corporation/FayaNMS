@@ -2,17 +2,25 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authErrorToFail, requirePermission } from "@/lib/auth/session";
 import { fail, newCorrelationId } from "../../../../_lib/api";
-import { artifactToCsv } from "@/lib/reports/generate";
+import { artifactToCsv, type ReportArtifact } from "@/lib/reports/generate";
+import { renderArtifactPdf } from "@/lib/reports/render-pdf";
+import { renderArtifactXlsx } from "@/lib/reports/render-xlsx";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/v1/reports/runs/[id]/download?format=CSV|JSON (Task 9-a).
+ * GET /api/v1/reports/runs/[id]/download?format=CSV|JSON|PDF|XLSX (Task 9-a;
+ * GA-5 2026-10-06 re-audit adds the binary formats).
  *
  * Streams the stored resultJson artifact of a SUCCEEDED REPORT_RUN as a
- * file attachment (CSV rendered via artifactToCsv, JSON verbatim pretty
- * print). QUEUED/RUNNING/FAILED runs answer 409 RUN_NOT_DOWNLOADABLE —
- * there is nothing to download until the artifact exists.
+ * file attachment: CSV rendered via artifactToCsv, JSON verbatim pretty
+ * print, and — closing the GA-5 format-honesty gap — REAL PDF 1.4 and
+ * XLSX (SpreadsheetML) bytes rendered at delivery time by
+ * renderArtifactPdf/renderArtifactXlsx from the stored artifact (the
+ * resultJson stays the single source of truth; no schema change, no
+ * binary blob persisted). QUEUED/RUNNING/FAILED runs answer 409
+ * RUN_NOT_DOWNLOADABLE — there is nothing to download until the artifact
+ * exists.
  *
  * Audited like every other export surface (REPORT_DOWNLOAD, DL-style
  * correlation id, actor from the session). Authorization (Phase 19-C,
@@ -51,8 +59,8 @@ export async function GET(
 
   const url = new URL(request.url);
   const format = (url.searchParams.get("format") ?? "CSV").toUpperCase();
-  if (format !== "CSV" && format !== "JSON") {
-    return fail("INVALID_QUERY", "format must be CSV or JSON", 400);
+  if (format !== "CSV" && format !== "JSON" && format !== "PDF" && format !== "XLSX") {
+    return fail("INVALID_QUERY", "format must be CSV, JSON, PDF or XLSX", 400);
   }
 
   const run = await db.jobExecution.findUnique({
@@ -148,6 +156,34 @@ export async function GET(
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="${baseName}.csv"`,
+        "X-Correlation-Id": correlationId,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
+  // GA-5: the binary formats render at delivery from the stored artifact.
+  if (format === "PDF") {
+    const pdf = renderArtifactPdf(artifact as unknown as ReportArtifact);
+    return new NextResponse(pdf as unknown as BodyInit, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${baseName}.pdf"`,
+        "X-Correlation-Id": correlationId,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
+  if (format === "XLSX") {
+    const xlsx = renderArtifactXlsx(artifact as unknown as ReportArtifact);
+    return new NextResponse(xlsx as unknown as BodyInit, {
+      status: 200,
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${baseName}.xlsx"`,
         "X-Correlation-Id": correlationId,
         "Cache-Control": "no-store",
       },

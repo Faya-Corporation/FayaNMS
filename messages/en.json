@@ -644,7 +644,9 @@
       "durationSeconds": "{seconds} s",
       "rangeNA": "—",
       "errorTitleRun": "Run failed",
-      "retries": "attempt {attempts} of {maxAttempts}"
+      "retries": "attempt {attempts} of {maxAttempts}",
+      "downloadPdf": "Download PDF",
+      "downloadXlsx": "Download XLSX"
     },
     "scheduled": {
       "title": "Scheduled Reports",
@@ -681,7 +683,7 @@
       "dialog": {
         "createTitle": "New report schedule",
         "editTitle": "Edit report schedule",
-        "description": "Each cadence queues a REPORT_RUN job; finished runs appear in Reports with downloadable CSV/JSON artifacts.",
+        "description": "Each cadence queues a REPORT_RUN job; finished runs appear in Reports with downloadable PDF/XLSX/CSV/JSON artifacts.",
         "name": "Name",
         "namePlaceholder": "Weekly Backup Compliance Export",
         "type": "Report type",
@@ -1793,7 +1795,7 @@
     "frequencyAria": "Report frequency",
     "formatLabel": "Format",
     "formatAria": "Report format",
-    "formatNote": "PDF/XLSX are delivery-format tags on this demo platform — preview data is identical. Download CSV or JSON for the actual file.",
+    "formatNote": "PDF/XLSX schedule formats deliver real binary files — finished runs download as actual PDF documents and Excel workbooks (rendered from the stored artifact at download time). Preview downloads here are CSV/JSON.",
     "run": "Run preview",
     "saveSchedule": "Save as schedule",
     "emptyTitle": "No preview yet",

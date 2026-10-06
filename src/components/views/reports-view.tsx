@@ -9,6 +9,7 @@ import {
   Clock,
   FileJson,
   FileSpreadsheet,
+  FileType2,
   History,
 } from "lucide-react";
 
@@ -364,6 +365,35 @@ export function ReportsView() {
                                   <FileJson aria-hidden="true" />
                                 </a>
                               </Button>
+                              {/* GA-5: PDF/XLSX are REAL binary downloads now —
+                                  the bytes are rendered at delivery from the
+                                  stored artifact (no more tagged-JSON gap). */}
+                              <Button
+                                asChild
+                                size="icon"
+                                title={t("downloadPdf")}
+                                variant="ghost"
+                              >
+                                <a
+                                  aria-label={t("downloadPdf")}
+                                  href={reportRunDownloadUrl(run.id, "PDF")}
+                                >
+                                  <FileType2 aria-hidden="true" />
+                                </a>
+                              </Button>
+                              <Button
+                                asChild
+                                size="icon"
+                                title={t("downloadXlsx")}
+                                variant="ghost"
+                              >
+                                <a
+                                  aria-label={t("downloadXlsx")}
+                                  href={reportRunDownloadUrl(run.id, "XLSX")}
+                                >
+                                  <FileSpreadsheet aria-hidden="true" />
+                                </a>
+                              </Button>
                             </>
                           ) : (
                             <>
@@ -390,6 +420,28 @@ export function ReportsView() {
                                 variant="ghost"
                               >
                                 <FileJson aria-hidden="true" />
+                                <span className="sr-only">{t("downloadLockedHint")}</span>
+                              </Button>
+                              <Button
+                                aria-disabled
+                                aria-label={t("downloadLockedHint")}
+                                onClick={(e) => e.preventDefault()}
+                                size="icon"
+                                title={t("downloadLockedHint")}
+                                variant="ghost"
+                              >
+                                <FileType2 aria-hidden="true" />
+                                <span className="sr-only">{t("downloadLockedHint")}</span>
+                              </Button>
+                              <Button
+                                aria-disabled
+                                aria-label={t("downloadLockedHint")}
+                                onClick={(e) => e.preventDefault()}
+                                size="icon"
+                                title={t("downloadLockedHint")}
+                                variant="ghost"
+                              >
+                                <FileSpreadsheet aria-hidden="true" />
                                 <span className="sr-only">{t("downloadLockedHint")}</span>
                               </Button>
                             </>

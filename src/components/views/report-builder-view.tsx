@@ -88,10 +88,13 @@ import { cn } from "@/lib/utils";
  *      (reuse of the existing schedules hook) with an "Open scheduled
  *      reports" deep link on success.
  *
- * PDF/XLSX honesty note: on this demo platform the scheduled pipeline tags
- * the delivery format only (artifact rows/columns are identical) — the same
- * is true here, so CSV/JSON downloads stay enabled for every format and the
- * meta line surfaces the requested delivery tag.
+ * PDF/XLSX honesty note (GA-5): PDF and XLSX are REAL delivery formats
+ * now — a finished scheduled run downloads as an actual PDF document or
+ * Excel workbook, rendered at delivery time from the stored artifact
+ * (src/lib/reports/render-pdf.ts / render-xlsx.ts; see the run-history
+ * view's download buttons). The builder preview itself keeps client-side
+ * CSV/JSON downloads for every format and the meta line surfaces the
+ * requested delivery tag.
  *
  * The server module src/lib/reports/generate.ts imports the db client and
  * can never be imported from client code — the two tiny pure helpers it
