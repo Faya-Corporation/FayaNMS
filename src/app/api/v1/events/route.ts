@@ -205,7 +205,11 @@ export async function GET(request: Request) {
       db.auditEvent.count({ where: listWhere }),
       db.auditEvent.findMany({
         where: listWhere,
-        orderBy: { createdAt: "desc" },
+        // Deterministic total order: createdAt alone ties within the same
+        // transaction/microsecond on fast runners, which makes page
+        // boundaries (and row order inside a page) nondeterministic —
+        // the id tie-breaker keeps pagination stable.
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

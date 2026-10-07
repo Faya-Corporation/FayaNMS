@@ -757,10 +757,13 @@ describe("wave10 peripheral: GET /api/v1/events (F-1 minimum strip)", () => {
     const body = (await res.json()) as Envelope;
     const rows = body.data as EventRow[];
     expect(rows).toHaveLength(3);
-    const byDevice = new Map(rows.map((r) => [r.resourceId, r]));
 
-    // In-scope device row: identity fields survive (resource proven in scope).
-    const rowA = byDevice.get(deviceAId);
+    // Order-independent row resolution: two rows share resourceId=deviceB
+    // (the other actor's row and the session's own carve-out row) and the
+    // route's createdAt ordering can legitimately tie within the same
+    // microsecond on fast runners — so select by PREDICATE, never by array
+    // position or last-write-wins Map semantics.
+    const rowA = rows.find((r) => r.resourceId === deviceAId);
     expect(rowA?.resourceLabel).toBe(HOST_A);
     expect(rowA?.ip).toBe("192.0.2.91");
     expect(rowA?.userAgent).toBe("w10-peripheral-agent");
@@ -768,12 +771,11 @@ describe("wave10 peripheral: GET /api/v1/events (F-1 minimum strip)", () => {
     expect(rowA?.afterJson).toEqual({ w10: "a-after" });
 
     // Out-of-scope device row (another actor): FAIL-CLOSED strip.
-    const rowB = byDevice.get(deviceBId);
+    const rowB = rows.find((r) => r.resourceId === deviceBId && r.actorId !== adminId);
     const ownRow = rows.find((r) => r.actorId === adminId);
     expect(ownRow?.id).toBeDefined();
-    const stripped = rows.filter((r) => r.id !== ownRow?.id && r.resourceId === deviceBId);
-    expect(stripped).toHaveLength(1);
-    expect(rowB?.id).toBe(stripped[0]?.id);
+    expect(rowB?.id).toBeDefined();
+    expect(rowB?.actorId).not.toBe(adminId);
     expect(rowB?.resourceLabel).toBeNull();
     expect(rowB?.ip).toBeNull();
     expect(rowB?.userAgent).toBeNull();
@@ -782,6 +784,7 @@ describe("wave10 peripheral: GET /api/v1/events (F-1 minimum strip)", () => {
 
     // The session actor's OWN event on the same out-of-scope device keeps
     // its labels (the documented actor-own carve-out).
+    expect(ownRow?.resourceId).toBe(deviceBId);
     expect(ownRow?.resourceLabel).toBe(HOST_B);
     expect(ownRow?.ip).toBe("192.0.2.93");
   });
