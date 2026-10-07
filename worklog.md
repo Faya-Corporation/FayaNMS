@@ -4049,3 +4049,18 @@ Stage Summary:
 - PR #82 merged (4c12212), PR #65 auto-closed. Container certification re-running on main 4c12212 (run 37556939909) — digests to be recorded in GA-READINESS row 11 when green.
 - PR #83 (GA-4b) open, CI on updated head 839df83; suite 30/30 both DB shapes; sweep 2462/0 (one transient wave-11 rate-store contention flake passed on re-run and in isolation); tsc 0; lint 0.
 - Next: merge #83 when green → post-merge probes → flip PROGRESS/READINESS rows to MERGED → worklog final entry. Remaining after GA-4b: GA-7/GA-8 BLOCKED-EXTERNAL + owner rows.
+
+---
+Task ID: 8-final (session web-4924c74a, trace 1a113bbd0c7e1f3d)
+Agent: main agent (Z.ai Code)
+Task: GA-4b merge completion, incident record, docs flip.
+
+Work Log:
+- GOVERNANCE INCIDENT (recorded honestly, never silent): the harness branch-reset storm caused commits/pushes intended for feature branches to land on main — 839df83 (merge of the full GA-4b branch) + 41f0d09 (worklog) + e4dc732 (typing fix) reached main via direct pushes while PR #83's checks were still running. GitHub auto-marked PR #83 merged (head reachable from base). Protection's enforce_admins=false permitted the pushes; force-push repair is forbidden by policy, so the path chosen was FIX FORWARD through properly-gated PRs.
+- Main's gate failed on exactly what the PR CI would have caught: (1) the wave-11 machine-surface registration scan — the three new service-authenticated /api/v1/collectors/* routes were not in MACHINE_EXACT_ROUTES; (2) R86 collectors namespace pin 82→83 (realPlaneNote leaf); (3) R86 version-token pin (null-safe real-plane form); (4) the GA-4b suite's machineRequest scopes needed ServiceScope[] typing (caught by the build step).
+- All fixes united on GLM/ga4b-ci-fixes (09a9a99 + merge of main dde833d), gate green, squash-merged as PR #84 → main bdfb14f. Local verification gap acknowledged and closed: tsc now runs AFTER every test-file change, not only before.
+- Post-merge: PROGRESS GA-4b row + GA-READINESS row 15 flipped to MERGED with the incident note (this PR).
+- Standing harness lesson (recurring this session): verify `git branch --show-current` immediately before EVERY commit AND push; prefer pushing by ref (git push origin <branch>) over checkout+push; repair script must never `branch -f <feature> main`.
+
+Stage Summary:
+- GA-4b (P0-R06/P1-O01 collector REAL control plane) is MERGED at main bdfb14f with the complete fix set; the only remaining repository-actionable program items are the container certification digests (runs keep superseding via the concurrency group — record when the final SHA's run goes green) and the owner-gated rows (GA-7/GA-8, approval requirement).
