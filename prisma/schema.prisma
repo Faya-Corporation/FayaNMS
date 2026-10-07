@@ -122,6 +122,8 @@ model Site {
   changes     ChangeRequest[]
   incidents   Incident[]
   maintenance MaintenanceWindow[]
+  // GA-4b: registered collector agents resident at this site.
+  collectorAgents CollectorAgent[]
 
   @@index([organizationId])
   @@index([region])
@@ -201,6 +203,9 @@ model Device {
   protocolEvents        ProtocolEventQueue[]
   flowRecords           FlowRecord[]
   discoveryObservations DiscoveryObservation[]
+  // GA-4b: the owning collector agent (zero or one — CollectorAssignment
+  // deviceId is @unique).
+  collectorAssignments  CollectorAssignment[]
 
   @@index([siteId])
   @@index([vendorId])
@@ -1220,6 +1225,76 @@ model Collector {
   createdAt        DateTime  @default(now())
 
   @@index([kind])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GA-4b (P0-R06/P1-O01) — REAL collector control plane.
+// `Collector` above stays the worker-OBSERVED registry (self-upserted from
+// the worker /health probe). A `CollectorAgent` is a REGISTERED identity
+// with site residency, capacity and liveness — the unit that assignment
+// ownership (leases), fencing and failover operate on. String enums per
+// house convention (no Prisma enums); no Json columns.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// GA-4b — a registered collector agent instance.
+/// status: ACTIVE | SUSPENDED | RETIRED (ACTIVE agents own assignments;
+/// SUSPENDED agents are excluded from reconcile/failover targets and every
+/// heartbeat claim they send is fenced).
+model CollectorAgent {
+  id              String    @id @default(cuid())
+  // Stable agent identity supplied at registration (e.g. "coll-hq-snmp-01").
+  agentKey        String    @unique
+  displayName     String
+  site            Site?     @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  siteId          String?
+  // role: snmp | netflow | syslog | config
+  role            String
+  // Denormalized Site.region — the failover-pairing input (peer search order:
+  // same region → same site → any ACTIVE agent). Refreshed on registration.
+  region          String?
+  version         String?
+  capacity        Int       @default(10)
+  status          String    @default("ACTIVE")
+  lastHeartbeatAt DateTime?
+  registeredAt    DateTime  @default(now())
+  // actorName of the registrar (machine subject or admin email).
+  registeredBy    String?
+
+  assignments CollectorAssignment[]
+
+  @@index([siteId])
+  @@index([status])
+  @@index([lastHeartbeatAt])
+}
+
+/// GA-4b — device→agent OWNERSHIP row (the real assignment decision).
+/// ONE row per device (@unique deviceId — the lock, DeviceWriteLock pattern).
+/// leaseEpoch is the FENCING TOKEN: bumped on EVERY ownership transfer, so a
+/// heartbeat (or any write) carrying a stale epoch is rejected — the same
+/// house pattern as User.credentialEpoch and JobExecution.attempts. leasedUntil
+/// is the crash valve (ChangeExecutionLease pattern): the reaper fails over
+/// ownership of agents whose heartbeat went silent past the TTL.
+model CollectorAssignment {
+  id          String         @id @default(cuid())
+  deviceId    String         @unique
+  device      Device         @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  agent       CollectorAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentId     String
+  // via: site-resident | peer-site | fallback-regional (same honest labels
+  // as the documented simulation in src/lib/collectors/distribution.ts).
+  via         String
+  leaseEpoch  Int            @default(1)
+  // null = unleased snapshot (reconcile output awaiting the agent's first
+  // heartbeat); after every renewal/transfer it is now + LEASE_TTL_MS.
+  leasedUntil DateTime?
+  assignedAt  DateTime       @default(now())
+  // registration | reconcile | rebalance | failover — which control-plane
+  // action last wrote this row (audit correlation, not authz).
+  assignedBy  String         @default("reconcile")
+
+  @@index([agentId])
+  @@index([leaseEpoch])
+  @@index([leasedUntil])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
