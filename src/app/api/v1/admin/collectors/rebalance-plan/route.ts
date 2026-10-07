@@ -11,27 +11,37 @@ import {
   type CollectorRebalanceMeta,
   type DeviceAssignmentRow,
 } from "@/lib/collectors/distribution";
+import {
+  COLLECTOR_LEASE_TTL_MS,
+  planRealRebalance,
+  type CollectorAgentRuntime,
+} from "@/lib/collectors/control-plane";
 
 export const dynamic = "force-dynamic";
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * POST /api/v1/admin/collectors/rebalance-plan — guarded deterministic
- * rebalance (Phase 15-b). Body: { dryRun: boolean, planId?: string }.
+ * rebalance. Body: { dryRun: boolean, planId?: string }.
  *
- * Two-step guarded flow (same pattern as POST /api/v1/ha/failover-test):
- *   dryRun: true            → plan preview ONLY, no audit rows written
- *   dryRun: false + planId  → verifies planId matches a FRESH recomputation
- *                             (409 COLLECTOR_PLAN_STALE on drift), then
- *                             writes ONE COLLECTOR_REBALANCE audit row per
- *                             move plus a final complete row with a shared
- *                             correlationId (COLL-XXXXXX) — audit-as-event-
- *                             store, no schema, no worker.
- *   404 COLLECTOR_NO_MOVES  — the plan is empty (fleet already balanced).
- *
- * GA-4 gate order (P0-R05/P1-O02): the APPLY leg's demo-mode gate
- * (403 SIMULATION_DISABLED) precedes the plan computation, so an empty or
- * balanced fleet (e.g. the CI DB) cannot mask the refusal with 404. The
- * dryRun preview stays available in a production posture.
+ * GA-4b dual-plane honesty (P0-R06/P1-O01): the plane follows the fleet.
+ *   REAL plane (≥1 ACTIVE registered agent):
+ *     dryRun:true            → plan over the REAL ownership rows (preview)
+ *     dryRun:false + planId  → ACTUALLY MOVES ownership rows (conditional
+ *                              per-row updates, leaseEpoch bumped so stale
+ *                              claimants are fenced), COLLECTOR_REBALANCE
+ *                              audit rows per move + complete, then a fresh
+ *                              read of the fleet. NO demo-mode gate and NO
+ *                              staged sleeps: this is a real control-plane
+ *                              operation, and planId freshness is now a
+ *                              GENUINE staleness check (a real apply changes
+ *                              the state, so a replayed planId goes 409).
+ *   SIMULATED plane (no registered agents — demo/CI posture, unchanged):
+ *     the GA-4 guarded simulation. The APPLY leg is a DOCUMENTED SIMULATION
+ *     (staged audit rows — no real collector is redeployed); demo-mode gate
+ *     (403 SIMULATION_DISABLED) precedes the plan computation so a balanced
+ *     or empty fleet cannot mask the refusal with 404; the 3-min
+ *     audit-as-event-store cooldown stays (the simulated plan is identical
+ *     after an apply, so planId freshness alone could never gate it).
  * ───────────────────────────────────────────────────────────────────────────── */
 
 const planSchema = z.object({
@@ -54,6 +64,26 @@ async function loadAssignments(): Promise<DeviceAssignmentRow[]> {
     siteCode: device.site?.code ?? null,
     status: device.status,
   }));
+}
+
+async function activeRealFleet(): Promise<CollectorAgentRuntime[]> {
+  const agents = await db.collectorAgent.findMany({
+    where: { status: "ACTIVE" },
+    orderBy: { agentKey: "asc" },
+    select: {
+      id: true,
+      agentKey: true,
+      displayName: true,
+      siteId: true,
+      region: true,
+      role: true,
+      version: true,
+      capacity: true,
+      status: true,
+      lastHeartbeatAt: true,
+    },
+  });
+  return agents.map((agent) => ({ ...agent, siteCode: null }));
 }
 
 export async function POST(request: Request) {
@@ -84,6 +114,215 @@ export async function POST(request: Request) {
     return authFail;
   }
 
+  const realAgents = await activeRealFleet();
+  if (realAgents.length > 0) {
+    return realPlane(request, actor, realAgents, dryRun, planId);
+  }
+  return simulatedPlane(actor, dryRun, planId);
+}
+
+/* ───────────────────────────── REAL plane ────────────────────────────────── */
+
+async function realPlane(
+  _request: Request,
+  actor: Awaited<ReturnType<typeof requireRole>>,
+  agents: CollectorAgentRuntime[],
+  dryRun: boolean,
+  planId?: string
+) {
+  const [ownership, devices] = await Promise.all([
+    db.collectorAssignment.findMany({
+      select: {
+        deviceId: true,
+        agentId: true,
+        device: { select: { hostname: true } },
+      },
+    }),
+    db.device.findMany({
+      select: {
+        id: true,
+        hostname: true,
+        siteId: true,
+        site: { select: { code: true, region: true } },
+      },
+      orderBy: { hostname: "asc" },
+    }),
+  ]);
+  const deviceById = new Map(devices.map((d) => [d.id, d]));
+
+  const fleet = agents.map((agent) => ({
+    agent,
+    owned: ownership
+      .filter((row) => row.agentId === agent.id)
+      .map((row) => ({
+        deviceId: row.deviceId,
+        hostname: row.device.hostname || deviceById.get(row.deviceId)?.hostname || "",
+        online: true,
+      })),
+  }));
+
+  const realMoves = planRealRebalance(fleet);
+  const moves = realMoves.map((move) => ({
+    deviceId: move.deviceId,
+    hostname: move.hostname,
+    fromAgentId: move.fromAgentKey,
+    fromLoad: move.fromLoad,
+    toAgentId: move.toAgentKey,
+    toLoad: move.toLoad,
+    reason: move.reason,
+  }));
+
+  if (moves.length === 0) {
+    return fail(
+      "COLLECTOR_NO_MOVES",
+      "The real fleet is already balanced — no over-capacity agents, nothing to rebalance",
+      404
+    );
+  }
+
+  const freshPlanId = planFingerprint(moves);
+
+  if (dryRun) {
+    return ok(
+      {
+        plane: "real" as const,
+        dryRun: true,
+        planId: freshPlanId,
+        moves,
+        beforeAfter: {
+          moved: moves.length,
+          note: "Preview only — confirm with dryRun:false and this planId (real apply MOVES ownership rows)",
+        },
+      },
+      { actor: "plan-preview", plane: "real" },
+      200
+    );
+  }
+
+  if (!planId || planId !== freshPlanId) {
+    return fail(
+      "COLLECTOR_PLAN_STALE",
+      `Plan ${planId ?? "(missing)"} no longer matches the live ownership (current ${freshPlanId}) — re-run the preview`,
+      409
+    );
+  }
+
+  const actorName = actor.name ?? actor.email;
+  const correlationId = newCorrelationId("COLL");
+  const startedAt = Date.now();
+  const agentIdByKey = new Map(agents.map((a) => [a.agentKey, a.id] as const));
+  const agentByKey = new Map(agents.map((a) => [a.agentKey, a] as const));
+
+  let applied = 0;
+  let skippedConcurrent = 0;
+  for (const [index, move] of realMoves.entries()) {
+    const fromId = agentIdByKey.get(move.fromAgentKey);
+    const toId = agentIdByKey.get(move.toAgentKey);
+    if (!fromId || !toId) {
+      skippedConcurrent += 1;
+      continue;
+    }
+    // Conditional ownership move: matches only while the row is still owned
+    // by the plan's source — a concurrent failover/rebalance wins and this
+    // move is skipped honestly (never double-owned: deviceId @unique).
+    // `via` is computed from the REAL residency of the target agent.
+    const target = agentByKey.get(move.toAgentKey);
+    const device = deviceById.get(move.deviceId);
+    const via =
+      target && device
+        ? target.siteId && device.siteId && target.siteId === device.siteId
+          ? "site-resident"
+          : target.region && device.site?.region && target.region === device.site.region
+            ? "peer-site"
+            : "fallback-regional"
+        : "fallback-regional";
+    const movedCount = await db.collectorAssignment.updateMany({
+      where: { deviceId: move.deviceId, agentId: fromId },
+      data: {
+        agentId: toId,
+        via,
+        leaseEpoch: { increment: 1 },
+        leasedUntil: new Date(Date.now() + COLLECTOR_LEASE_TTL_MS),
+        assignedBy: "rebalance",
+      },
+    });
+    if (movedCount.count !== 1) {
+      skippedConcurrent += 1;
+      continue;
+    }
+    applied += 1;
+
+    const meta: CollectorRebalanceMeta = {
+      planId: freshPlanId,
+      stage: "move",
+      deviceId: move.deviceId,
+      hostname: move.hostname,
+      fromAgentId: move.fromAgentKey,
+      toAgentId: move.toAgentKey,
+      fromLoad: move.fromLoad,
+      toLoad: move.toLoad,
+      moveIndex: index + 1,
+      totalMoves: realMoves.length,
+    };
+    await db.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        actorName,
+        action: "COLLECTOR_REBALANCE",
+        resourceType: "CollectorAgent",
+        resourceId: move.fromAgentKey,
+        resourceLabel: `${move.hostname}: ${move.fromAgentKey} → ${move.toAgentKey}`,
+        result: "SUCCESS",
+        correlationId,
+        afterJson: JSON.stringify(meta),
+      },
+    });
+  }
+
+  const durationMs = Date.now() - startedAt;
+  const completeMeta: CollectorRebalanceMeta = {
+    planId: freshPlanId,
+    stage: "complete",
+    totalMoves: realMoves.length,
+    durationMs,
+  };
+  await db.auditEvent.create({
+    data: {
+      actorId: actor.id,
+      actorName,
+      action: "COLLECTOR_REBALANCE",
+      resourceType: "CollectorAgent",
+      resourceId: "fleet",
+      resourceLabel: `Rebalance plan ${freshPlanId} — ${applied}/${realMoves.length} ownership move(s)`,
+      result: "SUCCESS",
+      correlationId,
+      afterJson: JSON.stringify({ ...completeMeta, applied, skippedConcurrent, plane: "real" }),
+    },
+  });
+
+  return ok(
+    {
+      plane: "real" as const,
+      dryRun: false,
+      planId: freshPlanId,
+      correlationId,
+      moved: applied,
+      skippedConcurrent,
+      durationMs,
+      note: "REAL apply — ownership rows moved with lease-epoch bumps; stale claimants are fenced",
+    },
+    { actor: actorName, plane: "real" },
+    200
+  );
+}
+
+/* ────────────────────────── SIMULATED plane (unchanged) ──────────────────── */
+
+async function simulatedPlane(
+  actor: Awaited<ReturnType<typeof requireRole>>,
+  dryRun: boolean,
+  planId?: string
+) {
   // P0-R05/P1-O02 (GA re-audit 2026-10-06): the APPLY leg is a
   // DOCUMENTED SIMULATION (staged audit rows — no real collector is
   // redeployed). Demo-mode-gated BEFORE the plan computation: a balanced
@@ -143,6 +382,7 @@ export async function POST(request: Request) {
   if (dryRun) {
     return ok(
       {
+        plane: "simulated" as const,
         dryRun: true,
         planId: freshPlanId,
         moves,
@@ -151,7 +391,7 @@ export async function POST(request: Request) {
           note: "Preview only — confirm with dryRun:false and this planId",
         },
       },
-      { actor: "plan-preview" },
+      { actor: "plan-preview", plane: "simulated" },
       200
     );
   }
@@ -222,6 +462,7 @@ export async function POST(request: Request) {
 
   return ok(
     {
+      plane: "simulated" as const,
       dryRun: false,
       planId: freshPlanId,
       correlationId,
@@ -230,7 +471,7 @@ export async function POST(request: Request) {
       stages: stageLog,
       note: "Simulated apply — staged audit rows only, no real collector was redeployed",
     },
-    { actor: actorName },
+    { actor: actorName, plane: "simulated" },
     200
   );
 }
