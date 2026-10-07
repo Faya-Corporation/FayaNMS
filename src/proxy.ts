@@ -164,6 +164,11 @@ const MACHINE_EXACT_ROUTES: ReadonlySet<string> = new Set([
   "/api/v1/ingest/protocol/snmpv3-profile",
   "/api/v1/ingest/protocol/snmpv3-profile/poll",
   "/api/v1/ingest/protocol/snmpv3-profile/accept",
+  // GA-4b (P0-R06/P1-O01) collector REAL control plane — machine plane:
+  // telemetry-scoped service JWT (register/heartbeat/assignment snapshot).
+  "/api/v1/collectors/register",
+  "/api/v1/collectors/heartbeat",
+  "/api/v1/collectors/assignments",
 ]);
 
 function isMachineSurface(pathname: string): boolean {

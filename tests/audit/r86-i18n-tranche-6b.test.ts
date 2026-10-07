@@ -10,7 +10,8 @@ import { join } from "node:path";
  * Pins:
  *   A. The existing `collectors` namespace grows `kind` / `status` /
  *      `registry` — EXACTLY 29 NEW leaves (4 + 2 + 23), 82 total for the
- *      namespace, deep parity (identical leaf-path sets both directions)
+ *      namespace at R86 → 83 since GA-4b (+1 collectors.distribution
+ *      realPlaneNote per side), deep parity (identical leaf-path sets both directions)
  *      and non-empty string values everywhere; dictionary totals move
  *      1,822 → 1,851 = 1,851.
  *   B. The view consumes the namespace: ONE `useTranslations("collectors")`
@@ -77,7 +78,7 @@ function candidates(src: string): string[] {
 }
 
 describe("R86 — namespace growth is balanced", () => {
-  test("A: collectors.kind/status/registry exist with EXACTLY 29 new leaves (82 total)", () => {
+  test("A: collectors.kind/status/registry exist with EXACTLY 29 new leaves (83 total)", () => {
     for (const file of ["messages/en.json", "messages/ar.json"]) {
       const json = readJson(file) as Record<string, any>;
       const col = json.collectors as Messages;
@@ -87,7 +88,9 @@ describe("R86 — namespace growth is balanced", () => {
       expect(leaves(col.kind).length, `${file} kind leaves`).toBe(4);
       expect(leaves(col.status).length, `${file} status leaves`).toBe(2);
       expect(leaves(col.registry).length, `${file} registry leaves`).toBe(23);
-      expect(leaves(col).length, `${file} collectors total`).toBe(82);
+      // 82 since R86 → 83 since GA-4b (+1 collectors.distribution realPlaneNote
+      // per side — the dual-plane honesty note; kind/status/registry unchanged).
+      expect(leaves(col).length, `${file} collectors total`).toBe(83);
     }
   });
 
@@ -312,7 +315,9 @@ describe("R86 — value shapes and term consistency", () => {
     expect(src).toContain('className="font-mono text-[10px]"');
     // The already-keyed distribution chrome is untouched.
     expect(src).toContain("t(`role.${agent.role}`)");
-    expect(src).toContain("v{agent.version}");
+    // GA-4b: the version token gained a null-safe fallback — real registered
+    // agents may omit a version (the simulated fleet always had one).
+    expect(src).toContain('v{agent.version ?? "—"}');
   });
 
   test("G: date-fns stays English (no ar locale wired)", () => {
