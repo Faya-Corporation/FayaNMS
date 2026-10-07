@@ -145,8 +145,12 @@ describe("GA-OPS: cross-platform fresh-install operator surface", () => {
       console.log("    (pwsh not on PATH — parse pin skipped; parity pins above still apply)");
       return;
     }
+    // Single-quote the payload for the POSIX shell: execSync routes through
+    // /bin/sh, and a double-quoted payload lets sh expand $t/$e/$_ BEFORE
+    // PowerShell sees them ("An empty pipe element is not allowed" on CI
+    // runners, where pwsh exists and this pin actually executes).
     execSync(
-      `${pwsh} -NoProfile -Command "$t=$null;$e=$null;[System.Management.Automation.Language.Parser]::ParseFile('ops/ops.ps1',[ref]$t,[ref]$e)|Out-Null;if($e.Count){$e|ForEach-Object{Write-Host $_.Message};exit 1}"`,
+      `${pwsh} -NoProfile -Command '$t=$null;$e=$null;[System.Management.Automation.Language.Parser]::ParseFile("ops/ops.ps1",[ref]$t,[ref]$e)|Out-Null;if($e.Count){$e|ForEach-Object{Write-Host $_.Message};exit 1}'`,
       { cwd: ROOT, stdio: "pipe" },
     );
   });
