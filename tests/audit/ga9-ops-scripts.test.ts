@@ -16,7 +16,7 @@ function read(rel: string): string {
 }
 
 function commandListFromSh(sh: string): string[] {
-  const m = sh.match(/readonly OPS_COMMANDS=\(\n([\s\S]*?)\n\)/);
+  const m = sh.replace(/\r\n/g, "\n").match(/readonly OPS_COMMANDS=\(\n([\s\S]*?)\n\)/);
   expect(m, "ops.sh must declare readonly OPS_COMMANDS=( ... )").toBeTruthy();
   return (m as RegExpMatchArray)[1]
     .split("\n")
@@ -25,7 +25,13 @@ function commandListFromSh(sh: string): string[] {
 }
 
 function commandListFromPs1(ps1: string): string[] {
-  const m = ps1.match(/\$Script:OpsCommands\s*=\s*@\(\n([\s\S]*?)\n\)/);
+  // Normalize line endings first: *.ps1 is checked out with CRLF everywhere
+  // (that is the whole point of the .gitattributes eol discipline), so the
+  // parser must not assume a bare-LF working tree (Windows checkouts would
+  // otherwise fail this parity pin by construction).
+  const m = ps1
+    .replace(/\r\n/g, "\n")
+    .match(/\$Script:OpsCommands\s*=\s*@\(\n([\s\S]*?)\n\)/);
   expect(m, "ops.ps1 must declare $Script:OpsCommands = @( ... )").toBeTruthy();
   return (m as RegExpMatchArray)[1]
     .split("\n")
