@@ -4030,3 +4030,22 @@ Work Log:
 
 Stage Summary:
 - GA-6 shippable. Remaining after merge: record container run verdict + digests in GA-READINESS (row 11), regenerate the release-evidence manifest at the final SHA, then GA-4b (collector real control plane) is the LAST repository-actionable wave; everything else is BLOCKED — EXTERNAL with owner inputs named.
+
+---
+Task ID: 8 (session web-4924c74a, trace 1a113bbd0c7e1f3d)
+Agent: main agent (Z.ai Code)
+Task: Continue autonomous remediation — dispose of open dependabot PR #65, record container certification, then GA-4b (collector REAL control plane).
+
+Work Log:
+- Ground-truth reset: the summarized /root/FayaNMS narrative (tasks 17-21, PRs #71/#72) did NOT match this environment; the real repo is /home/z/my-project on the GA program at 6e7e170 (GA-5 #79, GA-6 #80, GA-6 follow-ups #81 all merged).
+- PR #65 (dependabot trivy-action pin refresh) diagnosed: its gate fails the RT-034 governance guard (ci.yml non-comment YAML hash) — dependabot's branch cannot carry the constant update. Implemented the same re-pin + the deliberate hash move the guard documents: branch GLM/trivy-action-repin, all ten trivy pins a9c7b0f→ed142fd, trailing comments refreshed (2026-10-07 re-pin, PR #15/#20 precedent), PRE_RT034_STIPPED_YAML_SHA256 ddb33d56→81a2c864 with a full move-log entry.
+- Harness branch-reset hazard hit repeatedly (known class): commits landing on local main, orphaned commits (bed30ed, 6450311) recovered via reflog; rebuilt GLM/ga4b-collector-control-plane linearly (507521b schema → 63e7a97 control plane → d03aa7e UI/i18n → 74273e7 suite → e9ad850+ fixture-scoped pins); wrote a SAFE repair script (stash → checkout feature → pop; never branch -f feature to main).
+- PR #82 opened for the re-pin; ALL checks green (gate/e2e/browser/scan + ARM64 build & runtime smoke on the PR head); squash-merged → main 4c12212; dependabot auto-closed PR #65 as satisfied.
+- GA-4b verified against source before building: P0-R06/P1-O01 confirmed open (simulated fleet banner intact at distribution.ts:5-12). Deep landscape research via Explore agent (schema conventions, service-plane auth, lease precedents: ChangeExecutionLease/DeviceWriteLock/credentialEpoch/claim-attempts, audit chain, GA-4 gate order, migrations-only CI rule).
+- GA-4b implemented on GLM/ga4b-collector-control-plane (PR #83): CollectorAgent+CollectorAssignment schema (leaseEpoch fencing token, leasedUntil crash valve); src/lib/collectors/control-plane.ts (register/heartbeat+fencing/reconcile/failover/reap/real-rebalance, conditional single-row ownership mutations); machine plane (telemetry-scope service JWT: register/heartbeat/assignments) + admin plane (agents/failover/reconcile/reap); distribution+rebalance dual-plane (real fleet when agents registered — no demo gate on real apply, genuine planId staleness; labeled simulation fallback unchanged); UI plane-conditional honesty note; i18n 3394→3395 with honest retotal of all 25 pinning files.
+- Pre-existing local-only failure fixed on the way (strictly stronger): wave9 predictive scope pin (ai-scope-hardening.test.ts) assumed a near-empty fleet for the top-10 ranking window — pin now goes through hostnameLike scope composition (fails on pristine main w/ seeded fleet, green on CI).
+
+Stage Summary:
+- PR #82 merged (4c12212), PR #65 auto-closed. Container certification re-running on main 4c12212 (run 37556939909) — digests to be recorded in GA-READINESS row 11 when green.
+- PR #83 (GA-4b) open, CI on updated head 839df83; suite 30/30 both DB shapes; sweep 2462/0 (one transient wave-11 rate-store contention flake passed on re-run and in isolation); tsc 0; lint 0.
+- Next: merge #83 when green → post-merge probes → flip PROGRESS/READINESS rows to MERGED → worklog final entry. Remaining after GA-4b: GA-7/GA-8 BLOCKED-EXTERNAL + owner rows.
