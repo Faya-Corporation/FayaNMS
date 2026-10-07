@@ -45,6 +45,7 @@ import { readFileSync } from "node:fs";
 
 import { db } from "../../src/lib/db";
 import { mintServiceToken } from "../../src/lib/auth/service-auth";
+import type { ServiceScope } from "../../src/lib/auth/service-jwt";
 import { ROLE_MATRIX } from "../../src/lib/auth/role-matrix";
 
 const RUN = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -122,7 +123,7 @@ async function createDevice(hostname: string, siteId: string | null): Promise<st
   return device.id;
 }
 
-function machineRequest(url: string, body: unknown, scopes: string[] = ["telemetry"]): Request {
+function machineRequest(url: string, body: unknown, scopes: ServiceScope[] = ["telemetry"]): Request {
   const token = mintServiceToken({
     issuer: "fayanms:worker",
     subject: `worker:ga4b-${LOW}`,
