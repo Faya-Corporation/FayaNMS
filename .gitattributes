@@ -1,0 +1,24 @@
+# Line-ending discipline (GA-OPS wave): the ops surface must survive
+# round-trips between Linux and Windows checkouts.
+#   - default: LF (POSIX toolchain, CI)
+#   - Windows batch/cmd: CRLF (cmd.exe requires it)
+#   - PowerShell: CRLF (safe for Windows PowerShell 5.1 + Notepad)
+#   - shell scripts: LF (bash on CRLF fails with "$'\r': command not found")
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.sh text eol=lf
+
+# binary assets — never normalize
+*.png -text
+*.jpg -text
+*.jpeg -text
+*.gif -text
+*.ico -text
+*.woff -text
+*.woff2 -text
+*.pem -text
+*.key -text
+*.jar -text

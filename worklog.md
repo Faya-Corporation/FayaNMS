@@ -4081,3 +4081,23 @@ Work Log:
 Stage Summary:
 - The 2026-10-06 re-audit's repository-actionable surface is fully closed and now INDEPENDENTLY RE-VERIFIED at main 1c7c397: container certification green on the exact current SHA, all tenancy/lifecycle/DLQ/collector/rendering/session/docs-truth fixes confirmed in source, remaining items are owner-gated (staging secrets, T3 lab, DR drill, approval ruleset, digest read-back, release tag).
 - Local branch GLM/ga9-reaudit-verification ready for the owner to push; GA-READINESS rows 2/11 + verdict updated; STATE.md carries the authoritative post-remediation register.
+
+---
+Task ID: 10 (OPS-1 cross-platform fresh-install operations, session web-4924c74a, trace 1a117ecc994630c5)
+Agent: main agent (Z.ai Code)
+Task: Owner-requested final wave — full operations scripts for Linux AND Windows for fresh installation, and repo support for both environments plus Docker.
+
+Work Log:
+- Wrote the pinning suite FIRST (tests/audit/ga9-ops-scripts.test.ts, 13 pins): entry-file presence/executability, command-list parity ops.sh ↔ ops.ps1, per-command dispatch coverage in BOTH, help smoke (bash ops/ops.sh help), unknown-command fail-closed, ops.bat CRLF-only + dispatcher shape, .gitattributes eol pins (*.sh LF, *.bat/*.cmd/*.ps1 CRLF), byte-strict postgres digest parity across ops/docker-compose.dev.yml ↔ deploy/oci/compose.yml ↔ ci.yml, no secrets/no absolute host paths, identity-bootstrap shape+idempotency, worker self-call trust posture pin.
+- Implemented ops/ops.sh (bash, set -euo pipefail, 24 commands): doctor (prereq report), install (root+worker bun install + prisma generate), db:up (embedded Zonky PG 16.4 auto-provision from Maven Central → initdb → start → ensure fayanms DB via prisma db execute; Linux-only, honest refusal elsewhere), db:up:docker (ops/docker-compose.dev.yml — SAME byte-strict postgres:16-alpine digest as CI/oci, 127.0.0.1:5433, healthcheck), db:down, migrate, seed, db:reset, dev (worker background + next dev foreground, single Ctrl-C), build (standalone), start, test, lint, typecheck, keys:service, health (app:3000 + worker:3030 probes), docker:build (fayanms-local:{app,worker,migrator} from repo Dockerfiles), docker:up/down/logs (wraps production-grade deploy/oci/compose.yml; refuses without the SEC-ENV-001 env files — never fabricates), backup/restore-drill (deploy/oci bash tooling), release:evidence.
+- Implemented ops/ops.ps1 (Windows PowerShell core, 5.1-compatible, identical surface + command list) and ops/ops.bat (CRLF cmd dispatcher: pwsh preferred, powershell fallback).
+- Fresh-install dev identity: ops/bootstrap-dev-identity.ts generates per-install Ed25519 control+worker keypairs (same formats as scripts/generate-service-keys.ts), NEXTAUTH secret, config-enc key ONCE into .fayanms/dev-identity.env (gitignored, mode 600, double-quoted values, idempotent — never silently rotates); cmd_dev wires two-plane trust: control side mints with control key + verifies worker pub; worker side mints with worker key + verifies control AND own pub (self-call plane per STATE.md ground truth); operator-provided env ALWAYS wins.
+- Windows honesty: db:up on Windows routes to db:up:docker (embedded PG is Linux binaries); backup/restore-drill refuse with WSL/Git-Bash guidance instead of faking.
+- Guards: DATABASE_URL scheme guard in both entries (a foreign scheme — e.g. the sandbox's injected SQLite file: URL — falls back to the dev URL; same semantics as package.json dev script). Fixed a real bug this guard caught during verification.
+- Line-ending discipline: .gitattributes (default LF; bat/cmd/ps1 CRLF; sh LF; binary assets -text).
+- Docs: ops/README.md (per-platform fresh-install quickstart, command table, honest boundaries) + README.md "Fresh installation & operations (Linux · Windows · Docker)" section.
+- Verified END-TO-END live: bash -n OK; ops.sh doctor/install/db:up/migrate/seed all green; full dev journey via ops (fresh identity bootstrap → app :3000 200 AND worker :3030 200 — worker booted through the two-plane identity and executed real FLOW_RETENTION/PROTOCOL_QUEUE_RETENTION jobs SUCCEEDED); db:down idempotent; lint 0; tsc 0; ops suite 13/13; FULL SWEEP 2524 pass / 0 fail / 19 skip (207 files).
+- Environment constraint (unchanged from Task 9): no push credentials in this reset sandbox — commit is local; owner PAT required to push/PR.
+
+Stage Summary:
+- Wave OPS-1 complete: the repo now supports fresh installation and full operations on Linux (native embedded PG), Windows (Docker dev DB + PowerShell entry), and Docker (dev DB or the production-grade compose stack) through ONE test-pinned command surface. Remaining program items are owner-gated exactly as recorded in GA-READINESS (Task 9); nothing in-repo remains open.

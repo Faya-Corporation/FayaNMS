@@ -20,6 +20,23 @@ A full-stack network management system (NMS) demo platform: device inventory, co
 
 > **Demo-simulation semantics.** This is a self-contained demo environment: devices, metrics, flow data, HA topology, collector fleets and failover tests are deterministic simulations over a seeded dataset. Simulated surfaces are documented as such in-code and in-UI. The architecture (job queue, state machines, guarded writes, audit chain) is real. Demo SNMP communities and device credentials embedded in the simulator adapters, ZTP templates and certification harnesses (FayaRO-class values) are invented, banner-labeled persona content — a grep-guard test (`tests/audit/open-findings-batch-19.test.ts`, F-045) forbids community-looking strings outside those documented files.
 
+## Fresh installation & operations (Linux · Windows · Docker)
+
+One operator surface for every environment — `ops/`:
+
+| Platform | Entry | Fresh install |
+|---|---|---|
+| Linux / macOS | `ops/ops.sh` | `bash ops/ops.sh install && bash ops/ops.sh db:up && bash ops/ops.sh migrate && bash ops/ops.sh seed && bash ops/ops.sh dev` |
+| Windows | `ops\ops.bat` (→ PowerShell) | `ops\ops.bat install` → `ops\ops.bat db:up:docker` → `ops\ops.bat migrate` → `ops\ops.bat seed` → `ops\ops.bat dev` |
+| Docker (any OS) | `ops/ops.sh db:up:docker` | dev database on the same `127.0.0.1:5433` endpoint, then the same migrate/seed/dev flow |
+| Docker (full stack) | `ops/ops.sh docker:up` | create `deploy/oci/{.env,.env.app,.env.worker}` from `deploy/oci/env.example`, optionally `docker:build`, then `docker:up` + `health` |
+
+`bash ops/ops.sh help` lists all 24 commands; `bash ops/ops.sh doctor`
+validates prerequisites before you start. The command surface is identical
+on Linux (`ops/ops.sh`) and Windows (`ops\ops.bat` → `ops/ops.ps1`) — pinned
+by `tests/audit/ga9-ops-scripts.test.ts`. Details and honest boundaries
+(Windows + DR tooling, dev-vs-production credentials): [`ops/README.md`](ops/README.md).
+
 ## Tech stack
 
 | Layer | Choice |

@@ -1,0 +1,43 @@
+# FayaNMS — fresh-install DEV database (any OS with Docker).
+#
+# Used by `ops/ops.sh db:up:docker` and `ops\ops.bat db:up:docker` when the
+# embedded Zonky PostgreSQL (Linux binaries only) is not an option — e.g.
+# Windows or a docker-only workstation. The stack EXPOSES THE SAME
+# 127.0.0.1:5433 endpoint and credentials as the embedded dev cluster, so
+# DATABASE_URL stays identical across platforms:
+#
+#   postgresql://fayanms:fayanms@localhost:5433/fayanms
+#
+# SECURITY POSTURE (honest labeling):
+#   - fayanms/fayanms is a DEV-ONLY local credential, bound to 127.0.0.1 —
+#     exactly like the sandbox trust-auth cluster (.zscripts/postgres.sh).
+#   - Production never uses this file: deploy/oci/compose.yml takes its
+#     POSTGRES_PASSWORD from the operator's deploy/oci/.env (SEC-ENV-001).
+#   - The image is the SAME byte-strict postgres:16-alpine digest pinned by
+#     .github/workflows/ci.yml and deploy/oci/compose.yml (pinned by
+#     tests/audit/ga9-ops-scripts.test.ts).
+#
+# Dev only: no WAL archiving / PITR here — those belong to the production
+# stack (GA-6: archive_mode=on + fayanms-wal volume in deploy/oci/compose.yml
+# and docs/runbooks/disaster-recovery.md §Point-in-time recovery).
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fayanms
+      POSTGRES_DB: fayanms
+      POSTGRES_PASSWORD: fayanms
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - fayanms-dev-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fayanms -d fayanms"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  fayanms-dev-pgdata:
