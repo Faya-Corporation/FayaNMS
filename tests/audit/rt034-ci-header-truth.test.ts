@@ -74,6 +74,19 @@ import { describe, expect, test } from "bun:test";
  *     the SHA text + trailing comment text on those three lines
  *     (trailing comments are part of the stripped-YAML snapshot by
  *     design — the stripper removes whole-line comments only).
+ *   - ddb33d56… → 81a2c864… (2026-10-07, dependabot
+ *     aquasecurity/trivy-action pin refresh a9c7b0f… → ed142fd…, PR #65): the
+ *     three `aquasecurity/trivy-action@` pin SHAs moved to the
+ *     dependabot-validated re-pin commit (ed142fd…, same v0.36.0 tag) with
+ *     their trailing pin comments refreshed to name the 2026-10-07 re-pin
+ *     (deliberate-pin governance). Zero semantic delta: same action, same
+ *     inputs (scan-type/scan-ref/image-ref/severity/exit-code all unchanged),
+ *     no job/step/gate/scan change. container.yml carries the same re-pin
+ *     (7 lines) — that file is content-checked by rt017/worker-wave8/
+ *     provenance tests but is NOT hash-pinned here. The hash move is the SHA
+ *     text + trailing comment text on those three lines (trailing comments
+ *     are part of the stripped-YAML snapshot by design — the stripper removes
+ *     whole-line comments only).
  *
  * Scope note: docs/deploy/WINDOWS-SERVER-DOCKER-DESKTOP.md still carries a
  * 2026-09-15-era "NOT active" line that p3-hardening pins; refreshing that
@@ -94,12 +107,13 @@ const CI_LINES = CI.split("\n");
  * (runtime-only origin). Comment-only edits must never move this hash.
  * Moved to 666f8c70… on 2026-10-04 (PR #15): dependabot checkout
  * v5.1.0 → v7.0.1 pin-SHA refresh — see the move log in the docstring.
- * *Moved to ddb33d56… on 2026-10-04 (PR #20 merge of main): dependabot
+ * Moved to ddb33d56… on 2026-10-04 (PR #20 merge of main): dependabot
  * upload-artifact v4.6.2 → v7.0.1 pin-SHA refresh — see the move log
- * in the docstring.
+ * in the docstring. Moved to 81a2c864… on 2026-10-07 (dependabot
+ * trivy-action re-pin, PR #65): see the move log in the docstring.
  */
 const PRE_RT034_STIPPED_YAML_SHA256 =
-  "ddb33d567a937bf241a19df98800d51797c94c02b4366e06c72a85124c28b3c7";
+  "81a2c86457315c588507289ed4e71580382bba670e557845dfe247dcaa9b8a10";
 
 const HEADER_BLOCK = CI_LINES.slice(0, 30).join("\n");
 
