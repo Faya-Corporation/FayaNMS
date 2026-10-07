@@ -543,7 +543,11 @@ describe("GA-4b: heartbeat and fencing", () => {
     );
     expect(res.status).toBe(200);
     const body = await bodyOf(res);
-    expect(body.data.assignments.length).toBe(2);
+    // Fixture-scoped: on the seeded local DB reg-1 also owns seed devices;
+    // our two reconcile fixtures must be there with sane epochs.
+    const ours = body.data.assignments.filter((a: any) => a.hostname.includes("ga4b-"));
+    expect(ours.length).toBe(2);
+    expect(body.data.assignments.length).toBeGreaterThanOrEqual(2);
     expect(body.data.assignments.every((a: any) => a.leaseEpoch >= 1)).toBe(true);
   });
 });
