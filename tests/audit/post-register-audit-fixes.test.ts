@@ -222,7 +222,8 @@ describe("wave5: machine-surface lockstep is derived, not duplicated", () => {
     const exactRoutes = [...setBlock.matchAll(/"(\/api\/v1\/[^"]+)"/g)].map(
       (m) => m[1] as string
     );
-    expect(exactRoutes.length).toBe(10);
+    // GA-4b: the three collector control-plane routes joined the exact set.
+    expect(exactRoutes.length).toBe(13);
     for (const route of exactRoutes) {
       const occurrences = proxySrc.split(`"${route}"`).length - 1;
       expect(occurrences).toBe(1);

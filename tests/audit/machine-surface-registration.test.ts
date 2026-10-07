@@ -109,7 +109,8 @@ describe("machine-surface registration (the proxy docstring's promised scan)", (
   });
 
   test("the exact set is pinned at its census size (10 routes, each registered once)", () => {
-    expect(exactRoutes.length).toBe(10);
+    // GA-4b: the three collector control-plane routes joined the exact set.
+    expect(exactRoutes.length).toBe(13);
     for (const route of exactRoutes) {
       const occurrences = proxySrc.split(`"${route}"`).length - 1;
       expect(occurrences).toBe(1);
