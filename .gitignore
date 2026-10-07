@@ -95,3 +95,6 @@ mini-services/**/*.log
 # R65 — orchestration scratch artifacts (verification screenshots etc.) are never repo artifacts
 agent-ctx/
 dl/
+
+# GA-OPS: per-install local dev service identity (never committed)
+.fayanms/

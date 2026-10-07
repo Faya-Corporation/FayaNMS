@@ -77,6 +77,17 @@ Never weaken/skip/delete tests or gates. Never fabricate evidence; external bloc
 - **GA-8 final independent re-audit + staging burn-in (P0-R02)** — needs OCI staging secrets/host and owner sign-off.
 - Monitoring alert-fire drills (P2) — depend on staging.
 
+## Wave OPS-1 — cross-platform fresh-install operations (post-GA waves; owner-requested final wave)
+
+| Item | Fix shape |
+|---|---|
+| 1 | One operator surface for every environment: `ops/ops.sh` (bash, Linux/macOS) and `ops/ops.ps1` + `ops/ops.bat` (Windows PowerShell core + cmd dispatcher) — 24-command surface (install/doctor/db:up/db:up:docker/migrate/seed/db:reset/dev/build/start/test/lint/typecheck/keys:service/health/docker:build/docker:up/docker:down/docker:logs/backup/restore-drill/release:evidence/help), parity test-pinned. |
+| 2 | Windows path: embedded PostgreSQL ships Linux binaries only — `db:up` routes to `db:up:docker` (ops/docker-compose.dev.yml, SAME byte-strict postgres digest as CI + oci compose, same 127.0.0.1:5433 endpoint/URL); DR bash tooling routed through WSL/Git Bash with an honest refusal otherwise. |
+| 3 | Docker path: `db:up:docker` (dev DB) + `docker:build` (local app/worker/migrator images from the repo Dockerfiles) + `docker:up/down/logs` wrapping the production-grade `deploy/oci/compose.yml` (requires the operator's SEC-ENV-001 env files — never fabricated). |
+| 4 | Fresh-install dev identity: `ops/bootstrap-dev-identity.ts` generates per-install Ed25519 control+worker keypairs, NEXTAUTH secret and config-enc key ONCE into gitignored `.fayanms/dev-identity.env` (mode 600, quoted values, idempotent, never committed); `dev` wires the two-plane trust correctly (worker verifies control AND its own self-call tokens; operator-provided env always wins). |
+| 5 | Guards: DATABASE_URL scheme guard (foreign schemes like an inherited SQLite `file:` URL fall back to the dev URL — same semantics as the package.json `dev` script); line-ending discipline via `.gitattributes` (`*.sh` LF, `*.bat`/`*.cmd`/`*.ps1` CRLF). |
+| 6 | Tests: `tests/audit/ga9-ops-scripts.test.ts` (13 pins: file presence/executability, command-list parity sh↔ps1, dispatch coverage, help smoke, unknown-command fail-closed, bat CRLF, gitattributes eol, byte-strict digest parity across ops/oci/CI, no secrets/no absolute paths, identity-bootstrap shape+idempotency, self-call trust posture). |
+
 ## Exit criteria for this program
 
 Every finding in the STATE register is either (a) fixed with tests at a green CI merge, (b) documented as

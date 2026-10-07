@@ -67,7 +67,7 @@
 
 ## Wave plan
 
-See `REMEDIATION_PLAN.md` (GA-01..GA-08). Live progress: `PROGRESS.md`.
+See `REMEDIATION_PLAN.md` (GA-01..GA-08 + Wave OPS-1 cross-platform fresh-install operations). Live progress: `PROGRESS.md`.
 
 ## Post-remediation re-verification (Task 9, 2026-10-07 — current main `1c7c397`)
 
