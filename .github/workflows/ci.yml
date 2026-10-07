@@ -507,7 +507,7 @@ jobs:
       # guard below remains as a correctness guard for exotic checkouts.
       - name: Container scan (trivy)
         if: ${{ hashFiles('Dockerfile') != '' }}
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0 (SHA-pinned 2026-09-11)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA re-pinned 2026-10-07)
         with:
           scan-type: fs
           scan-ref: .
@@ -566,7 +566,7 @@ jobs:
           docker build -f Dockerfile.worker --build-arg FAYANMS_SOURCE_SHA=$GITHUB_SHA -t fayanms-worker:ci .
 
       - name: Image scan — app (trivy, HIGH/CRITICAL fail)
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0 (SHA-pinned 2026-09-11)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA re-pinned 2026-10-07)
         with:
           scan-type: image
           image-ref: fayanms-app:ci
@@ -579,7 +579,7 @@ jobs:
           ignore-unfixed: false
 
       - name: Image scan — worker (trivy, HIGH/CRITICAL fail)
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0 (SHA-pinned 2026-09-11)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0 (SHA re-pinned 2026-10-07)
         with:
           scan-type: image
           image-ref: fayanms-worker:ci
