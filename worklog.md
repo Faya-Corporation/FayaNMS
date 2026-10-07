@@ -4101,3 +4101,21 @@ Work Log:
 
 Stage Summary:
 - Wave OPS-1 complete: the repo now supports fresh installation and full operations on Linux (native embedded PG), Windows (Docker dev DB + PowerShell entry), and Docker (dev DB or the production-grade compose stack) through ONE test-pinned command surface. Remaining program items are owner-gated exactly as recorded in GA-READINESS (Task 9); nothing in-repo remains open.
+
+---
+Task ID: 10-delivery (2026-10-07 push + PR + merge record, session web-4924c74a)
+Agent: main agent (Z.ai Code)
+Task: Owner provided a GitHub PAT ("push and keep going") — deliver the pending Task 9/10 branches, land them through CI, and record everything honestly.
+
+Work Log:
+- Pushed `GLM/ga9-reaudit-verification` (524a2c7) and `GLM/ga10-ops-cross-platform` (8a02ddc) with the owner PAT; opened PR #86 (Task 9 docs) and PR #87 (OPS-1 wave, stacked).
+- PR CI surfaced a FLEET-WIDE scan failure: osv-scanner now reports 6 CVEs in next 16.3.6 (GHSA-cjq9-62q9-8jv4 8.3 High + 5×6.3), all fixed in 16.3.8 — time-based, not introduced by any branch. Built PR #88 (exact-pin bump 16.3.6→16.3.8) and root-caused a red herring honestly: `ai-scope-hardening > predictive` fails in isolation ONLY with the demo seed loaded (PREDICTIVE_TOP=3 + seeded fleet alert pressure saturates the top-3; the fixture device loses the hostname tie-break) — reproduces identically on 1c7c397 with 16.3.6, so NOT a bump regression; CI parity is migrate-deploy-without-seed. Bump verified 2492/0/19 + build; MERGED as 92d6a8e.
+- PR #88's first gate run also exposed a REAL pre-existing flake: `wave10-peripheral GET /api/v1/events` — the list query ordered by createdAt alone, and two events created in the same microsecond tie, making row order (and the test's Map last-write-wins) nondeterministic. Fixed in the same PR: route orderBy [{createdAt desc},{id desc}] (stable pagination; all source pins verified) + order-independent predicate-based test row selection. MERGED (#88 → 92d6a8e).
+- Rebased #86 onto 92d6a8e (a80160f) — all checks green (incl. scan now clean) — MERGED as aad6312.
+- Rebased #87 onto main dropping the merged Task 9 commit (8a02ddc → ed32053). First gate run failed on the ops pin suite: (1) the parity parser regex assumed a bare-LF working tree while *.ps1 checks out CRLF everywhere (would fail BY CONSTRUCTION on Windows — the exact environment the wave certifies) → normalize CRLF before parsing; (2) the pwsh parse pin's execSync payload was double-quoted so /bin/sh expanded $t/$e/$_ before PowerShell saw them — silently skipped in pwsh-less sandboxes, exploded on CI runners where pwsh exists → single-quoted payload, proven intact via stub-pwsh argv check. Both fixes pushed (3b01c23, 1649373); gate+e2e+browser+scan+CodeQL ALL GREEN on 1649373 — MERGED as 8572827.
+- PROGRESS.md rows 9 and OPS-1 corrected from "LOCAL COMMIT — push blocked" to MERGED with PR/SHA evidence.
+
+Stage Summary:
+- main @ 8572827 now carries: Task 9 re-audit verification (PR #86), OPS-1 cross-platform operations (PR #87), and the next 16.3.8 security bump + events-ordering determinism fix (PR #88). All landed through full CI (gate/e2e/browser/scan/CodeQL green per PR).
+- The environment blocker recorded in Tasks 9/10 is RESOLVED (owner PAT); remaining program items are unchanged and owner-gated: staging secrets (P0-R02), T3 lab (P0-R04), DR drill sign-off (P0-R03), approving-review ruleset, GHCR digest read-back, release tag/GA approval.
+- Security note: the PAT was shared in chat — recommend the owner rotate/revoke it after this session.
