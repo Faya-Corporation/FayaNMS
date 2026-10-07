@@ -20,7 +20,8 @@ import { join } from "node:path";
  *      (POST /api/v1/me/mfa/enroll, POST /confirm, DELETE /api/v1/me/mfa)
  *      with the reveal-once recovery-codes contract in the types.
  *   5. The retotal: dictionary leaf count moved 3314 → 3385 → 3392 (GA-3) in BOTH locales
- *      (all prior retotal pins updated in the same commit); 3394 since GA-5.
+ *      (all prior retotal pins updated in the same commit); 3394 since GA-5;
+ *      3395 since GA-4b.
  */
 
 const REPO = join(import.meta.dir, "..", "..");
@@ -195,11 +196,11 @@ describe("followup-mfa-ui — api-client MFA family", () => {
 });
 
 describe("followup-mfa-ui — retotal", () => {
-  test("dictionary totals moved 3314 → 3385 → 3392 (GA-3) → 3394 (GA-5) in BOTH locales", () => {
+  test("dictionary totals moved 3314 → 3385 → 3392 (GA-3) → 3394 (GA-5) → 3395 (GA-4b) in BOTH locales", () => {
     const en = leaves(readJson("messages/en.json"));
     const ar = leaves(readJson("messages/ar.json"));
-    expect(en.length).toBe(3394);
-    expect(ar.length).toBe(3394);
+    expect(en.length).toBe(3395);
+    expect(ar.length).toBe(3395);
   });
 });
 

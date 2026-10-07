@@ -257,6 +257,9 @@ function CollectorDistributionSection() {
   const sites = distributionQuery.data?.sites ?? [];
   const summary = distributionQuery.data?.summary;
   const overCapacity = summary?.overCapacityAgents ?? 0;
+  // GA-4b: the fleet plane follows the registry — "real" when ≥1 ACTIVE
+  // registered agent exists, "simulated" (documented demo fleet) otherwise.
+  const plane = distributionQuery.data?.plane ?? "simulated";
 
   const openRebalanceDialog = async () => {
     try {
@@ -300,8 +303,14 @@ function CollectorDistributionSection() {
         />
       ) : (
         <div className="space-y-6 p-4">
-          <p className="rounded-md border border-warning/25 bg-warning-subtle px-3 py-2 text-xs text-warning">
-            {t("demoNote")}
+          <p
+            className={
+              plane === "real"
+                ? "rounded-md border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400"
+                : "rounded-md border border-warning/25 bg-warning-subtle px-3 py-2 text-xs text-warning"
+            }
+          >
+            {plane === "real" ? t("realPlaneNote") : t("demoNote")}
           </p>
 
           {/* Fleet KPIs */}
@@ -340,7 +349,7 @@ function CollectorDistributionSection() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{agent.name}</p>
                     <p className="font-tech ltr-technical text-xs text-muted-foreground">
-                      {agent.siteCode} · {t(`role.${agent.role}`)} · v{agent.version}
+                      {agent.siteCode ?? "—"} · {t(`role.${agent.role}`)} · v{agent.version ?? "—"}
                     </p>
                   </div>
                   <Badge

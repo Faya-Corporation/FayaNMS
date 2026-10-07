@@ -2473,17 +2473,21 @@ export interface CollectorsResult {
 export interface CollectorAgentRow {
   agentId: string;
   name: string;
-  siteCode: string;
-  region: string;
+  siteCode: string | null;
+  region: string | null;
   role: "snmp" | "netflow" | "syslog" | "config";
-  version: string;
+  version: string | null;
   capacity: number;
-  peerAgentId: string;
+  peerAgentId: string | null;
   assignedCount: number;
   onlineCount: number;
   load: number;
   band: "normal" | "elevated" | "over-capacity";
   score: number;
+  /** GA-4b REAL plane only — lifecycle status of the registered agent. */
+  status?: string;
+  /** GA-4b REAL plane only — last heartbeat (ISO) of the registered agent. */
+  lastHeartbeatAt?: string | null;
 }
 
 export interface CollectorSiteCoverage {
@@ -2508,6 +2512,8 @@ export interface RebalanceMoveRow {
 }
 
 export interface CollectorDistributionResult {
+  /** GA-4b: "real" when ≥1 ACTIVE registered agent, else "simulated". */
+  plane: "real" | "simulated";
   fleet: CollectorAgentRow[];
   sites: CollectorSiteCoverage[];
   summary: {
@@ -2517,6 +2523,9 @@ export interface CollectorDistributionResult {
     maxLoadAgent: { agentId: string; name: string; load: number };
     overCapacityAgents: number;
     uncoveredDevices: number;
+    /** GA-4b REAL plane only — honest supplementary counts. */
+    unassignedSitelessDevices?: number;
+    registeredAgentsTotal?: number;
   };
   rebalancePreview: {
     moves: RebalanceMoveRow[];
@@ -2525,6 +2534,7 @@ export interface CollectorDistributionResult {
 }
 
 export interface RebalancePreviewResult {
+  plane?: "real" | "simulated";
   dryRun: true;
   planId: string;
   moves: RebalanceMoveRow[];
@@ -2532,13 +2542,16 @@ export interface RebalancePreviewResult {
 }
 
 export interface RebalanceApplyResult {
+  plane?: "real" | "simulated";
   dryRun: false;
   planId: string;
   correlationId: string;
   moved: number;
   durationMs: number;
-  stages: { stage: string; hostname: string | null; at: string }[];
+  stages?: { stage: string; hostname: string | null; at: string }[];
   note: string;
+  /** GA-4b REAL plane only — moves won by a concurrent control-plane action. */
+  skippedConcurrent?: number;
 }
 
 export interface DriverCapabilityEntry {

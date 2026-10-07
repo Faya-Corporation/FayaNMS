@@ -169,7 +169,7 @@ describe("RT-037 — dictionaries carry the keys in both locales", () => {
     // Identical leaf sets; totals moved 3309 → 3312 (+2 common.errors
     // leaves per side; every pinning test retotaled in the same change).
     expect(new Set(leaves(en))).toEqual(new Set(leaves(ar)));
-    expect(leaves(en).length).toBe(3394);
-    expect(leaves(ar).length).toBe(3394);
+    expect(leaves(en).length).toBe(3395);
+    expect(leaves(ar).length).toBe(3395);
   });
 });

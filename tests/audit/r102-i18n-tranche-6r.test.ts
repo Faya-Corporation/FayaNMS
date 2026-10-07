@@ -50,8 +50,8 @@ describe("R102 — backups namespace", () => {
   });
 
   test("updates dictionary totals from R101's 2,733 leaves", () => {
-    expect(leaves(readJson("messages/en.json")).length).toBe(3394);
-    expect(leaves(readJson("messages/ar.json")).length).toBe(3394);
+    expect(leaves(readJson("messages/en.json")).length).toBe(3395);
+    expect(leaves(readJson("messages/ar.json")).length).toBe(3395);
   });
 });
 

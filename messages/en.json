@@ -878,7 +878,8 @@
         "successTitle": "Rebalance applied",
         "successBody": "{moves} move(s) staged in {seconds}s · correlation {correlationId}",
         "viewEvents": "Open Event Stream"
-      }
+      },
+      "realPlaneNote": "REAL collector control plane — fleet from registered agents, ownership from lease rows (fenced by lease epoch); rebalancing and failover move ownership for real."
     },
     "kind": {
       "poller": "Poller",
