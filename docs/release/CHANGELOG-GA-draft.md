@@ -4,7 +4,7 @@
 > are resolved. Every item below shipped through a green-CI PR merge; nothing
 > here is claimed from a local tree.
 
-## Security & tenancy (fix waves GA-0..GA-6)
+## Security & tenancy (fix waves GA-0..GA-6, + GA-4b control plane)
 
 - **Baseline (PR #74 `60ea5c6`):** every OPEN finding from the 2026-10-06
   re-audit re-verified against source with file:line evidence (zero stale);

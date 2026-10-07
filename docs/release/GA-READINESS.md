@@ -29,13 +29,14 @@
 | 12 | **Vendor T3 certification (P0-R04)** | 🔴 **BLOCKED — EXTERNAL** | No physical/virtual vendor appliances available to the sandbox; `docs/certification/MATRIX.md` section 3 is the lab procedure; public-demo-device partial plane documented. Owner lab required. |
 | 13 | **Staging deploy + burn-in (P0-R02)** | 🔴 **BLOCKED — EXTERNAL** | `deploy-staging.yml` gates on `OCI_STAGING_*` secrets (all recorded runs skipped); owner must provision host/secrets and sign off. |
 | 14 | **Independent final re-audit** | 🔴 **BLOCKED — EXTERNAL** | Owner decision — scheduled after GA waves complete and staging burn-in exists. |
+| 15 | **Collector control plane (P0-R06/P1-O01)** | 🟢 **CLOSED (certification on merge)** | GA-4b (this PR): real registration/heartbeat/lease-epoch/fencing/failover/rebalance over `CollectorAgent`+`CollectorAssignment` rows; machine plane (telemetry-scope JWT) + admin plane; dual-plane routes keep the labeled simulation fallback. Re-verify: `tests/audit/ga4b-collector-control-plane.test.ts` (30 pins; passes on migrations-only CI AND the seeded local fleet). Real remote agent rollout remains deploy-side documented. |
 
 ## Readiness verdict
 
 **Repository-actionable remediation is closing:** every P0/P1/P2 finding from
 the 2026-10-06 register is either fixed at a green CI merge (rows 3–9),
 shipped as in-repo tooling with the drill explicitly external (row 10), or
-BLOCKED — EXTERNAL with the exact missing owner input (rows 12–14). A GA
+BLOCKED — EXTERNAL with the exact missing owner input (rows 12–14), and the collector control plane is real (row 15). A GA
 promotion requires rows 1 (approval gap), 11 (digests) resolved and rows
 12–14 signed off by the owner — these cannot be claimed from inside the
 repository.

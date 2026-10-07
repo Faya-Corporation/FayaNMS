@@ -45,6 +45,15 @@ Never weaken/skip/delete tests or gates. Never fabricate evidence; external bloc
 | 2 | P0-R05/P1-O02 HA honesty | HA/failover-test + collector rebalance surfaces refuse (or label-only, feature-flagged OFF by default) when `FAYANMS_DEMO_MODE` is not true; production boot policy warning; UI labels preserved. |
 | 3 | P0-R06 (phase 1) | Real collector control-plane primitives: registration + heartbeat + assignment lease epochs + fencing + failover/rebalance that actually moves ownership rows (DB-backed), replacing the static in-code fleet for assignment decisions; static simulation stays only as seed/demo data, clearly labeled. Scoped to what the sandbox can honestly verify end-to-end; anything requiring real remote collectors is documented, not simulated silently. |
 
+## Wave GA-4b — collector REAL control plane (P0-R06/P1-O01)
+
+| Item | Finding | Fix shape (as shipped) |
+|---|---|---|
+| 1 | Control-plane primitives | `src/lib/collectors/control-plane.ts`: idempotent registration (reactivation on re-register), heartbeat liveness + lease renewal + FENCING (stale-epoch / not-owner / unknown-assignment / agent-suspended, one aggregated audit row per anomalous heartbeat), deterministic reconcile (site-resident → peer-site → fallback-regional; siteless devices NEVER assigned), deterministic failover (region → site → any, capacity-first; optional suspension), lease reaper (silent-agent failover + row-level stale-lease re-targeting). Ownership mutations are conditional single-row updates (deviceId @unique is the lock; leaseEpoch is the fencing token — the User.credentialEpoch / JobExecution.attempts pattern). |
+| 2 | Planes | Machine plane: `POST /api/v1/collectors/register`, `POST /api/v1/collectors/heartbeat`, `GET /api/v1/collectors/assignments` (telemetry-scoped service JWT — the same plane the real protocol relay uses). Admin plane: agents list, `[agentKey]/failover`, `assignments/reconcile`, `assignments/reap` (requireRole admin). |
+| 3 | Dual-plane honesty | `distribution` + `rebalance-plan` routes serve the REAL fleet (ownership-based loads, real apply with epoch bumps, genuine planId staleness, no demo gate) when ≥1 ACTIVE agent is registered; otherwise the documented simulation is unchanged (GA-4 gate order + cooldown preserved, meta.plane="simulated"). UI honesty note swaps per plane (+1 i18n key per side, 3395). |
+| 4 | Documented external | Real remote agent rollout (an agent process registering + heartbeating from outside the sandbox) is a deploy-side concern — the control plane is real and exercised end-to-end by the route-level suite; scheduled reaper execution is a deploy-side cron on `assignments/reap` (same posture as the DR backup sidecar). |
+
 ## Wave GA-5 — reporting formats
 
 | Item | Finding | Fix shape |
