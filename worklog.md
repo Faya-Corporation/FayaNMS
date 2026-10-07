@@ -4064,3 +4064,20 @@ Work Log:
 
 Stage Summary:
 - GA-4b (P0-R06/P1-O01 collector REAL control plane) is MERGED at main bdfb14f with the complete fix set; the only remaining repository-actionable program items are the container certification digests (runs keep superseding via the concurrency group — record when the final SHA's run goes green) and the owner-gated rows (GA-7/GA-8, approval requirement).
+
+---
+Task ID: 9 (2026-10-06 re-audit verification pass, session web-4924c74a, trace 1a117d664f382fb5)
+Agent: main agent (Z.ai Code)
+Task: Review the uploaded 2026-10-06 full re-audit against CURRENT main and update the register honestly.
+
+Work Log:
+- Sandbox reset lost the prior checkout + credentials; re-cloned anonymously → main @ 1c7c397 (39 commits past the audited d281873 — waves GA-1..GA-6 + GA-4b had already merged via PRs #74–#85).
+- Re-verified EVERY finding of the uploaded audit against current source (no verdict trusted from commit messages): GA-1 /sites scope + backup-policy 403 SITE_SCOPE_FORBIDDEN (route lines read); GA-2 ReportSchedule.scopeJson freeze + schedule-scoped worker execute + NotificationReceipt per-user read; GA-3 ApiClient expiresAt/rotatedAt/siteScopeJson + central API_CLIENT_EXPIRED refusal; GA-4 simulation-guard demo gating on HA failover-test + rebalance APPLY + protocol queue dead/requeue DLQ surface; GA-4b CollectorAgent/CollectorAssignment schema + 31KB control-plane.ts + 3 machine routes + 7 admin routes + 30-pin suite; GA-5 real render-pdf.ts/render-xlsx.ts; GA-6 absolute session cap (options.ts:271 iat-age check) + GA-READINESS gate table + MATRIX §4 retotal + CURRENT-STATE banner + WAL/backup-sidecar DR tooling.
+- GitHub Actions read-back (2026-10-07): CI gate run #252 on 1c7c397 SUCCESS; Container certification run #72 on 1c7c397 SUCCESS (P0-R01 cert on the exact current main SHA — digests owner-read-back pending, GHCR not anonymously readable); every "Deploy exact certified SHA to OCI staging" run still skipped (P0-R02 external, unchanged).
+- Sophos WebAPI transport (audit P1) verified LANDED in-repo (CERT-006): mini-services/worker/webapi-transport.ts + harness/sfos-webapi.ts + tests/audit/sfos-webapi.test.ts; T3 remains external.
+- Docs updated: GA-READINESS scope SHA → 1c7c397, row 2 → run #252, row 11 → 🟢 CERTIFIED ON EXACT CURRENT MAIN (run #72), verdict paragraph retotaled; STATE.md § "Post-remediation re-verification (Task 9)" — 21-row verdict table with per-row source evidence (14 FIXED / 4 owner-external / 3 owner decisions); PROGRESS.md GA-5 row corrected from "PR OPEN" to MERGED (PR #79 → 24ccacf) + Task 9 row appended.
+- ENVIRONMENT BLOCKER (recorded honestly): this reset sandbox has NO GitHub credentials (anonymous clone only; git push fails "could not read Username") — the docs commit is prepared locally on GLM/ga9-reaudit-verification; owner PAT needed to push/PR/merge. Nothing fabricated; all claims carry re-verify paths.
+
+Stage Summary:
+- The 2026-10-06 re-audit's repository-actionable surface is fully closed and now INDEPENDENTLY RE-VERIFIED at main 1c7c397: container certification green on the exact current SHA, all tenancy/lifecycle/DLQ/collector/rendering/session/docs-truth fixes confirmed in source, remaining items are owner-gated (staging secrets, T3 lab, DR drill, approval ruleset, digest read-back, release tag).
+- Local branch GLM/ga9-reaudit-verification ready for the owner to push; GA-READINESS rows 2/11 + verdict updated; STATE.md carries the authoritative post-remediation register.
