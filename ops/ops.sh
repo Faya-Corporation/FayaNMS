@@ -218,9 +218,9 @@ cmd_db_down() {
   log "Dev database stopped."
 }
 
-cmd_migrate() { ensure_bun; default_db_url; bunx prisma migrate deploy; }
-cmd_seed()    { ensure_bun; default_db_url; bun prisma/seed.ts; }
-cmd_db_reset(){ ensure_bun; default_db_url; bunx prisma migrate reset --force; }
+cmd_migrate() { ensure_bun; default_db_url; ensure_data_key; bunx prisma migrate deploy; }
+cmd_seed()    { ensure_bun; default_db_url; ensure_data_key; bun prisma/seed.ts; }
+cmd_db_reset(){ ensure_bun; default_db_url; ensure_data_key; bunx prisma migrate reset --force; }
 
 # Fresh-install dev identity: generate ONCE into .fayanms/dev-identity.env
 # (gitignored, mode 600, per-install random material), then fill env gaps —
@@ -233,6 +233,17 @@ load_dev_identity() {
   fi
   # shellcheck disable=SC1090
   . "$f"
+}
+
+# Data-state commands (migrate / seed / db:reset) encrypt at rest (e.g. the
+# webhook demo fixtures) and therefore need the 64-hex config-encryption key.
+# A FRESH install has none until the dev identity is bootstrapped — fall back
+# to it so the documented install order (db:up → migrate → seed → dev) works
+# on a clean machine; an operator-provided key ALWAYS wins.
+ensure_data_key() {
+  case "${FAYANMS_CONFIG_ENC_KEY:-}" in
+    '') load_dev_identity; export FAYANMS_CONFIG_ENC_KEY="$DEV_CONFIG_ENC_KEY" ;;
+  esac
 }
 
 cmd_dev() {
