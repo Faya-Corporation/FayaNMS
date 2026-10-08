@@ -4148,3 +4148,22 @@ Work Log:
 
 Stage Summary:
 - main b7aecd1 is gate-green AND container-certified on the exact current SHA; every repository-actionable program item remains complete. Owner-gated residuals unchanged: row 1 approving-review ruleset, row 10 DR drill, rows 12–14 (T3 lab, staging burn-in, final re-audit), row 11 digest read-back (owner-side; authenticated re-attempt 401/403), release tag/GA approval. PAT rotation still recommended.
+---
+Task ID: 11-ghcr-readback (2026-10-08, session web-4924c74a, trace 1a11d50891683a41)
+Agent: main agent (Z.ai Code)
+Task: "keep going" — GHCR digest read-back (row 11 residual) using a packages-scoped token, ledger truth maintenance.
+
+Work Log:
+- Session start: local main already advanced to `1b0cfda` (PR #92 — certification read-back ledger on `b7aecd1` — merged between sessions). Working tree carried 639 file-mode churn entries (0 content changes — verified via `git diff` before discarding, restored to HEAD).
+- CI read-back on current main `1b0cfda` (Actions API, authenticated): CI gate run `37817393445` (#271) SUCCESS; container certification run `37818711588` (#100, workflow_run, head_branch main) SUCCESS 2026-10-08T17:43→18:30Z; "Deploy exact certified SHA to OCI staging" runs still skipped (row 13 external, unchanged).
+- GHCR digest read-back COMPLETED with a `read:packages` token (user-supplied after the previous PAT's 401/403): registry token exchange (`ghcr.io/token`, scope `repository:faya-corporation/<img>:pull`) now returns a bearer token; `GET /v2/faya-corporation/<img>/tags/list` returns 14 tags per image including `sha-b7aecd1ef06…f863` AND `sha-1b0cfda93b97…6df9` (tags carry the FULL commit SHA — the earlier manifest 404 was a short-SHA probe, not an access failure); `GET .../manifests/sha-<full-sha>` returns HTTP 200 for all three images × both SHAs with immutable `Docker-Content-Digest` headers (all OCI image index v1, linux/amd64 + linux/arm64 + attestations):
+  - fayanms: b7aecd1 → sha256:741fd9a25521d27abbb15e3e3847d66ae3e7bbd2e973dbba724267403f097b13; 1b0cfda → sha256:a7702226236b32beb1227623b6e7e94836d093d3acdbf298de03f94dec8ec817
+  - fayanms-worker: b7aecd1 → sha256:e7354f8ea4beab0655e1cb527b6c93c99399e0dbd55c0908d703c54969757b9b; 1b0cfda → sha256:8b6cab1eff94ca173fc4eafe814d58dbef285073a1e3e8b9bcd3adaad53e8e97
+  - fayanms-migrator: b7aecd1 → sha256:99487343a966ba09054e41d697b6926be7978e6507aa000233f244dc291691a0; 1b0cfda → sha256:d310a45d4ea1f92e1d53f65c2462eee30904a6d63559cfabb1ab777d4f8119f6
+- Root cause of the historical residual confirmed honestly: the previously shared PAT simply carried no packages read scope; with a packages-scoped token the registry is fully readable. Recorded as resolved (not as an owner-side blocker) in row 11.
+- Ledger: `GA-READINESS.md` scope SHA → `1b0cfda`, Verified line → 2026-10-08 runs + digest read-back, row 2 → main-push run `37817393445` on `1b0cfda`, row 11 → "CERTIFIED ON EXACT CURRENT MAIN + DIGESTS READ BACK" with cert run `37818711588` + digest read-back, new § "GHCR immutable digests — read back 2026-10-08 (row 11)" table (6 digests + re-verify instructions), readiness verdict updated (row-11 digest read-back removed from the owner-only list — repository-side item closed). `PROGRESS.md` verification log → 2026-10-08 read-back wave entry.
+
+Stage Summary:
+- Row 11 is now fully green ON THE REPOSITORY SIDE: container certification green on the exact current main SHA (`1b0cfda`, run `37818711588`) AND all six published digests read back from GHCR via registry API v2. The last repository-actionable item of the GA program is closed.
+- Remaining program items are exclusively owner-gated: row 1 approving-review ruleset, row 10 real DR drill + RPO/RTO sign-off, rows 12–14 (T3 vendor lab, staging burn-in, final re-audit), release tag/GA approval.
+- Security note: the read:packages token was shared in chat — recommend the owner rotate/revoke it after this session (same standing advice as the prior PAT).

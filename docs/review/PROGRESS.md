@@ -22,3 +22,10 @@ Live tracker. One row per wave; details live in the worklog and PR descriptions.
 - 2026-10-06 (Wave 0): `bunx tsc --noEmit` clean; `bun run lint` clean; deployment verified live
   (app :3000 200, auth flow green, worker :3030 claim→execute→complete SUCCEEDED with real backup bytes).
 - Finding re-verification: see `STATE.md` register (every OPEN P0/P1/P2 re-checked at `d281873`; none stale).
+- 2026-10-08 (read-back waves): main advanced `b7aecd1` (#91) → `1b0cfda` (#92 docs); gate runs
+  `37712750128` (`b7aecd1`) and `37817393445` (`1b0cfda`) SUCCESS; container certification runs
+  `37713485157` (`b7aecd1`) and `37818711588` (#100, `1b0cfda`, 2026-10-08T17:43→18:30Z) SUCCESS —
+  ARM64 build + runtime smoke + trivy + SBOM. GHCR immutable digests read back for all three images
+  (`fayanms`, `fayanms-worker`, `fayanms-migrator`) on both SHAs via registry API v2 with a
+  packages-scoped token (the earlier 401/403 was a missing `read:packages` scope) — row 11 residual
+  CLOSED, digest table recorded in `GA-READINESS.md`; staging runs still skipped (row 13, external).
