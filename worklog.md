@@ -4135,3 +4135,16 @@ Work Log:
 Stage Summary:
 - The OPS-1 fresh-install claim now holds on a TRULY clean machine, verified live end-to-end in one session: nothing pre-provisioned except bun. Dev server confirmed running and healthy (app + worker + real jobs + real data).
 - Remaining program items unchanged and owner-gated (P0-R02/P0-R03/P0-R04, approval ruleset, GHCR digest read-back, release tag/GA approval). PAT rotation still recommended (it remains embedded in this workspace's remote URL since the delivery session).
+---
+Task ID: 10-cert2 (2026-10-08, session web-4924c74a, trace 1a11c7f175b3d9f1)
+Agent: main agent (Z.ai Code)
+Task: "keep going" — certification read-back on main b7aecd1 + ledger truth maintenance.
+
+Work Log:
+- Post-merge CI read-back on main b7aecd1 (#91): CI gate run 37712750128 SUCCESS; container certification run 37713485157 SUCCESS (one earlier same-SHA attempt cancelled by the workflow_run chain; the completing run is the recorded one); "Deploy exact certified SHA to OCI staging" runs still skipped (P0-R02 external, unchanged). Images published under sha-b7aecd1.
+- GHCR digest read-back re-attempted with the authenticated token (2026-10-08): registry token exchange → 401 on all three image repos (fayanms / fayanms-worker / fayanms-migrator); packages API → 403. The shared PAT carries no packages read scope — the residual stays honestly owner-gated (recorded in row 11 with the re-attempt).
+- Environment maintenance (same session): sandbox had idled the dev stack (processes gone; worktree carried 639 file-mode churn entries — 0 content changes, restored). Worker node_modules needed re-install (ssh2) then ops.sh dev green again: app :3000 /api/health 200 + worker :3030 /health 200.
+- Ledger: GA-READINESS scope SHA → b7aecd1 (via #91), row 2 → main-push run 37712750128, row 11 → RE-CERTIFIED run 37713485157 with the honest re-attempt note.
+
+Stage Summary:
+- main b7aecd1 is gate-green AND container-certified on the exact current SHA; every repository-actionable program item remains complete. Owner-gated residuals unchanged: row 1 approving-review ruleset, row 10 DR drill, rows 12–14 (T3 lab, staging burn-in, final re-audit), row 11 digest read-back (owner-side; authenticated re-attempt 401/403), release tag/GA approval. PAT rotation still recommended.
