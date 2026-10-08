@@ -179,9 +179,9 @@ function Invoke-DbDown {
   Write-Log 'Dev database stopped.'
 }
 
-function Invoke-Migrate  { Ensure-Bun; Set-DefaultDbUrl; bunx prisma migrate deploy; if ($LASTEXITCODE -ne 0) { exit 1 } }
-function Invoke-Seed     { Ensure-Bun; Set-DefaultDbUrl; bun prisma/seed.ts; if ($LASTEXITCODE -ne 0) { exit 1 } }
-function Invoke-DbReset  { Ensure-Bun; Set-DefaultDbUrl; bunx prisma migrate reset --force; if ($LASTEXITCODE -ne 0) { exit 1 } }
+function Invoke-Migrate  { Ensure-Bun; Set-DefaultDbUrl; Ensure-DataKey; bunx prisma migrate deploy; if ($LASTEXITCODE -ne 0) { exit 1 } }
+function Invoke-Seed     { Ensure-Bun; Set-DefaultDbUrl; Ensure-DataKey; bun prisma/seed.ts; if ($LASTEXITCODE -ne 0) { exit 1 } }
+function Invoke-DbReset  { Ensure-Bun; Set-DefaultDbUrl; Ensure-DataKey; bunx prisma migrate reset --force; if ($LASTEXITCODE -ne 0) { exit 1 } }
 
 # Fresh-install dev identity: generate ONCE into .fayanms/dev-identity.env
 # (gitignored, mode 600, per-install random material), then fill env gaps —
@@ -199,6 +199,18 @@ function Load-DevIdentity {
     $v = $v.Trim()
     if ($v.StartsWith('"') -and $v.EndsWith('"')) { $v = $v.Substring(1, $v.Length - 2) }
     Set-Variable -Name $k -Value $v -Scope Script
+  }
+}
+
+# Data-state commands (migrate / seed / db:reset) encrypt at rest (e.g. the
+# webhook demo fixtures) and therefore need the 64-hex config-encryption key.
+# A FRESH install has none until the dev identity is bootstrapped — fall back
+# to it so the documented install order (db:up → migrate → seed → dev) works
+# on a clean machine; an operator-provided key ALWAYS wins.
+function Ensure-DataKey {
+  if (-not $env:FAYANMS_CONFIG_ENC_KEY) {
+    Load-DevIdentity
+    $env:FAYANMS_CONFIG_ENC_KEY = $Script:DEV_CONFIG_ENC_KEY
   }
 }
 

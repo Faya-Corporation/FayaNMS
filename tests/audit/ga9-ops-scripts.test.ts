@@ -225,6 +225,38 @@ describe("GA-OPS: cross-platform fresh-install operator surface", () => {
     }
   });
 
+  test("data-state commands (migrate/seed/db:reset) fall back to the dev identity key in BOTH entries", () => {
+    // Seed encrypts the webhook demo fixtures at rest and refuses without a
+    // 64-hex FAYANMS_CONFIG_ENC_KEY; a fresh install only holds that key in
+    // the bootstrapped dev identity. The documented install order
+    // (db:up → migrate → seed → dev) therefore requires every data-state
+    // command to route through the identity fallback (an operator-provided
+    // key still wins) — in BOTH entries, or fresh installs fail at `seed`.
+    const sh = read("ops/ops.sh").replace(/\r\n/g, "\n");
+    const ps1 = read("ops/ops.ps1").replace(/\r\n/g, "\n");
+    for (const fn of ["cmd_migrate", "cmd_seed", "cmd_db_reset"]) {
+      const line = sh.split("\n").find((l) => l.startsWith(`${fn}(`));
+      expect(line, `${fn} must exist in ops.sh`).toBeTruthy();
+      expect(line as string, `${fn} must route through ensure_data_key`).toContain("ensure_data_key");
+    }
+    for (const fn of ["Invoke-Migrate", "Invoke-Seed", "Invoke-DbReset"]) {
+      const line = ps1.split("\n").find((l) => l.startsWith(`function ${fn} `));
+      expect(line, `${fn} must exist in ops.ps1`).toBeTruthy();
+      expect(line as string, `${fn} must route through Ensure-DataKey`).toContain("Ensure-DataKey");
+    }
+    // the fallback prefers an operator-provided key, then the dev identity
+    const shHelper = sh.match(/ensure_data_key\(\)\s*\{[\s\S]*?\n\}/);
+    expect(shHelper, "ops.sh must define ensure_data_key").toBeTruthy();
+    expect(shHelper?.[0]).toContain('case "${FAYANMS_CONFIG_ENC_KEY:-}" in');
+    expect(shHelper?.[0]).toContain("load_dev_identity");
+    expect(shHelper?.[0]).toContain('export FAYANMS_CONFIG_ENC_KEY="$DEV_CONFIG_ENC_KEY"');
+    const psHelper = ps1.match(/function Ensure-DataKey\s*\{[\s\S]*?\n\}/);
+    expect(psHelper, "ops.ps1 must define Ensure-DataKey").toBeTruthy();
+    expect(psHelper?.[0]).toContain("if (-not $env:FAYANMS_CONFIG_ENC_KEY)");
+    expect(psHelper?.[0]).toContain("Load-DevIdentity");
+    expect(psHelper?.[0]).toContain("$env:FAYANMS_CONFIG_ENC_KEY = $Script:DEV_CONFIG_ENC_KEY");
+  });
+
   test("worker self-call trust posture is documented in the ops dev path", () => {
     // STATE.md ground truth: the worker's FAYANMS_SERVICE_PUBLIC_KEYS must
     // include BOTH the control public key AND its own (self-call plane).
