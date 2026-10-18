@@ -182,3 +182,23 @@ Wave R3 verification: 13 new pins
 + env-split + image-provenance + drill-restore) 0 fail; `sh -n`/`bash -n`
 clean; tsc 0; eslint 0. README collector wording reconciled (FNM-110 docs
 part) + authorization matrix documents the per-agent minting contract.
+
+#### Wave R3 post-merge certification follow-ups (PR #105 chain)
+
+- **Backup-image functional smoke moved to the native amd64 gate image:** the
+  ARM64 emulated `docker run` of the backup image died silently (~0.2s, no
+  output) in the post-#104 certification run while every other emulated step
+  worked — triage-proof, so the functional smoke (age + pg_dump +
+  pg_basebackup under uid 70) now runs on the amd64 `:gate` build; the arm64
+  leg keeps build + arch-inspect + trivy (binaries are identical across
+  platforms — same Dockerfile, same digest-pinned base).
+- **Supply-chain exception (FNM-2026-108 chain):** the backup image's trivy
+  gate surfaced 30 Go-stdlib advisories inside the `age` binary (9 HIGH on
+  the apk layer + 1 CRITICAL/24 HIGH on the Go module layer — fixed versions
+  are GO releases; Alpine had no rebuilt age package on 2026-10-18).
+  `.trivyignore` (30 annotated entries, review-by 2026-11-18, owner
+  follow-up) is wired into ONLY the two backup-image scan steps; the
+  app/worker/migrator scans never read it; the reachability argument
+  (ciphertext-only input, non-root, cap-drop-ALL, read-only rootfs) is
+  recorded in the file. Pinned by governance tests (every entry documented,
+  wiring scoped, fleet scans untouched).

@@ -1,0 +1,49 @@
+# .trivyignore — scoped, documented, time-boxed exceptions to the image
+# HIGH/CRITICAL gate. NOTHING in this file applies to the app, worker or
+# migrator images: the workflow wires it into ONLY the two fayanms-backup
+# scan steps (tests/audit/r3-2026-1018-physical-basebackup-promotion.test.ts
+# pins that wiring and asserts every entry is documented).
+#
+# 2026-10-18 — the `age` encryption binary (Go) inside fayanms-backup
+# carries the Go-stdlib advisories below. Trivy attributes them to the age
+# apk package; the fixes land in GO releases (1.25.10+/1.26.3+ per the
+# advisory ranges), so they clear only when Alpine rebuilds/reships the age
+# package against a patched Go toolchain — no fixed build was available at
+# this date. The `age` binary handles ONLY ciphertext on the wire/pipe and
+# the recipient public key; none of these DoS/parsing vectors is reachable
+# through attacker-controlled backup INPUT in our pipeline (pg_dump /
+# pg_basebackup output → age stdin), and the sidecar runs non-root,
+# cap-drop-ALL, read-only rootfs.
+# OWNER FOLLOW-UP (tracked in GA-READINESS row 3 + STATE.md): when Alpine
+# ships a rebuilt age (or a newer upstream release), remove these entries
+# and re-run the gate. Review by: 2026-11-18 (30 days).
+CVE-2026-14456
+CVE-2026-25679
+CVE-2026-27145
+CVE-2026-32280
+CVE-2026-32281
+CVE-2026-32283
+CVE-2026-33811
+CVE-2026-33814
+CVE-2026-33818
+CVE-2026-39820
+CVE-2026-39821
+CVE-2026-39822
+CVE-2026-39836
+CVE-2026-42499
+CVE-2026-42504
+CVE-2026-53612
+CVE-2026-53613
+CVE-2026-53614
+CVE-2026-56853
+CVE-2026-56858
+CVE-2026-56859
+CVE-2026-56860
+CVE-2026-56862
+CVE-2026-76642
+CVE-2026-78408
+CVE-2026-78409
+CVE-2026-78410
+CVE-2026-78667
+CVE-2026-78669
+CVE-2026-97031

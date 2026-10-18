@@ -157,6 +157,9 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: false
           exit-code: "1"
+          # .trivyignore carries ONLY the documented, time-boxed age-binary
+          # Go-stdlib exceptions — the app/worker/migrator scans never read it.
+          trivyignores: ./.trivyignore
 
   publish:
     name: Publish immutable GHCR image
@@ -354,6 +357,7 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: false
           exit-code: "1"
+          trivyignores: ./.trivyignore
 
       # Reached only after all three gates above passed on the local image.
       - name: Build and push immutable multi-architecture image

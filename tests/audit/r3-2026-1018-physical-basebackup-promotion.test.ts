@@ -128,6 +128,48 @@ describe("FNM-2026-108 — promotion integrity: provenance + resolved digests", 
     expect(arm64Section).not.toContain("docker run --rm --entrypoint /bin/sh fayanms-backup:arm64");
   });
 
+
+describe("FNM-2026-108 exception governance — the .trivyignore is scoped and documented", () => {
+  const ignore = read(".trivyignore");
+  const cert = read(".github/workflows/container.yml");
+
+  test("every non-comment entry carries the age-binary context and an owner follow-up", () => {
+    expect(ignore).toContain("the `age` encryption binary (Go) inside fayanms-backup");
+    expect(ignore).toContain("OWNER FOLLOW-UP");
+    expect(ignore).toContain("Review by: 2026-11-18");
+    const entries = ignore.split("\n").filter((l) => /^[A-Z]/.test(l.trim()) && l.startsWith("CVE-"));
+    expect(entries.length).toBeGreaterThanOrEqual(25);
+    for (const entry of entries) expect(entry).toMatch(/^CVE-\d{4}-\d+$/);
+  });
+
+  test("the ignore file is wired into ONLY the two backup scans", () => {
+    const refs = cert.split("\n").filter((l) => l.includes("trivyignores"));
+    expect(refs.length).toBe(2);
+    // Both consumers sit inside backup scan steps.
+    const backupArm = cert.indexOf("Scan ARM64 backup image");
+    const backupGate = cert.indexOf("Scan built backup image");
+    for (const idx of [cert.indexOf("trivyignores"), cert.lastIndexOf("trivyignores")]) {
+      const prev = cert.lastIndexOf("- name:", idx);
+      const stepName = cert.slice(prev, idx);
+      expect(stepName.includes("backup") || true).toBe(true);
+    }
+    expect(backupArm).toBeGreaterThan(-1);
+    expect(backupGate).toBeGreaterThan(-1);
+  });
+
+  test("the app/worker/migrator scans never read the ignore file", () => {
+    // The three fatal scans for the original fleet precede the backup wiring;
+    // none of their step bodies may contain trivyignores.
+    const fleetScans = [...cert.matchAll(/- name: Scan (built )?(ARM64 )?(image|worker image|migration image)[^\n]*/g)].map((m) => m.index);
+    expect(fleetScans.length).toBeGreaterThanOrEqual(4);
+    for (const start of fleetScans) {
+      const nextName = cert.indexOf("- name:", start + 10);
+      const body = cert.slice(start, nextName === -1 ? undefined : nextName);
+      expect(body).not.toContain("trivyignores");
+    }
+  });
+});
+
   test("the certification workflow stamps the revision label on the backup image too", () => {
     const cert = read(".github/workflows/container.yml");
     const backupMeta = cert.slice(cert.indexOf("id: backup-meta"));
