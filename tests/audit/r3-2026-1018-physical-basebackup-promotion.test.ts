@@ -117,6 +117,17 @@ describe("FNM-2026-108 — promotion integrity: provenance + resolved digests", 
     expect(wf).toMatch(/actions: read/);
   });
 
+  test("the functional backup smoke runs NATIVELY on the amd64 gate image (not under QEMU)", () => {
+    const cert = read(".github/workflows/container.yml");
+    expect(cert).toContain("Smoke gate backup image (age + pg_dump under uid 70)");
+    expect(cert).toContain("pg_basebackup");
+    expect(cert).toContain("backup-smoke: age+pg_dump+pg_basebackup OK");
+    // The arm64 leg builds and inspects; it does NOT docker-run the backup
+    // image under emulation (the emulated run died silently in CI).
+    const arm64Section = cert.slice(cert.indexOf("Build ARM64 backup image"), cert.indexOf("Verify image architecture"));
+    expect(arm64Section).not.toContain("docker run --rm --entrypoint /bin/sh fayanms-backup:arm64");
+  });
+
   test("the certification workflow stamps the revision label on the backup image too", () => {
     const cert = read(".github/workflows/container.yml");
     const backupMeta = cert.slice(cert.indexOf("id: backup-meta"));

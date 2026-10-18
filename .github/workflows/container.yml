@@ -102,15 +102,16 @@ jobs:
           docker run --rm fayanms-migrator:arm64-${CANDIDATE_SHA} run ./node_modules/prisma/build/index.js --version
 
       # FNM-2026-102 (2026-10-18 re-audit): the backup sidecar is a certified
-      # release artifact like app/worker/migrator — built for arm64 here, with
-      # a functional smoke (entrypoint overridden; the sidecar's own loop
-      # would never exit). Proves BOTH tool binaries exist and execute under
-      # the image's non-root user (uid 70).
+      # release artifact like app/worker/migrator — built for arm64 here. The
+      # FUNCTIONAL smoke runs on the amd64 gate image below (native, no QEMU —
+      # the emulated run proved flaky: the container died silently in ~0.2s
+      # under binfmt while every other step, including the app/worker boots,
+      # worked); the arm64 leg proves buildability + architecture, and the
+      # binaries are identical across platforms (same Dockerfile, same
+      # digest-pinned base).
       - name: Build ARM64 backup image
         run: |
           docker buildx build --platform linux/arm64 --load --file deploy/oci/backup-sidecar/Dockerfile --tag fayanms-backup:arm64-${CANDIDATE_SHA} deploy/oci/backup-sidecar
-          docker run --rm --entrypoint /bin/sh fayanms-backup:arm64-${CANDIDATE_SHA} -c \
-            'command -v age >/dev/null && command -v pg_dump >/dev/null && age --version | grep -q "^age" && pg_dump --version >/dev/null && echo "backup-smoke: age+pg_dump OK"'
 
       - name: Verify image architecture and runtime
         run: |
@@ -297,6 +298,15 @@ jobs:
           push: false
           load: true
           tags: fayanms-backup:gate
+
+      # FNM-2026-102 acceptance — functional smoke on the NATIVE amd64 gate
+      # image (entrypoint overridden; the sidecar's own loop never exits).
+      # Proves BOTH tool binaries exist and execute under the image's
+      # non-root user (uid 70) — no emulation involved.
+      - name: Smoke gate backup image (age + pg_dump under uid 70)
+        run: |
+          docker run --rm --entrypoint /bin/sh fayanms-backup:gate -c \
+            'command -v age >/dev/null && command -v pg_dump >/dev/null && command -v pg_basebackup >/dev/null && age --version | grep -q "^age" && pg_dump --version >/dev/null && echo "backup-smoke: age+pg_dump+pg_basebackup OK"'
 
       # Gate contract mirrors ci.yml's image scans and R78-B policy:
       # fatal for every HIGH/CRITICAL result, including unfixed findings —
