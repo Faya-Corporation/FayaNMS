@@ -168,3 +168,17 @@ ONLY the pre-existing environmental failures (identical groups fail on
 unmodified main in this sandbox — MFA/F-034/encryptAtRest/R50/worker-plane
 need CI's isolated DB; F-051 snapshot-race fails identically on pristine
 main); tsc 0; eslint 0.
+
+### Wave R3 — physical PITR chain + digest-pinned promotion (FNM-2026-107/108)
+
+| Finding | Verdict | Remediation (this wave) |
+|---|---|---|
+| FNM-2026-107 PITR lacks a physical base-backup chain | **CONFIRMED** → **FIXED (in-repo tooling; drill execution external)** | The backup sidecar now produces encrypted PHYSICAL bases: `pg_basebackup --format=tar --wal-method=fetch` (fetch because pg_basebackup refuses `stream` in tar mode to stdout — documented in-file; the retry-next-interval loop absorbs a rare WAL-recycle failure) streamed to the same age recipient under the SAME dual-status + ≥1 MiB gate + `.partial-*` atomic-promotion + checksum-after-promotion contract. Own cadence (`FAYANMS_BACKUP_PHYSICAL_INTERVAL_SECONDS`, default 24h, floor 1h, `0` = explicit disable with a loud log line), own retention (`FAYANMS_BACKUP_BASE_RETENTION_DAYS`, default 7), independent health-state plane (`physical_last_result` / `physical_consecutive_failures`) for alerting. The shipped recovery chain is now complete: physical base + archived WAL (fayanms-wal) + documented restore-to-timestamp procedure (decrypt → tar-list validation → extract into empty PGDATA → recovery_target_time + recovery.signal) in the DR runbook; the logical drill (restore-drill.sh) remains the conventional-restore path. The authoritative content validation stays owner-side (the sidecar holds only the age recipient by design); the drill + RPO/RTO sign-off remain EXT-02. |
+| FNM-2026-108 promotion validates tags, not digests | **CONFIRMED** → **FIXED (in-repo)** | deploy.sh: every certified image (app/worker/migrator/backup) must prove its build-time `org.opencontainers.image.revision` label equals the deployed commit (provenance mismatch → refuse), and the deployment records the RESOLVED registry digests (`$STATE_DIR/digest-manifest.env`) for byte-exact burn-in/rollback inventories. deploy-staging.yml: a manual `workflow_dispatch` SHA may only be promoted after an Actions-API read-back proves a SUCCESSFUL `Container certification and publication` run exists for that exact SHA from a protected main push (new preflight step, `actions: read` permission); automatic workflow_run promotions carry the property by construction. |
+
+Wave R3 verification: 13 new pins
+(`tests/audit/r3-2026-1018-physical-basebackup-promotion.test.ts`);
+86 tests across the 7 backup/deploy suites (R1 pins + rt017 + deploy-hardening
++ env-split + image-provenance + drill-restore) 0 fail; `sh -n`/`bash -n`
+clean; tsc 0; eslint 0. README collector wording reconciled (FNM-110 docs
+part) + authorization matrix documents the per-agent minting contract.

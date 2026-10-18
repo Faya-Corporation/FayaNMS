@@ -126,6 +126,12 @@ services:
       FAYANMS_BACKUP_AGE_RECIPIENT: ${FAYANMS_BACKUP_AGE_RECIPIENT:?FAYANMS_BACKUP_AGE_RECIPIENT must be set — refuse-plaintext is non-negotiable}
       FAYANMS_BACKUP_INTERVAL_SECONDS: ${FAYANMS_BACKUP_INTERVAL_SECONDS:-21600}
       FAYANMS_BACKUP_RETENTION_DAYS: ${FAYANMS_BACKUP_RETENTION_DAYS:-30}
+      # FNM-2026-107 (2026-10-18 re-audit): PHYSICAL base backups on their own
+      # cadence — WAL replay/PITR needs a physical base (a logical pg_dump
+      # cannot seed one). Default 24h; 0 explicitly disables (document the
+      # operator-provided alternative in that case).
+      FAYANMS_BACKUP_PHYSICAL_INTERVAL_SECONDS: ${FAYANMS_BACKUP_PHYSICAL_INTERVAL_SECONDS:-86400}
+      FAYANMS_BACKUP_BASE_RETENTION_DAYS: ${FAYANMS_BACKUP_BASE_RETENTION_DAYS:-7}
     depends_on:
       postgres:
         condition: service_healthy
