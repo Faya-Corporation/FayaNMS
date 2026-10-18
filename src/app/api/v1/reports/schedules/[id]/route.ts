@@ -1,5 +1,14 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionSiteScope } from "@/lib/auth/scope";
+import {
+  scheduleReadableByViewer,
+  REPORT_SCOPE_FORBIDDEN,
+} from "@/lib/reports/consumption-scope";
 import {
   fail,
   firstIssueMessage,
@@ -37,6 +46,15 @@ export const dynamic = "force-dynamic";
  * SCHEDULE_NOT_FOUND on an unknown id, REP-XXXXXX correlation ids,
  * { schedule|deleted, audit } response shapes exactly as the existing
  * hooks type them.
+ *
+ * FNM-2026-104 (2026-10-18 re-audit, Wave R2): "report.schedule" alone is
+ * NOT the boundary — mutating or deleting a schedule whose frozen scope is
+ * outside the actor's site scope is a privilege escalation (recipients can
+ * be redirected, activation flipped, fleet-wide report delivery hijacked).
+ * Both mutations therefore require the schedule's frozen scope to be
+ * CONTAINED in the actor's site scope; violations answer 403
+ * REPORT_SCOPE_FORBIDDEN. The PATCH body is .strict() and cannot touch
+ * scopeJson — the frozen scope stays immutable.
  */
 
 const ID_MAX = 64;
@@ -75,6 +93,22 @@ async function auth(request: Request) {
     if (envelope) return { actor: null, envelope };
     throw error;
   }
+}
+
+/**
+ * FNM-2026-104 containment gate shared by the mutations: the schedule's
+ * frozen scope must be inside the acting session's site scope.
+ */
+async function assertScheduleScopeContained(request: Request, scheduleScopeJson: string | null) {
+  const viewerScope = sessionSiteScope(await sessionScopeFor(request));
+  if (!scheduleReadableByViewer(scheduleScopeJson, viewerScope)) {
+    return fail(
+      REPORT_SCOPE_FORBIDDEN,
+      "This schedule is scoped outside your site scope",
+      403
+    );
+  }
+  return null;
 }
 
 async function resolveId(params: Promise<{ id: string }>) {
@@ -159,6 +193,9 @@ export async function PATCH(
   const existing = existingResult.schedule!;
   const before = scheduleSnapshot(existing);
 
+  const scopeDenied = await assertScheduleScopeContained(request, existing.scopeJson);
+  if (scopeDenied) return scopeDenied;
+
   const correlationId = newCorrelationId("REP");
   const updated = await db.reportSchedule.update({
     where: { id },
@@ -211,6 +248,9 @@ export async function DELETE(
   if (existingResult.envelope) return existingResult.envelope;
   const existing = existingResult.schedule!;
   const snapshot = scheduleSnapshot(existing);
+
+  const scopeDenied = await assertScheduleScopeContained(request, existing.scopeJson);
+  if (scopeDenied) return scopeDenied;
 
   const correlationId = newCorrelationId("REP");
 

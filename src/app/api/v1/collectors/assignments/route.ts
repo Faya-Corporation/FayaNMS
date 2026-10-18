@@ -26,6 +26,18 @@ export async function GET(request: Request) {
     return fail("INVALID_QUERY", "agentKey query parameter is required (3–120 chars)", 400);
   }
 
+  // FNM-2026-106 — per-agent identity binding: the verified JWT subject
+  // must EQUAL the requested agentKey (assignment snapshots carry hostnames
+  // and device ids — a telemetry principal must never read another
+  // collector's assignments).
+  if (auth.principal.id !== agentKey) {
+    return fail(
+      "COLLECTOR_IDENTITY_MISMATCH",
+      "The service token subject must equal the requested agentKey (per-agent identity binding)",
+      403
+    );
+  }
+
   const agent = await db.collectorAgent.findUnique({
     where: { agentKey },
     select: { id: true, agentKey: true, status: true, capacity: true },

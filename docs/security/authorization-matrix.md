@@ -222,6 +222,9 @@ worker's outbound calls (override: `FAYANMS_SERVICE_ISSUERS`).
 | `/protocol/queue/retention/prune` | `jobs` (service path) OR human session with `admin.system` (requireServiceOrPermission) |
 | `/flows/retention/prune` | `jobs` |
 | `/ingest/protocol`, `/ingest/protocol/snmpv3-profile`, `/ingest/protocol/snmpv3-profile/poll`, `/ingest/protocol/snmpv3-profile/accept` | `telemetry` |
+| `/collectors/register` | `enroll` (FNM-2026-106: one-shot REGISTRATION scope, deliberately separate from steady-state telemetry) — the token subject MUST equal the registering `agentKey` |
+| `/collectors/heartbeat` | `telemetry` — the token subject MUST equal the heartbeat's `agentKey` |
+| `/collectors/assignments` | `telemetry` — the token subject MUST equal the requested `agentKey` (a principal can never read another collector's assignments) |
 | `/worker/status` | human session (diagnostic; deliberately not service-exempt) |
 
 Proxy confinement (R62 P1, extended; post-register audit wave 5): a VERIFIED
@@ -238,6 +241,21 @@ fails the suite instead of failing production (the wave-4 lesson). Every
 route in this table enforces token+scope at the
 HANDLER layer (`authenticateServiceRequest` / `requireServiceOrPermission`);
 the proxy merely confines the principal.
+
+### Collector per-agent identity binding (FNM-2026-106, 2026-10-18 re-audit)
+
+Every collector machine route enforces `auth.principal.id === agentKey` —
+the verified JWT subject IS the agent identity. Mint ONE token per agent:
+
+  - enrollment (registration): `mintServiceToken({ subject: <agentKey>, scopes: ["enroll", "telemetry"] })`
+  - steady state (heartbeat + assignment snapshots): `mintServiceToken({ subject: <agentKey>, scopes: ["telemetry"] })`
+
+A leaked heartbeat token can neither register new agents nor touch another
+collector's identity. A SUSPENDED agent cannot reactivate itself through
+re-registration; suspension is lifted ONLY by an operator via
+`POST /api/v1/admin/collectors/agents/<agentKey>/reinstate`
+(audited `COLLECTOR_AGENT_REINSTATED`).
+
 
 Worker HTTP surface (mini-services/worker, audit GATEWAY-101): `/simulate/*`
 requires a control-plane service JWT with the `simulate` scope (issuer

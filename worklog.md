@@ -4180,3 +4180,17 @@ Work Log:
 
 Stage Summary:
 - Wave R1 complete and pinned; FNM-104/105/106 → Wave R2 next, FNM-107/108 → Wave R3, FNM-110 docs in the ledger PR. EXT-01…06 remain owner-gated.
+---
+Task ID: 13-r2-report-scope-collector-identity (2026-10-18 cycle, session web-4924c74a, trace 1a1506be33a63449)
+Agent: main agent (Z.ai Code)
+Task: Wave R2 — report consumption scoping + collector identity binding (FNM-2026-104/105/106).
+
+Work Log:
+- Wave R1 (previous section of this session) MERGED as PR #102 → main 7a4349b after the rt017 4-image pin fix; the cert chain on 7a4349b publishes fayanms-backup.
+- Harness-fighting discovery: the sandbox harness force-switches the main workspace back to main periodically (reflog evidence), which corrupted two local states mid-turn (a garbage main rewrite a617040 + an accidental R2-on-main working tree). Countermeasure adopted: ALL wave work now happens in dedicated worktrees (/home/z/fnm-r2); the harness can thrash main without touching wave branches.
+- R2 implementation (in worktree): consumption-scope.ts containment semantics; enforcement on runs list/download/schedules list/PATCH/DELETE/run-now with fail-closed edges (deleted schedule → wildcard-only; wildcard artifact → wildcard-only; deny-all artifact → all) + REPORT_DOWNLOAD FAILURE audits; CHANGE_SUMMARY attribution-based query via ChangeDevice→Device.site + honest scopeNote; collector binding (subject===agentKey) on register/heartbeat/assignments; new `enroll` scope; SUSPENDED self-reactivation blocked; NEW admin reinstate route (409 when not suspended, audited); authorization-matrix documentation of the per-agent minting contract.
+- Test-contract updates: GA-4b suite now mints per-agent bound tokens (enroll/telemetry); GA-2 CHANGE_SUMMARY pin updated to the attribution contract (strengthened: deny-all totals 0, wildcard ⊇ scoped); rt017 already at 4/4/4 in R1.
+- Verification: 23 new tests; 65 across the four collector/report suites, 0 fail; full-sweep failure groups IDENTICAL to unmodified main (F-051 proven pre-existing on pristine main; rate-store group a flake in isolation); tsc 0; eslint 0.
+
+Stage Summary:
+- Wave R2 complete and pinned. Remaining 2026-10-18 findings: FNM-107/108 → Wave R3 (physical base backups + digest-pinned promotion); FNM-110 docs/Dependabot → ledger PR; EXT-01…06 owner-gated.

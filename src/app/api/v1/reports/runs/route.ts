@@ -1,5 +1,12 @@
 import { db } from "@/lib/db";
-import { requireUser, authErrorToFail } from "@/lib/auth/session";
+import type { Prisma } from "@prisma/client";
+import {
+  requirePermission,
+  authErrorToFail,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionSiteScope } from "@/lib/auth/scope";
+import { scheduleReadableByViewer } from "@/lib/reports/consumption-scope";
 import {
   csvParam,
   fail,
@@ -26,6 +33,13 @@ export const dynamic = "force-dynamic";
  * schedule-derived expectation), rowCount (artifact size when available),
  * error, correlationId. meta carries the view's KPI counters: total,
  * succeeded, failed, lastRunAt, plus the page block.
+ *
+ * FNM-2026-104 (2026-10-18 re-audit, Wave R2) — consumption scoping:
+ * the list requires the "report.read" permission (was authentication-only)
+ * and a site-limited viewer sees ONLY runs whose schedule's frozen scope
+ * is contained in the viewer's own scope. A wildcard-scope run (fleet-wide
+ * data) and a run whose schedule is deleted (scope unknowable) are HIDDEN
+ * from site-limited viewers — fail-closed, not 403-per-row.
  */
 
 const listSchema = paginationSchema.extend({
@@ -57,8 +71,9 @@ function parsePayloadScheduleId(
 }
 
 export async function GET(request: Request) {
+  let actor: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    await requireUser(request);
+    actor = await requirePermission(request, "report.read");
   } catch (error) {
     const envelope = authErrorToFail(error);
     if (envelope) return envelope;
@@ -78,13 +93,33 @@ export async function GET(request: Request) {
   const { page, pageSize, scheduleId } = parsed.data;
   const statuses = csvParam(parsed.data.status);
 
-  const where = {
+  const where: { AND: Prisma.JobExecutionWhereInput[] } = {
     AND: [
       { type: "REPORT_RUN" },
       statuses ? { status: { in: statuses } } : {},
       scheduleId ? { targetId: scheduleId } : {},
     ],
   };
+
+  // FNM-2026-104: site-limited viewers only see runs whose schedule's
+  // frozen scope is contained in their own. Wildcard schedules (null
+  // scopeJson = fleet-wide data) and runs whose schedule is gone (scope
+  // unknowable) are excluded — fail-closed. Deny-all schedules ("[]")
+  // produce empty artifacts and stay visible (containment holds trivially).
+  const viewerScope = sessionSiteScope(await sessionScopeFor(request));
+  if (viewerScope.mode === "sites") {
+    const candidates = await db.reportSchedule.findMany({
+      where: { scopeJson: { not: null } },
+      select: { id: true, scopeJson: true },
+    });
+    where.AND.push({
+      targetId: {
+        in: candidates
+          .filter((s) => scheduleReadableByViewer(s.scopeJson, viewerScope))
+          .map((s) => s.id),
+      },
+    });
+  }
 
   const [total, rows, succeeded, failed, lastRun] = await Promise.all([
     db.jobExecution.count({ where }),
@@ -97,7 +132,7 @@ export async function GET(request: Request) {
     db.jobExecution.count({ where: { ...where, status: "SUCCEEDED" } }),
     db.jobExecution.count({ where: { ...where, status: "FAILED" } }),
     db.jobExecution.findFirst({
-      where: { type: "REPORT_RUN" },
+      where,
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     }),

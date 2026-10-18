@@ -146,8 +146,8 @@ function deviceWhereForIncidentScope(scope: SiteScope, since: Date) {
 function changeScopeNote(scope: SiteScope): string | undefined {
   if (scope.mode !== "sites") return undefined;
   return scope.codes.length === 0
-    ? "Report scope: deny-all (no sites) — change-request aggregates are fleet-wide by nature; this artifact is empty-basis for a site-limited schedule."
-    : `Report scope: limited to site(s) ${scope.codes.join(", ")}. Change requests carry no site attribution, so the change aggregates in this artifact remain fleet-wide.`;
+    ? "Report scope: deny-all (no sites) — this artifact contains no change-request data."
+    : `Report scope: limited to site(s) ${scope.codes.join(", ")}. Change-request aggregates count ONLY changes with at least one attributed device in the listed site(s); changes without device attribution are excluded (FNM-2026-104/105 — disclosure is not an authorization boundary).`;
 }
 
 const MAX_ROWS = 500;
@@ -349,8 +349,31 @@ async function generateChangeSummary(
   const since = new Date(Date.now() - 30 * DAY_MS);
   const scopeNote = changeScopeNote(scope);
 
+  // FNM-2026-105 (2026-10-18 re-audit, Wave R2): the query is now
+  // scope-ATTRIBUTED. Change requests carry no site column, but each has
+  // device rows (ChangeRequest.devices → ChangeDevice → Device.site) — a
+  // site-limited artifact counts ONLY changes with at least one attributed
+  // device inside the scope's sites; deny-all counts nothing. Disclosure
+  // is not an authorization boundary: the fleet-wide query is gone.
+  const baseWhere = { createdAt: { gte: since } };
+  const changeWhere =
+    scope.mode === "wildcard"
+      ? baseWhere
+      : scope.codes.length === 0
+        ? { AND: [baseWhere, { id: { in: [] as string[] } }] }
+        : {
+            AND: [
+              baseWhere,
+              {
+                devices: {
+                  some: { device: { site: { code: { in: scope.codes } } } },
+                },
+              },
+            ],
+          };
+
   const changes = await db.changeRequest.findMany({
-    where: { createdAt: { gte: since } },
+    where: changeWhere,
     select: { status: true, riskLevel: true },
   });
 

@@ -23,6 +23,8 @@ import {
   REPORT_TYPES,
   reportScopeJsonForClaims,
 } from "@/lib/reports/generate";
+import { scheduleReadableByViewer } from "@/lib/reports/consumption-scope";
+import { sessionSiteScope } from "@/lib/auth/scope";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -72,13 +74,19 @@ const createSchema = z.object({
 });
 
 export async function GET(request: Request) {
+  // FNM-2026-104 (2026-10-18 re-audit, Wave R2): the list requires the
+  // "report.read" permission (was authentication-only) and a site-limited
+  // viewer sees ONLY schedules whose frozen scope is contained in their
+  // own — schedule rows carry recipient emails and scope metadata.
+  let viewer: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    await requireUser(request);
+    viewer = await requirePermission(request, "report.read");
   } catch (error) {
     const envelope = authErrorToFail(error);
     if (envelope) return envelope;
     throw error;
   }
+  void viewer; // authorization gate; the scope below drives the filter
 
   const url = new URL(request.url);
   const parsed = listSchema.safeParse({
@@ -94,10 +102,33 @@ export async function GET(request: Request) {
 
   const where = {
     AND: [
-      reportType ? { reportType } : {},
-      isActive === undefined ? {} : { isActive },
+      ...(reportType ? [{ reportType }] : []),
+      ...(isActive === undefined ? [] : [{ isActive }]),
     ],
+  } as {
+    AND: (
+      | { reportType: string }
+      | { isActive: boolean }
+      | { id: { in: string[] } }
+    )[];
   };
+
+  // FNM-2026-104: containment filter — a site-limited viewer may list a
+  // schedule only when the schedule's frozen scope ⊆ the viewer's scope.
+  // The same containment scopes the 7-day run counters (a limited viewer
+  // must not read fleet-wide operational tempo either).
+  const viewerScope = sessionSiteScope(await sessionScopeFor(request));
+  let readableRunFilter: { targetId: { in: string[] } } | Record<string, never> = {};
+  if (viewerScope.mode === "sites") {
+    const candidates = await db.reportSchedule.findMany({
+      select: { id: true, scopeJson: true },
+    });
+    const readableIds = candidates
+      .filter((s) => scheduleReadableByViewer(s.scopeJson, viewerScope))
+      .map((s) => s.id);
+    where.AND.push({ id: { in: readableIds } });
+    readableRunFilter = { targetId: { in: readableIds } };
+  }
 
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * DAY_MS);
@@ -113,13 +144,18 @@ export async function GET(request: Request) {
       }),
       db.reportSchedule.count({ where: { ...where, isActive: true } }),
       db.jobExecution.count({
-        where: { type: "REPORT_RUN", createdAt: { gte: sevenDaysAgo } },
+        where: {
+          type: "REPORT_RUN",
+          createdAt: { gte: sevenDaysAgo },
+          ...readableRunFilter,
+        },
       }),
       db.jobExecution.count({
         where: {
           type: "REPORT_RUN",
           status: "SUCCEEDED",
           createdAt: { gte: sevenDaysAgo },
+          ...readableRunFilter,
         },
       }),
       db.jobExecution.count({
@@ -127,6 +163,7 @@ export async function GET(request: Request) {
           type: "REPORT_RUN",
           status: { in: ["SUCCEEDED", "FAILED"] },
           createdAt: { gte: sevenDaysAgo },
+          ...readableRunFilter,
         },
       }),
     ]);
