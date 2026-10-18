@@ -16,6 +16,15 @@ cd "$ROOT"
 
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --status running app worker postgres caddy >/dev/null
 
+# FNM-2026-103 (2026-10-18 re-audit): the recovery services are part of the
+# health gate — compose-file presence alone is not evidence they operate.
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --status running backup >/dev/null
+archiver_check="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T postgres psql -U fayanms -d fayanms -tAc \
+  "SELECT coalesce(archived_count,0), coalesce(failed_count,0) FROM pg_stat_archiver")"
+failed_count="${archiver_check##*|}"; failed_count="${failed_count##* }"
+[[ "$failed_count" == "0" ]] || { echo "pg_stat_archiver failed_count=$failed_count — WAL archiving is FAILING" >&2; exit 1; }
+echo "pg_stat_archiver: $archiver_check (archived|failed)"
+
 curl --fail --silent --show-error --max-time 15 "https://${FAYANMS_TLS_DOMAIN}/" >/dev/null
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T postgres pg_isready -U fayanms -d fayanms >/dev/null
 # RT-028: the app gate uses the READINESS route (/api/health — DB-backed),
