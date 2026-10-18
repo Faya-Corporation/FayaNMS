@@ -304,12 +304,15 @@ jobs:
 
       # FNM-2026-102 acceptance — functional smoke on the NATIVE amd64 gate
       # image (entrypoint overridden; the sidecar's own loop never exits).
-      # Proves BOTH tool binaries exist and execute under the image's
-      # non-root user (uid 70) — no emulation involved.
+      # Proves the tool binaries exist and execute under the image's
+      # non-root user (uid 70) — no emulation involved. DIAGNOSTIC BY
+      # DESIGN: each binary's resolved path and version PRINTS on success
+      # (the earlier `>/dev/null` chain failed invisibly — age --version
+      # prints bare "v1.3.2", so a `grep -q "^age"` gate could never pass).
       - name: Smoke gate backup image (age + pg_dump under uid 70)
         run: |
           docker run --rm --entrypoint /bin/sh fayanms-backup:gate -c \
-            'command -v age >/dev/null && command -v pg_dump >/dev/null && command -v pg_basebackup >/dev/null && age --version | grep -q "^age" && pg_dump --version >/dev/null && echo "backup-smoke: age+pg_dump+pg_basebackup OK"'
+            'for b in age pg_dump pg_basebackup; do command -v "$b" || exit 1; done && age --version && pg_dump --version && echo "backup-smoke: age+pg_dump+pg_basebackup OK"'
 
       # Gate contract mirrors ci.yml's image scans and R78-B policy:
       # fatal for every HIGH/CRITICAL result, including unfixed findings —
