@@ -4194,3 +4194,18 @@ Work Log:
 
 Stage Summary:
 - Wave R2 complete and pinned. Remaining 2026-10-18 findings: FNM-107/108 → Wave R3 (physical base backups + digest-pinned promotion); FNM-110 docs/Dependabot → ledger PR; EXT-01…06 owner-gated.
+---
+Task ID: 14-r3-physical-basebackups-digest-promotion (2026-10-18 cycle, session web-4924c74a, trace 1a1506be33a63449)
+Agent: main agent (Z.ai Code)
+Task: Wave R3 — physical PITR chain (FNM-2026-107) + digest-pinned promotion integrity (FNM-2026-108).
+
+Work Log:
+- Wave R2 merged as PR #103 → main 6f1d469 (all 5 required checks green; squash).
+- R3 implementation (worktree fix/r3-physical-basebackups-digest-promotion off 6f1d469):
+  entrypoint.sh extended with the PHYSICAL plane — pg_basebackup --format=tar --wal-method=fetch (stream-to-stdout is refused by pg_basebackup; documented in-file; retry loop absorbs WAL-recycle failures), same dual-status + ≥1MiB gate + .partial atomic promotion + checksum-after-promotion, own cadence (default 24h, floor 1h, 0=explicit disable with loud log), own retention (7d), independent physical health-state fields; compose.yml + env.example plumb/document the knobs; DR runbook documents the now-SHIPPED physical chain and the concrete restore-to-timestamp procedure (decrypt → tar-list validation → empty PGDATA → recovery_target_time + recovery.signal) while restore-drill.sh remains the logical path.
+  deploy.sh: per-image provenance gate (org.opencontainers.image.revision must equal the deployed commit for ALL FOUR certified images; mismatch refuses promotion) + resolved-digest inventory ($STATE_DIR/digest-manifest.env via RepoDigests); deploy-staging.yml: manual workflow_dispatch promotions now require a successful main-push certification run for the exact SHA (Actions-API preflight, actions:read added).
+  README collector semantics reconciled (FNM-110 docs): the fleet is no longer described as pure simulation — the GA-4b real control plane + per-agent binding + enroll/telemetry split + operator-owned reinstatement are stated, with the labeled simulation fallback documented.
+- Verification: 13 new pins; 86 tests across the 7 backup/deploy suites 0 fail; sh/bash -n clean; tsc 0; eslint 0.
+
+Stage Summary:
+- All ten 2026-10-18 source findings are now remediated or explicitly ledger-routed: 101–109 FIXED (R1 #102, R2 #103, R3 this PR), 110 docs reconciled (Dependabot triage = owner follow-up with evidence; PR #101 browser failure flagged for diagnosis before any merge). EXT-01…06 remain owner-gated exactly as the audit classified them.

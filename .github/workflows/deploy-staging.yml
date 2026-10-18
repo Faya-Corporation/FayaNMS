@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: staging-deploy
@@ -56,6 +57,33 @@ jobs:
           test -n "$USER"
           test -n "$KEY"
           test -n "$KNOWN_HOSTS"
+
+      # FNM-2026-108 (2026-10-18 re-audit, Wave R3): a manual workflow_dispatch
+      # may name ANY 40-hex SHA — before promoting it, verify its PROVENANCE:
+      # a successful "Container certification and publication" run must exist
+      # for that exact SHA, from a protected main push (event=push,
+      # head_branch=main). Automatic workflow_run promotions already carry
+      # this property by construction and skip this check.
+      - name: Verify certification provenance for manual promotions
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          run_id="$(curl -sfS -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SHA}&per_page=100" \
+            | jq -r '[.workflow_runs[] \
+                | select(.name == "Container certification and publication" \
+                     and .event == "push" \
+                     and .head_branch == "main" \
+                     and .conclusion == "success")] \
+              | sort_by(.run_started_at) | last | .id // empty')"
+          if [[ -z "$run_id" ]]; then
+            echo "::error::No successful main-push container certification exists for $SHA — refusing manual promotion (FNM-2026-108)" >&2
+            exit 1
+          fi
+          echo "Provenance OK: certification run $run_id for $SHA"
 
       - name: Deploy exact SHA over restricted SSH
         env:

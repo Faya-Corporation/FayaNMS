@@ -65,6 +65,28 @@ docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm migrate
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d postgres backup worker app caddy
 "$HEALTH_SCRIPT"
 
+# FNM-2026-108 (2026-10-18 re-audit, Wave R3): promotion integrity. The
+# sha-<commit> TAG alone is mutable — every certified image must prove its
+# PROVENANCE (the org.opencontainers.image.revision label baked at build
+# time must equal the deployed commit) and the deployment records the
+# RESOLVED registry digests so a staging burn-in / rollback inventory can
+# pin byte-exact artifacts.
+digest_manifest="$STATE_DIR/digest-manifest.env"
+: >"$digest_manifest"
+for ref in "$FAYANMS_IMAGE" "$FAYANMS_WORKER_IMAGE" "$FAYANMS_MIGRATOR_IMAGE" "$FAYANMS_BACKUP_IMAGE"; do
+  revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$ref")"
+  if [[ "$revision" != "$VERSION" ]]; then
+    echo "Provenance mismatch: $ref was built from revision '${revision:-<none>}', expected $VERSION — refusing to promote" >&2
+    exit 1
+  fi
+  digest="$(docker image inspect --format '{{ index .RepoDigests 0 }}' "$ref")"
+  [[ -n "$digest" ]] || { echo "No registry digest recorded for $ref — run compose pull first" >&2; exit 1; }
+  name="${ref%%:*}"; name="${name##*/}"
+  printf '%s=%s\n' "${name//-/_}_DIGEST" "$digest" >>"$digest_manifest"
+  echo "Provenance OK: $ref → $digest (revision $VERSION)"
+done
+chmod 0640 "$digest_manifest"
+
 # FNM-2026-103 acceptance: the deploy gate FAILS if WAL archiving is
 # misconfigured or the backup sidecar is not actually running — compose
 # file presence alone is not evidence the recovery services operate.

@@ -45,22 +45,41 @@ docker compose --env-file .env up -d postgres
 docker compose --env-file .env exec postgres ls /wal-archive | head
 ~~~
 
-**Restore to a point in time** (disposable target, never production): restore the latest base backup, then replay archived WAL:
+**The physical base is now SHIPPED (FNM-2026-107, 2026-10-18 re-audit):** the
+backup sidecar produces encrypted `pg_basebackup` tar archives —
+`fayanms-base-<timestamp>.tar.age` (+ `.sha256`) — on their own cadence
+(`FAYANMS_BACKUP_PHYSICAL_INTERVAL_SECONDS`, default 24h, `0` disables but
+then PITR has no chain and the operator must document the alternative).
+This closes the gap where WAL archiving existed without a compatible
+physical base: a logical `pg_dump` cannot seed WAL replay.
+
+**Restore to a point in time** (disposable target, never production):
 
 ~~~bash
-# 1. Copy the WAL archive and the chosen base backup to the isolated target host.
-# 2. Restore the base backup into the target's PGDATA (see restore-drill.sh for
-#    the encrypted-dump path; a physical base backup restores file-level).
-# 3. Configure recovery on the target:
+# 1. Copy the WAL archive (fayanms-wal volume) and the chosen
+#    fayanms-base-<stamp>.tar.age to the isolated target host.
+# 2. Decrypt the physical base:
+#    age --decrypt --identity /secure/restore-key.age \
+#        --output base.tar fayanms-base-<stamp>.tar.age
+#    tar -tf base.tar          # content validation (the sidecar only
+#                              # sees ciphertext; THIS is the validator)
+# 3. Extract into an EMPTY PGDATA (mode 0700, owned by the postgres user):
+#    tar -xf base.tar -C /var/lib/postgresql/data --strip-components=0
+#    # the tar contains the server files at its root (PG16 tar layout);
+#    # remove any stale recovery knobs, then configure recovery:
+#    cat >> /var/lib/postgresql/data/postgresql.conf <<'RC'
 #    restore_command = 'cp /wal-archive/%f %p'
 #    recovery_target_time = '<the instant you must return to>'
 #    recovery_target_action = 'promote'
-# 4. Start the target; PostgreSQL replays WAL up to the target and promotes.
-# 5. Verify exactly as a restore drill: migration status, row counts,
-#    audit-chain verification, application boot, elapsed time — record all.
+#    RC
+#    touch /var/lib/postgresql/data/recovery.signal
+# 4. Start the target; PostgreSQL replays archived WAL up to the target
+#    and promotes. Verify exactly as a restore drill: migration status,
+#    row counts, audit-chain verification, application boot, elapsed
+#    time — record all (this IS the drill evidence for RPO/RTO).
 ~~~
 
-The archived WAL bounds data loss to the segment granularity BETWEEN base backups — RPO is therefore `min(base-backup interval, WAL archive completeness)`, and the WAL volume must be included in the off-host copy policy.
+The archived WAL bounds data loss to the segment granularity BETWEEN base backups — RPO is therefore `min(physical base-backup interval, WAL archive completeness)`, and BOTH the WAL volume and the newest `fayanms-base-*.tar.age` must be included in the off-host copy policy. The logical `fayanms-<stamp>.sql.age` artifacts remain the conventional-restore path (`restore-drill.sh`).
 
 ## Restore drill
 
