@@ -54,6 +54,17 @@ export async function POST(request: Request) {
   const parsed = heartbeatSchema.safeParse(body);
   if (!parsed.success) return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
 
+  // FNM-2026-106 — per-agent identity binding: the verified JWT subject
+  // must EQUAL the agentKey whose leases are being claimed (a telemetry
+  // principal can never drive another agent's control-plane state).
+  if (auth.principal.id !== parsed.data.agentKey) {
+    return fail(
+      "COLLECTOR_IDENTITY_MISMATCH",
+      "The service token subject must equal the heartbeat's agentKey (per-agent identity binding)",
+      403
+    );
+  }
+
   try {
     const result = await processHeartbeat(
       parsed.data.agentKey,

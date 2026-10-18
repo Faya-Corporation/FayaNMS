@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionSiteScope } from "@/lib/auth/scope";
+import {
+  artifactReadableBy,
+  REPORT_SCOPE_FORBIDDEN,
+} from "@/lib/reports/consumption-scope";
+import { reportScopeFromJson } from "@/lib/reports/generate";
 import { fail, newCorrelationId } from "../../../../_lib/api";
 import { artifactToCsv, type ReportArtifact } from "@/lib/reports/generate";
 import { renderArtifactPdf } from "@/lib/reports/render-pdf";
@@ -28,6 +38,16 @@ export const dynamic = "force-dynamic";
  * viewer/auditor roles hold "*.read" and still pass. The response is a
  * plain byte attachment (Content-Disposition), so it behaves identically
  * in LTR and RTL contexts.
+ *
+ * FNM-2026-104 (2026-10-18 re-audit, Wave R2): the "report.read"
+ * permission alone is NOT the confidentiality boundary — the artifact's
+ * frozen data scope must be CONTAINED in the viewer's site scope. The
+ * scope comes from the run's schedule (targetId → ReportSchedule.scopeJson,
+ * frozen at creation). Fail-closed edges: a run whose schedule is deleted
+ * (scope unknowable) downloads ONLY for wildcard viewers; a wildcard-scope
+ * artifact downloads only for wildcard viewers; a deny-all artifact
+ * (empty by construction) downloads for anyone. Violations answer 403
+ * REPORT_SCOPE_FORBIDDEN and are audit-logged as FAILURE.
  */
 
 const ID_MAX = 64;
@@ -73,6 +93,7 @@ export async function GET(
       correlationId: true,
       createdAt: true,
       payloadJson: true,
+      targetId: true,
     },
   });
   if (!run || run.type !== "REPORT_RUN") {
@@ -84,6 +105,56 @@ export async function GET(
       `Run is ${run.status} — downloads unlock when the run succeeds`,
       409
     );
+  }
+
+  // FNM-2026-104 — the artifact's frozen scope gates the download. The
+  // permission check above is necessary but NOT sufficient: a site-limited
+  // viewer must never read a broader-scope artifact.
+  const viewerScope = sessionSiteScope(await sessionScopeFor(request));
+  const schedule = run.targetId
+    ? await db.reportSchedule.findUnique({
+        where: { id: run.targetId },
+        select: { scopeJson: true },
+      })
+    : null;
+  const deny = (detail: string) =>
+    fail(REPORT_SCOPE_FORBIDDEN, detail, 403);
+  if (!schedule) {
+    // Scope unknowable (deleted schedule / legacy run without target) —
+    // fail-closed: only the wildcard (fleet-wide) viewer may proceed.
+    if (viewerScope.mode !== "wildcard") {
+      await db.auditEvent.create({
+        data: {
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          action: "REPORT_DOWNLOAD",
+          resourceType: "REPORT_RUN",
+          resourceId: run.id,
+          resourceLabel: "scope-unresolvable",
+          result: "FAILURE",
+          afterJson: JSON.stringify({ reason: "SCHEDULE_UNRESOLVED" }),
+        },
+      });
+      return deny(
+        "This report artifact's site scope cannot be established — ask an administrator"
+      );
+    }
+  } else if (
+    !artifactReadableBy(reportScopeFromJson(schedule.scopeJson), viewerScope)
+  ) {
+    await db.auditEvent.create({
+      data: {
+        actorId: actor.id,
+        actorName: actor.name ?? actor.email,
+        action: "REPORT_DOWNLOAD",
+        resourceType: "REPORT_RUN",
+        resourceId: run.id,
+        resourceLabel: "outside-site-scope",
+        result: "FAILURE",
+        afterJson: JSON.stringify({ reason: "SCOPE_CONTAINMENT" }),
+      },
+    });
+    return deny("This report artifact is scoped outside your site scope");
   }
 
   let artifact: Record<string, unknown>;

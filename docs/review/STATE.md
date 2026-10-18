@@ -152,3 +152,19 @@ available in this sandbox, and the pins above are the in-repo contract.
 - **EXT-01…06** — owner-gated, unchanged (staging burn-in, DR drill +
   RPO/RTO, vendor T3, approval governance, HA/SLA decision, release
   formalization).
+
+### Wave R2 — report consumption scoping + collector identity (FNM-2026-104/105/106)
+
+| Finding | Verdict | Remediation (this wave) |
+|---|---|---|
+| FNM-2026-104 report consumption not site-scoped | **CONFIRMED** → **FIXED** | New `src/lib/reports/consumption-scope.ts` (containment semantics: wildcard viewer reads all; wildcard ARTIFACT never readable by site-limited viewers; sites artifact readable iff codes ⊆ viewer; deny-all artifact readable — it is empty by construction). Enforced on ALL consumption surfaces: runs list (`report.read` + SQL filter to readable schedules; deleted-schedule runs hidden from limited viewers, fail-closed), runs download (`report.read` + frozen-scope containment → 403 `REPORT_SCOPE_FORBIDDEN`, denial audit-logged FAILURE; schedule-unresolvable runs download only for wildcard viewers), schedules list (`report.read` + containment; 7-day run counters scoped too), schedules PATCH/DELETE (acting scope must contain the schedule scope — recipient hijack blocked; PATCH body stays .strict() so the frozen scope is immutable), run-now (same containment — a limited session can no longer generate+deliver a fleet-wide artifact). Pinned by `tests/audit/r2-2026-1018-report-consumption-scope.test.ts` (site A/B tenants, wildcard creator, deny-all, deleted schedule, guessed ids). |
+| FNM-2026-105 CHANGE_SUMMARY fleet-wide under site scope | **CONFIRMED** → **FIXED** | `generate.ts` query is now scope-ATTRIBUTED via `ChangeRequest.devices → ChangeDevice → Device.site`: site-limited artifacts count ONLY changes with ≥1 attributed device inside the scope's sites; deny-all counts nothing; wildcard unchanged. The scopeNote states the attribution semantics honestly (the old "aggregates remain fleet-wide" disclosure is gone — disclosure is not an authorization boundary). GA-2 pin updated to the new contract + strengthened (deny-all totals 0; wildcard ⊇ scoped). |
+| FNM-2026-106 collector principal not bound to agentKey | **CONFIRMED** → **FIXED** | Per-agent identity binding on ALL THREE machine routes: `auth.principal.id === agentKey` else 403 `COLLECTOR_IDENTITY_MISMATCH` (register/heartbeat/assignments). Registration now requires the NEW one-shot `enroll` scope (added to the ServiceScope catalog), deliberately separate from steady-state `telemetry` — a leaked heartbeat token can neither register nor mutate agent identity. SUSPENDED reactivation via register is BLOCKED (403 `COLLECTOR_AGENT_SUSPENDED`, row stays SUSPENDED — the old unconditional SUSPENDED→ACTIVE upsert is gone); lifting suspension is strictly operator-owned via the NEW admin route `POST /api/v1/admin/collectors/agents/[agentKey]/reinstate` (admin role, audited `COLLECTOR_AGENT_REINSTATED`, 409 when not suspended). Authorization matrix documents the per-agent minting contract (enroll vs telemetry tokens, subject = agentKey). GA-4b suite updated to mint contract-conformant tokens. Pinned by `tests/audit/r2-2026-1018-collector-binding.test.ts` (cross-agent register/heartbeat/assignments, telemetry-on-register refusal, suspension self-resurrection block, operator/admin reinstate split, 409 repeat). |
+
+Wave R2 verification: 23 new tests (both suites 0 fail); GA-4b collector
+control-plane + machine-surface + GA-2 suites green after the contract
+update (65 tests across the four suites); full sweep on the branch shows
+ONLY the pre-existing environmental failures (identical groups fail on
+unmodified main in this sandbox — MFA/F-034/encryptAtRest/R50/worker-plane
+need CI's isolated DB; F-051 snapshot-race fails identically on pristine
+main); tsc 0; eslint 0.

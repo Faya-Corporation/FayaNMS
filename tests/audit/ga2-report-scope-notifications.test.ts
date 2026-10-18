@@ -372,18 +372,45 @@ describe("GA-2: generateReport intersects the frozen scope", () => {
     expect(wildcardCreated).toBeGreaterThanOrEqual(2); // both fixtures
   }
 
-  test("CHANGE_SUMMARY: fleet-wide rows carry an explicit honesty note under site scope", async () => {
+  test("CHANGE_SUMMARY: site-scoped aggregates are attribution-based with an explicit honesty note (FNM-2026-105)", async () => {
     const scoped = await generateReport("CHANGE_SUMMARY", {
       frequency: "MONTHLY",
       scope: { mode: "sites", codes: [SITE_A_CODE] },
     });
-    expect(scoped.scopeNote).toContain("fleet-wide");
+    // FNM-2026-105 (2026-10-18 re-audit): the site-limited artifact counts
+    // ONLY changes with ≥1 attributed device in scope — disclosure is not
+    // an authorization boundary, so the fleet-wide query is gone and the
+    // note says exactly what the numbers now mean.
+    expect(scoped.scopeNote).toContain("attributed device");
+    expect(scoped.scopeNote).toContain(SITE_A_CODE);
+    expect(scoped.scopeNote).not.toContain("fleet-wide");
+
+    const denyAll = await generateReport("CHANGE_SUMMARY", {
+      frequency: "MONTHLY",
+      scope: { mode: "sites", codes: [] },
+    });
+    expect(denyAll.scopeNote).toContain("no change-request data");
+    const denyAllTotal = denyAll.rows.reduce(
+      (acc, r) => acc + Number(r.total ?? 0),
+      0
+    );
+    expect(denyAllTotal).toBe(0);
 
     const wildcard = await generateReport("CHANGE_SUMMARY", {
       frequency: "MONTHLY",
       scope: { mode: "wildcard" },
     });
     expect(wildcard.scopeNote).toBeUndefined();
+    // The wildcard artifact covers everything the scoped one does.
+    const wildcardTotal = wildcard.rows.reduce(
+      (acc, r) => acc + Number(r.total ?? 0),
+      0
+    );
+    const scopedTotal = scoped.rows.reduce(
+      (acc, r) => acc + Number(r.total ?? 0),
+      0
+    );
+    expect(wildcardTotal).toBeGreaterThanOrEqual(scopedTotal);
   });
 });
 

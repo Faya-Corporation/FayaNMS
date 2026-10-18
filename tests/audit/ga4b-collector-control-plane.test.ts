@@ -136,6 +136,48 @@ function machineRequest(url: string, body: unknown, scopes: ServiceScope[] = ["t
   });
 }
 
+/* FNM-2026-106 (2026-10-18 re-audit, Wave R2): collector machine routes are
+ * per-agent bound — the verified JWT subject must EQUAL the agentKey the
+ * request speaks for, and REGISTRATION additionally requires the one-shot
+ * "enroll" scope (deliberately separate from steady-state "telemetry").
+ * These helpers mint contract-conformant tokens for a specific agent. */
+function enrollRequest(url: string, body: { agentKey: string } & Record<string, unknown>): Request {
+  const token = mintServiceToken({
+    issuer: "fayanms:worker",
+    subject: body.agentKey,
+    scopes: ["enroll", "telemetry"],
+  });
+  return new Request(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function agentHeartbeatRequest(url: string, body: { agentKey: string } & Record<string, unknown>): Request {
+  const token = mintServiceToken({
+    issuer: "fayanms:worker",
+    subject: body.agentKey,
+    scopes: ["telemetry"],
+  });
+  return new Request(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function agentAssignmentsRequest(agentKey: string): Request {
+  const token = mintServiceToken({
+    issuer: "fayanms:worker",
+    subject: agentKey,
+    scopes: ["telemetry"],
+  });
+  return new Request(`http://app.local/api/v1/collectors/assignments?agentKey=${agentKey}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+}
+
 function adminRequest(url: string, body?: unknown, method: "POST" | "GET" = "POST"): NextRequest {
   return new NextRequest(url, {
     method,
@@ -176,7 +218,7 @@ async function ownedRowsFor(agentKey: string, deviceIds: string[]) {
 
 async function registerAgent(key: string, displayName: string, role: string, opts: { siteCode?: string; capacity?: number } = {}) {
   const { POST } = await import("../../src/app/api/v1/collectors/register/route");
-  const res = await POST(machineRequest("http://app.local/api/v1/collectors/register", {
+  const res = await POST(enrollRequest("http://app.local/api/v1/collectors/register", {
     agentKey: key,
     displayName,
     role,
@@ -298,7 +340,7 @@ describe("GA-4b: registration (machine plane)", () => {
 
   test("unknown siteCode → 400 COLLECTOR_SITE_UNKNOWN (fail-fast truthfulness)", async () => {
     const { POST } = await import("../../src/app/api/v1/collectors/register/route");
-    const res = await POST(machineRequest("http://app.local/api/v1/collectors/register", {
+    const res = await POST(enrollRequest("http://app.local/api/v1/collectors/register", {
       agentKey: `ga4b-${LOW}-bad`,
       displayName: "Bad Agent",
       role: "snmp",
@@ -310,7 +352,7 @@ describe("GA-4b: registration (machine plane)", () => {
 
   test("first registration → 201 ACTIVE with the liveness contract + audit row", async () => {
     const { POST } = await import("../../src/app/api/v1/collectors/register/route");
-    const res = await POST(machineRequest("http://app.local/api/v1/collectors/register", {
+    const res = await POST(enrollRequest("http://app.local/api/v1/collectors/register", {
       agentKey: KEY.reg1,
       displayName: "GA4B Registration Agent 1",
       role: "snmp",
@@ -339,7 +381,7 @@ describe("GA-4b: registration (machine plane)", () => {
 
   test("re-registration → 200, not duplicated, capacity refreshed", async () => {
     const { POST } = await import("../../src/app/api/v1/collectors/register/route");
-    const res = await POST(machineRequest("http://app.local/api/v1/collectors/register", {
+    const res = await POST(enrollRequest("http://app.local/api/v1/collectors/register", {
       agentKey: KEY.reg1,
       displayName: "GA4B Registration Agent 1",
       role: "snmp",
@@ -458,7 +500,7 @@ describe("GA-4b: heartbeat and fencing", () => {
     const beforeAgent = await db.collectorAgent.findUnique({ where: { agentKey: KEY.reg1 } });
     const beforeRow = await db.collectorAssignment.findUnique({ where: { deviceId } });
 
-    const res = await POST(machineRequest("http://app.local/api/v1/collectors/heartbeat", {
+    const res = await POST(agentHeartbeatRequest("http://app.local/api/v1/collectors/heartbeat", {
       agentKey: KEY.reg1,
       claims: [{ deviceId, leaseEpoch: currentEpoch }],
     }));
@@ -478,7 +520,7 @@ describe("GA-4b: heartbeat and fencing", () => {
 
   test("stale epoch (pre-transfer claim) is FENCED with stale-epoch", async () => {
     const { POST } = await import("../../src/app/api/v1/collectors/heartbeat/route");
-    const res = await POST(machineRequest("http://app.local/api/v1/collectors/heartbeat", {
+    const res = await POST(agentHeartbeatRequest("http://app.local/api/v1/collectors/heartbeat", {
       agentKey: KEY.reg1,
       claims: [{ deviceId, leaseEpoch: currentEpoch - 1 }],
     }));
@@ -490,7 +532,7 @@ describe("GA-4b: heartbeat and fencing", () => {
 
   test("foreign owner (another agent claims a device it does not own) is FENCED with not-owner", async () => {
     const { POST } = await import("../../src/app/api/v1/collectors/heartbeat/route");
-    const res = await POST(machineRequest("http://app.local/api/v1/collectors/heartbeat", {
+    const res = await POST(agentHeartbeatRequest("http://app.local/api/v1/collectors/heartbeat", {
       agentKey: KEY.reg2, // owns nothing at this point
       claims: [{ deviceId, leaseEpoch: currentEpoch }], // epoch even correct — ownership is the fence
     }));
@@ -501,7 +543,7 @@ describe("GA-4b: heartbeat and fencing", () => {
 
   test("unknown device (never reconciled) is FENCED with unknown-assignment", async () => {
     const { POST } = await import("../../src/app/api/v1/collectors/heartbeat/route");
-    const res = await POST(machineRequest("http://app.local/api/v1/collectors/heartbeat", {
+    const res = await POST(agentHeartbeatRequest("http://app.local/api/v1/collectors/heartbeat", {
       agentKey: KEY.reg1,
       claims: [{ deviceId: "ga4b-never-existed-000000", leaseEpoch: 1 }],
     }));
@@ -513,7 +555,7 @@ describe("GA-4b: heartbeat and fencing", () => {
   test("fenced claims aggregate into ONE COLLECTOR_AGENT_FENCED audit row per heartbeat", async () => {
     const { POST } = await import("../../src/app/api/v1/collectors/heartbeat/route");
     const before = await db.auditEvent.count({ where: { action: "COLLECTOR_AGENT_FENCED", resourceId: KEY.reg1 } });
-    await POST(machineRequest("http://app.local/api/v1/collectors/heartbeat", {
+    await POST(agentHeartbeatRequest("http://app.local/api/v1/collectors/heartbeat", {
       agentKey: KEY.reg1,
       claims: [
         { deviceId: "ga4b-ghost-1", leaseEpoch: 1 },
@@ -526,7 +568,7 @@ describe("GA-4b: heartbeat and fencing", () => {
 
   test("heartbeat from an unregistered agent → 404 COLLECTOR_AGENT_UNKNOWN", async () => {
     const { POST } = await import("../../src/app/api/v1/collectors/heartbeat/route");
-    const res = await POST(machineRequest("http://app.local/api/v1/collectors/heartbeat", {
+    const res = await POST(agentHeartbeatRequest("http://app.local/api/v1/collectors/heartbeat", {
       agentKey: `ga4b-${LOW}-ghost`,
       claims: [],
     }));
@@ -536,12 +578,7 @@ describe("GA-4b: heartbeat and fencing", () => {
 
   test("machine assignments snapshot lists the agent's owned epochs", async () => {
     const { GET } = await import("../../src/app/api/v1/collectors/assignments/route");
-    const token = mintServiceToken({ issuer: "fayanms:worker", subject: `worker:ga4b-${LOW}`, scopes: ["telemetry"] });
-    const res = await GET(
-      new Request(`http://app.local/api/v1/collectors/assignments?agentKey=${KEY.reg1}`, {
-        headers: { authorization: `Bearer ${token}` },
-      })
-    );
+    const res = await GET(agentAssignmentsRequest(KEY.reg1));
     expect(res.status).toBe(200);
     const body = await bodyOf(res);
     // Fixture-scoped: on the seeded local DB reg-1 also owns seed devices;
@@ -599,7 +636,7 @@ describe("GA-4b: failover (real ownership moves)", () => {
 
   test("the failing agent's stale-epoch claims are fenced after failover", async () => {
     const { POST } = await import("../../src/app/api/v1/collectors/heartbeat/route");
-    const res = await POST(machineRequest("http://app.local/api/v1/collectors/heartbeat", {
+    const res = await POST(agentHeartbeatRequest("http://app.local/api/v1/collectors/heartbeat", {
       agentKey: KEY.fo1,
       claims: fo1DeviceIds.map((id) => ({ deviceId: id, leaseEpoch: 1 })), // pre-failover epochs
     }));
@@ -624,7 +661,7 @@ describe("GA-4b: failover (real ownership moves)", () => {
 
     // A suspended agent's heartbeat still refreshes liveness but every
     // claim is fenced with agent-suspended (it must drop its state).
-    const hb = await bodyOf(await heartbeat(machineRequest("http://app.local/api/v1/collectors/heartbeat", {
+    const hb = await bodyOf(await heartbeat(agentHeartbeatRequest("http://app.local/api/v1/collectors/heartbeat", {
       agentKey: KEY.fo3,
       claims: [{ deviceId: fo1DeviceIds[0], leaseEpoch: 99 }],
     })));

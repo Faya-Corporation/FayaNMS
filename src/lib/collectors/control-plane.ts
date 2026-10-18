@@ -159,9 +159,16 @@ export interface RegistrationResult {
 
 /**
  * Idempotent agent registration (upsert by agentKey). Re-registration
- * refreshes residency/version/capacity and REACTIVATES (SUSPENDED →
- * ACTIVE) — a returning agent is a liveness fact, not an operator action.
- * Registration counts as the first heartbeat.
+ * refreshes residency/version/capacity. Registration counts as the first
+ * heartbeat.
+ *
+ * FNM-2026-106 (2026-10-18 re-audit, Wave R2): registration NO LONGER
+ * reactivates a SUSPENDED agent. The old upsert flipped SUSPENDED →
+ * ACTIVE unconditionally — a suspended agent could resurrect itself by
+ * calling register with its (or any bound) identity. Suspension is an
+ * operator action; only an operator can lift it (the admin plane), so a
+ * suspended agent's register attempt answers COLLECTOR_AGENT_SUSPENDED
+ * and the row stays SUSPENDED.
  */
 export async function registerCollectorAgent(
   input: RegistrationInput,
@@ -186,8 +193,18 @@ export async function registerCollectorAgent(
 
   const existing = await db.collectorAgent.findUnique({
     where: { agentKey: input.agentKey },
-    select: { id: true },
+    select: { id: true, status: true },
   });
+
+  // FNM-2026-106 — suspension is operator-owned: an agent (or a stolen
+  // bound token) cannot un-suspend itself through the registration path.
+  if (existing?.status === "SUSPENDED") {
+    throw new CollectorControlError(
+      "COLLECTOR_AGENT_SUSPENDED",
+      `Agent "${input.agentKey}" is SUSPENDED — re-registration cannot reactivate it; an operator must re-enable it`,
+      403
+    );
+  }
 
   const agent = await db.collectorAgent.upsert({
     where: { agentKey: input.agentKey },

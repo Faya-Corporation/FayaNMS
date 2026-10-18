@@ -354,8 +354,18 @@ export interface ServicePrincipal {
 /**
  * Per-route scope catalog (Phase 19-C): jobs (worker job engine), simulate
  * (Next→worker simulator calls), alerts, reports, metrics.
+ * FNM-2026-106 (2026-10-18 re-audit): "enroll" is the one-shot REGISTRATION
+ * scope — deliberately separate from steady-state "telemetry" so a leaked
+ * collector heartbeat token cannot (re)register or mutate agent identity.
  */
-export type ServiceScope = "jobs" | "simulate" | "alerts" | "reports" | "metrics" | "telemetry";
+export type ServiceScope =
+  | "jobs"
+  | "simulate"
+  | "alerts"
+  | "reports"
+  | "metrics"
+  | "telemetry"
+  | "enroll";
 
 export type ServiceAuthResult =
   | { ok: true; principal: ServicePrincipal }

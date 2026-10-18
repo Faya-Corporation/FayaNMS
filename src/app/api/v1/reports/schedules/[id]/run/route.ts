@@ -1,5 +1,14 @@
 import { db } from "@/lib/db";
-import { authErrorToFail, requirePermission } from "@/lib/auth/session";
+import {
+  authErrorToFail,
+  requirePermission,
+  sessionScopeFor,
+} from "@/lib/auth/session";
+import { sessionSiteScope } from "@/lib/auth/scope";
+import {
+  scheduleReadableByViewer,
+  REPORT_SCOPE_FORBIDDEN,
+} from "@/lib/reports/consumption-scope";
 import { fail, firstIssueMessage, newCorrelationId, ok } from "../../../../_lib/api";
 import {
   REPORT_FORMATS,
@@ -25,6 +34,12 @@ export const dynamic = "force-dynamic";
  * history stays one-row-per-run).
  *
  * Audited REPORT_SCHEDULE_RUN_QUEUED. 404 SCHEDULE_NOT_FOUND.
+ *
+ * FNM-2026-104 (2026-10-18 re-audit, Wave R2): run-now requires the
+ * schedule's frozen scope to be CONTAINED in the acting session's site
+ * scope — running a broader-scope schedule would generate and deliver a
+ * fleet-wide artifact on a limited session's behalf (recipients are the
+ * schedule's). Violations answer 403 REPORT_SCOPE_FORBIDDEN.
  */
 
 const ID_MAX = 64;
@@ -75,6 +90,16 @@ export async function POST(
   const schedule = await db.reportSchedule.findUnique({ where: { id } });
   if (!schedule) {
     return fail("SCHEDULE_NOT_FOUND", "Report schedule not found", 404);
+  }
+
+  // FNM-2026-104 containment gate — see the header note.
+  const viewerScope = sessionSiteScope(await sessionScopeFor(request));
+  if (!scheduleReadableByViewer(schedule.scopeJson, viewerScope)) {
+    return fail(
+      REPORT_SCOPE_FORBIDDEN,
+      "This schedule is scoped outside your site scope",
+      403
+    );
   }
 
   const inFlight = await db.jobExecution.findFirst({

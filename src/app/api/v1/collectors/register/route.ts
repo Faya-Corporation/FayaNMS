@@ -39,7 +39,12 @@ const registerSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const auth = authenticateServiceRequest(request, "telemetry");
+  // FNM-2026-106 (2026-10-18 re-audit, Wave R2): registration is an
+  // ENROLLMENT act, deliberately scoped separately from steady-state
+  // telemetry — a leaked heartbeat token must not (re)register or mutate
+  // agent identity. Mint enrollment tokens with scopes ["enroll","telemetry"]
+  // and subject = the agent's own agentKey.
+  const auth = authenticateServiceRequest(request, "enroll");
   if (!auth.ok) return fail(auth.code, auth.message, auth.code === "SERVICE_SCOPE_INSUFFICIENT" ? 403 : 401);
 
   let body: unknown;
@@ -50,6 +55,19 @@ export async function POST(request: Request) {
   }
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) return fail("INVALID_BODY", firstIssueMessage(parsed.error), 400);
+
+  // FNM-2026-106 — per-agent identity binding: the verified JWT subject
+  // must EQUAL the agentKey being registered. A telemetry/enroll principal
+  // can never mint or mutate another agent's identity (cross-agent
+  // impersonation was possible when any telemetry token could register any
+  // agentKey).
+  if (auth.principal.id !== parsed.data.agentKey) {
+    return fail(
+      "COLLECTOR_IDENTITY_MISMATCH",
+      "The service token subject must equal the registering agentKey (per-agent identity binding)",
+      403
+    );
+  }
 
   try {
     const { created, agent } = await registerCollectorAgent(
