@@ -14,9 +14,14 @@ import { describe, expect, test } from "bun:test";
  *
  * AFTER (the deliberate contract change): build (push: false, load: true,
  * linux/amd64 local `:gate` tags) → scan local refs (exit-code 1) → and
- * only after all three gates pass, the multi-arch push steps (same tags/
+ * only after ALL gates pass, the multi-arch push steps (same tags/
  * labels/build-args/SBOM/provenance contract as before). The SARIF
  * evidence steps stay AFTER the push (evidence, not the gate).
+ *
+ * 2026-10-18 (FNM-2026-102, Wave R1): the certified fleet grew from three
+ * to FOUR images — `fayanms-backup` (the scheduled encrypted-backup
+ * sidecar) is built, locally scanned and published in the SAME job with
+ * the same ordering contract, so this pin counts 4/4/4.
  *
  * NOTE: the workflow is DISABLED at repo level (owner request) — this is a
  * file-only contract, pinned here so the ordering cannot silently revert.
@@ -61,10 +66,15 @@ const gateBuilds = steps.filter((s) => /Build gate .*\(local, never pushed\)/.te
 const sarifEvidence = steps.filter((s) => /format: sarif/.test(s.text));
 
 describe("RT-017: scan-before-publish ordering (container.yml publish job)", () => {
-  test("the gate shape exists: 3 local builds + 3 fatal scans + 3 pushes + evidence", () => {
-    expect(gateBuilds).toHaveLength(3);
-    expect(gateScans).toHaveLength(3);
-    expect(pushSteps).toHaveLength(3);
+  test("the gate shape exists: 4 local builds + 4 fatal scans + 4 pushes + evidence", () => {
+    expect(gateBuilds.map((s) => s.name)).toEqual([
+      "Build gate image (local, never pushed)",
+      "Build gate worker image (local, never pushed)",
+      "Build gate migration image (local, never pushed)",
+      "Build gate backup image (local, never pushed)",
+    ]);
+    expect(gateScans).toHaveLength(4);
+    expect(pushSteps).toHaveLength(4);
     expect(sarifEvidence.length).toBeGreaterThanOrEqual(1);
   });
 
