@@ -6,6 +6,7 @@ on:
       - Dockerfile
       - Dockerfile.worker
       - Dockerfile.migrator
+      - deploy/oci/backup-sidecar/**
       - compose*.yml
       - .dockerignore
       - .github/workflows/container.yml
@@ -100,6 +101,17 @@ jobs:
           docker buildx build --platform linux/arm64 --load --file Dockerfile.migrator --tag fayanms-migrator:arm64-${CANDIDATE_SHA} --build-arg FAYANMS_SOURCE_SHA=${CANDIDATE_SHA} .
           docker run --rm fayanms-migrator:arm64-${CANDIDATE_SHA} run ./node_modules/prisma/build/index.js --version
 
+      # FNM-2026-102 (2026-10-18 re-audit): the backup sidecar is a certified
+      # release artifact like app/worker/migrator — built for arm64 here, with
+      # a functional smoke (entrypoint overridden; the sidecar's own loop
+      # would never exit). Proves BOTH tool binaries exist and execute under
+      # the image's non-root user (uid 70).
+      - name: Build ARM64 backup image
+        run: |
+          docker buildx build --platform linux/arm64 --load --file deploy/oci/backup-sidecar/Dockerfile --tag fayanms-backup:arm64-${CANDIDATE_SHA} deploy/oci/backup-sidecar
+          docker run --rm --entrypoint /bin/sh fayanms-backup:arm64-${CANDIDATE_SHA} -c \
+            'command -v age >/dev/null && command -v pg_dump >/dev/null && age --version | grep -q "^age" && pg_dump --version >/dev/null && echo "backup-smoke: age+pg_dump OK"'
+
       - name: Verify image architecture and runtime
         run: |
           test "$(docker image inspect fayanms:arm64-${CANDIDATE_SHA} --format '{{.Architecture}}')" = "arm64"
@@ -107,6 +119,7 @@ jobs:
           IMAGE=fayanms:arm64-${CANDIDATE_SHA} bash scripts/ci/arm64-runtime-smoke.sh
           test "$(docker image inspect fayanms-worker:arm64-${CANDIDATE_SHA} --format '{{.Architecture}}')" = "arm64"
           test "$(docker image inspect fayanms-migrator:arm64-${CANDIDATE_SHA} --format '{{.Architecture}}')" = "arm64"
+          test "$(docker image inspect fayanms-backup:arm64-${CANDIDATE_SHA} --format '{{.Architecture}}')" = "arm64"
 
       - name: Scan ARM64 image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -130,6 +143,15 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: fayanms-migrator:arm64-${{ github.event.workflow_run.head_sha || github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          exit-code: "1"
+
+      - name: Scan ARM64 backup image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: fayanms-backup:arm64-${{ github.event.workflow_run.head_sha || github.sha }}
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: false
@@ -204,9 +226,21 @@ jobs:
             org.opencontainers.image.source=https://github.com/Faya-Corporation/FayaNMS
             org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
 
-      # RT-017 / F-024 — scan BEFORE any publication. The three gate steps
+      - name: Extract backup OCI metadata
+        id: backup-meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/faya-corporation/fayanms-backup
+          tags: |
+            type=raw,value=${{ github.event.workflow_run.head_sha }}
+            type=raw,value=sha-${{ github.event.workflow_run.head_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/Faya-Corporation/FayaNMS
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
+
+      # RT-017 / F-024 — scan BEFORE any publication. The four gate steps
       # below build the images LOCALLY (push: false, load: true) and the
-      # trivy gate scans those LOCAL refs; only after all three gates pass
+      # trivy gate scans those LOCAL refs; only after all four gates pass
       # do the multi-arch push steps run, so every published image has
       # already passed the HIGH/CRITICAL gate.
       # Multi-arch note: buildx cannot `load` a multi-platform manifest, so
@@ -251,6 +285,19 @@ jobs:
           build-args: |
             FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
 
+      # FNM-2026-102: the backup image passes the SAME local trivy gate
+      # before any push (RT-017 contract — published images have always
+      # passed the gate).
+      - name: Build gate backup image (local, never pushed)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: deploy/oci/backup-sidecar
+          file: deploy/oci/backup-sidecar/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: fayanms-backup:gate
+
       # Gate contract mirrors ci.yml's image scans and R78-B policy:
       # fatal for every HIGH/CRITICAL result, including unfixed findings —
       # evaluated on the LOCALLY BUILT image, BEFORE any push (RT-017:
@@ -283,6 +330,16 @@ jobs:
         with:
           scan-type: image
           image-ref: fayanms-migrator:gate
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          exit-code: "1"
+
+      - name: Scan built backup image (HIGH/CRITICAL fatal)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: fayanms-backup:gate
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: false
@@ -327,6 +384,21 @@ jobs:
           labels: ${{ steps.migrator-meta.outputs.labels }}
           build-args: |
             FAYANMS_SOURCE_SHA=${{ github.event.workflow_run.head_sha }}
+          sbom: true
+          provenance: mode=max
+
+      # FNM-2026-102: published in the SAME trusted workflow, scanned by the
+      # same gate, tagged with the same immutable sha-<commit> convention —
+      # env.example's FAYANMS_BACKUP_IMAGE now has a first-class artifact.
+      - name: Build and push immutable backup image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: deploy/oci/backup-sidecar
+          file: deploy/oci/backup-sidecar/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.backup-meta.outputs.tags }}
+          labels: ${{ steps.backup-meta.outputs.labels }}
           sbom: true
           provenance: mode=max
 

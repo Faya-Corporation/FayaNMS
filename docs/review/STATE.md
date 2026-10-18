@@ -107,3 +107,48 @@ scheduling, release tag/GA approval). Nothing actionable in-repo remains
 open. Push/PR credential note (Task 9): this sandbox re-clone is anonymous —
 the docs commit for this pass is prepared locally and requires the owner's
 PAT to push/PR (recorded in worklog Task 9).
+
+## 2026-10-18 independent re-audit cycle (baseline `05d85ee`)
+
+The owner-supplied independent audit (FNM-2026-101…110 + EXT-01…06) was
+re-verified finding-by-finding against the pinned source before any
+remediation. **All ten source findings CONFIRMED** — none stale, none
+misread. Remediation proceeds in the audit's waves; every wave lands as its
+own reviewed PR with pin tests.
+
+### Wave R1 — backup correctness + usable fresh deployment (FNM-101/102/103/109)
+
+| Finding | Verdict | Remediation (this wave) |
+|---|---|---|
+| FNM-2026-101 sidecar false success on pg_dump failure | **CONFIRMED** → **FIXED** | `backup-sidecar/entrypoint.sh` rewritten: pg_dump runs in a `set +e` subshell recording its own status; age status captured separately; success requires BOTH zero AND a ≥512-byte artifact; output goes to `.partial-*` and is promoted by atomic `mv` only after validation; checksum sidecar written only for the promoted file; failures remove the partial and update a machine-readable `backup-health.state` (`last_result` / `consecutive_failures`) for alerting. In-container content validation is honestly documented as status+size only (the sidecar holds the age RECIPIENT by design — the decrypting identity never lives in the backup container); authoritative `pg_restore --list` validation belongs to the restore drill. Pinned by `tests/audit/r1-2026-1018-backup-deploy.test.ts`. |
+| FNM-2026-102 env template omits mandatory backup image | **CONFIRMED** → **FIXED** | `env.example` now ships `FAYANMS_BACKUP_IMAGE` (fayanms-backup, same `sha-<commit>` convention) + `FAYANMS_BACKUP_AGE_RECIPIENT`; `deploy.sh` requires both BEFORE `compose config -q` and enforces the tag-shape check on the backup image; **the certification workflow now builds, smoke-tests (age+pg_dump under uid 70), trivy-gates (amd64 gate + arm64), and publishes `ghcr.io/faya-corporation/fayanms-backup`** with the same SBOM+provenance contract as app/worker/migrator — no manual build-and-push side flow. |
+| FNM-2026-103 deploy path never starts backup/WAL services | **CONFIRMED** → **FIXED** | `deploy.sh` runs the `wal-init` + `backup-init` provision one-shots before any service start (idempotent, mandatory on fresh volumes), includes `backup` in the production `up`, pulls the backup image, and post-up FAILS the deploy if `pg_stat_archiver.failed_count > 0` or the sidecar is not running. `health-check.sh` gained the same two gates. |
+| FNM-2026-109 host backup plaintext residue on age failure | **CONFIRMED** → **FIXED** | `backup.sh` gained an EXIT trap that removes the plaintext dump on every exit path; an empty encrypted artifact is refused as a failure. |
+
+Wave R1 verification: `tests/audit/r1-2026-1018-backup-deploy.test.ts` 21/21;
+related suites (oci-compose-env-split, deploy-hardening,
+docker-image-provenance, drill-restore, open-findings-batch-13) 87/87 with 0
+failures; `sh -n`/`bash -n` clean on all four scripts; eslint clean. The
+full compose boot test (fresh volumes, only documented inputs) executes
+owner-side with the staging bring-up (EXT-01) — docker compose is not
+available in this sandbox, and the pins above are the in-repo contract.
+
+### Remaining 2026-10-18 findings (not yet remediated)
+
+- **FNM-2026-104** (report consumption not site-scoped: runs list/download/
+  schedules) — **CONFIRMED, OPEN → Wave R2**.
+- **FNM-2026-105** (CHANGE_SUMMARY fleet-wide under site-limited scope) —
+  **CONFIRMED, OPEN → Wave R2**.
+- **FNM-2026-106** (collector JWT principal not bound to agentKey; SUSPENDED
+  reactivation) — **CONFIRMED, OPEN → Wave R2**.
+- **FNM-2026-107** (PITR lacks a physical base-backup chain) — **CONFIRMED,
+  OPEN → Wave R3** (design + tooling in-repo; drill execution external).
+- **FNM-2026-108** (tag-shaped deploy validation, no digest pinning) —
+  **CONFIRMED, OPEN → Wave R3**.
+- **FNM-2026-110** (docs/governance: README collector wording, readiness
+  claims, 8 open Dependabot PRs incl. #101 browser failure, release tag) —
+  **CONFIRMED, partially owner-gated**; docs reconciled in the ledger PR,
+  Dependabot triage recorded as owner follow-up with evidence.
+- **EXT-01…06** — owner-gated, unchanged (staging burn-in, DR drill +
+  RPO/RTO, vendor T3, approval governance, HA/SLA decision, release
+  formalization).

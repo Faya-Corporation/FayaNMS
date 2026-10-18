@@ -28,13 +28,25 @@ stamp=$(date -u +%Y%m%dT%H%M%SZ)
 plain="$BACKUP_DIR/fayanms-$stamp.sql"
 encrypted="$plain.age"
 
+# FNM-2026-109 (2026-10-18 re-audit): with `set -euo pipefail`, a failing
+# `age` used to exit BEFORE the `rm -f "$plain"` — stranding a plaintext
+# dump on disk. The EXIT trap guarantees the plaintext file is removed on
+# EVERY exit path (failure, signal, success); the explicit rm on the
+# success path stays as belt-and-braces.
+cleanup_plain() { rm -f "$plain"; }
+trap cleanup_plain EXIT
+
 docker compose --env-file "$ENV_FILE" -f compose.yml exec -T postgres pg_dump \
   --format=custom \
   --no-owner \
   --no-acl \
   -U fayanms -d fayanms >"$plain"
 age --recipient "$AGE_RECIPIENT" --output "$encrypted" "$plain"
+# Encrypted-artifact sanity: a zero-byte .age cannot be a real backup —
+# treat it as a failure (the trap removes the plaintext residue).
+[[ -s "$encrypted" ]] || { echo "age produced an empty artifact — refusing to count this backup." >&2; exit 1; }
 rm -f "$plain"
+trap - EXIT
 # Explicit 0600: with the umask above this is belt-and-braces — every
 # artifact the script produces is owner-only, no group read.
 chmod 0600 "$encrypted"

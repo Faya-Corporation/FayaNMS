@@ -4167,3 +4167,16 @@ Stage Summary:
 - Row 11 is now fully green ON THE REPOSITORY SIDE: container certification green on the exact current main SHA (`1b0cfda`, run `37818711588`) AND all six published digests read back from GHCR via registry API v2. The last repository-actionable item of the GA program is closed.
 - Remaining program items are exclusively owner-gated: row 1 approving-review ruleset, row 10 real DR drill + RPO/RTO sign-off, rows 12–14 (T3 vendor lab, staging burn-in, final re-audit), release tag/GA approval.
 - Security note: the read:packages token was shared in chat — recommend the owner rotate/revoke it after this session (same standing advice as the prior PAT).
+---
+Task ID: 12-r1-backup-deploy (2026-10-08..18 cycle, session web-4924c74a, trace 1a1506be33a63449)
+Agent: main agent (Z.ai Code)
+Task: 2026-10-18 independent re-audit intake + Wave R1 (backup correctness + usable fresh deployment).
+
+Work Log:
+- Intake: extracted the owner-supplied audit package (2 reports, FNM-2026-101…110 + EXT-01…06, baseline 05d85ee). Re-verified EVERY finding against the pinned source before accepting: all ten CONFIRMED (sidecar pipeline semantics, env template gap, deploy.sh omissions, report consumption scoping, CHANGE_SUMMARY fleet-wide query, collector agentKey binding + SUSPENDED reactivation, PITR physical-base gap, tag-shaped deploy validation, backup.sh plaintext residue, docs/governance drift). Ledger updated in STATE.md (new cycle section) with per-finding evidence.
+- Wave R1 implemented (FNM-101/102/103/109): entrypoint.sh rewritten (dual pipeline-status collection, ≥512B artifact gate, .partial-* + atomic mv promotion, checksum-after-promotion, backup-health.state with consecutive_failures for alerting, honest in-container validation note — the sidecar holds only the age recipient by design; pg_restore --list stays in the restore drill); backup.sh EXIT-trap + empty-artifact refusal; env.example ships FAYANMS_BACKUP_IMAGE + FAYANMS_BACKUP_AGE_RECIPIENT; deploy.sh requires both, enforces sha-<VERSION> tag shape on the backup image, runs wal-init+backup-init before up, includes backup in production up, fails on pg_stat_archiver.failed_count>0 or sidecar down; health-check.sh gained the same gates; container.yml builds/smokes/trivy-gates/publishes fayanms-backup (arm64 + gate + multi-arch + SBOM/provenance + sha-<commit> tags).
+- Verification: 21 new pins (tests/audit/r1-2026-1018-backup-deploy.test.ts); 87/87 across the six related suites; sh -n / bash -n clean; eslint clean.
+- Environment: the between-turn sandbox reset wiped the PG cluster contents (zero tables) AND mini-services/worker/node_modules (ssh2) AND the local launcher — all restored via the documented ops path (db:up → migrate → seed 66,108 rows; worker bun install); batch-13's HTTP tests need NEXTAUTH_SECRET exported from the dev identity (documented sandbox behavior, not a code issue).
+
+Stage Summary:
+- Wave R1 complete and pinned; FNM-104/105/106 → Wave R2 next, FNM-107/108 → Wave R3, FNM-110 docs in the ledger PR. EXT-01…06 remain owner-gated.
