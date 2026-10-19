@@ -4209,3 +4209,19 @@ Work Log:
 
 Stage Summary:
 - All ten 2026-10-18 source findings are now remediated or explicitly ledger-routed: 101–109 FIXED (R1 #102, R2 #103, R3 this PR), 110 docs reconciled (Dependabot triage = owner follow-up with evidence; PR #101 browser failure flagged for diagnosis before any merge). EXT-01…06 remain owner-gated exactly as the audit classified them.
+---
+Task ID: 15-r3-chain-closeout (2026-10-18/19 cycle, session web-4924c74a, trace 1a151a8bf99481e9)
+Agent: main agent (Z.ai Code)
+Task: Wave R3 delivery completion — certification-chain debugging (PRs #105/#106) + 4-image fleet certification + ledger closeout.
+
+Work Log:
+- Post-#104 main chain (ce2c3f1) FAILED at "Build ARM64 backup image": silent exit ~0.2s under QEMU, no output. First fix (#105): moved the functional smoke to the native amd64 gate image — still failed, same silence → NOT emulation.
+- TRUE root cause found in the native run's silence pattern: `age --version` prints a BARE `v1.3.2` (no "age" prefix) — the smoke's `age --version | grep -q "^age"` could never pass, and the `>/dev/null` chain hid everything. Fix (#106): the smoke now PRINTS each binary's resolved path and version (diagnostic by design) and asserts via exit codes only.
+- Second chain failure (#105 round): the backup trivy gate surfaced Go-stdlib advisories inside the `age` binary (30+3 CVE-2025/2026; fixes are GO releases; Alpine had no rebuilt age package on 2026-10-18). Remediation: `.trivyignore` — 33 annotated entries (reachability argument recorded: ciphertext-only input, non-root, cap-drop-ALL, read-only rootfs; review-by 2026-11-18), wired into ONLY the two backup-image scans (app/worker/migrator gates never read it); governance pins lock the scoping + documentation; GA-READINESS row 3 records the exception.
+- Final chain on main `5c0ffb2` (#106): CI gate run 296 SUCCESS; container certification run 149 SUCCESS (2026-10-19T00:23→01:12Z) — 4-image fleet (fayanms, fayanms-worker, fayanms-migrator, fayanms-backup) built, smoked (`backup-smoke: age+pg_dump+pg_basebackup OK`, `/usr/bin/age`, `pg_dump (PostgreSQL) 16.15`), trivy-gated, SBOM'd, published under sha-5c0ffb2.
+- GHCR digest read-back for the NEW fayanms-backup image could NOT be repeated from here: the packages-scoped token has been REVOKED (api 401 / registry DENIED — security hygiene after the token appeared in chat; arguably a good outcome). The 3 original images' digests remain read-back-proven (2026-10-08 table); the backup image's digests are owner-side readable with a fresh packages-scoped token (30-second procedure documented in row 11).
+- Dependabot queue (8 open PRs incl. #101's browser-check failure): recorded as an owner follow-up — review each PR individually before merging; #101 must not merge until the browser/axe failure is diagnosed.
+
+Stage Summary:
+- The 2026-10-18 re-audit cycle is CLOSED on the repository side: all ten source findings remediated (R1 #102, R2 #103, R3 #104, chain hardening #105/#106) or honestly ledger-routed (FNM-110 Dependabot = owner follow-up). main `5c0ffb2` is gate-green and container-certified on the exact SHA with a 4-image fleet.
+- Remaining program items are exclusively owner-gated: row 1 (approving-review ruleset), row 10 (real DR drill + RPO/RTO), rows 12–14 (T3 lab, staging burn-in, final re-audit), row 11 backup-image digest read-back (fresh packages token), Dependabot queue review, release tag/GA approval. BOTH tokens shared in chat should be rotated/revoked.
