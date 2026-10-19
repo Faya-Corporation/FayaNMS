@@ -152,8 +152,10 @@ async function signIn(page: Page): Promise<void> {
   await page.fill("#sign-in-password", ADMIN_PASSWORD);
   await page.click("button[type=submit]");
   // The shell takes over client-side: the header user menu appears and the
-  // sign-in gate disappears.
-  await page.waitForSelector('header [aria-label="User menu"]', {
+  // sign-in gate disappears. (Substring match: the accessible name leads
+  // with the visible identity — WCAG 2.5.3 label-in-name, PR #101 fix —
+  // and always ends with the localized "User menu" purpose.)
+  await page.waitForSelector('header [aria-label*="User menu" i]', {
     state: "visible",
     timeout: 20_000,
   });
@@ -368,7 +370,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         expect(await page.locator("#sign-in-title").count()).toBe(0);
 
         // Sign out through the real user menu → back to the gate.
-        await page.click('header [aria-label="User menu"]');
+        await page.click('header [aria-label*="User menu" i]');
         await page.waitForSelector("text=Sign out", { state: "visible", timeout: 15_000 });
         await page.click("text=Sign out");
         await page.waitForSelector("#sign-in-title", { state: "visible", timeout: 20_000 });
@@ -383,9 +385,11 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
       await runJourneyWithWedgeRetry("B2", async (page) => {
         await signIn(page);
         expect(
-          await page.isVisible('header [aria-label="Search (opens command palette)"]')
+          await page.isVisible('header [aria-label*="command palette" i]')
         ).toBe(true);
-        expect(await page.isVisible('header [aria-label="Open job center"]')).toBe(true);
+        // Job center's accessible name carries the active-job count when
+        // one exists (WCAG 2.5.3 label-in-name) — match the purpose token.
+        expect(await page.isVisible('header [aria-label*="Job center" i]')).toBe(true);
         expect(await page.isVisible('header [aria-label="Switch language"]')).toBe(true);
         // The sidebar navigation is really rendered (not just mounted).
         expect(await page.locator("nav").first().isVisible()).toBe(true);
@@ -461,7 +465,7 @@ describe("TASK-BROWSER-E2E: rendering-layer journeys (real Chromium × real topo
         await page.fill("#sign-in-email", ADMIN_EMAIL);
         await page.fill("#sign-in-password", ADMIN_PASSWORD);
         await page.click("button[type=submit]");
-        await page.waitForSelector('header [aria-label="User menu"]', {
+        await page.waitForSelector('header [aria-label*="User menu" i]', {
           state: "visible",
           timeout: 20_000,
         });

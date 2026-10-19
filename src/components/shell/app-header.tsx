@@ -219,7 +219,13 @@ export function AppHeader({
       </Breadcrumb>
 
       <div className="ms-auto flex items-center gap-1 md:gap-1.5">
-        {/* Global search / command palette trigger */}
+        {/* Global search / command palette trigger.
+            WCAG 2.5.3 Label-in-Name (axe label-content-name-mismatch,
+            PR #101 browser evidence): the visible placeholder text and the
+            ⌘K hint must be part of the accessible name — a parenthesized
+            "(opens command palette)" label alone strips the visible tokens
+            under axe's token curation and fails as a serious violation.
+            The composed name leads with the exact visible text. */}
         <button
           type="button"
           onClick={onOpenCommandPalette}
@@ -227,7 +233,7 @@ export function AppHeader({
             "flex h-8 items-center gap-2 rounded-md border border-input bg-background text-sm text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground md:h-9",
             "w-8 justify-center md:w-56 md:justify-start md:px-3 lg:w-64"
           )}
-          aria-label={tHeader("searchAria")}
+          aria-label={`${tHeader("searchPlaceholder")} ⌘K (${tHeader("searchPaletteHint")})`}
         >
           <Search aria-hidden="true" className="size-4 shrink-0" />
           <span className="hidden md:inline md:flex-1 md:truncate md:text-start">
@@ -256,9 +262,20 @@ export function AppHeader({
             : tHeader("systemCritical", { count: criticalAlerts })}
         </span>
 
-        {/* Job center */}
+        {/* Job center. WCAG 2.5.3 Label-in-Name: the count badge is visible
+            text ("3" / "9+"), so the accessible name must contain it —
+            the name mirrors the badge form exactly (badge shows "9+" when
+            count > 9). Latent same-class defect proven by the live DOM
+            (badge "1" vs name "Open job center"); CI's e2e scan simply had
+            zero active jobs at scan time. */}
         <Button
-          aria-label={tHeader("jobCenter")}
+          aria-label={
+            counts.jobs > 0
+              ? counts.jobs > 9
+                ? tHeader("jobCenter9PlusAria")
+                : tHeader("jobCenterActiveAria", { count: counts.jobs })
+              : tHeader("jobCenter")
+          }
           className="relative size-8 md:size-9"
           onClick={onOpenJobCenter}
           size="icon"
@@ -272,13 +289,20 @@ export function AppHeader({
           )}
         </Button>
 
-        {/* Notifications (§74 — separate from the alert stream) */}
+        {/* Notifications (§74 — separate from the alert stream).
+            WCAG 2.5.3 Label-in-Name (PR #101 browser evidence): the unread
+            badge is visible text ("6" / "9+"), so the accessible name must
+            contain it. A parenthesized name is stripped of the count under
+            axe's token curation — the count rides OUTSIDE parens and
+            mirrors the badge form ("9+" when > 9). */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               aria-label={
                 unreadCount > 0
-                  ? tHeader("notificationsUnreadAria", { count: unreadCount })
+                  ? unreadCount > 9
+                    ? tHeader("notificationsUnread9PlusAria")
+                    : tHeader("notificationsUnreadAria", { count: unreadCount })
                   : tHeader("notifications")
               }
               className="relative size-8 md:size-9"
@@ -488,11 +512,19 @@ export function AppHeader({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* User menu */}
+        {/* User menu. WCAG 2.5.3 Label-in-Name (PR #101 browser evidence):
+            the visible avatar initials, display name and role label must be
+            part of the accessible name — a bare "User menu" label fails.
+            The {" "} separators between the flex children are anonymous
+            white-space flex items (they render nothing, per CSS Flexbox),
+            but they keep the DOM visible text tokenized exactly like the
+            composed name — without them JSX renders the adjacent spans as
+            one concatenated token stream ("AA" + name + role) that no
+            readable label can contain. */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
-              aria-label={tHeader("userMenu")}
+              aria-label={`${initials || "?"} ${currentUser?.name ?? tHeader("signedIn")}${roleLabel ? ` ${roleLabel}` : ""}: ${tHeader("userMenu")}`}
               className="ms-1 h-8 gap-2 ps-1 md:h-9 md:ps-1.5"
               variant="ghost"
             >
@@ -501,10 +533,12 @@ export function AppHeader({
                   {initials || "?"}
                 </AvatarFallback>
               </Avatar>
+              {" "}
               <span className="hidden min-w-0 flex-col items-start leading-tight xl:flex">
                 <span className="truncate text-sm font-medium">
                   {currentUser?.name ?? tHeader("signedIn")}
                 </span>
+                {" "}
                 <span className="truncate text-[11px] text-muted-foreground">
                   {roleLabel}
                 </span>

@@ -207,8 +207,8 @@ describe("RT-005 — en/ar parity holds with the new namespaces", () => {
     // collectors.distribution realPlaneNote per side). This
     // pin tracks the CURRENT total and is retotaled by every later
     // dictionary-touching RT (repo rule).
-    expect(enLeaves.length).toBe(3395);
-    expect(arLeaves.length).toBe(3395);
+    expect(enLeaves.length).toBe(3398);
+    expect(arLeaves.length).toBe(3398);
   });
 
   test("alerts.stream/dialogs/rules and detect.hints exist in both locales", () => {
