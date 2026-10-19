@@ -194,8 +194,8 @@ describe("RT-004 — dictionaries carry the new keys in both locales", () => {
     // totpCode/totpHint per side; every pinning test updated in the same
     // change) → 3394 (GA-5, +2 runs downloadPdf/downloadXlsx per side)
     // → 3395 (GA-4b, +1 collectors.distribution realPlaneNote per side).
-    expect(leaves(en).length).toBe(3395);
-    expect(leaves(ar).length).toBe(3395);
+    expect(leaves(en).length).toBe(3398);
+    expect(leaves(ar).length).toBe(3398);
   });
 });
 

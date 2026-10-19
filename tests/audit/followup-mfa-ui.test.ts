@@ -196,11 +196,11 @@ describe("followup-mfa-ui — api-client MFA family", () => {
 });
 
 describe("followup-mfa-ui — retotal", () => {
-  test("dictionary totals moved 3314 → 3385 → 3392 (GA-3) → 3394 (GA-5) → 3395 (GA-4b) in BOTH locales", () => {
+  test("dictionary totals moved 3314 → 3385 → 3392 (GA-3) → 3394 (GA-5) → 3395 (GA-4b) → 3398 (WCAG 2.5.3 label-in-name, PR #101 evidence) in BOTH locales", () => {
     const en = leaves(readJson("messages/en.json"));
     const ar = leaves(readJson("messages/ar.json"));
-    expect(en.length).toBe(3395);
-    expect(ar.length).toBe(3395);
+    expect(en.length).toBe(3398);
+    expect(ar.length).toBe(3398);
   });
 });
 
