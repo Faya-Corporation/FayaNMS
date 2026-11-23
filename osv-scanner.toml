@@ -21,23 +21,3 @@
 # were dropped per this file's own rules rather than carried forward.
 #
 # Add new [[IgnoredVulns]] entries below ONLY per the rules above.
-
-# GHSA-vfj7-8cjw-p6xm (HIGH, CVSS 8.7) — braces@3.0.3, no fixed version
-# exists upstream ("0 vulnerabilities can be fixed"). Surfaced 2026-10-03:
-# the scan job's semgrep upgrade run made the whole scan job complete for
-# the first time in weeks, and osv-scanner v2.5.1's advisory DB now carries
-# this NEW entry affecting even the latest braces release.
-# (a) Not reachable: braces is pulled ONLY through micromatch/fast-glob whose
-#     dependents are build/lint tooling (@next/eslint-plugin-next and the
-#     tailwindcss v4 DEV dependency — verified against bun.lock and
-#     package.json dependency classes; zero runtime dependencies reach it, so
-#     the production standalone bundle never contains it). The advisory's
-#     ReDoS needs an attacker-controlled glob STRING handed to braces /
-#     micromatch; this repo only ever matches repo-internal constant glob
-#     patterns at build/lint time.
-# (b) Real fix path: upgrade braces when upstream publishes a patched release
-#     (re-run osv-scanner after every bun.lock refresh; drop this entry the
-#     moment the fix lands per this file's rules).
-[[IgnoredVulns]]
-id = "GHSA-vfj7-8cjw-p6xm"
-reason = "braces 3.0.3 is dev-tooling-only via micromatch/fast-glob (eslint plugin + tailwindcss devDep); no runtime reachability for the ReDoS path; no upstream fix exists yet — drop on first patched release"
